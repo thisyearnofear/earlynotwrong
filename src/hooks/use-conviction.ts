@@ -276,8 +276,21 @@ export function useConviction() {
         finishAnalysis();
       } catch (error) {
         console.error("Analysis failed", error);
-        addLog(`> CRITICAL ERROR: ${error}`);
-        setAnalysisStep("System Failure");
+        const classified = classifyError(error);
+        const errorLines = formatErrorForTerminal(classified);
+        
+        errorLines.forEach(line => addLog(line));
+        
+        setError({
+          errorType: classified.type,
+          errorMessage: classified.message,
+          errorDetails: classified.details,
+          canRetry: classified.canRetry,
+          canUseCached: activeAddress ? hasCachedAnalysis(activeAddress, chain) : false,
+          recoveryAction: classified.recoveryAction,
+        });
+        
+        setAnalysisStep("Analysis Failed");
         setTimeout(finishAnalysis, 2000);
       }
     },
@@ -295,11 +308,54 @@ export function useConviction() {
       toggleShowcaseMode,
       addLog,
       parameters,
+      setError,
+      clearError,
     ],
+  );
+
+  const loadCachedAnalysis = useCallback(
+    async (address: string, chain: "solana" | "base") => {
+      const cached = getCachedAnalysis(address, chain, parameters);
+      
+      if (!cached) {
+        addLog(`> NO CACHED ANALYSIS FOUND`);
+        return false;
+      }
+
+      try {
+        reset();
+        startAnalysis();
+        clearError();
+        
+        addLog(`> LOADING CACHED ANALYSIS...`);
+        addLog(`> CACHED: ${new Date(cached.timestamp).toLocaleString()}`);
+        
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        
+        // Load cached data
+        setEthosData(cached.ethosScore, cached.ethosProfile);
+        setConvictionMetrics(cached.convictionMetrics);
+        setPositionAnalyses(cached.positionAnalyses, cached.chain);
+        
+        addLog(`> CONVICTION_SCORE: ${cached.convictionMetrics.score}`);
+        addLog(`> CACHED DATA LOADED SUCCESSFULLY`);
+        addLog(`> TIP: RUN NEW ANALYSIS FOR LATEST DATA`);
+        
+        finishAnalysis();
+        return true;
+      } catch (error) {
+        console.error("Failed to load cached analysis:", error);
+        addLog(`> ERROR: FAILED TO LOAD CACHED DATA`);
+        finishAnalysis();
+        return false;
+      }
+    },
+    [parameters, reset, startAnalysis, clearError, setEthosData, setConvictionMetrics, setPositionAnalyses, addLog, finishAnalysis]
   );
 
   return {
     analyzeWallet,
+    loadCachedAnalysis,
     isAnalyzing,
     isConnected: isEvmConnected || isSolanaConnected,
     activeAddress: isEvmConnected ? evmAddress : solanaAddress,

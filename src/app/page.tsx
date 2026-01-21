@@ -33,6 +33,7 @@ import { AttestationDialog } from "@/components/ui/attestation-dialog";
 import { PositionExplorer } from "@/components/ui/position-explorer";
 import { ShareDialog } from "@/components/ui/share-dialog";
 import { HistoryPanel } from "@/components/ui/history-panel";
+import { ErrorPanel } from "@/components/ui/error-panel";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +44,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Home() {
-  const { analyzeWallet, isAnalyzing, isConnected, isShowcaseMode, activeAddress } =
+  const { analyzeWallet, loadCachedAnalysis, isAnalyzing, isConnected, isShowcaseMode, activeAddress } =
     useConviction();
   const {
     ethosScore,
@@ -56,6 +57,8 @@ export default function Home() {
     setParameters,
     showAttestationDialog,
     reset,
+    errorState,
+    clearError,
   } = useAppStore();
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
