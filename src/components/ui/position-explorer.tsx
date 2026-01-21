@@ -92,9 +92,34 @@ function PositionCard({
               <span className="text-xs font-mono text-foreground-muted">
                 {position.tokenSymbol}
               </span>
+              {/* Badges: Early Exit, Panic Sold, Diamond Hands, Re-Entry, Conviction Win */}
               {position.isEarlyExit && (
                 <span className="px-1.5 py-0.5 text-[10px] font-mono bg-impatience/20 text-impatience rounded">
                   EARLY EXIT
+                </span>
+              )}
+              {/* Panic Sold: exited within 7 days */}
+              {position.exitDetails && position.holdingPeriodDays < 7 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-amber-200/20 text-amber-400 rounded">
+                  PANIC SOLD
+                </span>
+              )}
+              {/* Diamond Hands: held through large post-exit move potential */}
+              {position.maxMissedGain > 100 && position.holdingPeriodDays > 30 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-patience/20 text-patience rounded">
+                  DIAMOND HANDS
+                </span>
+              )}
+              {/* Re-Entry: multiple entry phases */}
+              {position.hasReEntry && (
+                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-signal/20 text-signal rounded">
+                  RE-ENTRY
+                </span>
+              )}
+              {/* Conviction Win: 50%+ gain vs cost basis */}
+              {position.realizedPnL > position.entryDetails.totalValue * 0.5 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-emerald-200/20 text-emerald-400 rounded">
+                  CONVICTION WIN
                 </span>
               )}
             </div>

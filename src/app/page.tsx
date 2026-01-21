@@ -39,6 +39,7 @@ import { TokenHeatmap } from "@/components/ui/token-heatmap";
 import { ReputationPerks } from "@/components/ui/reputation-perks";
 import { ConvictionAlerts } from "@/components/ui/conviction-alerts";
 import { CohortAnalysis } from "@/components/ui/cohort-analysis";
+import { BehavioralInsights } from "@/components/ui/behavioral-insights";
 import {
   Dialog,
   DialogContent,
@@ -628,7 +629,7 @@ export default function Home() {
                   </Card>
                 </motion.div>
 
-                {/* Additional Metrics / Insights (Only show if we have data) */}
+                {/* Behavioral Insights (Only show if we have data) */}
                 {convictionMetrics && (
                   <motion.div
                     variants={{
@@ -637,44 +638,10 @@ export default function Home() {
                     }}
                     className="col-span-1 md:col-span-6 lg:col-span-8"
                   >
-                    <Card className="glass-panel border-border/50 bg-surface/40">
-                      <CardHeader>
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          Significant Events
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex items-start gap-4 p-3 rounded-lg bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors cursor-pointer group">
-                          <div className="w-8 h-8 rounded-full bg-impatience/20 flex items-center justify-center text-impatience font-bold text-xs shrink-0">
-                            X
-                          </div>
-                          <div>
-                            <div className="text-sm font-semibold text-foreground group-hover:text-impatience transition-colors">
-                              Early Exit Detection
-                            </div>
-                            <div className="text-xs text-foreground-muted mt-1 font-mono">
-                              Analysis shows {convictionMetrics.earlyExits}{" "}
-                              positions sold before major upside catalysts.
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-4 p-3 rounded-lg bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors cursor-pointer group">
-                          <div className="w-8 h-8 rounded-full bg-patience/20 flex items-center justify-center text-patience font-bold text-xs shrink-0">
-                            ✓
-                          </div>
-                          <div>
-                            <div className="text-sm font-semibold text-foreground group-hover:text-patience transition-colors">
-                              High Conviction Holds
-                            </div>
-                            <div className="text-xs text-foreground-muted mt-1 font-mono">
-                              Identified {convictionMetrics.convictionWins}{" "}
-                              trades held through &gt;30% drawdowns.
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <BehavioralInsights
+                      metrics={convictionMetrics}
+                      positionCount={positionAnalyses.length}
+                    />
                   </motion.div>
                 )}
 

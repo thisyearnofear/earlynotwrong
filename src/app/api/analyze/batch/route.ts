@@ -195,6 +195,18 @@ async function analyzePosition(
     ? (exitDetails.lastExit - entryDetails.firstEntry) / (24 * 60 * 60 * 1000)
     : (Date.now() - entryDetails.firstEntry) / (24 * 60 * 60 * 1000);
 
+  // Re-entry detection for this position (gap > 1 day between entries)
+  let hasReEntry = false;
+  if (position.entries && position.entries.length > 1) {
+    for (let j = 1; j < position.entries.length; j++) {
+      const gapDays = (position.entries[j].timestamp - position.entries[j - 1].timestamp) / (24 * 60 * 60 * 1000);
+      if (gapDays > 1) {
+        hasReEntry = true;
+        break;
+      }
+    }
+  }
+
   const isEarlyExit =
     patienceTaxData !== null && patienceTaxData.maxMissedGain > 50;
 
@@ -227,6 +239,7 @@ async function analyzePosition(
     unrealizedPnL,
     holdingPeriodDays: Math.round(holdingPeriodDays),
     isEarlyExit,
+    hasReEntry,
     counterfactual,
   };
 }

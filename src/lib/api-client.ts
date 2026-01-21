@@ -36,6 +36,7 @@ export interface PositionAnalysis {
   unrealizedPnL: number | null;
   holdingPeriodDays: number;
   isEarlyExit: boolean;
+  hasReEntry?: boolean;
   counterfactual: {
     wouldBeValue: number;
     missedGainDollars: number;
