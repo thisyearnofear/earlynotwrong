@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   Settings,
   Share2,
+  Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
@@ -576,11 +577,18 @@ export default function Home() {
                       {farcasterIdentity && (
                         <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20">
                           {farcasterIdentity.pfpUrl && (
-                            <img
-                              src={farcasterIdentity.pfpUrl}
-                              alt={farcasterIdentity.username}
-                              className="w-12 h-12 rounded-full ring-2 ring-signal/30"
-                            />
+                            <a
+                              href={`https://warpcast.com/${farcasterIdentity.username}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                            >
+                              <img
+                                src={farcasterIdentity.pfpUrl}
+                                alt={farcasterIdentity.username}
+                                className="w-12 h-12 rounded-full ring-2 ring-signal/30 hover:ring-signal/50 transition-all"
+                              />
+                            </a>
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="text-base font-semibold text-foreground truncate">
@@ -754,8 +762,51 @@ export default function Home() {
                   <ReputationPerks />
                 </motion.div>
 
-                {/* Advanced Features - Hide in showcase mode to focus on actual data */}
-                {!isShowcaseMode && (
+                {/* Locked Features Message for users below Ethos 1000 */}
+                {!isShowcaseMode && isConnected && (ethosScore?.score ?? 0) < 1000 && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-12"
+                  >
+                    <Card className="glass-panel border-border/50 bg-surface/40 border-signal/20">
+                      <CardContent className="p-8 text-center">
+                        <div className="space-y-4">
+                          <Lock className="w-12 h-12 text-signal mx-auto" />
+                          <div>
+                            <h3 className="text-xl font-bold text-foreground mb-2">
+                              Advanced Features Locked
+                            </h3>
+                            <p className="text-foreground-muted max-w-2xl mx-auto">
+                              Alpha Discovery, Token Heatmap, Conviction Alerts, and Cohort Analysis require an Ethos score of 1000+.
+                              {ethosScore?.score ? (
+                                <span className="block mt-2 text-signal font-mono">
+                                  Your score: {ethosScore.score} / 1000 ({Math.round((ethosScore.score / 1000) * 100)}% unlocked)
+                                </span>
+                              ) : (
+                                <span className="block mt-2 text-signal">
+                                  Connect your wallet to check your Ethos score
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            className="border-signal/50 text-signal hover:bg-signal/10"
+                            onClick={() => window.open('https://ethos.network', '_blank', 'noopener,noreferrer')}
+                          >
+                            Build Reputation on Ethos →
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+
+                {/* Advanced Features - Gated for connected wallets with Ethos > 1000 */}
+                {!isShowcaseMode && isConnected && (ethosScore?.score ?? 0) >= 1000 && (
                   <>
                     {/* Alpha Discovery Panel */}
                     <motion.div
