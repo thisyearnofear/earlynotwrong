@@ -586,16 +586,16 @@ export default function Home() {
                           </span>
                           <span className={cn(
                             "font-mono text-xs px-2 py-1 rounded",
-                            ethosScore?.score >= 2000 ? "bg-patience/20 text-patience" :
-                              ethosScore?.score >= 1000 ? "bg-signal/20 text-signal" :
-                                ethosScore?.score >= 500 ? "bg-foreground/20 text-foreground" :
-                                  ethosScore?.score >= 100 ? "bg-foreground-muted/20 text-foreground-muted" :
+                            (ethosScore?.score ?? 0) >= 2000 ? "bg-patience/20 text-patience" :
+                              (ethosScore?.score ?? 0) >= 1000 ? "bg-signal/20 text-signal" :
+                                (ethosScore?.score ?? 0) >= 500 ? "bg-foreground/20 text-foreground" :
+                                  (ethosScore?.score ?? 0) >= 100 ? "bg-foreground-muted/20 text-foreground-muted" :
                                     "bg-surface text-foreground-muted"
                           )}>
-                            {ethosScore?.score >= 2000 ? "Elite" :
-                              ethosScore?.score >= 1000 ? "High" :
-                                ethosScore?.score >= 500 ? "Medium" :
-                                  ethosScore?.score >= 100 ? "Low" : "Unknown"}
+                            {(ethosScore?.score ?? 0) >= 2000 ? "Elite" :
+                              (ethosScore?.score ?? 0) >= 1000 ? "High" :
+                                (ethosScore?.score ?? 0) >= 500 ? "Medium" :
+                                  (ethosScore?.score ?? 0) >= 100 ? "Low" : "Unknown"}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-sm">

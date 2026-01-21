@@ -170,12 +170,13 @@ export function useConviction() {
         addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
         try {
+          const effectiveMinTradeValue = targetShowcase ? Math.min(parameters.minTradeValue, 1) : parameters.minTradeValue;
           const txResult = await retryWithBackoff(
             () => apiClient.fetchTransactions(
               activeAddress,
               chain,
               parameters.timeHorizon,
-              parameters.minTradeValue
+              effectiveMinTradeValue
             ),
             { maxRetries: 2, initialDelay: 2000 }
           );
@@ -235,7 +236,6 @@ export function useConviction() {
           setPositionAnalyses(batchResult.positions, chain);
 
           // Cache results
-          const currentEthosScore = useAppStore.getState().ethosScore;
           const currentEthosProfile = useAppStore.getState().ethosProfile;
           const currentFarcasterIdentity = useAppStore.getState().farcasterIdentity;
 
