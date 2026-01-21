@@ -24,6 +24,99 @@ const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
 const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
 
+// Base/stablecoin tokens used for trading pairs
+const KNOWN_BASE_TOKENS = [
+  "So11111111111111111111111111111111111111112", // SOL
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC (Solana)
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT (Solana)
+];
+
+// Common wrapped/synthetic tokens to filter as base pairs
+const WRAPPED_TOKENS = [
+  "So11111111111111111111111111111111111111112", // Wrapped SOL
+  "0x4200000000000000000000000000000000000006", // WETH (Base)
+];
+
+// ERC-20 stablecoins (Base chain)
+const BASE_STABLECOINS = [
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC (Base)
+  "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", // DAI (Base)
+];
+
+// Token patterns to exclude (LP tokens, NFTs, etc.)
+function shouldExcludeToken(symbol: string | null | undefined, address: string): boolean {
+  if (!symbol) return false;
+  
+  const symbolUpper = symbol.toUpperCase();
+  
+  // Exclude LP tokens
+  if (symbolUpper.includes("-LP") || 
+      symbolUpper.includes("LP-") || 
+      symbolUpper.includes("UNI-V2") ||
+      symbolUpper.includes("CAKE-LP") ||
+      symbolUpper.includes("SLP")) {
+    return true;
+  }
+  
+  // Exclude wrapped versions we want to treat as base
+  if (WRAPPED_TOKENS.includes(address)) {
+    return false; // These are base tokens, not tradeable assets
+  }
+  
+  return false;
+}
+
+// Validate transaction data quality
+function validateTransactions(transactions: TokenTransaction[]): {
+  valid: TokenTransaction[];
+  invalid: number;
+  quality: {
+    withSymbols: number;
+    withValidPrices: number;
+    withValidAmounts: number;
+    avgValueUsd: number;
+  };
+} {
+  const valid: TokenTransaction[] = [];
+  let invalid = 0;
+  let withSymbols = 0;
+  let withValidPrices = 0;
+  let withValidAmounts = 0;
+  let totalValue = 0;
+
+  for (const tx of transactions) {
+    // Basic validation: must have essential fields
+    if (!tx.tokenAddress || tx.timestamp <= 0 || tx.valueUsd < 0) {
+      invalid++;
+      continue;
+    }
+    
+    // Exclude suspicious LP tokens
+    if (shouldExcludeToken(tx.tokenSymbol, tx.tokenAddress)) {
+      invalid++;
+      continue;
+    }
+
+    if (tx.tokenSymbol) withSymbols++;
+    if (tx.priceUsd > 0) withValidPrices++;
+    if (tx.amount > 0) withValidAmounts++;
+    totalValue += tx.valueUsd;
+
+    valid.push(tx);
+  }
+
+  return {
+    valid,
+    invalid,
+    quality: {
+      withSymbols,
+      withValidPrices,
+      withValidAmounts,
+      avgValueUsd: valid.length > 0 ? totalValue / valid.length : 0,
+    },
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: TransactionRequest = await request.json();
@@ -36,26 +129,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let transactions: TokenTransaction[];
+    let rawTransactions: TokenTransaction[];
 
     if (chain === "solana") {
-      transactions = await fetchSolanaTransactions(
+      rawTransactions = await fetchSolanaTransactions(
         address,
         timeHorizonDays,
         minTradeValue
       );
     } else {
-      transactions = await fetchBaseTransactions(
+      rawTransactions = await fetchBaseTransactions(
         address,
         timeHorizonDays,
         minTradeValue
       );
     }
+    
+    // Validate and filter transactions
+    const { valid: transactions, invalid, quality } = validateTransactions(rawTransactions);
 
     return NextResponse.json({
       success: true,
       transactions,
       count: transactions.length,
+      quality: {
+        totalRaw: rawTransactions.length,
+        invalidFiltered: invalid,
+        dataCompleteness: {
+          symbolRate: Math.round((quality.withSymbols / Math.max(transactions.length, 1)) * 100),
+          priceRate: Math.round((quality.withValidPrices / Math.max(transactions.length, 1)) * 100),
+          amountRate: Math.round((quality.withValidAmounts / Math.max(transactions.length, 1)) * 100),
+        },
+        avgTradeSize: Math.round(quality.avgValueUsd * 100) / 100,
+      },
     });
   } catch (error) {
     console.error("Transaction fetch error:", error);
@@ -337,12 +443,6 @@ async function getSolPrice(): Promise<number> {
     return APP_CONFIG.fallbacks.solPrice;
   }
 }
-
-const KNOWN_BASE_TOKENS = [
-  "So11111111111111111111111111111111111111112", // SOL
-  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
-  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT
-];
 
 // Cache for token metadata to avoid repeated lookups
 const tokenMetadataCache = new Map<string, string | null>();

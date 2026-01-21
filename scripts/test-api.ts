@@ -201,8 +201,16 @@ async function testTransactionsApi(wallet: typeof SHOWCASE_WALLETS[0]) {
     const data = await response.json();
     console.log(`  ✅ API returned ${data.count} transactions`);
     
+    if (data.quality) {
+      console.log(`  📊 Quality Metrics:`);
+      console.log(`     - Raw transactions: ${data.quality.totalRaw}`);
+      console.log(`     - Filtered (invalid/LP): ${data.quality.invalidFiltered}`);
+      console.log(`     - Data completeness: Symbol ${data.quality.dataCompleteness.symbolRate}%, Price ${data.quality.dataCompleteness.priceRate}%, Amount ${data.quality.dataCompleteness.amountRate}%`);
+      console.log(`     - Avg trade size: $${data.quality.avgTradeSize}`);
+    }
+    
     if (data.transactions?.length > 0) {
-      console.log(`  Sample: ${data.transactions[0].tokenSymbol} - $${data.transactions[0].valueUsd.toFixed(2)}`);
+      console.log(`  Sample: ${data.transactions[0].tokenSymbol || 'Unknown'} - $${data.transactions[0].valueUsd.toFixed(2)}`);
     }
     
     return data;

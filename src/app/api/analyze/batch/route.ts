@@ -525,6 +525,13 @@ function calculateConvictionMetrics(
   let convictionWins = 0;
   let totalHoldingDays = 0;
   let winningPositions = 0;
+  let positionSizes: number[] = [];
+  let holdingPeriods: number[] = [];
+  
+  // Behavioral metrics for conviction analysis
+  let reEntryCount = 0;  // Re-entering same token after exit
+  let panicSells = 0;    // Sells within 7 days of entry
+  let diamondHands = 0;  // Held through 50%+ drawdown
 
   for (let i = 0; i < positions.length; i++) {
     const position = positions[i];
@@ -534,17 +541,45 @@ function calculateConvictionMetrics(
     totalRealized += position.totalRealized;
     totalPatienceTax += analysis.patienceTax;
     totalHoldingDays += analysis.holdingPeriodDays;
+    
+    positionSizes.push(position.totalInvested);
+    holdingPeriods.push(analysis.holdingPeriodDays);
 
     if (analysis.realizedPnL > 0) {
       winningPositions++;
     }
 
+    // Conviction win: 50%+ gain on position
     if (analysis.realizedPnL > position.totalInvested * 0.5) {
       convictionWins++;
     }
 
     if (analysis.isEarlyExit) {
       earlyExits++;
+    }
+    
+    // Panic sell: exited within 7 days
+    if (analysis.holdingPeriodDays < 7 && position.exits.length > 0) {
+      panicSells++;
+    }
+    
+    // Diamond hands: held position despite high patience tax
+    if (analysis.maxMissedGain > 100 && analysis.holdingPeriodDays > 30) {
+      diamondHands++;
+    }
+    
+    // Re-entry detection: multiple entry transactions with gap
+    if (position.entries.length > 1) {
+      const entryGaps = [];
+      for (let j = 1; j < position.entries.length; j++) {
+        const gap = (position.entries[j].timestamp - position.entries[j-1].timestamp) / (24 * 60 * 60 * 1000);
+        if (gap > 1) { // More than 1 day gap
+          entryGaps.push(gap);
+        }
+      }
+      if (entryGaps.length > 0) {
+        reEntryCount++;
+      }
     }
   }
 
@@ -556,8 +591,26 @@ function calculateConvictionMetrics(
     totalPotentialValue > 0 ? (totalRealized / totalPotentialValue) * 100 : 0;
 
   const earlyExitRate = (earlyExits / positions.length) * 100;
+  
+  // Behavioral adjustments for conviction scoring
+  const panicSellRate = (panicSells / positions.length) * 100;
+  const reEntryRate = (reEntryCount / positions.length) * 100;
+  const diamondHandRate = (diamondHands / positions.length) * 100;
+  
+  // Position sizing consistency (lower std dev = more consistent)
+  const avgPositionSize = positionSizes.reduce((a, b) => a + b, 0) / positionSizes.length;
+  const positionSizeVariance = positionSizes.reduce((sum, size) => {
+    const diff = size - avgPositionSize;
+    return sum + (diff * diff);
+  }, 0) / positionSizes.length;
+  const positionSizeStdDev = Math.sqrt(positionSizeVariance);
+  const consistencyScore = avgPositionSize > 0 
+    ? Math.max(0, 100 - (positionSizeStdDev / avgPositionSize) * 100) 
+    : 50;
 
   const { weights, reputation } = APP_CONFIG;
+  
+  // Enhanced base score with behavioral components
   const baseScore = Math.max(
     0,
     Math.min(
@@ -565,7 +618,11 @@ function calculateConvictionMetrics(
       winRate * weights.winRate +
       upsideCapture * weights.upsideCapture +
       (100 - earlyExitRate) * weights.earlyExitMitigation +
-      Math.min(avgHoldingPeriod / 30, 1) * (weights.holdingPeriod * 100)
+      Math.min(avgHoldingPeriod / 30, 1) * (weights.holdingPeriod * 100) +
+      // Behavioral bonuses/penalties
+      (diamondHandRate * 0.05) - // Bonus for holding through drawdowns
+      (panicSellRate * 0.1) + // Penalty for panic selling
+      (consistencyScore * 0.05) // Bonus for position sizing discipline
     )
   );
 
