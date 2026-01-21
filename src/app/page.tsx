@@ -1,63 +1,389 @@
-import Image from "next/image";
+"use client";
+
+import { Navbar } from "@/components/layout/navbar";
+import { Button } from "@/components/ui/button";
+import { useConviction } from "@/hooks/use-conviction";
+import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
+import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
+import { Terminal } from "@/components/ui/terminal";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  ArrowRight,
+  Activity,
+  TrendingUp,
+  ShieldCheck,
+  Clock,
+  AlertTriangle,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Home() {
+  const { analyzeWallet, isAnalyzing, isConnected, isShowcaseMode } =
+    useConviction();
+  const { ethosScore, convictionMetrics, logs } = useAppStore();
+
+  const hasScanned = !isAnalyzing && logs.length > 0;
+
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(val);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="min-h-screen bg-background text-foreground selection:bg-signal/20 overflow-x-hidden">
+      <Navbar />
+
+      <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[calc(100vh-6rem)] flex flex-col">
+        {/* Hero Section */}
+        <motion.section
+          layout
+          className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-3xl mx-auto mb-12"
+        >
+          {/* Ambient Glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-125 h-125 bg-signal/5 rounded-full blur-[100px] -z-10 pointer-events-none" />
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-surface/50 backdrop-blur-sm text-xs font-mono text-foreground-muted"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <span
+              className={cn(
+                "w-1.5 h-1.5 rounded-full bg-signal shadow-[0_0_10px_var(--signal)]",
+                isAnalyzing && "animate-pulse",
+              )}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            {isAnalyzing ? "SYSTEM ANALYZING..." : "CONVICTION ANALYZER V1.0"}
+          </motion.div>
+
+          <motion.h1
+            layout
+            className="text-4xl md:text-6xl font-bold tracking-tight text-white leading-tight"
           >
-            Documentation
-          </a>
+            Being early feels like <br />
+            <span className="text-foreground-muted">being wrong.</span>
+          </motion.h1>
+
+          <motion.p
+            layout
+            className="text-base md:text-lg text-foreground-muted max-w-2xl leading-relaxed"
+          >
+            An agentic on-chain behavioral analysis tool. We audit your trading
+            history to distinguish between bad timing and bad thesis.
+          </motion.p>
+
+          {/* Action Buttons - Hide during analysis or result view to save space/focus */}
+          <AnimatePresence>
+            {!isAnalyzing && !hasScanned && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="flex flex-col items-center gap-8 pt-4 w-full"
+              >
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <Button
+                    size="lg"
+                    className="h-12 px-8 text-base rounded-full"
+                    onClick={() => analyzeWallet()}
+                  >
+                    {isConnected ? "Start Deep Scan" : "Connect to Scan"}
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-white"
+                  >
+                    Read the Thesis
+                  </Button>
+                </div>
+
+                <div className="flex flex-col items-center gap-4">
+                  <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
+                    Or analyze a public profile
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    {SHOWCASE_WALLETS.map((wallet) => (
+                      <Button
+                        key={wallet.id}
+                        variant="outline"
+                        className="border-border/50 hover:border-signal/50 hover:bg-surface-hover font-mono text-xs"
+                        onClick={() => analyzeWallet(wallet.id)}
+                      >
+                        {wallet.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.section>
+
+        {/* Dynamic Content Area */}
+        <div className="flex-1 relative w-full max-w-6xl mx-auto">
+          <AnimatePresence mode="wait">
+            {/* STATE: ANALYZING (TERMINAL) */}
+            {isAnalyzing && (
+              <motion.div
+                key="terminal"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.3 }}
+                className="w-full max-w-2xl mx-auto"
+              >
+                <Terminal logs={logs} className="min-h-100" />
+              </motion.div>
+            )}
+
+            {/* STATE: RESULTS (DASHBOARD) */}
+            {!isAnalyzing && hasScanned && (
+              <motion.div
+                key="dashboard"
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  hidden: { opacity: 0 },
+                  visible: {
+                    opacity: 1,
+                    transition: {
+                      staggerChildren: 0.1,
+                    },
+                  },
+                }}
+                className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-6 relative z-10"
+              >
+                {/* Score Card */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-8 h-full"
+                >
+                  <Card className="glass-panel border-border/50 bg-black/40 h-full min-h-75 flex flex-col justify-between overflow-hidden group relative">
+                    <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
+                      {isShowcaseMode && (
+                        <span className="mr-3 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-signal/10 text-signal border border-signal/20">
+                          SIMULATION MODE
+                        </span>
+                      )}
+                      <Activity className="w-6 h-6 text-signal inline-block" />
+                    </div>
+
+                    {/* Conditional Content based on Data Availability */}
+                    {convictionMetrics ? (
+                      <>
+                        <CardHeader>
+                          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                            Conviction Index
+                          </CardTitle>
+                          <CardDescription>
+                            Aggregate behavioral score based on historical
+                            trades.
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex flex-col md:flex-row items-end justify-between gap-8">
+                          <div className="space-y-2">
+                            <div className="text-7xl md:text-9xl font-bold text-white tracking-tighter text-glow">
+                              {convictionMetrics.score}
+                            </div>
+                            <div className="flex items-center gap-2 text-patience font-mono text-sm">
+                              <TrendingUp className="w-4 h-4" />
+                              Top {convictionMetrics.percentile}% of Traders
+                            </div>
+                          </div>
+                          <div className="space-y-4 w-full md:w-auto min-w-60">
+                            {/* Metrics Bars */}
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
+                                <span>Patience Tax</span>
+                                <span className="text-white">
+                                  -$
+                                  {formatCurrency(
+                                    convictionMetrics.patienceTax,
+                                  )}
+                                </span>
+                              </div>
+                              <div className="h-1 w-full bg-surface rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-impatience"
+                                  style={{
+                                    width: `${Math.min((convictionMetrics.patienceTax / 10000) * 100, 100)}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
+                                <span>Upside Capture</span>
+                                <span className="text-white">
+                                  {convictionMetrics.upsideCapture}%
+                                </span>
+                              </div>
+                              <div className="h-1 w-full bg-surface rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-patience"
+                                  style={{
+                                    width: `${convictionMetrics.upsideCapture}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </>
+                    ) : (
+                      /* Empty State for Score Card */
+                      <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-4">
+                        <AlertTriangle className="w-12 h-12 text-impatience/50" />
+                        <div className="space-y-2">
+                          <h3 className="text-xl font-bold text-white">
+                            Insufficient Data
+                          </h3>
+                          <p className="text-foreground-muted max-w-md mx-auto">
+                            We could not find enough on-chain trading history
+                            for this wallet to generate a statistically
+                            significant Conviction Score.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setHasScanned(false);
+                          }}
+                          className="mt-4"
+                        >
+                          Try Another Wallet
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                </motion.div>
+
+                {/* Ethos Card */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                >
+                  <Card className="glass-panel border-border/50 bg-black/40 flex flex-col justify-between h-full">
+                    <CardHeader>
+                      <div className="flex items-center justify-between mb-2">
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                          Reputation
+                        </CardTitle>
+                        <ShieldCheck className="w-5 h-5 text-ethos" />
+                      </div>
+                      <div className="text-3xl font-bold text-white">
+                        {ethosScore ? "Verified" : "Unknown"}
+                      </div>
+                      <CardDescription className="text-xs">
+                        {ethosScore
+                          ? "Verified via Ethos Network"
+                          : "No reputation signal found"}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="p-4 rounded-lg bg-surface/50 border border-border space-y-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-foreground-muted">
+                            Credibility
+                          </span>
+                          <span className="font-mono text-white">
+                            {ethosScore?.score ?? "---"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-foreground-muted">
+                            Sybil Risk
+                          </span>
+                          <span className="font-mono text-patience">
+                            {ethosScore?.score
+                              ? ethosScore.score > 1000
+                                ? "Low"
+                                : "Medium"
+                              : "---"}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="w-full mt-4 border-border hover:bg-surface text-xs font-mono"
+                        disabled={!ethosScore}
+                      >
+                        VIEW ETHOS PROFILE
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Additional Metrics / Insights (Only show if we have data) */}
+                {convictionMetrics && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-8"
+                  >
+                    <Card className="glass-panel border-border/50 bg-black/40">
+                      <CardHeader>
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          Significant Events
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex items-start gap-4 p-3 rounded-lg bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors cursor-pointer group">
+                          <div className="w-8 h-8 rounded-full bg-impatience/20 flex items-center justify-center text-impatience font-bold text-xs shrink-0">
+                            X
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-white group-hover:text-impatience transition-colors">
+                              Early Exit Detection
+                            </div>
+                            <div className="text-xs text-foreground-muted mt-1 font-mono">
+                              Analysis shows {convictionMetrics.earlyExits}{" "}
+                              positions sold before major upside catalysts.
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-4 p-3 rounded-lg bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors cursor-pointer group">
+                          <div className="w-8 h-8 rounded-full bg-patience/20 flex items-center justify-center text-patience font-bold text-xs shrink-0">
+                            ✓
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-white group-hover:text-patience transition-colors">
+                              High Conviction Holds
+                            </div>
+                            <div className="text-xs text-foreground-muted mt-1 font-mono">
+                              Identified {convictionMetrics.convictionWins}{" "}
+                              trades held through &gt;30% drawdowns.
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
     </div>

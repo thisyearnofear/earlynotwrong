@@ -1,26 +1,91 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+    /* Void Palette (Dark Mode First) */
+    --background: #050505;
+    --surface: #0a0a0a;
+    --surface-hover: #121212;
+    --border: #1f1f1f;
+
+    /* Text Colors */
+    --foreground: #ededed;
+    --foreground-muted: #a1a1aa;
+    --foreground-dim: #52525b;
+
+    /* Signal (Primary - Electric Cyan) */
+    --signal: #22d3ee; /* Cyan-400 */
+    --signal-glow: rgba(34, 211, 238, 0.15);
+
+    /* Patience (Success - Clinical Green) */
+    --patience: #34d399; /* Emerald-400 */
+    --patience-dim: rgba(52, 211, 153, 0.1);
+
+    /* Impatience (Warning - Amber) */
+    --impatience: #fbbf24; /* Amber-400 */
+    --impatience-dim: rgba(251, 191, 36, 0.1);
+
+    /* Ethos Brand Alignment */
+    --ethos-purple: #8b5cf6;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+    --color-background: var(--background);
+    --color-surface: var(--surface);
+    --color-surface-hover: var(--surface-hover);
+    --color-border: var(--border);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+    --color-foreground: var(--foreground);
+    --color-foreground-muted: var(--foreground-muted);
+    --color-foreground-dim: var(--color-foreground-dim);
+
+    --color-signal: var(--signal);
+    --color-patience: var(--patience);
+    --color-impatience: var(--impatience);
+    --color-ethos: var(--ethos-purple);
+
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Utilities for Aesthetic */
+@layer utilities {
+    .glass-panel {
+        background: rgba(10, 10, 10, 0.6);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--border);
+    }
+
+    .glass-panel-hover {
+        @apply transition-colors duration-200;
+    }
+    .glass-panel-hover:hover {
+        background: var(--surface-hover);
+        border-color: #27272a;
+    }
+
+    .text-glow {
+        text-shadow: 0 0 20px var(--signal-glow);
+    }
+
+    .border-glow {
+        box-shadow: 0 0 15px -3px var(--signal-glow);
+        border-color: var(--signal);
+    }
+
+    /* Scrollbar hiding for clean UI */
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
 }

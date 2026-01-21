@@ -1,0 +1,30 @@
+import Link from "next/link";
+import { WalletConnect } from "@/components/wallet/wallet-connect";
+
+export function Navbar() {
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-md h-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="font-bold text-lg tracking-tight text-foreground hover:text-white transition-colors flex items-center gap-1"
+          >
+            EARLY<span className="text-foreground-muted">,</span> NOT WRONG
+          </Link>
+          <span className="hidden md:inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-mono font-medium text-foreground-dim bg-surface border border-border rounded-full uppercase tracking-wider">
+            Beta
+          </span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-2 text-xs font-mono text-foreground-muted mr-2">
+            <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
+            SYSTEM ONLINE
+          </div>
+          <WalletConnect className="h-8 px-3" />
+        </div>
+      </div>
+    </nav>
+  );
+}
