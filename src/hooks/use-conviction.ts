@@ -28,6 +28,7 @@ export function useConviction() {
     setFarcasterIdentity,
     setConvictionMetrics,
     setPositionAnalyses,
+    setDataQuality,
     isAnalyzing,
     addLog,
     reset,
@@ -183,10 +184,11 @@ export function useConviction() {
 
           addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
           
-          // Log data quality if available
+          // Log and store data quality if available
           if (txResult.quality) {
             const q = txResult.quality;
             addLog(`> DATA_QUALITY: SYMBOLS ${q.dataCompleteness.symbolRate}% | PRICES ${q.dataCompleteness.priceRate}% | AVG_SIZE $${q.avgTradeSize.toFixed(0)}`);
+            setDataQuality(txResult.quality);
           }
 
           if (txResult.count === 0) {

@@ -41,6 +41,7 @@ import { ReputationPerks } from "@/components/ui/reputation-perks";
 import { ConvictionAlerts } from "@/components/ui/conviction-alerts";
 import { CohortAnalysis } from "@/components/ui/cohort-analysis";
 import { BehavioralInsights } from "@/components/ui/behavioral-insights";
+import { DataQualityBadge } from "@/components/ui/data-quality-badge";
 import {
   Dialog,
   DialogContent,
@@ -60,6 +61,7 @@ export default function Home() {
     convictionMetrics,
     positionAnalyses,
     analysisChain,
+    dataQuality,
     logs,
     parameters,
     setParameters,
@@ -420,9 +422,18 @@ export default function Home() {
                         <CardHeader className="pb-2">
                           <div className="flex justify-between items-start">
                             <div>
-                              <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                                Conviction Index
-                              </CardTitle>
+                              <div className="flex items-center gap-3 mb-1">
+                                <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                                  Conviction Index
+                                </CardTitle>
+                                {dataQuality && (
+                                  <DataQualityBadge
+                                    symbolRate={dataQuality.dataCompleteness.symbolRate}
+                                    priceRate={dataQuality.dataCompleteness.priceRate}
+                                    avgTradeSize={dataQuality.avgTradeSize}
+                                  />
+                                )}
+                              </div>
                               <CardDescription>
                                 Behavioral score based on last {parameters.timeHorizon}d.
                               </CardDescription>

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { EthosScore, EthosProfile, ConvictionAttestation, FarcasterIdentity } from "./ethos";
 import { ConvictionMetrics } from "./market";
-import { PositionAnalysis } from "./api-client";
+import { PositionAnalysis, TransactionResult } from "./api-client";
 
 interface AnalysisParams {
   timeHorizon: 30 | 90 | 180 | 365;
@@ -66,7 +66,9 @@ interface AppState {
   // Position Analysis Data
   positionAnalyses: PositionAnalysis[];
   analysisChain: "solana" | "base" | null;
+  dataQuality: TransactionResult["quality"] | null;
   setPositionAnalyses: (positions: PositionAnalysis[], chain: "solana" | "base") => void;
+  setDataQuality: (quality: TransactionResult["quality"]) => void;
 
   // Attestation State
   attestationState: AttestationState;
@@ -153,7 +155,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Position Analysis Data
   positionAnalyses: [],
   analysisChain: null,
+  dataQuality: null,
   setPositionAnalyses: (positions, chain) => set({ positionAnalyses: positions, analysisChain: chain }),
+  setDataQuality: (quality) => set({ dataQuality: quality }),
 
   // Attestation State
   attestationState: {
