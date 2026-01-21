@@ -13,12 +13,12 @@ export interface ShowcaseWallet {
 export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
   {
     id: "base-jesse",
-    name: "Jesse (Base)",
+    name: "Jesse Dixon",
     chain: "base",
-    address: "0xFB70BDE99b4933A576Ea4e38645Ee1E88B1D6b19", // jesse.base.eth
+    address: "0x32DA784C5A5813bAB4D52e84840869c273E15E28",
     description:
-      "The 'Ecosystem Aligner'. Jesse's primary Base address. Real-time audit of protocol alignment and holding behavior.",
-    farcasterFid: 99, // Jesse Pollak's Farcaster profile
+      "The 'On-Chain Researcher'. Blockchain researcher & streamer with 131+ analyzed positions. Active Base trader with consistent conviction patterns.",
+    // No farcasterFid needed - address is verified on Farcaster (FID 1363917, 3.4K followers)
   },
   {
     id: "toly-solana",
