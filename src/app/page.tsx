@@ -575,7 +575,7 @@ export default function Home() {
 
                       {/* Farcaster Identity Display - Hero */}
                       {farcasterIdentity && (
-                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20">
+                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20 max-h-[140px] overflow-hidden">
                           {farcasterIdentity.pfpUrl && (
                             <a
                               href={`https://warpcast.com/${farcasterIdentity.username}`}
@@ -594,17 +594,12 @@ export default function Home() {
                             <div className="text-base font-semibold text-foreground truncate">
                               {farcasterIdentity.displayName || farcasterIdentity.username}
                             </div>
-                            <div className="text-sm text-foreground-muted">
+                            <div className="text-sm text-foreground-muted truncate">
                               @{farcasterIdentity.username}
                             </div>
                             {farcasterIdentity.bio && (
                               <div className="text-xs text-foreground-muted mt-1 line-clamp-2">
                                 {farcasterIdentity.bio}
-                              </div>
-                            )}
-                            {farcasterIdentity.followerCount && (
-                              <div className="text-xs text-signal mt-1 font-mono">
-                                {farcasterIdentity.followerCount.toLocaleString()} followers
                               </div>
                             )}
                           </div>
@@ -664,11 +659,18 @@ export default function Home() {
                       <Button
                         variant="outline"
                         className="w-full mt-4 border-border hover:bg-surface text-xs font-mono"
-                        disabled={!ethosProfile?.username}
+                        disabled={!ethosProfile?.username && !farcasterIdentity?.username}
                         onClick={() => {
+                          // Try to open Ethos profile - multiple fallback strategies
                           if (ethosProfile) {
                             const profileUrl = ethosClient.getProfileUrl(ethosProfile);
                             window.open(profileUrl, "_blank", "noopener,noreferrer");
+                          } else if (farcasterIdentity?.username) {
+                            // Fallback: Try to find profile via X.com username
+                            window.open(`https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`, "_blank", "noopener,noreferrer");
+                          } else if (activeAddress) {
+                            // Last resort: Try address lookup
+                            window.open(`https://app.ethos.network/profile/${activeAddress}`, "_blank", "noopener,noreferrer");
                           }
                         }}
                       >
