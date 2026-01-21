@@ -46,12 +46,14 @@ export function generateShareId(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
-export function getShareUrl(data: ShareData, baseUrl: string): string {
+import { APP_CONFIG } from "./config";
+
+export function getShareUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUrl): string {
   const encoded = btoa(JSON.stringify(data));
   return `${baseUrl}/share/${encoded}`;
 }
 
-export function getOgImageUrl(data: ShareData, baseUrl: string): string {
+export function getOgImageUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUrl): string {
   const params = new URLSearchParams({
     score: String(data.score),
     archetype: data.archetype,
@@ -64,14 +66,14 @@ export function getOgImageUrl(data: ShareData, baseUrl: string): string {
   return `${baseUrl}/api/og?${params.toString()}`;
 }
 
-export function getTwitterShareUrl(data: ShareData, baseUrl: string): string {
+export function getTwitterShareUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUrl): string {
   const shareUrl = getShareUrl(data, baseUrl);
   const text = `My Conviction Score: ${data.score}/100 | ${data.archetype}\n\nTop ${data.percentile}% of traders\nPatience Tax: $${data.patienceTax.toLocaleString()}\n\nBeing early feels like being wrong. Until it doesn't.`;
 
   return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
 }
 
-export function getFarcasterShareUrl(data: ShareData, baseUrl: string): string {
+export function getFarcasterShareUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUrl): string {
   const shareUrl = getShareUrl(data, baseUrl);
   const text = `My Conviction Score: ${data.score}/100 | ${data.archetype}\n\nTop ${data.percentile}% of traders. Being early feels like being wrong. Until it doesn't.`;
 

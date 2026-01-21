@@ -2,6 +2,8 @@ import { Metadata } from "next";
 import { decodeShareData, getOgImageUrl } from "@/lib/share";
 import { redirect } from "next/navigation";
 
+import { APP_CONFIG } from "@/lib/config";
+
 interface SharePageProps {
   params: Promise<{ id: string }>;
 }
@@ -19,7 +21,7 @@ export async function generateMetadata({
     };
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://earlynotwrong.com";
+  const baseUrl = APP_CONFIG.baseUrl;
   const ogImageUrl = getOgImageUrl(data, baseUrl);
 
   const title = `Conviction Score: ${data.score} | ${data.archetype}`;
@@ -59,7 +61,7 @@ export default async function SharePage({ params }: SharePageProps) {
     redirect("/");
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://earlynotwrong.com";
+  const baseUrl = APP_CONFIG.baseUrl;
   const ogImageUrl = getOgImageUrl(data, baseUrl);
 
   const archetypeDescriptions: Record<string, string> = {

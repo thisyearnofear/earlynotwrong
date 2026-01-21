@@ -454,6 +454,8 @@ async function calculatePatienceTax(
   }
 }
 
+import { APP_CONFIG } from "@/lib/config";
+
 function calculateConvictionMetrics(
   positions: Position[],
   analyses: PositionAnalysis[]
@@ -466,7 +468,7 @@ function calculateConvictionMetrics(
       earlyExits: 0,
       convictionWins: 0,
       percentile: 0,
-      archetype: "Exit Voyager",
+      archetype: APP_CONFIG.archetypes.EXIT_VOYAGER.label as any,
       totalPositions: 0,
       avgHoldingPeriod: 0,
       winRate: 0,
@@ -512,14 +514,15 @@ function calculateConvictionMetrics(
 
   const earlyExitRate = (earlyExits / positions.length) * 100;
 
+  const { weights } = APP_CONFIG;
   const score = Math.max(
     0,
     Math.min(
       100,
-      winRate * 0.25 +
-        upsideCapture * 0.35 +
-        (100 - earlyExitRate) * 0.25 +
-        Math.min(avgHoldingPeriod / 30, 1) * 15
+      winRate * weights.winRate +
+        upsideCapture * weights.upsideCapture +
+        (100 - earlyExitRate) * weights.earlyExitMitigation +
+        Math.min(avgHoldingPeriod / 30, 1) * (weights.holdingPeriod * 100)
     )
   );
 
@@ -532,7 +535,7 @@ function calculateConvictionMetrics(
     earlyExits,
     convictionWins,
     percentile,
-    archetype: getArchetype(score, totalPatienceTax),
+    archetype: getArchetype(score, totalPatienceTax) as any,
     totalPositions: positions.length,
     avgHoldingPeriod: Math.round(avgHoldingPeriod),
     winRate: Math.round(winRate),
@@ -542,9 +545,20 @@ function calculateConvictionMetrics(
 function getArchetype(
   score: number,
   patienceTax: number
-): "Iron Pillar" | "Profit Phantom" | "Exit Voyager" | "Diamond Hand" {
-  if (score > 90 && patienceTax < 1000) return "Iron Pillar";
-  if (score > 70 && patienceTax > 5000) return "Profit Phantom";
-  if (score < 40) return "Exit Voyager";
-  return "Diamond Hand";
+): string {
+  const { archetypes } = APP_CONFIG;
+  
+  if (score >= archetypes.IRON_PILLAR.minScore! && patienceTax <= archetypes.IRON_PILLAR.maxPatienceTax!) {
+    return archetypes.IRON_PILLAR.label;
+  }
+  
+  if (score >= archetypes.PROFIT_PHANTOM.minScore! && patienceTax >= archetypes.PROFIT_PHANTOM.minPatienceTax!) {
+    return archetypes.PROFIT_PHANTOM.label;
+  }
+  
+  if (score <= archetypes.EXIT_VOYAGER.maxScore!) {
+    return archetypes.EXIT_VOYAGER.label;
+  }
+  
+  return archetypes.DIAMOND_HAND.label;
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { APP_CONFIG } from "@/lib/config";
 
 interface TransactionRequest {
   address: string;
@@ -20,7 +21,6 @@ interface TokenTransaction {
 }
 
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
 
 export async function POST(request: NextRequest) {
   try {
@@ -105,24 +105,35 @@ async function fetchSolanaTransactions(
   return transactions.sort((a, b) => a.timestamp - b.timestamp);
 }
 
+async function getLatestBlock(): Promise<number> {
+  try {
+    const response = await fetch(APP_CONFIG.chains.base.rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: "2.0",
+        method: "eth_blockNumber",
+      }),
+    });
+    const data = await response.json();
+    return parseInt(data.result, 16);
+  } catch (error) {
+    console.warn("Failed to fetch latest block, using fallback:", error);
+    return 25000000;
+  }
+}
+
 async function fetchBaseTransactions(
   address: string,
   timeHorizonDays: number,
   minTradeValue: number
 ): Promise<TokenTransaction[]> {
-  const alchemyUrl = ALCHEMY_API_KEY
-    ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
-    : null;
-
-  if (!alchemyUrl) {
-    console.warn("No Alchemy API key configured");
-    return [];
-  }
-
   const cutoffTime = Date.now() - timeHorizonDays * 24 * 60 * 60 * 1000;
-  const cutoffBlock = await getBlockByTimestamp(cutoffTime);
+  const latestBlock = await getLatestBlock();
+  const cutoffBlock = await getBlockByTimestamp(cutoffTime, latestBlock);
 
-  const response = await fetch(alchemyUrl, {
+  const response = await fetch(APP_CONFIG.chains.base.rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -163,16 +174,14 @@ async function fetchBaseTransactions(
 
 async function getSolPrice(): Promise<number> {
   try {
-    // Attempt to get price from Birdeye or similar (assuming API key exists in env)
-    // For the hackathon, we use a slightly more dynamic fallback or a simple fetch
     const response = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112', {
-      next: { revalidate: 600 } // Cache for 10 mins
+      next: { revalidate: 600 }
     });
     const data = await response.json();
-    return parseFloat(data.data?.So11111111111111111111111111111111111111112?.price || "180");
+    return parseFloat(data.data?.So11111111111111111111111111111111111111112?.price || APP_CONFIG.fallbacks.solPrice.toString());
   } catch (error) {
     console.warn("Failed to fetch live SOL price, using fallback:", error);
-    return 180;
+    return APP_CONFIG.fallbacks.solPrice;
   }
 }
 
@@ -243,9 +252,9 @@ async function parseBaseTransfer(
   }
 }
 
-async function getBlockByTimestamp(timestamp: number): Promise<number> {
+async function getBlockByTimestamp(timestamp: number, currentBlock: number): Promise<number> {
   const now = Date.now();
   const daysDiff = (now - timestamp) / (24 * 60 * 60 * 1000);
-  const currentBlock = 25000000;
-  return Math.max(0, currentBlock - Math.floor(daysDiff * 24 * 60 * 60 * 2));
+  // Base is ~2s blocks, so 0.5 blocks/sec
+  return Math.max(0, currentBlock - Math.floor(daysDiff * 24 * 60 * 60 * 0.5));
 }

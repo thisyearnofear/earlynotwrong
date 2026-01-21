@@ -23,6 +23,8 @@ import { Check, Copy, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 
+import { APP_CONFIG } from "@/lib/config";
+
 interface ShareDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,7 +44,7 @@ export function ShareDialog({
   const baseUrl =
     typeof window !== "undefined"
       ? window.location.origin
-      : "https://earlynotwrong.com";
+      : APP_CONFIG.baseUrl;
 
   const shareData: ShareData = {
     id: Math.random().toString(36).substring(2, 10),
