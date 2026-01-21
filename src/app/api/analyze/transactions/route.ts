@@ -96,7 +96,7 @@ async function fetchSolanaTransactions(
   for (const tx of data) {
     if (tx.timestamp * 1000 < cutoffTime) continue;
 
-    const swapInfo = parseSolanaSwap(tx);
+    const swapInfo = await parseSolanaSwap(tx);
     if (swapInfo && swapInfo.valueUsd >= minTradeValue) {
       transactions.push(swapInfo);
     }
@@ -161,7 +161,22 @@ async function fetchBaseTransactions(
   return transactions.sort((a, b) => a.timestamp - b.timestamp);
 }
 
-function parseSolanaSwap(tx: any): TokenTransaction | null {
+async function getSolPrice(): Promise<number> {
+  try {
+    // Attempt to get price from Birdeye or similar (assuming API key exists in env)
+    // For the hackathon, we use a slightly more dynamic fallback or a simple fetch
+    const response = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112', {
+      next: { revalidate: 600 } // Cache for 10 mins
+    });
+    const data = await response.json();
+    return parseFloat(data.data?.So11111111111111111111111111111111111111112?.price || "180");
+  } catch (error) {
+    console.warn("Failed to fetch live SOL price, using fallback:", error);
+    return 180;
+  }
+}
+
+async function parseSolanaSwap(tx: any): Promise<TokenTransaction | null> {
   try {
     const tokenTransfers = tx.tokenTransfers || [];
     if (tokenTransfers.length < 2) return null;
@@ -182,7 +197,7 @@ function parseSolanaSwap(tx: any): TokenTransaction | null {
     const amount = parseFloat(tokenTransfer.tokenAmount || "0");
     const solAmount = parseFloat(solTransfer.tokenAmount || "0") / 1e9;
 
-    const solPriceUsd = 180; // TODO: Fetch real SOL price
+    const solPriceUsd = await getSolPrice();
     const valueUsd = solAmount * solPriceUsd;
     const priceUsd = amount > 0 ? valueUsd / amount : 0;
 
