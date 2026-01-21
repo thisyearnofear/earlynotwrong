@@ -129,18 +129,6 @@ export function useConviction() {
             }),
           ]);
 
-          // Fallback to hardcoded data for Showcase wallets if API fails (or returns nothing)
-          if (targetShowcase) {
-            if (!score && targetShowcase.ethosScore) {
-              score = targetShowcase.ethosScore;
-              addLog(`> USING ARCHIVED ETHOS SCORE (LIVE FETCH FAILED)`);
-            }
-            if (!profile && targetShowcase.ethosProfile) {
-              profile = targetShowcase.ethosProfile;
-              // Ensure we use the profile with the correct username/links
-            }
-          }
-
           setEthosData(score, profile);
           if (score?.score) {
             addLog(`> ETHOS_SCORE_FOUND: ${score.score}`);
@@ -149,14 +137,8 @@ export function useConviction() {
           }
         } catch (error) {
           console.error("Ethos fetch failed", error);
-          // If critical failure, try fallback one last time
-          if (targetShowcase) {
-            setEthosData(targetShowcase.ethosScore, targetShowcase.ethosProfile);
-            addLog(`> USING ARCHIVED ETHOS DATA (CONNECTION ERROR)`);
-          } else {
-            addLog(`> ETHOS_CONNECTION_ERROR`);
-            setEthosData(null, null);
-          }
+          addLog(`> ETHOS_CONNECTION_ERROR`);
+          setEthosData(null, null);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 800));
@@ -166,7 +148,6 @@ export function useConviction() {
         addLog(`> INITIATING DEEP SCAN (${parameters.timeHorizon} DAYS)...`);
 
         // Real User Mode & Showcase Mode: Fetch and analyze actual transactions via server API
-        // This ensures Showcase wallets prove the platform actually works!
         await new Promise((resolve) => setTimeout(resolve, 600));
         addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
@@ -184,28 +165,16 @@ export function useConviction() {
           addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
 
           if (txResult.count === 0) {
-            // Special handling for Showcase: If live data finds nothing (unlikely for whales),
-            // fallback to hardcoded metrics so the demo isn't empty.
-            if (targetShowcase) {
-              addLog(`> WARNING: LIVE DATA INCOMPLETE, LOADING SNAPSHOT...`);
-              setConvictionMetrics(targetShowcase.convictionMetrics);
-              // We don't have hardcoded positions, so the list will be empty, 
-              // but the score will be visible.
-              finishAnalysis();
-              return;
-            }
-
             addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
             addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
-            addLog(`> OR TRY A SHOWCASE PROFILE TO SEE FULL ANALYSIS`);
             
             setError({
               errorType: "data",
               errorMessage: "No qualifying transactions found",
-              errorDetails: "This wallet has no transaction history matching your criteria.",
-              canRetry: false,
+              errorDetails: "This wallet has no transaction history matching your current filters.",
+              canRetry: true,
               canUseCached: hasCachedAnalysis(activeAddress, chain),
-              recoveryAction: "Try adjusting the time horizon or minimum trade value, or check your history panel for previous analyses.",
+              recoveryAction: "Try lowering the 'Min. Trade Value' in settings or extended the 'Time Horizon' to find more history.",
             });
             
             finishAnalysis();
@@ -241,11 +210,10 @@ export function useConviction() {
           setConvictionMetrics(batchResult.metrics);
           setPositionAnalyses(batchResult.positions, chain);
           
-          // Get Ethos data for caching
+          // Cache results
           const currentEthosScore = useAppStore.getState().ethosScore;
           const currentEthosProfile = useAppStore.getState().ethosProfile;
           
-          // Cache complete analysis
           cacheAnalysis(
             activeAddress,
             chain,
@@ -256,26 +224,17 @@ export function useConviction() {
             parameters
           );
           
-          // Save to history
           saveConvictionAnalysis(
             activeAddress,
             chain,
             batchResult.metrics,
             parameters.timeHorizon,
-            !!targetShowcase
+            !!showcaseId
           );
 
         } catch (error) {
           console.error("Transaction analysis failed:", error);
           
-          // Fallback for Showcase if analysis fails
-          if (targetShowcase) {
-            addLog(`> LIVE ANALYSIS FAILED, LOADING SNAPSHOT...`);
-            setConvictionMetrics(targetShowcase.convictionMetrics);
-            finishAnalysis();
-            return;
-          }
-
           const classified = classifyError(error);
           const errorLines = formatErrorForTerminal(classified);
           

@@ -1,52 +1,22 @@
-import { EthosProfile, EthosScore } from "./ethos";
-import { ConvictionMetrics } from "./market";
-
 export interface ShowcaseWallet {
   id: string;
   name: string;
   chain: "base" | "solana";
   address: string;
   description: string;
-  ethosScore: EthosScore;
-  ethosProfile: EthosProfile;
-  convictionMetrics: ConvictionMetrics;
+  ethosProfile?: {
+    username?: string;
+  };
 }
 
 export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
   {
-    id: "base-whale",
+    id: "base-jesse",
     name: "Jesse (Base)",
     chain: "base",
-    address: "0x8C4B...2A91",
+    address: "0xFB70BDE99b4933A576Ea4e38645Ee1E88B1D6b19", // jesse.base.eth
     description:
-      "The 'Ecosystem Aligner'. Held positions through 3 major drawdowns. Zero panic sells recorded in 2024.",
-    ethosScore: {
-      score: 1650,
-      percentile: 98,
-      level: "Guardian",
-      updatedAt: new Date().toISOString(),
-    },
-    ethosProfile: {
-      id: 1,
-      profileId: 1,
-      displayName: "jesse.base.eth",
-      username: "jessepollak",
-      score: 1650,
-      status: "ACTIVE",
-      userkeys: ["0x8C4B...2A91"],
-    },
-    convictionMetrics: {
-      score: 94.2,
-      patienceTax: 1250, // Minimal lost value
-      upsideCapture: 91,
-      earlyExits: 1,
-      convictionWins: 12,
-      percentile: 2,
-      archetype: "Iron Pillar",
-      totalPositions: 15,
-      avgHoldingPeriod: 45,
-      winRate: 80,
-    },
+      "The 'Ecosystem Aligner'. Jesse's primary Base address. Real-time audit of protocol alignment and holding behavior.",
   },
   {
     id: "toly-solana",
@@ -54,34 +24,7 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
     chain: "solana",
     address: "86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY",
     description:
-      "The 'Volatility Surfer'. Weathered a -65% drawdown on core positions to eventually capture a 45x multiple.",
-    ethosScore: {
-      score: 1420,
-      percentile: 92,
-      level: "Sage",
-      updatedAt: new Date().toISOString(),
-    },
-    ethosProfile: {
-      id: 2,
-      profileId: 2,
-      displayName: "toly.sol",
-      username: "toly",
-      score: 1420,
-      status: "ACTIVE",
-      userkeys: ["86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY"],
-    },
-    convictionMetrics: {
-      score: 88.4,
-      patienceTax: 8400,
-      upsideCapture: 85,
-      earlyExits: 3,
-      convictionWins: 8,
-      percentile: 8,
-      archetype: "Diamond Hand",
-      totalPositions: 12,
-      avgHoldingPeriod: 67,
-      winRate: 67,
-    },
+      "The 'Volatility Surfer'. Anatoly's public address. Analyzing the conviction of the Solana architect through market cycles.",
   },
   {
     id: "zinger-solana",
@@ -89,34 +32,7 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
     chain: "solana",
     address: "6qemckK3fajDuKhVNyvRxNd9a3ubFXxMWkHSEgMVxxov",
     description:
-      "The 'Alpha Hunter'. Known for early entries into breakout tokens with exceptional timing and conviction.",
-    ethosScore: {
-      score: 1180,
-      percentile: 88,
-      level: "Veteran",
-      updatedAt: new Date().toISOString(),
-    },
-    ethosProfile: {
-      id: 3,
-      profileId: 3,
-      displayName: "zinger.sol",
-      username: "thisiszinger",
-      score: 1180,
-      status: "ACTIVE",
-      userkeys: ["6qemckK3fajDuKhVNyvRxNd9a3ubFXxMWkHSEgMVxxov"],
-    },
-    convictionMetrics: {
-      score: 91.7,
-      patienceTax: 2100,
-      upsideCapture: 93,
-      earlyExits: 2,
-      convictionWins: 18,
-      percentile: 4,
-      archetype: "Iron Pillar",
-      totalPositions: 22,
-      avgHoldingPeriod: 38,
-      winRate: 82,
-    },
+      "The 'Alpha Hunter'. Public Solana address known for high-velocity breakout plays and tactical conviction.",
   },
   {
     id: "deployer-base",
@@ -124,33 +40,6 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
     chain: "base",
     address: "0xc4Fdf12dC03424bEb5c117B4B19726401a9dD1AB",
     description:
-      "The 'Infrastructure Builder'. Focuses on protocol tokens and infrastructure plays with long-term conviction.",
-    ethosScore: {
-      score: 1350,
-      percentile: 90,
-      level: "Guardian",
-      updatedAt: new Date().toISOString(),
-    },
-    ethosProfile: {
-      id: 4,
-      profileId: 4,
-      displayName: "deployer.base.eth",
-      username: "0xDeployer",
-      score: 1350,
-      status: "ACTIVE",
-      userkeys: ["0xc4Fdf12dC03424bEb5c117B4B19726401a9dD1AB"],
-    },
-    convictionMetrics: {
-      score: 86.2,
-      patienceTax: 5200,
-      upsideCapture: 78,
-      earlyExits: 4,
-      convictionWins: 9,
-      percentile: 12,
-      archetype: "Diamond Hand",
-      totalPositions: 16,
-      avgHoldingPeriod: 89,
-      winRate: 69,
-    },
+      "The 'Infrastructure Builder'. Early Base deployer. Analyzing long-term conviction in ecosystem primitives.",
   },
 ];

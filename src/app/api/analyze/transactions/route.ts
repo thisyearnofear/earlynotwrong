@@ -163,7 +163,7 @@ async function fetchBaseTransactions(
   const transactions: TokenTransaction[] = [];
 
   for (const transfer of data.result?.transfers || []) {
-    const txInfo = await parseBaseTransfer(transfer, minTradeValue);
+    const txInfo = await parseBaseTransfer(transfer, minTradeValue, address);
     if (txInfo) {
       transactions.push(txInfo);
     }
@@ -227,12 +227,40 @@ async function parseSolanaSwap(tx: any): Promise<TokenTransaction | null> {
   }
 }
 
+async function getBaseTokenPrice(tokenAddress: string): Promise<number> {
+  try {
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+    const data = await response.json();
+    const pair = data.pairs?.[0];
+    return parseFloat(pair?.priceUsd || "0");
+  } catch (error) {
+    console.warn(`Failed to fetch price for Base token ${tokenAddress}:`, error);
+    return 0;
+  }
+}
+
 async function parseBaseTransfer(
   transfer: any,
-  minTradeValue: number
+  minTradeValue: number,
+  userAddress: string
 ): Promise<TokenTransaction | null> {
   try {
-    const valueUsd = parseFloat(transfer.metadata?.value || "0");
+    const isSell = transfer.from.toLowerCase() === userAddress.toLowerCase();
+    const type = isSell ? "sell" : "buy";
+    
+    // Alchemy value is often in USD for known tokens, but we should verify
+    let valueUsd = parseFloat(transfer.metadata?.value || "0");
+    const amount = parseFloat(transfer.value || "0");
+    
+    let priceUsd = 0;
+    if (valueUsd > 0 && amount > 0) {
+      priceUsd = valueUsd / amount;
+    } else {
+      // Legitimate alternative: fetch real-time price if metadata is missing
+      priceUsd = await getBaseTokenPrice(transfer.rawContract.address);
+      valueUsd = priceUsd * amount;
+    }
+
     if (valueUsd < minTradeValue) return null;
 
     return {
@@ -240,9 +268,9 @@ async function parseBaseTransfer(
       timestamp: new Date(transfer.metadata.blockTimestamp).getTime(),
       tokenAddress: transfer.rawContract.address,
       tokenSymbol: transfer.asset,
-      type: "sell",
-      amount: parseFloat(transfer.value || "0"),
-      priceUsd: valueUsd / parseFloat(transfer.value || "1"),
+      type,
+      amount,
+      priceUsd,
       valueUsd,
       blockNumber: parseInt(transfer.blockNum, 16),
     };
