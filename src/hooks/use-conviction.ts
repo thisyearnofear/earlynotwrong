@@ -6,6 +6,13 @@ import { ethosClient } from "@/lib/ethos";
 import { apiClient } from "@/lib/api-client";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { saveConvictionAnalysis } from "@/lib/history";
+import { classifyError, formatErrorForTerminal, retryWithBackoff } from "@/lib/error-handler";
+import { 
+  cacheAnalysis, 
+  getCachedAnalysis, 
+  hasCachedAnalysis,
+  clearExpiredCache 
+} from "@/lib/analysis-cache";
 
 export function useConviction() {
   const { address: evmAddress, isConnected: isEvmConnected } = useAccount();
@@ -26,6 +33,8 @@ export function useConviction() {
     toggleShowcaseMode,
     isShowcaseMode,
     parameters,
+    setError,
+    clearError,
   } = useAppStore();
 
   const analyzeWallet = useCallback(
@@ -60,6 +69,8 @@ export function useConviction() {
 
       try {
         reset(); // Clear previous state
+        clearError(); // Clear any previous errors
+        clearExpiredCache(); // Clean up expired cache entries
         startAnalysis();
 
         // Step 1: Identity Resolution
@@ -73,6 +84,12 @@ export function useConviction() {
         await new Promise((resolve) => setTimeout(resolve, 600));
         addLog(`> RESOLVING ON-CHAIN IDENTITY...`);
         await new Promise((resolve) => setTimeout(resolve, 400));
+
+        // Check for cached analysis (non-showcase only)
+        if (!targetShowcase && hasCachedAnalysis(activeAddress, chain)) {
+          addLog(`> CACHED ANALYSIS DETECTED`);
+          addLog(`> TIP: USE CACHED DATA FOR INSTANT RESULTS`);
+        }
 
         // Step 2: Fetch Ethos Reputation
         setAnalysisStep("Querying Ethos Oracle...");
@@ -88,13 +105,17 @@ export function useConviction() {
             );
             addLog(`> ETHOS_SCORE_FOUND: ${targetShowcase.ethosScore.score}`);
           } else {
-            // Real Data Fetch
+            // Real Data Fetch with retry
             const [score, profile] = await Promise.all([
-              ethosClient.getScoreByAddress(activeAddress).catch((e) => {
+              retryWithBackoff(() => ethosClient.getScoreByAddress(activeAddress), {
+                maxRetries: 2,
+              }).catch((e) => {
                 console.warn("Ethos Score Fetch Error:", e);
                 return null;
               }),
-              ethosClient.getProfileByAddress(activeAddress).catch((e) => {
+              retryWithBackoff(() => ethosClient.getProfileByAddress(activeAddress), {
+                maxRetries: 2,
+              }).catch((e) => {
                 console.warn("Ethos Profile Fetch Error:", e);
                 return null;
               }),
@@ -151,11 +172,14 @@ export function useConviction() {
           addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
           try {
-            const txResult = await apiClient.fetchTransactions(
-              activeAddress,
-              chain,
-              parameters.timeHorizon,
-              parameters.minTradeValue
+            const txResult = await retryWithBackoff(
+              () => apiClient.fetchTransactions(
+                activeAddress,
+                chain,
+                parameters.timeHorizon,
+                parameters.minTradeValue
+              ),
+              { maxRetries: 2, initialDelay: 2000 }
             );
 
             addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
@@ -164,6 +188,16 @@ export function useConviction() {
               addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
               addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
               addLog(`> OR TRY A SHOWCASE PROFILE TO SEE FULL ANALYSIS`);
+              
+              setError({
+                errorType: "data",
+                errorMessage: "No qualifying transactions found",
+                errorDetails: "This wallet has no transaction history matching your criteria.",
+                canRetry: false,
+                canUseCached: hasCachedAnalysis(activeAddress, chain),
+                recoveryAction: "Try adjusting the time horizon or minimum trade value, or check your history panel for previous analyses.",
+              });
+              
               finishAnalysis();
               return;
             }
@@ -180,7 +214,10 @@ export function useConviction() {
             addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
             addLog(`> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`);
 
-            const batchResult = await apiClient.batchAnalyzePositions(positions, chain);
+            const batchResult = await retryWithBackoff(
+              () => apiClient.batchAnalyzePositions(positions, chain),
+              { maxRetries: 2, initialDelay: 2000 }
+            );
 
             await new Promise((resolve) => setTimeout(resolve, 400));
             setAnalysisStep("Calculating metrics...");
@@ -194,6 +231,21 @@ export function useConviction() {
             setConvictionMetrics(batchResult.metrics);
             setPositionAnalyses(batchResult.positions, chain);
             
+            // Get Ethos data for caching
+            const currentEthosScore = useAppStore.getState().ethosScore;
+            const currentEthosProfile = useAppStore.getState().ethosProfile;
+            
+            // Cache complete analysis
+            cacheAnalysis(
+              activeAddress,
+              chain,
+              batchResult.metrics,
+              batchResult.positions,
+              currentEthosScore,
+              currentEthosProfile,
+              parameters
+            );
+            
             // Save to history
             saveConvictionAnalysis(
               activeAddress,
@@ -205,9 +257,19 @@ export function useConviction() {
 
           } catch (error) {
             console.error("Transaction analysis failed:", error);
-            addLog(`> ERROR: TRANSACTION_ANALYSIS_FAILED`);
-            addLog(`> ${error instanceof Error ? error.message : 'Unknown error'}`);
-            addLog(`> TIP: CHECK API KEYS OR TRY SHOWCASE MODE`);
+            const classified = classifyError(error);
+            const errorLines = formatErrorForTerminal(classified);
+            
+            errorLines.forEach(line => addLog(line));
+            
+            setError({
+              errorType: classified.type,
+              errorMessage: classified.message,
+              errorDetails: classified.details,
+              canRetry: classified.canRetry,
+              canUseCached: hasCachedAnalysis(activeAddress, chain),
+              recoveryAction: classified.recoveryAction,
+            });
           }
         }
 

@@ -18,6 +18,16 @@ interface AttestationState {
   showAttestationDialog: boolean;
 }
 
+interface ErrorState {
+  hasError: boolean;
+  errorType: "api" | "network" | "data" | "unknown" | null;
+  errorMessage: string | null;
+  errorDetails?: string;
+  canRetry: boolean;
+  canUseCached: boolean;
+  recoveryAction?: string;
+}
+
 interface AppState {
   // Analysis Workflow
   isAnalyzing: boolean;
@@ -27,6 +37,11 @@ interface AppState {
   addLog: (log: string) => void;
   startAnalysis: () => void;
   finishAnalysis: () => void;
+  
+  // Error Handling
+  errorState: ErrorState;
+  setError: (error: Partial<ErrorState>) => void;
+  clearError: () => void;
 
   // User Data (Ethos)
   ethosScore: EthosScore | null;
@@ -75,8 +90,39 @@ export const useAppStore = create<AppState>((set) => ({
       isAnalyzing: true,
       analysisStep: "Initializing scan...",
       logs: ["> INITIALIZING CONVICTION PROTOCOL_"],
+      errorState: {
+        hasError: false,
+        errorType: null,
+        errorMessage: null,
+        canRetry: false,
+        canUseCached: false,
+      },
     }),
   finishAnalysis: () => set({ isAnalyzing: false, analysisStep: "" }),
+  
+  // Error Handling
+  errorState: {
+    hasError: false,
+    errorType: null,
+    errorMessage: null,
+    canRetry: false,
+    canUseCached: false,
+  },
+  setError: (error) =>
+    set((state) => ({
+      errorState: { ...state.errorState, hasError: true, ...error },
+      isAnalyzing: false,
+    })),
+  clearError: () =>
+    set({
+      errorState: {
+        hasError: false,
+        errorType: null,
+        errorMessage: null,
+        canRetry: false,
+        canUseCached: false,
+      },
+    }),
 
   // User Data
   ethosScore: null,

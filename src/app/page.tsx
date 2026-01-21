@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
+import { ethosClient } from "@/lib/ethos";
 import { AttestationDialog } from "@/components/ui/attestation-dialog";
 import { PositionExplorer } from "@/components/ui/position-explorer";
 import { ShareDialog } from "@/components/ui/share-dialog";
@@ -533,12 +534,9 @@ export default function Home() {
                         className="w-full mt-4 border-border hover:bg-surface text-xs font-mono"
                         disabled={!ethosProfile?.username}
                         onClick={() => {
-                          if (ethosProfile?.username) {
-                            window.open(
-                              `https://ethos.network/profile/${ethosProfile.username}`,
-                              "_blank",
-                              "noopener,noreferrer"
-                            );
+                          if (ethosProfile) {
+                            const profileUrl = ethosClient.getProfileUrl(ethosProfile);
+                            window.open(profileUrl, "_blank", "noopener,noreferrer");
                           }
                         }}
                       >
@@ -617,7 +615,7 @@ export default function Home() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <HistoryPanel 
+                      <HistoryPanel
                         currentAddress={isShowcaseMode ? SHOWCASE_WALLETS[0]?.address : activeAddress}
                       />
                     </CardContent>

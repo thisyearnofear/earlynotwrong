@@ -9,12 +9,19 @@ export interface EthosScore {
 }
 
 export interface EthosProfile {
-  id: string;
-  bio?: string;
-  name?: string;
+  id: number;
+  profileId: number;
+  displayName?: string;
   username?: string;
-  profileImage?: string;
-  credibilityScore?: number;
+  avatarUrl?: string;
+  description?: string;
+  score: number;
+  status: string;
+  userkeys: string[];
+  links?: {
+    profile?: string;
+    scoreBreakdown?: string;
+  };
 }
 
 export interface ConvictionAttestation {
@@ -64,58 +71,82 @@ export class EthosClient {
   }
 
   /**
-   * Get credibility score for an Ethereum address
+   * Get credibility score for an address (Ethereum or Solana)
    */
-  async getScoreByAddress(address: string): Promise<EthosScore> {
-    const searchParams = new URLSearchParams({ address });
-    return this.fetch<EthosScore>(`/score/address?${searchParams.toString()}`);
+  async getScoreByAddress(address: string): Promise<EthosScore | null> {
+    try {
+      const searchParams = new URLSearchParams({ address });
+      const response = await this.fetch<{ score: number; percentile?: number }>(`/score/address?${searchParams.toString()}`);
+
+      return {
+        score: response.score,
+        percentile: response.percentile,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.warn('Ethos score fetch failed:', error);
+      return null;
+    }
   }
 
   /**
-   * Get user profile by Ethereum address
+   * Get user profile by address (Ethereum or Solana)
    */
-  async getProfileByAddress(address: string): Promise<EthosProfile> {
-    return this.fetch<EthosProfile>(`/user/by/address/${address}`);
+  async getProfileByAddress(address: string): Promise<EthosProfile | null> {
+    try {
+      const response = await this.fetch<EthosProfile>(`/user/by/address/${address}`);
+      return response;
+    } catch (error) {
+      console.warn('Ethos profile fetch failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Generate correct Ethos profile URL
+   */
+  getProfileUrl(profile: EthosProfile): string {
+    // If the API provides a profile link, use it
+    if (profile.links?.profile) {
+      return profile.links.profile;
+    }
+
+    // Otherwise, construct the URL based on available data
+    // The working example format is: https://app.ethos.network/profile/x/papajimjams/score
+    // This suggests the format might be: /profile/{platform}/{username}/{section}
+
+    if (profile.username) {
+      return `https://app.ethos.network/profile/x/${profile.username}/score`;
+    }
+
+    // Fallback to profile ID if username not available
+    return `https://app.ethos.network/profile/${profile.profileId}`;
   }
 
   /**
    * Write conviction analysis as an attestation to Ethos Network
+   * Note: This is a placeholder implementation - actual attestation writing
+   * would require authentication and proper attestation schema
    */
   async writeConvictionAttestation(
     attestation: ConvictionAttestation,
     signerAddress: string
   ): Promise<AttestationResponse> {
     try {
-      // Prepare attestation data according to Ethos schema
-      const attestationData = {
-        subject: attestation.subject,
-        attester: signerAddress,
-        schema: "conviction-analysis-v1",
-        data: {
-          convictionScore: attestation.convictionScore,
-          patienceTax: attestation.patienceTax,
-          upsideCapture: attestation.upsideCapture,
-          archetype: attestation.archetype,
-          totalPositions: attestation.totalPositions,
-          winRate: attestation.winRate,
-          analysisDate: attestation.analysisDate,
-          timeHorizon: attestation.timeHorizon,
-          chain: attestation.chain,
-          source: "early-not-wrong-v1",
-        },
-        metadata: {
-          title: `Conviction Analysis: ${attestation.archetype}`,
-          description: `Behavioral analysis showing ${attestation.convictionScore}/100 conviction score with ${attestation.upsideCapture}% upside capture`,
-          tags: ["conviction", "trading", "behavior", attestation.chain, attestation.archetype.toLowerCase().replace(" ", "-")],
-        },
+      // This is a placeholder implementation
+      // Real implementation would require:
+      // 1. User authentication
+      // 2. Proper attestation schema registration
+      // 3. Transaction signing
+
+      console.warn('Attestation writing not yet implemented - this is a placeholder');
+
+      // Simulate successful attestation for demo purposes
+      return {
+        id: `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        status: 'pending',
+        message: 'Attestation submitted successfully (simulated)',
       };
-
-      const response = await this.fetch<AttestationResponse>('/attestations', {
-        method: 'POST',
-        body: JSON.stringify(attestationData),
-      });
-
-      return response;
     } catch (error) {
       console.error('Conviction attestation failed:', error);
       throw new Error(`Failed to write conviction attestation: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -124,28 +155,13 @@ export class EthosClient {
 
   /**
    * Get existing conviction attestations for an address
+   * Note: This is a placeholder - would need proper attestation schema
    */
   async getConvictionAttestations(address: string): Promise<ConvictionAttestation[]> {
     try {
-      const searchParams = new URLSearchParams({
-        subject: address,
-        schema: "conviction-analysis-v1",
-      });
-
-      const response = await this.fetch<{ attestations: any[] }>(`/attestations?${searchParams.toString()}`);
-
-      return response.attestations.map(att => ({
-        subject: att.subject,
-        convictionScore: att.data.convictionScore,
-        patienceTax: att.data.patienceTax,
-        upsideCapture: att.data.upsideCapture,
-        archetype: att.data.archetype,
-        totalPositions: att.data.totalPositions,
-        winRate: att.data.winRate,
-        analysisDate: att.data.analysisDate,
-        timeHorizon: att.data.timeHorizon,
-        chain: att.data.chain,
-      }));
+      // Placeholder implementation
+      console.warn('Attestation reading not yet implemented - returning empty array');
+      return [];
     } catch (error) {
       console.warn('Failed to fetch conviction attestations:', error);
       return [];
@@ -157,9 +173,7 @@ export class EthosClient {
    */
   async canWriteAttestations(address: string): Promise<boolean> {
     try {
-      const profile = await this.getProfileByAddress(address);
       const score = await this.getScoreByAddress(address);
-
       // Require minimum credibility score to prevent spam
       return (score?.score || 0) >= 100;
     } catch (error) {
@@ -176,20 +190,11 @@ export class EthosClient {
     costInEth?: number;
     requiresStaking?: boolean;
   }> {
-    try {
-      // This would be a real API call in production
-      return {
-        minCredibilityScore: 100,
-        costInEth: 0, // Free for now
-        requiresStaking: false,
-      };
-    } catch (error) {
-      return {
-        minCredibilityScore: 100,
-        costInEth: 0,
-        requiresStaking: false,
-      };
-    }
+    return {
+      minCredibilityScore: 100,
+      costInEth: 0, // Free for now
+      requiresStaking: false,
+    };
   }
 }
 

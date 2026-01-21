@@ -18,7 +18,7 @@ The **Early, Not Wrong** conviction analyzer is now a fully production-ready pla
 - **Batch Processing**: Efficient analysis of multiple positions simultaneously
 - **Token Metadata**: Complete token information including symbols, names, and logos
 
-### 3. Ethos Network Attestation System
+### 5. Ethos Network Attestation System
 - **Permanent Reputation**: Write conviction scores as immutable attestations
 - **Eligibility Verification**: Automatic credibility score checking
 - **User Consent Flow**: Clear consent process for reputation writing
