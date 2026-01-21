@@ -1,7 +1,35 @@
 @import "tailwindcss";
 
 :root {
-    /* Void Palette (Dark Mode First) */
+    /* Light Mode Palette (Default) */
+    --background: #f8f8f8;
+    --surface: #ffffff;
+    --surface-hover: #f1f1f1;
+    --border: #e5e5e5;
+
+    /* Text Colors */
+    --foreground: #171717;
+    --foreground-muted: #71717a;
+    --foreground-dim: #a1a1aa;
+
+    /* Signal (Primary - Electric Cyan) */
+    --signal: #0891b2; /* Cyan-600 for light mode contrast */
+    --signal-glow: rgba(8, 145, 178, 0.1);
+
+    /* Patience (Success - Clinical Green) */
+    --patience: #059669; /* Emerald-600 */
+    --patience-dim: rgba(5, 150, 105, 0.05);
+
+    /* Impatience (Warning - Amber) */
+    --impatience: #d97706; /* Amber-600 */
+    --impatience-dim: rgba(217, 119, 6, 0.05);
+
+    /* Ethos Brand Alignment */
+    --ethos-purple: #7c3aed;
+}
+
+.dark {
+    /* Void Palette (Dark Mode) */
     --background: #050505;
     --surface: #0a0a0a;
     --surface-hover: #121212;
@@ -53,14 +81,21 @@ body {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition:
+        background-color 0.5s ease,
+        color 0.5s ease;
 }
 
 /* Custom Utilities for Aesthetic */
 @layer utilities {
     .glass-panel {
-        background: rgba(10, 10, 10, 0.6);
+        background: rgba(255, 255, 255, 0.6);
         backdrop-filter: blur(8px);
         border: 1px solid var(--border);
+    }
+
+    .dark .glass-panel {
+        background: rgba(10, 10, 10, 0.6);
     }
 
     .glass-panel-hover {
@@ -68,7 +103,7 @@ body {
     }
     .glass-panel-hover:hover {
         background: var(--surface-hover);
-        border-color: #27272a;
+        border-color: var(--foreground-dim);
     }
 
     .text-glow {

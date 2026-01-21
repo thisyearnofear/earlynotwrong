@@ -21,12 +21,12 @@ export function Terminal({ logs, className }: TerminalProps) {
   return (
     <div
       className={cn(
-        "flex flex-col w-full h-full bg-black border border-border/50 rounded-lg overflow-hidden font-mono text-xs shadow-2xl",
+        "flex flex-col w-full h-full bg-surface border border-border rounded-lg overflow-hidden font-mono text-xs shadow-2xl",
         className,
       )}
     >
       {/* Terminal Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border/50">
+      <div className="flex items-center justify-between px-4 py-2 bg-surface-hover border-b border-border">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/50" />
           <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
@@ -56,7 +56,7 @@ export function Terminal({ logs, className }: TerminalProps) {
                   ? "text-impatience"
                   : log.includes("SUCCESS") || log.includes("COMPLETE")
                     ? "text-patience"
-                    : "text-signal/80",
+                    : "text-signal",
             )}
           >
             <span className="opacity-50 mr-2">
@@ -65,7 +65,7 @@ export function Terminal({ logs, className }: TerminalProps) {
             {log}
           </motion.div>
         ))}
-        <div className="h-4 w-2 bg-signal/50 animate-pulse mt-1" />
+        <div className="h-4 w-2 bg-signal animate-pulse mt-1" />
       </div>
     </div>
   );

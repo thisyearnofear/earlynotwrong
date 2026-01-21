@@ -7,6 +7,7 @@ import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { Terminal } from "@/components/ui/terminal";
+import { TunnelBackground } from "@/components/ui/tunnel-background";
 import {
   Card,
   CardContent,
@@ -39,7 +40,8 @@ export default function Home() {
     }).format(val);
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-signal/20 overflow-x-hidden">
+    <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
+      <TunnelBackground />
       <Navbar />
 
       <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[calc(100vh-6rem)] flex flex-col">
@@ -67,7 +69,7 @@ export default function Home() {
 
           <motion.h1
             layout
-            className="text-4xl md:text-6xl font-bold tracking-tight text-white leading-tight"
+            className="text-4xl md:text-6xl font-bold tracking-tight text-foreground leading-tight"
           >
             Being early feels like <br />
             <span className="text-foreground-muted">being wrong.</span>
@@ -102,7 +104,7 @@ export default function Home() {
                   <Button
                     variant="ghost"
                     size="lg"
-                    className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-white"
+                    className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-foreground"
                   >
                     Read the Thesis
                   </Button>
@@ -172,7 +174,7 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-8 h-full"
                 >
-                  <Card className="glass-panel border-border/50 bg-black/40 h-full min-h-75 flex flex-col justify-between overflow-hidden group relative">
+                  <Card className="glass-panel border-border/50 bg-surface/40 h-full min-h-75 flex flex-col justify-between overflow-hidden group relative">
                     <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
                       {isShowcaseMode && (
                         <span className="mr-3 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-signal/10 text-signal border border-signal/20">
@@ -196,7 +198,7 @@ export default function Home() {
                         </CardHeader>
                         <CardContent className="flex flex-col md:flex-row items-end justify-between gap-8">
                           <div className="space-y-2">
-                            <div className="text-7xl md:text-9xl font-bold text-white tracking-tighter text-glow">
+                            <div className="text-7xl md:text-9xl font-bold text-foreground tracking-tighter text-glow">
                               {convictionMetrics.score}
                             </div>
                             <div className="flex items-center gap-2 text-patience font-mono text-sm">
@@ -209,7 +211,7 @@ export default function Home() {
                             <div className="space-y-1">
                               <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
                                 <span>Patience Tax</span>
-                                <span className="text-white">
+                                <span className="text-foreground">
                                   -$
                                   {formatCurrency(
                                     convictionMetrics.patienceTax,
@@ -228,7 +230,7 @@ export default function Home() {
                             <div className="space-y-1">
                               <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
                                 <span>Upside Capture</span>
-                                <span className="text-white">
+                                <span className="text-foreground">
                                   {convictionMetrics.upsideCapture}%
                                 </span>
                               </div>
@@ -249,7 +251,7 @@ export default function Home() {
                       <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-4">
                         <AlertTriangle className="w-12 h-12 text-impatience/50" />
                         <div className="space-y-2">
-                          <h3 className="text-xl font-bold text-white">
+                          <h3 className="text-xl font-bold text-foreground">
                             Insufficient Data
                           </h3>
                           <p className="text-foreground-muted max-w-md mx-auto">
@@ -262,7 +264,7 @@ export default function Home() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            setHasScanned(false);
+                            // Reset state to allow trying again
                           }}
                           className="mt-4"
                         >
@@ -281,7 +283,7 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
                 >
-                  <Card className="glass-panel border-border/50 bg-black/40 flex flex-col justify-between h-full">
+                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full">
                     <CardHeader>
                       <div className="flex items-center justify-between mb-2">
                         <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
@@ -289,7 +291,7 @@ export default function Home() {
                         </CardTitle>
                         <ShieldCheck className="w-5 h-5 text-ethos" />
                       </div>
-                      <div className="text-3xl font-bold text-white">
+                      <div className="text-3xl font-bold text-foreground">
                         {ethosScore ? "Verified" : "Unknown"}
                       </div>
                       <CardDescription className="text-xs">
@@ -304,7 +306,7 @@ export default function Home() {
                           <span className="text-foreground-muted">
                             Credibility
                           </span>
-                          <span className="font-mono text-white">
+                          <span className="font-mono text-foreground">
                             {ethosScore?.score ?? "---"}
                           </span>
                         </div>
@@ -341,7 +343,7 @@ export default function Home() {
                     }}
                     className="col-span-1 md:col-span-6 lg:col-span-8"
                   >
-                    <Card className="glass-panel border-border/50 bg-black/40">
+                    <Card className="glass-panel border-border/50 bg-surface/40">
                       <CardHeader>
                         <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
                           <Clock className="w-4 h-4" />
@@ -354,7 +356,7 @@ export default function Home() {
                             X
                           </div>
                           <div>
-                            <div className="text-sm font-semibold text-white group-hover:text-impatience transition-colors">
+                            <div className="text-sm font-semibold text-foreground group-hover:text-impatience transition-colors">
                               Early Exit Detection
                             </div>
                             <div className="text-xs text-foreground-muted mt-1 font-mono">
@@ -368,7 +370,7 @@ export default function Home() {
                             ✓
                           </div>
                           <div>
-                            <div className="text-sm font-semibold text-white group-hover:text-patience transition-colors">
+                            <div className="text-sm font-semibold text-foreground group-hover:text-patience transition-colors">
                               High Conviction Holds
                             </div>
                             <div className="text-xs text-foreground-muted mt-1 font-mono">

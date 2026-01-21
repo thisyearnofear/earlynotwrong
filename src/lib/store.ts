@@ -35,6 +35,8 @@ interface AppState {
   // UI State
   isShowcaseMode: boolean;
   toggleShowcaseMode: (enabled?: boolean) => void;
+  theme: "light" | "dark";
+  setTheme: (theme: "light" | "dark") => void;
   reset: () => void;
 }
 
@@ -69,6 +71,8 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       isShowcaseMode: enabled ?? !state.isShowcaseMode,
     })),
+  theme: "dark",
+  setTheme: (theme) => set({ theme }),
   reset: () =>
     set({
       isAnalyzing: false,

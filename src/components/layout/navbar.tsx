@@ -1,7 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
+import { useAppStore } from "@/lib/store";
+import { Button } from "@/components/ui/button";
+import { Sun, Moon } from "lucide-react";
 
 export function Navbar() {
+  const { theme, setTheme } = useAppStore();
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-md h-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
@@ -22,6 +28,18 @@ export function Navbar() {
             <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
             SYSTEM ONLINE
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-foreground-muted hover:text-foreground"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+          </Button>
           <WalletConnect className="h-8 px-3" />
         </div>
       </div>
