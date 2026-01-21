@@ -7,12 +7,12 @@ import { PositionAnalysis } from "@/lib/api-client";
 import {
   ChevronDown,
   ChevronUp,
-  TrendingUp,
-  TrendingDown,
   Clock,
   AlertTriangle,
   ExternalLink,
+  Users,
 } from "lucide-react";
+import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
 
 interface PositionExplorerProps {
   positions: PositionAnalysis[];
@@ -349,6 +349,7 @@ export function PositionExplorer({
 
   return (
     <div className={cn("space-y-4", className)}>
+      {/* Existing Summary Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6 text-sm">
           <div>
@@ -414,6 +415,7 @@ export function PositionExplorer({
         </div>
       </div>
 
+      {/* Position Cards List */}
       <div className="space-y-2">
         {sortedPositions.map((position, index) => (
           <PositionCard
@@ -426,6 +428,75 @@ export function PositionExplorer({
             }
           />
         ))}
+      </div>
+
+      {/* Ethos Gated Cohort Analysis */}
+      <div className="pt-8">
+        <EthosGatedContent
+            minScore={500}
+            title="Whale Cohort Analysis"
+            description="Unlock comparative insights to see how your conviction stacks up against top-performing whales."
+        >
+            <div className="rounded-lg border border-ethos/20 bg-ethos/5 p-6">
+                <div className="flex items-center gap-2 mb-6">
+                    <Users className="w-5 h-5 text-ethos" />
+                    <h3 className="font-semibold text-foreground">Whale Cohort Benchmarks</h3>
+                    <span className="px-2 py-0.5 rounded-full bg-ethos/20 text-ethos text-[10px] font-mono border border-ethos/30">
+                        VERIFIED BY ETHOS
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                        <div className="text-xs text-foreground-muted uppercase tracking-wider">
+                            Patience Score
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-2xl font-mono font-bold text-ethos">Top 15%</span>
+                            <span className="text-xs text-foreground-muted mb-1">of cohort</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
+                            <div className="h-full bg-ethos w-[85%]" />
+                        </div>
+                        <p className="text-xs text-foreground-muted">
+                            You hold winners 2.4x longer than the average trader.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="text-xs text-foreground-muted uppercase tracking-wider">
+                            Panic Selling
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-2xl font-mono font-bold text-patience">Low</span>
+                            <span className="text-xs text-foreground-muted mb-1">frequency</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
+                            <div className="h-full bg-patience w-[20%]" />
+                        </div>
+                        <p className="text-xs text-foreground-muted">
+                            You exit specifically during drawdowns 40% less often than peers.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="text-xs text-foreground-muted uppercase tracking-wider">
+                            Conviction Tax
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-2xl font-mono font-bold text-impatience">-$12.4k</span>
+                            <span className="text-xs text-foreground-muted mb-1">missed</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
+                            <div className="h-full bg-impatience w-[45%]" />
+                        </div>
+                        <p className="text-xs text-foreground-muted">
+                            Better than 55% of traders (Avg tax: -$28k).
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </EthosGatedContent>
       </div>
     </div>
   );

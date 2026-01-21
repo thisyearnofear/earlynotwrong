@@ -5,6 +5,7 @@
 
 import { ethosClient, ConvictionAttestation, AttestationResponse } from './ethos';
 import { ConvictionMetrics } from './market';
+import { WalletClient } from 'viem';
 
 export interface AttestationRequest {
     walletAddress: string;
@@ -12,6 +13,7 @@ export interface AttestationRequest {
     chain: 'solana' | 'base';
     timeHorizon: number;
     userConsent: boolean;
+    walletClient?: WalletClient;
 }
 
 export interface AttestationStatus {
@@ -96,9 +98,31 @@ export class AttestationService {
         };
 
         try {
+            // REAL ON-CHAIN IMPLEMENTATION (BASE)
+            if (request.chain === 'base' && request.walletClient) {
+                console.log('Initiating Real On-Chain Attestation on Base...');
+                const txHash = await ethosClient.submitOnChainAttestation(attestation, request.walletClient);
+                
+                return {
+                    id: txHash, // Use tx hash as ID
+                    hash: txHash,
+                    status: 'pending', // It's submitted to the mempool
+                    message: 'On-chain attestation submitted successfully',
+                };
+            }
+
+            // FALLBACK / SOLANA SIMULATION
+            // TODO: Implement real Solana attestations
+            let signature = '0x';
+            if (request.walletClient && request.chain === 'base') {
+                // This path shouldn't be reached for Base anymore due to the block above,
+                // but kept for safety or if we want just signature without on-chain write
+                signature = await ethosClient.signAttestation(attestation, request.walletClient);
+            }
+
             const response = await ethosClient.writeConvictionAttestation(
                 attestation,
-                request.walletAddress
+                signature
             );
 
             return response;

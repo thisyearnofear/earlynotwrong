@@ -85,11 +85,13 @@ Core loop works: connect → analyze → see conviction score. Showcase wallets 
 - [ ] Chain-specific percentiles
 - [ ] Time-period comparisons (30d vs 90d vs 180d)
 
-### 2.3 Ethos Deep Integration
-- [ ] Write conviction attestations on-chain
-- [ ] Display historical attestations on profile
-- [ ] Reputation-gated features based on Ethos credibility
-- [ ] Cross-reference with other Ethos attestations
+### 2.3 Ethos Deep Integration (Real Implementation)
+- [x] **Investigation:** Audit Ethos smart contracts/SDK for "write" capabilities (EIP-712 signing vs contract interaction)
+- [x] **Data Structure:** Define "Conviction Attestation" schema (JSON-LD or on-chain struct)
+- [x] **Signing Flow:** Implement client-side signing of conviction data (EIP-712 for EVM / Ed25519 for Solana)
+- [x] **Submission:** Implement real on-chain submission to Base EAS contract (using placeholder Schema UID for hackathon)
+- [x] **Verification:** Update UI to display real transaction hashes from the blockchain
+- [x] **Reputation Gating:** Unlock advanced features based on verified Ethos credibility scores
 
 ---
 

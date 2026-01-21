@@ -12,6 +12,7 @@ import {
 import { useAppStore } from "@/lib/store";
 import { attestationService } from "@/lib/attestation-service";
 import { useConviction } from "@/hooks/use-conviction";
+import { useWalletClient } from "wagmi";
 import {
     Shield,
     CheckCircle,
@@ -34,6 +35,7 @@ export function AttestationDialog() {
     } = useAppStore();
 
     const { activeAddress, isShowcaseMode } = useConviction();
+    const { data: walletClient } = useWalletClient();
     const [eligibilityStatus, setEligibilityStatus] = React.useState<any>(null);
     const [isCheckingEligibility, setIsCheckingEligibility] = React.useState(false);
     const [shareReceipt, setShareReceipt] = React.useState<any>(null);
@@ -77,6 +79,7 @@ export function AttestationDialog() {
                 chain,
                 timeHorizon: parameters.timeHorizon,
                 userConsent: attestationState.userConsent,
+                walletClient: walletClient ?? undefined,
             });
 
             setAttestationState({
