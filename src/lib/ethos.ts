@@ -50,6 +50,28 @@ export interface EthosProfile {
   };
 }
 
+export interface FarcasterIdentity {
+  fid: number;
+  username: string;
+  displayName?: string;
+  pfpUrl?: string;
+  bio?: string;
+  followerCount?: number;
+  followingCount?: number;
+  verifiedAddresses?: {
+    ethAddresses: string[];
+    solAddresses: string[];
+  };
+}
+
+export interface ReputationWeightedMetrics {
+  baseScore: number;
+  ethosScore: number;
+  reputationMultiplier: number;
+  weightedScore: number;
+  credibilityTier: 'Unknown' | 'Low' | 'Medium' | 'High' | 'Elite';
+}
+
 export interface ConvictionAttestation {
   subject: string; // Wallet address
   convictionScore: number;
@@ -152,8 +174,237 @@ export class EthosClient {
   }
 
   /**
-   * Generate correct Ethos profile URL
+   * Resolve Farcaster identity for a wallet address
    */
+  async resolveFarcasterIdentity(address: string): Promise<FarcasterIdentity | null> {
+    try {
+      // Use Neynar API to resolve address to Farcaster profile
+      const response = await fetch('/api/farcaster/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return data.identity || null;
+    } catch (error) {
+      console.warn('Farcaster identity resolution failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Find linked wallets via Farcaster verified addresses
+   */
+  async findLinkedWallets(primaryAddress: string): Promise<{
+    ethereum: string[];
+    solana: string[];
+  } | null> {
+    try {
+      const identity = await this.resolveFarcasterIdentity(primaryAddress);
+
+      if (identity?.verifiedAddresses) {
+        return {
+          ethereum: identity.verifiedAddresses.ethAddresses || [],
+          solana: identity.verifiedAddresses.solAddresses || []
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.warn('Linked wallet discovery failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate reputation-weighted conviction metrics
+   */
+  calculateReputationWeighting(
+    baseConvictionScore: number,
+    ethosScore: number | null
+  ): ReputationWeightedMetrics {
+    const score = ethosScore || 0;
+
+    // Reputation multiplier based on Ethos score tiers
+    let reputationMultiplier = 1.0;
+    let credibilityTier: ReputationWeightedMetrics['credibilityTier'] = 'Unknown';
+
+    if (score >= 2000) {
+      reputationMultiplier = 1.5;
+      credibilityTier = 'Elite';
+    } else if (score >= 1000) {
+      reputationMultiplier = 1.3;
+      credibilityTier = 'High';
+    } else if (score >= 500) {
+      reputationMultiplier = 1.15;
+      credibilityTier = 'Medium';
+    } else if (score >= 100) {
+      reputationMultiplier = 1.05;
+      credibilityTier = 'Low';
+    }
+
+    const weightedScore = Math.min(100, baseConvictionScore * reputationMultiplier);
+
+    return {
+      baseScore: baseConvictionScore,
+      ethosScore: score,
+      reputationMultiplier,
+      weightedScore,
+      credibilityTier
+    };
+  }
+
+  /**
+   * Get comprehensive feature access and perks based on Ethos score
+   */
+  getReputationPerks(ethosScore: number | null): {
+    tier: 'unknown' | 'premium' | 'whale' | 'alpha' | 'elite';
+    features: {
+      canAccessPremium: boolean;
+      canAccessWhaleAnalysis: boolean;
+      canAccessAlphaSignals: boolean;
+      canAccessEliteInsights: boolean;
+    };
+    perks: {
+      refreshRate: number;
+      historyDepth: number;
+      exportData: boolean;
+      prioritySupport: boolean;
+      cohortComparison?: boolean;
+      advancedFilters?: boolean;
+      realTimeAlerts?: boolean;
+      whaleTracking?: boolean;
+      earlyAccess?: boolean;
+      customDashboard?: boolean;
+      apiAccess?: boolean;
+    };
+    nextTier?: {
+      name: string;
+      requiredScore: number;
+      newPerks: string[];
+    };
+  } {
+    const score = ethosScore || 0;
+    const { reputation } = require('@/lib/config').APP_CONFIG;
+
+    let tier: 'unknown' | 'premium' | 'whale' | 'alpha' | 'elite' = 'unknown';
+    let perks = reputation.perks.premium;
+    let nextTier = undefined;
+
+    if (score >= reputation.featureGating.eliteInsights) {
+      tier = 'elite';
+      perks = reputation.perks.elite;
+    } else if (score >= reputation.featureGating.alphaSignals) {
+      tier = 'alpha';
+      perks = reputation.perks.alpha;
+      nextTier = {
+        name: 'Elite Insights',
+        requiredScore: reputation.featureGating.eliteInsights,
+        newPerks: ['Early Access Features', 'Custom Dashboard', 'API Access']
+      };
+    } else if (score >= reputation.featureGating.whaleAnalysis) {
+      tier = 'whale';
+      perks = reputation.perks.whale;
+      nextTier = {
+        name: 'Alpha Signals',
+        requiredScore: reputation.featureGating.alphaSignals,
+        newPerks: ['Real-Time Alerts', 'Whale Tracking', 'Priority Support']
+      };
+    } else if (score >= reputation.featureGating.premiumAccess) {
+      tier = 'premium';
+      perks = reputation.perks.premium;
+      nextTier = {
+        name: 'Whale Analysis',
+        requiredScore: reputation.featureGating.whaleAnalysis,
+        newPerks: ['Cohort Comparison', 'Advanced Filters', 'Data Export']
+      };
+    } else {
+      nextTier = {
+        name: 'Premium Access',
+        requiredScore: reputation.featureGating.premiumAccess,
+        newPerks: ['Extended History', 'Faster Refresh', 'Basic Analytics']
+      };
+    }
+
+    return {
+      tier,
+      features: {
+        canAccessPremium: score >= reputation.featureGating.premiumAccess,
+        canAccessWhaleAnalysis: score >= reputation.featureGating.whaleAnalysis,
+        canAccessAlphaSignals: score >= reputation.featureGating.alphaSignals,
+        canAccessEliteInsights: score >= reputation.featureGating.eliteInsights,
+      },
+      perks,
+      nextTier
+    };
+  }
+
+  /**
+   * Check if wallet qualifies for premium features based on Ethos score
+   */
+  getFeatureAccess(ethosScore: number | null): {
+    canAccessPremium: boolean;
+    canAccessWhaleAnalysis: boolean;
+    canAccessAlphaSignals: boolean;
+    requiredScoreForNext: number | null;
+  } {
+    const reputationPerks = this.getReputationPerks(ethosScore);
+
+    return {
+      canAccessPremium: reputationPerks.features.canAccessPremium,
+      canAccessWhaleAnalysis: reputationPerks.features.canAccessWhaleAnalysis,
+      canAccessAlphaSignals: reputationPerks.features.canAccessAlphaSignals,
+      requiredScoreForNext: reputationPerks.nextTier?.requiredScore || null
+    };
+  }
+
+  /**
+   * Classify wallet for alpha discovery purposes
+   */
+  classifyWalletForAlpha(
+    convictionScore: number,
+    ethosScore: number | null,
+    totalPositions: number
+  ): {
+    isHighConviction: boolean;
+    isIronPillar: boolean;
+    isCredible: boolean;
+    alphaRating: 'Unknown' | 'Low' | 'Medium' | 'High' | 'Elite';
+  } {
+    const score = ethosScore || 0;
+    const { alphaDiscovery, reputation } = require('@/lib/config').APP_CONFIG;
+
+    const isHighConviction = convictionScore >= alphaDiscovery.highConvictionThreshold;
+    const isIronPillar = convictionScore >= alphaDiscovery.ironPillarThreshold;
+    const isCredible = score >= reputation.featureGating.premiumAccess;
+    const hasMinPositions = totalPositions >= alphaDiscovery.minPositionsForRanking;
+
+    let alphaRating: 'Unknown' | 'Low' | 'Medium' | 'High' | 'Elite' = 'Unknown';
+
+    if (isCredible && hasMinPositions) {
+      if (isIronPillar && score >= reputation.ethosScoreThresholds.elite) {
+        alphaRating = 'Elite';
+      } else if (isHighConviction && score >= reputation.ethosScoreThresholds.high) {
+        alphaRating = 'High';
+      } else if (isHighConviction && score >= reputation.ethosScoreThresholds.medium) {
+        alphaRating = 'Medium';
+      } else if (score >= reputation.ethosScoreThresholds.low) {
+        alphaRating = 'Low';
+      }
+    }
+
+    return {
+      isHighConviction,
+      isIronPillar,
+      isCredible,
+      alphaRating
+    };
+  }
   getProfileUrl(profile: EthosProfile): string {
     // If the API provides a profile link, use it
     if (profile.links?.profile) {
@@ -173,7 +424,7 @@ export class EthosClient {
   }
 
   /**
-   * Sign attestation data (EIP-712)
+   * Generate correct Ethos profile URL
    */
   async signAttestation(
     attestation: ConvictionAttestation,
@@ -186,15 +437,15 @@ export class EthosClient {
     // Prepare message for signing
     // Note: We multiply decimals by 100 or 10000 where needed for integer representation
     const message = {
-        subject: attestation.subject as `0x${string}`,
-        convictionScore: BigInt(Math.floor(attestation.convictionScore)),
-        patienceTax: BigInt(Math.floor(attestation.patienceTax * 100)),
-        upsideCapture: BigInt(Math.floor(attestation.upsideCapture * 100)),
-        archetype: attestation.archetype,
-        totalPositions: BigInt(attestation.totalPositions),
-        winRate: BigInt(Math.floor(attestation.winRate * 100)),
-        analysisDate: attestation.analysisDate,
-        timeHorizon: BigInt(attestation.timeHorizon),
+      subject: attestation.subject as `0x${string}`,
+      convictionScore: BigInt(Math.floor(attestation.convictionScore)),
+      patienceTax: BigInt(Math.floor(attestation.patienceTax * 100)),
+      upsideCapture: BigInt(Math.floor(attestation.upsideCapture * 100)),
+      archetype: attestation.archetype,
+      totalPositions: BigInt(attestation.totalPositions),
+      winRate: BigInt(Math.floor(attestation.winRate * 100)),
+      analysisDate: attestation.analysisDate,
+      timeHorizon: BigInt(attestation.timeHorizon),
     };
 
     return await walletClient.signTypedData({
@@ -260,7 +511,7 @@ export class EthosClient {
     try {
       // TODO: Replace with actual Ethos write endpoint or contract call
       // For now, we simulate a successful write with the real signature we just generated
-      
+
       console.log('Submitting Attestation to Ethos:', {
         attestation,
         signature,
@@ -271,8 +522,8 @@ export class EthosClient {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       return {
-        id: `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        hash: '0x' + Math.random().toString(36).substr(2, 64), // Simulated tx hash
+        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+        hash: '0x' + Math.random().toString(36).substring(2, 66), // Simulated tx hash
         status: 'pending',
         message: 'Attestation submitted successfully (Simulated)',
         signature

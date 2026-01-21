@@ -15,6 +15,7 @@ interface ConvictionBadgeProps {
   archetype: Archetype;
   className?: string;
   showDescription?: boolean;
+  size?: 'sm' | 'md' | 'lg';
 }
 
 const ARCHETYPE_CONFIG = {
@@ -62,9 +63,39 @@ export function ConvictionBadge({
   archetype,
   className,
   showDescription = false,
+  size = 'md',
 }: ConvictionBadgeProps) {
   const config = ARCHETYPE_CONFIG[archetype];
   const Icon = config.icon;
+
+  const sizeClasses = {
+    sm: {
+      container: "p-2 gap-1",
+      icon: "p-1.5",
+      iconSize: "w-3 h-3",
+      text: "text-xs",
+      label: "text-[7px]",
+      sparkle: "w-2 h-2"
+    },
+    md: {
+      container: "p-4 gap-1",
+      icon: "p-2.5",
+      iconSize: "w-6 h-6",
+      text: "text-xl",
+      label: "text-[9px]",
+      sparkle: "w-3 h-3"
+    },
+    lg: {
+      container: "p-6 gap-2",
+      icon: "p-3",
+      iconSize: "w-8 h-8",
+      text: "text-2xl",
+      label: "text-[10px]",
+      sparkle: "w-4 h-4"
+    }
+  };
+
+  const sizeConfig = sizeClasses[size];
 
   return (
     <motion.div
@@ -72,10 +103,11 @@ export function ConvictionBadge({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
       className={cn(
-        "inline-flex flex-col gap-1 p-4 rounded-xl border backdrop-blur-md transition-all duration-500",
+        "inline-flex flex-col rounded-xl border backdrop-blur-md transition-all duration-500",
         config.bg,
         config.border,
         config.glow,
+        sizeConfig.container,
         className,
       )}
     >
@@ -83,27 +115,34 @@ export function ConvictionBadge({
         {/* Icon Container */}
         <div
           className={cn(
-            "p-2.5 rounded-lg bg-black/40 border border-white/10 shadow-inner",
+            "rounded-lg bg-black/40 border border-white/10 shadow-inner",
             config.color,
+            sizeConfig.icon,
           )}
         >
-          <Icon className="w-6 h-6" />
+          <Icon className={sizeConfig.iconSize} />
         </div>
 
         {/* Text Content */}
         <div className="flex flex-col">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span
-              className={cn(
-                "text-[9px] font-mono font-bold uppercase tracking-[0.25em]",
-                config.color,
-              )}
-            >
-              Archetype Detected
-            </span>
-            <Sparkles className={cn("w-3 h-3 animate-pulse", config.color)} />
-          </div>
-          <span className="text-xl font-bold text-foreground tracking-tight leading-none uppercase">
+          {size !== 'sm' && (
+            <div className="flex items-center gap-1.5 mb-1">
+              <span
+                className={cn(
+                  "font-mono font-bold uppercase tracking-[0.25em]",
+                  config.color,
+                  sizeConfig.label,
+                )}
+              >
+                Archetype Detected
+              </span>
+              <Sparkles className={cn("animate-pulse", config.color, sizeConfig.sparkle)} />
+            </div>
+          )}
+          <span className={cn(
+            "font-bold text-foreground tracking-tight leading-none uppercase",
+            sizeConfig.text
+          )}>
             {archetype}
           </span>
         </div>

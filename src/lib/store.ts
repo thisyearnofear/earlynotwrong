@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { EthosScore, EthosProfile, ConvictionAttestation } from "./ethos";
+import { EthosScore, EthosProfile, ConvictionAttestation, FarcasterIdentity } from "./ethos";
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis } from "./api-client";
 
@@ -43,7 +43,7 @@ interface AppState {
   addLog: (log: string) => void;
   startAnalysis: () => void;
   finishAnalysis: () => void;
-  
+
   // Error Handling
   errorState: ErrorState;
   setError: (error: Partial<ErrorState>) => void;
@@ -52,15 +52,17 @@ interface AppState {
   // User Data (Ethos)
   ethosScore: EthosScore | null;
   ethosProfile: EthosProfile | null;
+  farcasterIdentity: FarcasterIdentity | null;
   setEthosData: (
     score: EthosScore | null,
     profile: EthosProfile | null,
   ) => void;
+  setFarcasterIdentity: (identity: FarcasterIdentity | null) => void;
 
   // Conviction Data
   convictionMetrics: ConvictionMetrics | null;
   setConvictionMetrics: (metrics: ConvictionMetrics) => void;
-  
+
   // Position Analysis Data
   positionAnalyses: PositionAnalysis[];
   analysisChain: "solana" | "base" | null;
@@ -110,7 +112,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
     }),
   finishAnalysis: () => set({ isAnalyzing: false, analysisStep: "" }),
-  
+
   // Error Handling
   errorState: {
     hasError: false,
@@ -138,13 +140,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   // User Data
   ethosScore: null,
   ethosProfile: null,
+  farcasterIdentity: null,
   setEthosData: (score, profile) =>
     set({ ethosScore: score, ethosProfile: profile }),
+  setFarcasterIdentity: (identity) =>
+    set({ farcasterIdentity: identity }),
 
   // Conviction Data
   convictionMetrics: null,
   setConvictionMetrics: (metrics) => set({ convictionMetrics: metrics }),
-  
+
   // Position Analysis Data
   positionAnalyses: [],
   analysisChain: null,

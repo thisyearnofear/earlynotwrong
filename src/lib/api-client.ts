@@ -138,7 +138,8 @@ class ApiClient {
 
   async batchAnalyzePositions(
     positions: TokenPosition[],
-    chain: "solana" | "base"
+    chain: "solana" | "base",
+    ethosScore?: number | null
   ): Promise<BatchAnalysisResult> {
     const response = await fetch(`${this.baseUrl}/batch`, {
       method: "POST",
@@ -167,6 +168,7 @@ class ApiClient {
           isActive: p.isActive,
         })),
         chain,
+        ethosScore,
       }),
     });
 

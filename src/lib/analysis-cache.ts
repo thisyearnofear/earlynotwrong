@@ -5,7 +5,7 @@
 
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis } from "./api-client";
-import { EthosScore, EthosProfile } from "./ethos";
+import { EthosScore, EthosProfile, FarcasterIdentity } from "./ethos";
 
 export interface CachedAnalysis {
   id: string;
@@ -13,13 +13,14 @@ export interface CachedAnalysis {
   chain: "solana" | "base";
   timestamp: number;
   expiresAt: number;
-  
+
   // Complete analysis data
   convictionMetrics: ConvictionMetrics;
   positionAnalyses: PositionAnalysis[];
   ethosScore: EthosScore | null;
   ethosProfile: EthosProfile | null;
-  
+  farcasterIdentity: FarcasterIdentity | null;
+
   // Metadata
   parameters: {
     timeHorizon: number;
@@ -41,6 +42,7 @@ export function cacheAnalysis(
   positionAnalyses: PositionAnalysis[],
   ethosScore: EthosScore | null,
   ethosProfile: EthosProfile | null,
+  farcasterIdentity: FarcasterIdentity | null,
   parameters: { timeHorizon: number; minTradeValue: number }
 ): CachedAnalysis {
   if (typeof window === "undefined") {
@@ -58,12 +60,13 @@ export function cacheAnalysis(
     positionAnalyses,
     ethosScore,
     ethosProfile,
+    farcasterIdentity,
     parameters,
   };
 
   try {
     const existing = getAllCachedAnalyses();
-    
+
     // Remove old cache entries for the same address/chain/parameters
     const filtered = existing.filter(
       (item) =>
@@ -213,7 +216,7 @@ export function getCacheStats(): {
     const now = Date.now();
     const valid = all.filter((item) => item.expiresAt > now);
     const stored = localStorage.getItem(CACHE_KEY) || "";
-    
+
     return {
       totalEntries: all.length,
       validEntries: valid.length,

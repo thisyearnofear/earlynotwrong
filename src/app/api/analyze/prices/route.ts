@@ -40,6 +40,12 @@ const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
 
 const BIRDEYE_URL = "https://public-api.birdeye.so";
 const DEXSCREENER_URL = "https://api.dexscreener.com/latest/dex";
+const COINGECKO_URL = "https://api.coingecko.com/api/v3";
+const COINGECKO_PRO_URL = "https://pro-api.coingecko.com/api/v3";
+
+const getCoingeckoUrl = () => COINGECKO_API_KEY ? COINGECKO_PRO_URL : COINGECKO_URL;
+const getCoingeckoHeaders = (): HeadersInit => COINGECKO_API_KEY ? { "x-cg-pro-api-key": COINGECKO_API_KEY } : {};
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -234,6 +240,33 @@ async function getHistoricalPrices(
         price: item.value || 0,
       }));
     } else {
+      // Try CoinGecko first for historical data
+      try {
+        const platformId = chain === "solana" ? "solana" : "base";
+        const response = await fetch(
+          `${getCoingeckoUrl()}/coins/${platformId}/contract/${tokenAddress}/market_chart/range?vs_currency=usd&from=${Math.floor(
+            fromTimestamp / 1000
+          )}&to=${Math.floor(toTimestamp / 1000)}`,
+          { 
+            headers: getCoingeckoHeaders(),
+            next: { revalidate: 3600 } 
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.prices && Array.isArray(data.prices)) {
+            return data.prices.map(([timestamp, price]: [number, number]) => ({
+              timestamp,
+              price,
+            }));
+          }
+        }
+      } catch (error) {
+        console.warn(`CoinGecko historical fetch failed for ${tokenAddress}:`, error);
+      }
+
+      // Fallback to DexScreener (current price only) if CoinGecko fails
       const response = await fetch(
         `${DEXSCREENER_URL}/tokens/${tokenAddress}`,
         { next: { revalidate: 300 } }

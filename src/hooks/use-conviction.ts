@@ -7,11 +7,11 @@ import { apiClient } from "@/lib/api-client";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { saveConvictionAnalysis } from "@/lib/history";
 import { classifyError, formatErrorForTerminal, retryWithBackoff } from "@/lib/error-handler";
-import { 
-  cacheAnalysis, 
-  getCachedAnalysis, 
+import {
+  cacheAnalysis,
+  getCachedAnalysis,
   hasCachedAnalysis,
-  clearExpiredCache 
+  clearExpiredCache
 } from "@/lib/analysis-cache";
 
 export function useConviction() {
@@ -25,6 +25,7 @@ export function useConviction() {
     setAnalysisStep,
     finishAnalysis,
     setEthosData,
+    setFarcasterIdentity,
     setConvictionMetrics,
     setPositionAnalyses,
     isAnalyzing,
@@ -91,7 +92,7 @@ export function useConviction() {
           addLog(`> TIP: USE CACHED DATA FOR INSTANT RESULTS`);
         }
 
-        // Step 2: Fetch Ethos Reputation
+        // Step 2: Fetch Ethos Reputation & Farcaster Identity
         setAnalysisStep("Querying Ethos Oracle...");
         addLog(`> CONNECTING TO ETHOS REPUTATION ORACLE...`);
 
@@ -99,6 +100,7 @@ export function useConviction() {
           // Attempt to fetch real Ethos data
           let scorePromise;
           let profilePromise;
+          let farcasterPromise;
 
           // Special handling for Solana (Ethos is EVM-native, so we resolve via X.com handle if available)
           if (chain === 'solana' && targetShowcase?.ethosProfile?.username) {
@@ -114,7 +116,10 @@ export function useConviction() {
             profilePromise = ethosClient.getProfileByAddress(activeAddress);
           }
 
-          let [score, profile] = await Promise.all([
+          // Always try to resolve Farcaster identity (works for both chains)
+          farcasterPromise = ethosClient.resolveFarcasterIdentity(activeAddress);
+
+          let [score, profile, farcasterIdentity] = await Promise.all([
             retryWithBackoff(() => scorePromise, {
               maxRetries: 2,
             }).catch((e) => {
@@ -127,18 +132,31 @@ export function useConviction() {
               console.warn("Ethos Profile Fetch Error:", e);
               return null;
             }),
+            retryWithBackoff(() => farcasterPromise, {
+              maxRetries: 1,
+            }).catch((e) => {
+              console.warn("Farcaster Identity Fetch Error:", e);
+              return null;
+            }),
           ]);
 
           setEthosData(score, profile);
+          setFarcasterIdentity(farcasterIdentity);
+
           if (score?.score) {
             addLog(`> ETHOS_SCORE_FOUND: ${score.score}`);
           } else {
             addLog(`> ETHOS_SCORE: UNKNOWN`);
           }
+
+          if (farcasterIdentity) {
+            addLog(`> FARCASTER_IDENTITY: @${farcasterIdentity.username}`);
+          }
         } catch (error) {
           console.error("Ethos fetch failed", error);
           addLog(`> ETHOS_CONNECTION_ERROR`);
           setEthosData(null, null);
+          setFarcasterIdentity(null);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 800));
@@ -167,7 +185,7 @@ export function useConviction() {
           if (txResult.count === 0) {
             addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
             addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
-            
+
             setError({
               errorType: "data",
               errorMessage: "No qualifying transactions found",
@@ -176,7 +194,7 @@ export function useConviction() {
               canUseCached: hasCachedAnalysis(activeAddress, chain),
               recoveryAction: "Try lowering the 'Min. Trade Value' in settings or extended the 'Time Horizon' to find more history.",
             });
-            
+
             finishAnalysis();
             return;
           }
@@ -193,8 +211,14 @@ export function useConviction() {
           addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
           addLog(`> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`);
 
+          // Get current Ethos score for reputation weighting
+          const currentEthosScore = useAppStore.getState().ethosScore;
+          if (currentEthosScore?.score) {
+            addLog(`> APPLYING REPUTATION WEIGHTING (ETHOS: ${currentEthosScore.score})...`);
+          }
+
           const batchResult = await retryWithBackoff(
-            () => apiClient.batchAnalyzePositions(positions, chain),
+            () => apiClient.batchAnalyzePositions(positions, chain, currentEthosScore?.score),
             { maxRetries: 2, initialDelay: 2000 }
           );
 
@@ -209,11 +233,12 @@ export function useConviction() {
 
           setConvictionMetrics(batchResult.metrics);
           setPositionAnalyses(batchResult.positions, chain);
-          
+
           // Cache results
           const currentEthosScore = useAppStore.getState().ethosScore;
           const currentEthosProfile = useAppStore.getState().ethosProfile;
-          
+          const currentFarcasterIdentity = useAppStore.getState().farcasterIdentity;
+
           cacheAnalysis(
             activeAddress,
             chain,
@@ -221,9 +246,10 @@ export function useConviction() {
             batchResult.positions,
             currentEthosScore,
             currentEthosProfile,
+            currentFarcasterIdentity,
             parameters
           );
-          
+
           saveConvictionAnalysis(
             activeAddress,
             chain,
@@ -234,12 +260,12 @@ export function useConviction() {
 
         } catch (error) {
           console.error("Transaction analysis failed:", error);
-          
+
           const classified = classifyError(error);
           const errorLines = formatErrorForTerminal(classified);
-          
+
           errorLines.forEach(line => addLog(line));
-          
+
           setError({
             errorType: classified.type,
             errorMessage: classified.message,
@@ -255,9 +281,9 @@ export function useConviction() {
         console.error("Analysis failed", error);
         const classified = classifyError(error);
         const errorLines = formatErrorForTerminal(classified);
-        
+
         errorLines.forEach(line => addLog(line));
-        
+
         setError({
           errorType: classified.type,
           errorMessage: classified.message,
@@ -266,7 +292,7 @@ export function useConviction() {
           canUseCached: activeAddress ? hasCachedAnalysis(activeAddress, chain) : false,
           recoveryAction: classified.recoveryAction,
         });
-        
+
         setAnalysisStep("Analysis Failed");
         setTimeout(finishAnalysis, 2000);
       }
@@ -293,7 +319,7 @@ export function useConviction() {
   const loadCachedAnalysis = useCallback(
     async (address: string, chain: "solana" | "base") => {
       const cached = getCachedAnalysis(address, chain, parameters);
-      
+
       if (!cached) {
         addLog(`> NO CACHED ANALYSIS FOUND`);
         return false;
@@ -303,21 +329,22 @@ export function useConviction() {
         reset();
         startAnalysis();
         clearError();
-        
+
         addLog(`> LOADING CACHED ANALYSIS...`);
         addLog(`> CACHED: ${new Date(cached.timestamp).toLocaleString()}`);
-        
+
         await new Promise((resolve) => setTimeout(resolve, 500));
-        
+
         // Load cached data
         setEthosData(cached.ethosScore, cached.ethosProfile);
+        setFarcasterIdentity(cached.farcasterIdentity);
         setConvictionMetrics(cached.convictionMetrics);
         setPositionAnalyses(cached.positionAnalyses, cached.chain);
-        
+
         addLog(`> CONVICTION_SCORE: ${cached.convictionMetrics.score}`);
         addLog(`> CACHED DATA LOADED SUCCESSFULLY`);
         addLog(`> TIP: RUN NEW ANALYSIS FOR LATEST DATA`);
-        
+
         finishAnalysis();
         return true;
       } catch (error) {

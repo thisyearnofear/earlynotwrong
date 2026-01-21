@@ -1,230 +1,151 @@
 # EARLY, NOT WRONG — Roadmap
 
-> Living document tracking product evolution. Last updated: January 2025
+> Living document tracking the evolution from "Wallet Analyzer" to "Identity Intelligence Agent".
 
 ---
 
 ## Current State Assessment
 
-### Product Design: 8/10
-
+### Product Design: 9/10
 **Strengths:**
-- Sharp, differentiated thesis — "behavior, not performance"
-- Terminal aesthetic aligns with clinical, contrarian positioning
-- Archetype system (Iron Pillar, Profit Phantom, etc.) creates memorable identity
-- Ethos integration as reputation infrastructure enables composability
+- Clinical terminal aesthetic is high-vibe and differentiated.
+- "Patience Tax" provides a clear psychological hook.
+- Real on-chain Ethos integration proves technical legitimacy.
 
 **Gaps:**
-- No detailed position breakdown — users see aggregate scores but not underlying trades
-- "Significant Events" cards are static; should be interactive drill-downs
-- No historical tracking — users can't see conviction score evolution over time
-
-### System Architecture: 7/10
-
-**Strengths:**
-- Clean separation: `transaction-client` → `market` → `price-service` → `use-conviction`
-- Multi-chain abstraction (Solana/Base) well-structured
-- Caching layer prevents redundant API calls
-- Zustand store is lean and purposeful
-
-**Gaps:**
-- Transaction parsing is fragile (hardcoded SOL price, simplified swap detection)
-- No backend — API keys exposed client-side (`NEXT_PUBLIC_*`)
-- Batch analysis limited to 5 positions — should be server-side
-- No error boundaries or retry logic for flaky external APIs
-
-### Delivery on Vision: 7.5/10
-
-Core loop works: connect → analyze → see conviction score. Showcase wallets demo value before real data integration is bulletproof. However, "self-knowledge" promise isn't fully realized — users get a score but not enough narrative about *why* or *what to do differently*.
+- Wallets are anonymous; missing the "human" behind the trades.
+- Cross-chain analysis is siloed (users must choose one or the other).
+- Missing viral loop for feed-based distribution.
 
 ---
 
-## Phase 1: Depth Before Breadth ✅ COMPLETE
-
-> Focus: Make the existing experience complete and insightful
+## Phase 1: Foundational Depth ✅ COMPLETE
 
 ### 1.1 Position Explorer ✅
 - [x] Interactive drill-down into individual trades
 - [x] Entry/exit prices with timestamps
 - [x] Per-position patience tax calculation
 - [x] "What if you held" counterfactual visualization
-- [x] Token metadata display (logo, name, current price)
 
-### 1.2 Server-Side API Layer ✅
-- [x] Create Next.js API routes for sensitive operations
-- [x] Move Helius/Alchemy/Birdeye calls server-side
-- [x] Enable heavier batch processing (remove 5-position limit)
-- [x] Add retry logic and error handling for external APIs
-- [x] Rate limiting and request queuing
+### 1.2 Multi-Chain Logic ✅
+- [x] Real-time Base (EVM) transaction parsing via Alchemy
+- [x] Real-time Solana transaction parsing via Helius/Jupiter
+- [x] Dynamic SOL price fetching for accuracy
 
-### 1.3 Historical Conviction Tracking ✅
-- [x] Store attestations locally (or via Ethos)
-- [x] Show CI evolution over time (sparkline/chart)
-- [x] "Your conviction is improving/declining" insights
-- [x] Compare current vs. historical archetype
-
-### 1.4 Enhanced Error States ✅
-- [x] Graceful degradation when APIs fail
-- [x] Informative error messages with recovery actions
-- [x] Offline/cached mode for previously analyzed wallets
+### 1.3 Ethos Deep Integration ✅
+- [x] Read Ethos credibility scores for sybil protection
+- [x] Real on-chain EIP-712 signing for conviction scores
+- [x] Real on-chain submission to EAS (Ethereum Attestation Service) on Base
+- [x] Reputation-gated features (Whale Cohort Analysis)
 
 ---
 
-## Phase 2: Reputation Loop
+## Phase 2: Reputation-Native Alpha Discovery (Ethos-First)
 
-> Focus: Make conviction shareable and comparable
+> Focus: Transform conviction analysis into a reputation-weighted alpha discovery platform using **Ethos Network**.
 
-### 2.1 Shareable Conviction Cards
-- [ ] OG image generation for social sharing
-- [ ] Twitter/Farcaster-optimized cards
-- [ ] Format: "My Conviction Score: 78 | Iron Pillar"
-- [ ] Deep link back to full analysis
+### 2.1 Ethos-Native Reputation Weighting
+- [ ] **Credibility-Weighted Conviction:** Scale conviction scores by Ethos credibility to surface high-reputation traders.
+- [ ] **Sybil-Resistant Leaderboards:** Create conviction rankings that filter out low-credibility wallets.
+- [ ] **Reputation Gating:** Lock advanced features (whale cohort analysis, alpha signals) behind minimum Ethos scores.
 
-### 2.2 Comparative Insights
-- [ ] Cohort benchmarks ("more patient than 82% of $WIF traders")
-- [ ] Chain-specific percentiles
-- [ ] Time-period comparisons (30d vs 90d vs 180d)
+### 2.2 Alpha Signal Generation
+- [ ] **High-Conviction Tracker:** Monitor when Iron Pillar traders (high Ethos + high CI) make new moves.
+- [ ] **Reputation-Weighted Alerts:** Push notifications when credible traders enter/exit positions.
+- [ ] **Copy-Trading Insights:** Show "who else is buying" with reputation context for popular tokens.
 
-### 2.3 Ethos Deep Integration (Real Implementation)
-- [x] **Investigation:** Audit Ethos smart contracts/SDK for "write" capabilities (EIP-712 signing vs contract interaction)
-- [x] **Data Structure:** Define "Conviction Attestation" schema (JSON-LD or on-chain struct)
-- [x] **Signing Flow:** Implement client-side signing of conviction data (EIP-712 for EVM / Ed25519 for Solana)
-- [x] **Submission:** Implement real on-chain submission to Base EAS contract (using development Schema UID)
-- [x] **Verification:** UI displays real transaction hashes from the Base blockchain
-- [x] **Reputation Gating:** Functional Ethos score gating for "Whale Cohort" analysis
-- [ ] **Base Paymaster Integration:** (Planned) Implement gasless attestations using hackathon sponsor credits
-- [ ] **Official Schema Registration:** (Planned) Register canonical "Conviction Score" schema on EAS Registry
+### 2.3 Social Discovery Layer (Selective Farcaster Integration)
+- [ ] **Identity Bridge:** Use Neynar to resolve high-conviction wallets to Farcaster profiles for social context.
+- [ ] **Cross-Chain Linking:** Suggest linked wallets via Farcaster's verified addresses for comprehensive analysis.
+- [ ] **Social Proof:** Display Farcaster metadata (PFP, username) only for wallets with social presence.
 
 ---
 
-## Phase 3: $EARLY Token
+## Phase 3: Reputation-Gated Alpha Platform
 
-> Focus: Non-extractive tokenomics aligned with product thesis
+> Focus: Build the definitive reputation-native trading intelligence platform.
 
-### 3.1 Token Utility Design
+### 3.1 Alpha Discovery Engine
+- [ ] **Conviction Leaderboards:** Real-time rankings of high-Ethos traders by conviction score and recent performance.
+- [ ] **Token Conviction Heatmap:** Show which tokens have the highest concentration of credible, high-conviction holders.
+- [ ] **Whale Tracker:** Monitor moves by Iron Pillar traders with Ethos scores >1000.
 
-| Utility | Mechanic |
-|---------|----------|
-| **Conviction Staking** | Stake $EARLY to attest to your CI — if CI drops significantly, slashed stake redistributes to high-CI wallets |
-| **Premium Analysis** | Hold X $EARLY for deeper analytics: full position history, multi-chain merged view, cohort comparisons |
-| **Attestation Fuel** | Writing conviction attestations costs $EARLY (burned or staked), creating deflationary pressure |
-| **Meta-Signal Subscriptions** | Pay $EARLY to subscribe to high-CI wallet activity feeds |
-| **Governance** | Token holders vote on new archetypes, scoring formula, chain support |
+### 3.2 Reputation-Gated Features
+- [ ] **Premium Alpha Feed:** Ethos score >500 required to see real-time conviction alerts.
+- [ ] **Cohort Analysis:** Compare your conviction against other traders in your Ethos credibility tier.
+- [ ] **Early Access:** New features unlocked based on Ethos reputation milestones.
 
-### 3.2 Token Implementation
-- [ ] Deploy on Solana (SPL token)
-- [ ] Deploy on Base (ERC-20)
-- [ ] Bridge mechanism between chains
-- [ ] Staking contract for conviction attestations
-- [ ] Premium tier gating logic
-
-### 3.3 Token Distribution
-- [ ] Define allocation (team, community, treasury, rewards)
-- [ ] Early adopter airdrop criteria (high-CI wallets?)
-- [ ] Liquidity strategy
+### 3.3 Viral Distribution (Selective Social)
+- [ ] **Shareable Conviction Cards:** Generate OG cards showing conviction score + Ethos credibility for social proof.
+- [ ] **Farcaster Frames (Optional):** "Check My CI" Frame for users with Farcaster profiles.
+- [ ] **Reputation Referrals:** Bonus features for referring high-Ethos users to the platform.
 
 ---
 
-## Phase 4: Meta-Signal Layer
+## Phase 4: $EARLY Reputation Economy
 
-> Focus: From self-knowledge to ecosystem signal
+### 4.1 Ethos-Backed Token Utility
+- [ ] **Reputation Staking:** Stake $EARLY tokens, with staking power multiplied by your Ethos credibility score.
+- [ ] **Conviction Bonds:** Back your trade thesis with $EARLY; earn rewards if your conviction score improves, lose stake if it drops.
+- [ ] **Credibility Mining:** Earn $EARLY tokens for maintaining high Ethos scores and conviction performance.
 
-### 4.1 Wallet Intelligence
-- [ ] High-CI wallet discovery feed
-- [ ] Activity alerts for followed wallets
-- [ ] "This wallet [CI: 85] just entered $TOKEN" signals
-
-### 4.2 Protocol Integrations
-- [ ] API for other dApps to query conviction scores
-- [ ] Reputation-weighted features for partner protocols
-- [ ] Conviction score as collateral factor (DeFi integration)
-
-### 4.3 Advanced Analytics
-- [ ] Sector-specific conviction (memecoins vs DeFi vs NFTs)
-- [ ] Correlation analysis (does high CI predict returns?)
-- [ ] Behavioral pattern recognition
+### 4.2 Reputation-Native Governance
+- [ ] **Weighted Voting:** Governance votes weighted by both $EARLY holdings and Ethos credibility.
+- [ ] **Curator Rewards:** High-Ethos users earn $EARLY for curating and validating alpha signals.
+- [ ] **Sybil-Resistant Airdrops:** Token distributions that require minimum Ethos scores to claim.
 
 ---
 
-## Technical Debt & Maintenance
-
-### Ongoing
-- [ ] Improve Solana swap parsing (handle more DEX formats)
-- [ ] Real-time SOL/ETH price for accurate USD calculations
-- [ ] Add comprehensive test coverage
-- [ ] Performance monitoring and optimization
-- [ ] Accessibility audit
-
-### Infrastructure
-- [ ] Database for historical data (Supabase/PlanetScale)
-- [ ] Background job processing for heavy analysis
-- [ ] CDN for OG image generation
-- [ ] Analytics and error tracking (PostHog/Sentry)
-
----
-
-## Success Metrics
+## Success Metrics (Updated)
 
 | Metric | Target |
 |--------|--------|
-| "I didn't realize how much upside I gave away" moments | Qualitative feedback |
-| Analyses completed | 1,000+ unique wallets |
-| Attestations written to Ethos | 500+ |
-| Shareable cards generated | 2,000+ |
-| $EARLY holders | 5,000+ unique wallets |
-| High-CI wallets discovered via platform | 100+ with CI > 80 |
+| **Ethos Integration Rate** | % of analyzed wallets with Ethos credibility scores |
+| **High-Credibility Discovery** | # of Iron Pillar traders with Ethos scores >1000 |
+| **Alpha Signal Accuracy** | Performance of conviction alerts from high-Ethos traders |
+| **Reputation Gating Adoption** | % of premium features accessed by credible users |
+| **Cross-Chain Analysis** | # of users analyzing both Base + Solana wallets |
 
 ---
 
-## Design Principles (Reference)
+## Design Principles
 
-- **ENHANCEMENT FIRST**: Enhance existing components over creating new ones
-- **AGGRESSIVE CONSOLIDATION**: Delete unnecessary code rather than deprecating
-- **PREVENT BLOAT**: Audit and consolidate before adding features
-- **DRY**: Single source of truth for shared logic
-- **CLEAN**: Clear separation of concerns with explicit dependencies
-- **MODULAR**: Composable, testable, independent modules
-- **PERFORMANT**: Adaptive loading, caching, resource optimization
-- **ORGANIZED**: Predictable file structure with domain-driven design
+- **REPUTATION FIRST**: Ethos credibility is the foundation for all alpha discovery and platform access.
+- **SCALABLE BY DEFAULT**: Features work for any wallet, with social context as an enhancement, not a requirement.
+- **SYBIL-RESISTANT**: All rankings, alerts, and governance weighted by verifiable on-chain reputation.
+- **CONVICTION-DRIVEN**: Focus on behavioral analysis over performance metrics to identify true alpha.
+- **CROSS-CHAIN NATIVE**: Unified reputation and conviction analysis across all supported networks.
 
 ---
 
-## Changelog
+## Hackathon Focus: "Social Trading & Alpha" Track
 
-### January 2025
-- Initial roadmap created
-- Fixed dead buttons (Thesis modal, Try Another Wallet, View Ethos Profile)
-- Thesis modal implemented with terminal-style design
-- **Phase 1.1 COMPLETED**: Position Explorer
-  - Built comprehensive PositionExplorer component with interactive drill-down
-  - Expandable position cards showing entry/exit prices with timestamps
-  - Per-position patience tax calculation and display
-  - "What if you held" counterfactual visualization with missed gains
-  - Token metadata integration (logo, name, symbol, current price, 24h change)
-  - Links to blockchain explorers (Solscan for Solana, Basescan for Base)
-  - Visual indicators for early exits and profitability
-  - Detailed transaction history view within each position
-- **Phase 1.2 COMPLETED**: Server-Side API Layer
-  - Created Next.js API routes: `/api/analyze/batch`, `/api/analyze/prices`, `/api/analyze/transactions`
-  - Moved all Helius/Alchemy/Birdeye API calls server-side (keys now in process.env)
-  - Removed 5-position batch limit - now supports unlimited batch processing
-  - Added retry logic with exponential backoff for external API calls
-  - Implemented rate limiting and request queuing for API stability
-  - Full server-side conviction calculation and position analysis
-- **Phase 1.3 COMPLETED**: Historical Conviction Tracking
-  - Implemented local storage persistence for all conviction analyses
-  - Added HistoryPanel component showing recent analyses and score trends
-  - Created ScoreEvolutionChart with interactive sparkline visualization using recharts
-  - Integrated score change detection with trend indicators (up/down/stable)
-  - Wired up automatic history saving after each analysis (showcase & real users)
-  - Full archetype evolution tracking over time
-- **Phase 1.4 COMPLETED**: Enhanced Error States
-  - Built comprehensive error handling system with error classification
-  - Implemented retry logic with exponential backoff for API calls
-  - Created analysis cache system for offline/cached mode (24h TTL, 20 max entries)
-  - Added ErrorPanel component with user-friendly error messages and recovery actions
-  - Integrated error state management into Zustand store
-  - Created ErrorBoundary component for React error catching
-  - Added loadCachedAnalysis function for instant cached results
-  - Terminal displays contextual error messages with recovery tips
-- **🎉 PHASE 1 COMPLETE**: All depth-before-breadth features implemented
+> **Ethos Integration Strategy**: Transform conviction analysis into reputation-weighted alpha discovery.
+
+### Immediate Hackathon Deliverables
+
+#### 1. **Reputation-Weighted Conviction Scoring** ✨
+- Integrate Ethos credibility scores into conviction calculations
+- Create "Credible Conviction" metric that combines CI score with Ethos reputation
+- Filter out low-credibility wallets from alpha signals
+
+#### 2. **Alpha Discovery Dashboard** 🎯
+- Real-time leaderboard of high-Ethos, high-conviction traders
+- Token conviction heatmap showing credible holder concentration
+- "Whale Watch" alerts for Iron Pillar moves (Ethos >1000 + CI >80)
+
+#### 3. **Reputation-Gated Features** 🔒
+- Premium insights locked behind Ethos score thresholds
+- Sybil-resistant whale cohort analysis
+- Credibility-based access to advanced analytics
+
+#### 4. **Cross-Chain Reputation Bridge** 🌉
+- Unified Ethos scoring across Base and Solana wallets
+- Cross-chain conviction analysis with reputation weighting
+- Multi-network alpha signal aggregation
+
+### Hackathon Value Proposition
+**"The first reputation-native trading intelligence platform"**
+- Solves the signal-to-noise problem in crypto alpha by weighting everything with verifiable reputation
+- Creates sustainable competitive moats through Ethos integration
+- Scales beyond social platforms to serve the entire crypto trading ecosystem

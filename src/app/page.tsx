@@ -34,6 +34,11 @@ import { PositionExplorer } from "@/components/ui/position-explorer";
 import { ShareDialog } from "@/components/ui/share-dialog";
 import { HistoryPanel } from "@/components/ui/history-panel";
 import { ErrorPanel } from "@/components/ui/error-panel";
+import { AlphaDiscovery } from "@/components/ui/alpha-discovery";
+import { TokenHeatmap } from "@/components/ui/token-heatmap";
+import { ReputationPerks } from "@/components/ui/reputation-perks";
+import { ConvictionAlerts } from "@/components/ui/conviction-alerts";
+import { CohortAnalysis } from "@/components/ui/cohort-analysis";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +54,7 @@ export default function Home() {
   const {
     ethosScore,
     ethosProfile,
+    farcasterIdentity,
     convictionMetrics,
     positionAnalyses,
     analysisChain,
@@ -533,6 +539,28 @@ export default function Home() {
                         </CardTitle>
                         <ShieldCheck className="w-5 h-5 text-ethos" />
                       </div>
+
+                      {/* Farcaster Identity Display */}
+                      {farcasterIdentity && (
+                        <div className="flex items-center gap-3 mb-3 p-2 rounded-lg bg-surface/30 border border-border/30">
+                          {farcasterIdentity.pfpUrl && (
+                            <img
+                              src={farcasterIdentity.pfpUrl}
+                              alt={farcasterIdentity.username}
+                              className="w-8 h-8 rounded-full"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-foreground truncate">
+                              {farcasterIdentity.displayName || farcasterIdentity.username}
+                            </div>
+                            <div className="text-xs text-foreground-muted">
+                              @{farcasterIdentity.username}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="text-3xl font-bold text-foreground">
                         {ethosScore ? "Verified" : "Unknown"}
                       </div>
@@ -550,6 +578,24 @@ export default function Home() {
                           </span>
                           <span className="font-mono text-foreground">
                             {ethosScore?.score ?? "---"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-foreground-muted">
+                            Tier
+                          </span>
+                          <span className={cn(
+                            "font-mono text-xs px-2 py-1 rounded",
+                            ethosScore?.score >= 2000 ? "bg-patience/20 text-patience" :
+                              ethosScore?.score >= 1000 ? "bg-signal/20 text-signal" :
+                                ethosScore?.score >= 500 ? "bg-foreground/20 text-foreground" :
+                                  ethosScore?.score >= 100 ? "bg-foreground-muted/20 text-foreground-muted" :
+                                    "bg-surface text-foreground-muted"
+                          )}>
+                            {ethosScore?.score >= 2000 ? "Elite" :
+                              ethosScore?.score >= 1000 ? "High" :
+                                ethosScore?.score >= 500 ? "Medium" :
+                                  ethosScore?.score >= 100 ? "Low" : "Unknown"}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-sm">
@@ -656,6 +702,61 @@ export default function Home() {
                       />
                     </CardContent>
                   </Card>
+                </motion.div>
+
+                {/* Reputation Perks Panel */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-8"
+                >
+                  <ReputationPerks />
+                </motion.div>
+
+                {/* Alpha Discovery Panel */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-8"
+                >
+                  <AlphaDiscovery />
+                </motion.div>
+
+                {/* Token Conviction Heatmap */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4"
+                >
+                  <TokenHeatmap />
+                </motion.div>
+
+                {/* Real-Time Alerts Panel */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-6"
+                >
+                  <ConvictionAlerts />
+                </motion.div>
+
+                {/* Cohort Analysis Panel */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-6"
+                >
+                  <CohortAnalysis />
                 </motion.div>
 
                 {/* Position Explorer */}

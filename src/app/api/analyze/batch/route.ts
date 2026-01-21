@@ -26,6 +26,7 @@ interface Position {
 interface BatchRequest {
   positions: Position[];
   chain: "solana" | "base";
+  ethosScore?: number | null;
 }
 
 interface PositionAnalysis {
@@ -80,13 +81,21 @@ interface ConvictionMetrics {
 import { serverCache, CacheKeys, CacheTTL } from "@/lib/server-cache";
 
 const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
+const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
+
 const BIRDEYE_URL = "https://public-api.birdeye.so";
 const DEXSCREENER_URL = "https://api.dexscreener.com/latest/dex";
+const COINGECKO_URL = "https://api.coingecko.com/api/v3";
+const COINGECKO_PRO_URL = "https://pro-api.coingecko.com/api/v3";
+
+const getCoingeckoUrl = () => COINGECKO_API_KEY ? COINGECKO_PRO_URL : COINGECKO_URL;
+const getCoingeckoHeaders = (): HeadersInit => COINGECKO_API_KEY ? { "x-cg-pro-api-key": COINGECKO_API_KEY } : {};
+
 
 export async function POST(request: NextRequest) {
   try {
     const body: BatchRequest = await request.json();
-    const { positions, chain } = body;
+    const { positions, chain, ethosScore } = body;
 
     if (!positions || !chain) {
       return NextResponse.json(
@@ -115,7 +124,8 @@ export async function POST(request: NextRequest) {
 
     const convictionMetrics = calculateConvictionMetrics(
       positions,
-      positionAnalyses
+      positionAnalyses,
+      ethosScore
     );
 
     return NextResponse.json({
@@ -141,7 +151,7 @@ async function analyzePosition(
   // Use pre-fetched data from maps
   const metadata = metadataMap.get(position.tokenAddress) ?? null;
   const priceData = priceMap.get(position.tokenAddress) ?? null;
-  
+
   // Only fetch patience tax (not batchable due to unique timestamps per position)
   const patienceTaxData = position.exits.length > 0
     ? await calculatePatienceTax(position, chain)
@@ -159,13 +169,13 @@ async function analyzePosition(
   const exitDetails =
     position.exits.length > 0
       ? {
-          avgPrice:
-            position.exits.reduce((sum, e) => sum + e.priceUsd * e.amount, 0) /
-            position.exits.reduce((sum, e) => sum + e.amount, 0),
-          totalAmount: position.exits.reduce((sum, e) => sum + e.amount, 0),
-          totalValue: position.totalRealized,
-          lastExit: position.exits[position.exits.length - 1]?.timestamp || 0,
-        }
+        avgPrice:
+          position.exits.reduce((sum, e) => sum + e.priceUsd * e.amount, 0) /
+          position.exits.reduce((sum, e) => sum + e.amount, 0),
+        totalAmount: position.exits.reduce((sum, e) => sum + e.amount, 0),
+        totalValue: position.totalRealized,
+        lastExit: position.exits[position.exits.length - 1]?.timestamp || 0,
+      }
       : null;
 
   const realizedPnL = position.totalRealized - position.totalInvested;
@@ -190,9 +200,9 @@ async function analyzePosition(
 
   const counterfactual = patienceTaxData
     ? {
-        wouldBeValue: patienceTaxData.wouldBeValue,
-        missedGainDollars: patienceTaxData.patienceTax,
-      }
+      wouldBeValue: patienceTaxData.wouldBeValue,
+      missedGainDollars: patienceTaxData.patienceTax,
+    }
     : null;
 
   return {
@@ -200,10 +210,10 @@ async function analyzePosition(
     tokenSymbol: position.tokenSymbol || metadata?.symbol,
     metadata: metadata
       ? {
-          name: metadata.name,
-          symbol: metadata.symbol,
-          logoUri: metadata.logoUri,
-        }
+        name: metadata.name,
+        symbol: metadata.symbol,
+        logoUri: metadata.logoUri,
+      }
       : null,
     currentPrice: priceData?.currentPrice || 0,
     priceChange24h: priceData?.priceChange24h || 0,
@@ -385,38 +395,70 @@ async function calculatePatienceTax(
 
     let priceHistory: Array<{ timestamp: number; price: number }> = [];
 
-    if (chain === "solana" && BIRDEYE_API_KEY) {
-      const cacheKey = CacheKeys.priceHistory(
-        position.tokenAddress,
-        chain,
-        exitTimestamp,
-        endTimestamp
-      );
+    const cacheKey = CacheKeys.priceHistory(
+      position.tokenAddress,
+      chain,
+      exitTimestamp,
+      endTimestamp
+    );
 
-      priceHistory = await serverCache.get(
-        cacheKey,
-        async () => {
+    priceHistory = await serverCache.get(
+      cacheKey,
+      async () => {
+        // 1. Try Birdeye (Solana only)
+        if (chain === "solana" && BIRDEYE_API_KEY) {
+          try {
+            const response = await fetch(
+              `${BIRDEYE_URL}/defi/history_price?address=${position.tokenAddress}&address_type=token&type=1H&time_from=${Math.floor(exitTimestamp / 1000)}&time_to=${Math.floor(endTimestamp / 1000)}`,
+              {
+                headers: { "X-API-KEY": BIRDEYE_API_KEY },
+              }
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success && data.data?.items) {
+                return data.data.items.map((item: any) => ({
+                  timestamp: item.unixTime * 1000,
+                  price: item.value || 0,
+                }));
+              }
+            }
+          } catch (error) {
+            console.warn(`Birdeye historical fetch failed for ${position.tokenAddress}:`, error);
+          }
+        }
+
+        // 2. Try CoinGecko (Solana or Base)
+        try {
+          const platformId = chain === "solana" ? "solana" : "base";
           const response = await fetch(
-            `${BIRDEYE_URL}/defi/history_price?address=${position.tokenAddress}&address_type=token&type=1H&time_from=${Math.floor(exitTimestamp / 1000)}&time_to=${Math.floor(endTimestamp / 1000)}`,
+            `${getCoingeckoUrl()}/coins/${platformId}/contract/${position.tokenAddress}/market_chart/range?vs_currency=usd&from=${Math.floor(
+              exitTimestamp / 1000
+            )}&to=${Math.floor(endTimestamp / 1000)}`,
             {
-              headers: { "X-API-KEY": BIRDEYE_API_KEY },
+              headers: getCoingeckoHeaders(),
+              next: { revalidate: 3600 }
             }
           );
 
           if (response.ok) {
             const data = await response.json();
-            if (data.success && data.data?.items) {
-              return data.data.items.map((item: any) => ({
-                timestamp: item.unixTime * 1000,
-                price: item.value || 0,
+            if (data.prices && Array.isArray(data.prices)) {
+              return data.prices.map(([timestamp, price]: [number, number]) => ({
+                timestamp,
+                price,
               }));
             }
           }
-          return [];
-        },
-        CacheTTL.PRICE_HISTORY
-      );
-    }
+        } catch (error) {
+          console.warn(`CoinGecko historical fetch failed for ${position.tokenAddress}:`, error);
+        }
+
+        return [];
+      },
+      CacheTTL.PRICE_HISTORY
+    );
 
     if (priceHistory.length === 0) {
       return {
@@ -458,7 +500,8 @@ import { APP_CONFIG } from "@/lib/config";
 
 function calculateConvictionMetrics(
   positions: Position[],
-  analyses: PositionAnalysis[]
+  analyses: PositionAnalysis[],
+  ethosScore?: number | null
 ): ConvictionMetrics {
   if (positions.length === 0) {
     return {
@@ -514,28 +557,46 @@ function calculateConvictionMetrics(
 
   const earlyExitRate = (earlyExits / positions.length) * 100;
 
-  const { weights } = APP_CONFIG;
-  const score = Math.max(
+  const { weights, reputation } = APP_CONFIG;
+  const baseScore = Math.max(
     0,
     Math.min(
       100,
       winRate * weights.winRate +
-        upsideCapture * weights.upsideCapture +
-        (100 - earlyExitRate) * weights.earlyExitMitigation +
-        Math.min(avgHoldingPeriod / 30, 1) * (weights.holdingPeriod * 100)
+      upsideCapture * weights.upsideCapture +
+      (100 - earlyExitRate) * weights.earlyExitMitigation +
+      Math.min(avgHoldingPeriod / 30, 1) * (weights.holdingPeriod * 100)
     )
   );
 
-  const percentile = Math.max(1, Math.min(99, 100 - Math.floor(score)));
+  // Apply reputation weighting if Ethos score available
+  let finalScore = baseScore;
+  let reputationMultiplier = 1.0;
+
+  if (ethosScore && ethosScore > 0) {
+    if (ethosScore >= reputation.ethosScoreThresholds.elite) {
+      reputationMultiplier = 1.5;
+    } else if (ethosScore >= reputation.ethosScoreThresholds.high) {
+      reputationMultiplier = 1.3;
+    } else if (ethosScore >= reputation.ethosScoreThresholds.medium) {
+      reputationMultiplier = 1.15;
+    } else if (ethosScore >= reputation.ethosScoreThresholds.low) {
+      reputationMultiplier = 1.05;
+    }
+
+    finalScore = Math.min(100, baseScore * reputationMultiplier);
+  }
+
+  const percentile = Math.max(1, Math.min(99, 100 - Math.floor(finalScore)));
 
   return {
-    score: Math.round(score * 10) / 10,
+    score: Math.round(finalScore * 10) / 10,
     patienceTax: Math.round(totalPatienceTax),
     upsideCapture: Math.round(upsideCapture),
     earlyExits,
     convictionWins,
     percentile,
-    archetype: getArchetype(score, totalPatienceTax) as any,
+    archetype: getArchetype(finalScore, totalPatienceTax) as any,
     totalPositions: positions.length,
     avgHoldingPeriod: Math.round(avgHoldingPeriod),
     winRate: Math.round(winRate),
@@ -547,18 +608,18 @@ function getArchetype(
   patienceTax: number
 ): string {
   const { archetypes } = APP_CONFIG;
-  
+
   if (score >= archetypes.IRON_PILLAR.minScore! && patienceTax <= archetypes.IRON_PILLAR.maxPatienceTax!) {
     return archetypes.IRON_PILLAR.label;
   }
-  
+
   if (score >= archetypes.PROFIT_PHANTOM.minScore! && patienceTax >= archetypes.PROFIT_PHANTOM.minPatienceTax!) {
     return archetypes.PROFIT_PHANTOM.label;
   }
-  
+
   if (score <= archetypes.EXIT_VOYAGER.maxScore!) {
     return archetypes.EXIT_VOYAGER.label;
   }
-  
+
   return archetypes.DIAMOND_HAND.label;
 }

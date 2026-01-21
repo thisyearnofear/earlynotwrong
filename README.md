@@ -176,6 +176,92 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 ---
 
+## Recent Updates: Phase 3 - Advanced Reputation Perks & Real-Time Intelligence
+
+### 🆕 Comprehensive Reputation Tier System
+- **4-Tier Perk Structure**: Premium (100+), Whale (500+), Alpha (1000+), Elite (2000+)
+- **Progressive Perks**: Faster refresh rates, deeper history, advanced features unlock by tier
+- **Visual Tier Indicators**: Clear progression path with next-tier requirements and new perks preview
+- **Elite Status**: Maximum perks for 2000+ Ethos users including API access and early feature access
+
+### 🆕 Real-Time Conviction Alerts (Ethos 1000+)
+- **Live Monitoring**: Instant notifications when high-conviction traders make significant moves
+- **Severity Classification**: Critical/High/Medium alerts based on wallet reputation and trade size
+- **Rich Context**: Full trader profiles with Ethos scores, conviction history, and Farcaster identity
+- **Smart Filtering**: Customizable alert thresholds and sound notifications
+
+### 🆕 Advanced Cohort Analysis (Ethos 500+)
+- **Peer Comparison**: Compare your metrics against traders in your reputation tier
+- **Performance Benchmarking**: Win rates, returns, and Sharpe ratios by cohort
+- **Percentile Rankings**: See where you stand within your tier (Top 10%, Average, etc.)
+- **Archetype Distribution**: Most common trading patterns by reputation level
+
+### 🆕 Enhanced Reputation Perks Dashboard
+- **Perk Visualization**: Clear display of active perks and tier benefits
+- **Upgrade Path**: Progress bars and requirements for next tier
+- **Feature Unlocking**: Real-time access control based on Ethos score
+- **Tier-Specific Benefits**: Refresh rates from 5min (Premium) to 30sec (Elite)
+
+### 🆕 Advanced Feature Gating
+- **Ethos 100+**: Basic analytics, 5min refresh, 90-day history
+- **Ethos 500+**: Alpha discovery, cohort analysis, data export, 3min refresh
+- **Ethos 1000+**: Real-time alerts, whale tracking, priority support, 1min refresh  
+- **Ethos 2000+**: API access, custom dashboard, early access, 30sec refresh
+
+---
+
+## Recent Updates: Phase 2B - Alpha Discovery Dashboard
+
+### 🆕 Alpha Discovery Engine
+- **High-Conviction Tracker**: Real-time leaderboard of Iron Pillar traders with Ethos scores >1000
+- **Reputation-Weighted Rankings**: Wallets sorted by conviction score × reputation multiplier
+- **Cross-Chain Alpha**: Unified discovery across Solana and Base networks
+- **Social Context**: Farcaster identities displayed when available
+
+### 🆕 Token Conviction Heatmap
+- **Credible Holder Analysis**: Shows tokens with highest concentration of high-conviction, high-Ethos holders
+- **Conviction Intensity Scoring**: 0-100 scale measuring collective conviction strength
+- **Multi-Chain Token Discovery**: Filter and sort by Solana/Base tokens
+- **Value-Weighted Insights**: Total value held by credible conviction traders
+
+### 🆕 Enhanced Reputation Gating
+- **Ethos Score >500**: Unlocks Alpha Discovery and Token Heatmap
+- **Ethos Score >1000**: Access to real-time conviction alerts (coming soon)
+- **Progressive Feature Unlocking**: Clear path to higher reputation tiers
+- **Sybil-Resistant Analytics**: All features filter out low-credibility wallets
+
+### 🆕 Enhanced UI Components
+- **Conviction Badge Sizes**: Small/medium/large variants for different contexts
+- **Alpha Rating System**: Unknown/Low/Medium/High/Elite classifications
+- **Reputation Tier Indicators**: Visual credibility status with color coding
+- **Responsive Dashboard**: Optimized layout for alpha discovery features
+
+---
+
+## Recent Updates: Phase 2A - Reputation-Native Alpha Discovery
+
+### 🆕 Enhanced Reputation Weighting
+- **Ethos-Weighted Conviction Scores**: Base conviction scores are now multiplied by reputation tiers (Elite: 1.5x, High: 1.3x, Medium: 1.15x, Low: 1.05x)
+- **Credibility Tiers**: Visual indicators showing Unknown/Low/Medium/High/Elite reputation status
+- **Sybil-Resistant Analytics**: All scoring now filters out low-credibility wallets to surface genuine alpha
+
+### 🆕 Farcaster Identity Bridge (Selective)
+- **Social Context**: Wallets with Farcaster profiles display username, PFP, and bio
+- **Cross-Chain Discovery**: Automatically suggests linked Ethereum/Solana wallets via Farcaster verified addresses
+- **Enhanced UI**: Reputation cards show both Ethos credibility and social identity when available
+
+### 🆕 Reputation-Gated Features (Coming Soon)
+- **Premium Access**: Ethos score >100 unlocks advanced analytics
+- **Whale Analysis**: Ethos score >500 enables cohort comparisons
+- **Alpha Signals**: Ethos score >1000 provides real-time conviction alerts
+
+### Technical Implementation
+- **Neynar API Integration**: Resolves wallet addresses to Farcaster identities
+- **Enhanced Caching**: Farcaster data cached alongside Ethos reputation
+- **Modular Design**: Social features are additive, not foundational - works for all wallets
+
+---
+
 ## License
 
 MIT
