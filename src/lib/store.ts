@@ -28,6 +28,12 @@ interface ErrorState {
   recoveryAction?: string;
 }
 
+interface ToastState {
+  message: string | null;
+  type: "success" | "error" | "info";
+  isVisible: boolean;
+}
+
 interface AppState {
   // Analysis Workflow
   isAnalyzing: boolean;
@@ -76,9 +82,14 @@ interface AppState {
   theme: "light" | "dark";
   setTheme: (theme: "light" | "dark") => void;
   reset: () => void;
+
+  // Toast State
+  toast: ToastState;
+  showToast: (message: string, type?: "success" | "error" | "info") => void;
+  hideToast: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // Analysis Workflow
   isAnalyzing: false,
   analysisStep: "",
@@ -201,4 +212,19 @@ export const useAppStore = create<AppState>((set) => ({
       },
       isShowcaseMode: false,
     }),
+
+  // Toast Implementation
+  toast: {
+    message: null,
+    type: "info",
+    isVisible: false,
+  },
+  showToast: (message, type = "info") => {
+    set({ toast: { message, type, isVisible: true } });
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+      get().hideToast();
+    }, 3000);
+  },
+  hideToast: () => set((state) => ({ toast: { ...state.toast, isVisible: false } })),
 }));

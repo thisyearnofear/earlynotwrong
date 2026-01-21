@@ -21,6 +21,7 @@ import {
 } from "@/lib/share";
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/lib/store";
 
 interface ShareDialogProps {
   open: boolean;
@@ -35,6 +36,7 @@ export function ShareDialog({
   metrics,
   chain,
 }: ShareDialogProps) {
+  const showToast = useAppStore((state) => state.showToast);
   const [copied, setCopied] = useState(false);
 
   const baseUrl =
@@ -62,6 +64,7 @@ export function ShareDialog({
     const success = await copyToClipboard(shareUrl);
     if (success) {
       setCopied(true);
+      showToast("Share link copied to clipboard", "success");
       setTimeout(() => setCopied(false), 2000);
     }
   };

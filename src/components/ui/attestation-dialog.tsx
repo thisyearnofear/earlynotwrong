@@ -87,6 +87,9 @@ export function AttestationDialog() {
                 isAttesting: false,
             });
 
+            // Use the new Toast system
+            useAppStore.getState().showToast("Attestation submitted to Base", "success");
+
             // Generate share receipt
             const receipt = attestationService.generateConvictionReceipt(
                 activeAddress,
@@ -101,6 +104,7 @@ export function AttestationDialog() {
                 isAttesting: false,
                 attestationError: error instanceof Error ? error.message : 'Attestation failed',
             });
+            useAppStore.getState().showToast("Attestation failed", "error");
         }
     };
 
@@ -115,17 +119,18 @@ export function AttestationDialog() {
                     url: shareReceipt.shareUrl,
                 });
             } catch (error) {
-                // Fallback to clipboard
                 copyToClipboard(shareReceipt.shareText);
+                useAppStore.getState().showToast("Copied to clipboard", "info");
             }
         } else {
             copyToClipboard(shareReceipt.shareText);
+            useAppStore.getState().showToast("Copied to clipboard", "info");
         }
     };
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        // Could add a toast notification here
+        useAppStore.getState().showToast("Copied to clipboard", "info");
     };
 
     const handleClose = () => {
@@ -144,8 +149,8 @@ export function AttestationDialog() {
             <Dialog open={attestationState.showAttestationDialog} onOpenChange={handleClose}>
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Shield className="w-5 h-5 text-ethos" />
+                        <DialogTitle className="flex items-center gap-2 text-ethos">
+                            <Shield className="w-5 h-5" />
                             Ethos Attestation
                         </DialogTitle>
                         <DialogDescription>
@@ -159,7 +164,7 @@ export function AttestationDialog() {
                                 <AlertCircle className="w-12 h-12 text-foreground-muted mx-auto" />
                                 <h3 className="text-lg font-semibold">Showcase Mode</h3>
                                 <p className="text-sm text-foreground-muted max-w-sm">
-                                    Connect your own wallet to write conviction attestations to Ethos Network.
+                                    Connect your own wallet on Base to write conviction attestations to Ethos Network.
                                 </p>
                             </div>
                         </div>
@@ -173,8 +178,8 @@ export function AttestationDialog() {
         <Dialog open={attestationState.showAttestationDialog} onOpenChange={handleClose}>
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Shield className="w-5 h-5 text-ethos" />
+                    <DialogTitle className="flex items-center gap-2 text-ethos">
+                        <Shield className="w-5 h-5" />
                         Ethos Attestation
                     </DialogTitle>
                     <DialogDescription>
@@ -189,18 +194,18 @@ export function AttestationDialog() {
                             <div className="flex items-center justify-center p-6 rounded-lg bg-patience/10 border border-patience/20">
                                 <div className="text-center space-y-3">
                                     <CheckCircle className="w-12 h-12 text-patience mx-auto" />
-                                    <h3 className="text-lg font-semibold">Attestation Written!</h3>
+                                    <h3 className="text-lg font-semibold">Attestation Recorded!</h3>
                                     <p className="text-sm text-foreground-muted">
-                                        Your conviction analysis is now permanently recorded on Ethos Network.
+                                        Your conviction is now verified on the Base blockchain.
                                     </p>
                                 </div>
                             </div>
 
                             <div className="space-y-3">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-foreground-muted">Attestation ID</span>
+                                <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="text-foreground-muted uppercase tracking-widest">Transaction Hash</span>
                                     <div className="flex items-center gap-2">
-                                        <span className="font-mono text-xs">{attestationState.attestationId.slice(0, 8)}...</span>
+                                        <span className="text-signal">{attestationState.attestationId.slice(0, 10)}...</span>
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -219,9 +224,11 @@ export function AttestationDialog() {
                                     </Button>
                                     <Button
                                         variant="outline"
-                                        onClick={() => window.open(shareReceipt.shareUrl, '_blank')}
+                                        onClick={() => window.open(`https://basescan.org/tx/${attestationState.attestationId}`, '_blank')}
+                                        className="gap-2"
                                     >
                                         <ExternalLink className="w-4 h-4" />
+                                        BaseScan
                                     </Button>
                                 </div>
                             </div>
@@ -233,7 +240,7 @@ export function AttestationDialog() {
                         <div className="flex items-center justify-center p-8">
                             <div className="text-center space-y-3">
                                 <Loader2 className="w-8 h-8 animate-spin text-signal mx-auto" />
-                                <p className="text-sm text-foreground-muted">Checking eligibility...</p>
+                                <p className="text-sm text-foreground-muted">Querying Ethos Credibility Oracle...</p>
                             </div>
                         </div>
                     )}
@@ -247,10 +254,10 @@ export function AttestationDialog() {
                                         <div className="flex items-start gap-3">
                                             <CheckCircle className="w-5 h-5 text-patience mt-0.5" />
                                             <div>
-                                                <h4 className="font-medium text-patience">Eligible for Attestation</h4>
+                                                <h4 className="font-medium text-patience">Reputation Verified</h4>
                                                 <p className="text-sm text-foreground-muted mt-1">
-                                                    Your Ethos credibility score ({eligibilityStatus.requirements?.currentScore})
-                                                    meets the minimum requirement ({eligibilityStatus.requirements?.minCredibilityScore}).
+                                                    Your Ethos score ({eligibilityStatus.requirements?.currentScore})
+                                                    meets the conviction threshold.
                                                 </p>
                                             </div>
                                         </div>
@@ -258,7 +265,7 @@ export function AttestationDialog() {
 
                                     {/* Consent Checkbox */}
                                     <div className="space-y-3">
-                                        <label className="flex items-start gap-3 cursor-pointer">
+                                        <label className="flex items-start gap-3 cursor-pointer group">
                                             <input
                                                 type="checkbox"
                                                 checked={attestationState.userConsent}
@@ -266,38 +273,49 @@ export function AttestationDialog() {
                                                 className="mt-1 accent-signal"
                                             />
                                             <div className="text-sm">
-                                                <p className="text-foreground">
-                                                    I consent to writing my conviction analysis as a permanent attestation on Ethos Network.
+                                                <p className="text-foreground group-hover:text-signal transition-colors">
+                                                    I consent to anchor my conviction analysis as a permanent attestation on Base.
                                                 </p>
-                                                <p className="text-foreground-muted mt-1">
-                                                    This will create a public, immutable record of your trading behavior analysis.
+                                                <p className="text-foreground-muted mt-1 text-xs uppercase tracking-tighter">
+                                                    Reputation is portable. Conviction is eternal.
                                                 </p>
                                             </div>
                                         </label>
                                     </div>
 
                                     {/* Action Buttons */}
-                                    <div className="flex gap-2">
+                                    <div className="space-y-3">
                                         <Button
                                             onClick={handleWriteAttestation}
                                             disabled={!attestationState.userConsent || attestationState.isAttesting}
-                                            className="flex-1"
+                                            className="w-full relative overflow-hidden group h-12"
                                         >
+                                            <div className="absolute inset-0 bg-gradient-to-r from-signal/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
                                             {attestationState.isAttesting ? (
                                                 <>
                                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                    Writing Attestation...
+                                                    ANCHORING ON BASE...
                                                 </>
                                             ) : (
                                                 <>
                                                     <Shield className="w-4 h-4 mr-2" />
-                                                    Write to Ethos
+                                                    ATTEST ON BASE
                                                 </>
                                             )}
                                         </Button>
-                                        <Button variant="outline" onClick={handleClose}>
-                                            Cancel
-                                        </Button>
+                                        
+                                        <div className="flex items-center justify-center gap-2 grayscale opacity-50">
+                                            <span className="text-[10px] font-mono uppercase tracking-widest text-foreground-muted">
+                                                Powered by
+                                            </span>
+                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-bold text-foreground">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                                BASE
+                                            </div>
+                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-bold text-ethos">
+                                                ETHOS
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ) : (
@@ -305,18 +323,17 @@ export function AttestationDialog() {
                                     <div className="flex items-start gap-3">
                                         <AlertCircle className="w-5 h-5 text-impatience mt-0.5" />
                                         <div>
-                                            <h4 className="font-medium text-impatience">Not Eligible</h4>
+                                            <h4 className="font-medium text-impatience">Reputation Required</h4>
                                             <p className="text-sm text-foreground-muted mt-1">
                                                 {eligibilityStatus.reason}
                                             </p>
-                                            {eligibilityStatus.requirements && (
-                                                <div className="mt-3 text-xs text-foreground-muted">
-                                                    <p>Required: {eligibilityStatus.requirements.minCredibilityScore} credibility score</p>
-                                                    {eligibilityStatus.requirements.currentScore && (
-                                                        <p>Current: {eligibilityStatus.requirements.currentScore}</p>
-                                                    )}
-                                                </div>
-                                            )}
+                                            <Button 
+                                                variant="link" 
+                                                className="p-0 h-auto text-xs text-signal mt-2"
+                                                onClick={() => window.open('https://ethos.network', '_blank')}
+                                            >
+                                                Build your profile on Ethos →
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
@@ -330,7 +347,7 @@ export function AttestationDialog() {
                             <div className="flex items-start gap-3">
                                 <AlertCircle className="w-5 h-5 text-impatience mt-0.5" />
                                 <div>
-                                    <h4 className="font-medium text-impatience">Attestation Failed</h4>
+                                    <h4 className="font-medium text-impatience">System Error</h4>
                                     <p className="text-sm text-foreground-muted mt-1">
                                         {attestationState.attestationError}
                                     </p>
