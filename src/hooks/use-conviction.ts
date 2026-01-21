@@ -3,6 +3,8 @@ import { useAccount } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useAppStore } from "@/lib/store";
 import { ethosClient } from "@/lib/ethos";
+import { marketClient } from "@/lib/market";
+import { transactionClient } from "@/lib/transaction-client";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 
 export function useConviction() {
@@ -22,6 +24,7 @@ export function useConviction() {
     reset,
     toggleShowcaseMode,
     isShowcaseMode,
+    parameters,
   } = useAppStore();
 
   const analyzeWallet = useCallback(
@@ -29,19 +32,23 @@ export function useConviction() {
       // Determine target: Showcase Wallet or Connected User
       let activeAddress: string | null = null;
       let targetShowcase = null;
+      let chain: 'solana' | 'base' = 'solana';
 
       if (showcaseId) {
         targetShowcase = SHOWCASE_WALLETS.find((w) => w.id === showcaseId);
         if (targetShowcase) {
           activeAddress = targetShowcase.address;
+          chain = targetShowcase.chain;
           toggleShowcaseMode(true);
         }
       } else {
-        activeAddress = isEvmConnected
-          ? (evmAddress ?? null)
-          : isSolanaConnected
-            ? (solanaAddress ?? null)
-            : null;
+        if (isEvmConnected && evmAddress) {
+          activeAddress = evmAddress;
+          chain = 'base';
+        } else if (isSolanaConnected && solanaAddress) {
+          activeAddress = solanaAddress;
+          chain = 'solana';
+        }
         toggleShowcaseMode(false);
       }
 
@@ -58,9 +65,9 @@ export function useConviction() {
         const shortAddr = `${activeAddress!.slice(0, 6)}...${activeAddress!.slice(-4)}`;
         setAnalysisStep("Resolving identity...");
         addLog(`> TARGET: ${shortAddr}`);
-        addLog(
-          `> NETWORK: ${targetShowcase ? targetShowcase.chain.toUpperCase() : isEvmConnected ? "BASE_MAINNET" : "SOLANA_MAINNET"}`,
-        );
+        addLog(`> NETWORK: ${chain.toUpperCase()}_MAINNET`);
+        addLog(`> TIME_HORIZON: ${parameters.timeHorizon}D`);
+        addLog(`> MIN_TRADE_VAL: $${parameters.minTradeValue}`);
 
         await new Promise((resolve) => setTimeout(resolve, 600));
         addLog(`> RESOLVING ON-CHAIN IDENTITY...`);
@@ -78,9 +85,9 @@ export function useConviction() {
               targetShowcase.ethosScore,
               targetShowcase.ethosProfile,
             );
+            addLog(`> ETHOS_SCORE_FOUND: ${targetShowcase.ethosScore.score}`);
           } else {
             // Real Data Fetch
-            // We fetch concurrently to be efficient
             const [score, profile] = await Promise.all([
               ethosClient.getScoreByAddress(activeAddress).catch((e) => {
                 console.warn("Ethos Score Fetch Error:", e);
@@ -92,9 +99,6 @@ export function useConviction() {
               }),
             ]);
 
-            // We only set data if we actually got something back
-            // If the API 404s (user not found) or fails, we pass nulls
-            // The UI handles nulls as "Unknown/Unverified"
             setEthosData(score, profile);
             if (score?.score) {
               addLog(`> ETHOS_SCORE_FOUND: ${score.score}`);
@@ -112,10 +116,10 @@ export function useConviction() {
 
         // Step 3: Transaction Analysis
         setAnalysisStep("Scanning tx history...");
-        addLog(`> INITIATING DEEP SCAN (180 DAYS)...`);
+        addLog(`> INITIATING DEEP SCAN (${parameters.timeHorizon} DAYS)...`);
 
         if (targetShowcase) {
-          // Showcase Mode: Simulate deep analysis steps
+          // Showcase Mode: Use pre-calculated data
           await new Promise((resolve) => setTimeout(resolve, 800));
           addLog(`> INDEXING 142 TRANSACTIONS...`);
 
@@ -132,14 +136,84 @@ export function useConviction() {
 
           setConvictionMetrics(targetShowcase.convictionMetrics);
         } else {
-          // Real User Mode
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          addLog(`> SCANNING MEMPOOL...`);
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
-          addLog(`> ABORTING METRIC CALCULATION`);
+          // Real User Mode: Fetch and analyze actual transactions
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
-          // We intentionally do NOT call setConvictionMetrics here.
+          let transactions;
+          try {
+            if (chain === 'solana') {
+              transactions = await transactionClient.fetchSolanaTransactions(
+                activeAddress,
+                parameters.timeHorizon,
+                parameters.minTradeValue
+              );
+            } else {
+              transactions = await transactionClient.fetchBaseTransactions(
+                activeAddress,
+                parameters.timeHorizon,
+                parameters.minTradeValue
+              );
+            }
+
+            addLog(`> FOUND ${transactions.length} QUALIFYING TRANSACTIONS`);
+
+            if (transactions.length === 0) {
+              addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
+              addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
+              addLog(`> OR TRY A SHOWCASE PROFILE TO SEE FULL ANALYSIS`);
+              finishAnalysis();
+              return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            setAnalysisStep("Grouping positions...");
+            addLog(`> GROUPING TRANSACTIONS INTO POSITIONS...`);
+
+            const positions = transactionClient.groupTransactionsIntoPositions(transactions);
+            addLog(`> IDENTIFIED ${positions.length} TRADING POSITIONS`);
+
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            setAnalysisStep("Analyzing conviction...");
+            addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
+
+            // Analyze a sample of positions for post-exit performance
+            let analyzedCount = 0;
+            const maxAnalyze = Math.min(5, positions.length); // Limit for performance
+
+            for (const position of positions.slice(0, maxAnalyze)) {
+              if (position.exits.length > 0) {
+                const lastExit = position.exits[position.exits.length - 1];
+                await marketClient.analyzePostExitPerformance(
+                  position.tokenAddress,
+                  chain,
+                  lastExit.priceUsd,
+                  lastExit.timestamp,
+                  lastExit.valueUsd
+                );
+                analyzedCount++;
+                addLog(`> ANALYZED ${analyzedCount}/${maxAnalyze} POSITIONS...`);
+                await new Promise((resolve) => setTimeout(resolve, 300));
+              }
+            }
+
+            setAnalysisStep("Calculating metrics...");
+            addLog(`> CALCULATING CONVICTION SCORE...`);
+            await new Promise((resolve) => setTimeout(resolve, 800));
+
+            const convictionMetrics = await marketClient.calculateConvictionMetrics(positions, chain);
+            addLog(`> CONVICTION_SCORE: ${convictionMetrics.score}`);
+            addLog(`> PATIENCE_TAX: $${convictionMetrics.patienceTax}`);
+            addLog(`> ANALYSIS COMPLETE.`);
+
+            setConvictionMetrics(convictionMetrics);
+
+          } catch (error) {
+            console.error("Transaction analysis failed:", error);
+            addLog(`> ERROR: TRANSACTION_ANALYSIS_FAILED`);
+            addLog(`> ${error instanceof Error ? error.message : 'Unknown error'}`);
+            addLog(`> TIP: CHECK API KEYS OR TRY SHOWCASE MODE`);
+          }
         }
 
         finishAnalysis();
@@ -163,6 +237,7 @@ export function useConviction() {
       reset,
       toggleShowcaseMode,
       addLog,
+      parameters,
     ],
   );
 

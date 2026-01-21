@@ -1,4 +1,5 @@
 import { EthosProfile, EthosScore } from "./ethos";
+import { ConvictionMetrics } from "./market";
 
 export interface ShowcaseWallet {
   id: string;
@@ -8,14 +9,7 @@ export interface ShowcaseWallet {
   description: string;
   ethosScore: EthosScore;
   ethosProfile: EthosProfile;
-  convictionMetrics: {
-    score: number;
-    patienceTax: number;
-    upsideCapture: number;
-    earlyExits: number;
-    convictionWins: number;
-    percentile: number;
-  };
+  convictionMetrics: ConvictionMetrics;
 }
 
 export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
@@ -24,7 +18,8 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
     name: "Jesse (Base)",
     chain: "base",
     address: "0x8C4B...2A91",
-    description: "The 'Ecosystem Aligner'. Held positions through 3 major drawdowns. Zero panic sells recorded in 2024.",
+    description:
+      "The 'Ecosystem Aligner'. Held positions through 3 major drawdowns. Zero panic sells recorded in 2024.",
     ethosScore: {
       score: 1650,
       percentile: 98,
@@ -44,13 +39,17 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
       earlyExits: 1,
       convictionWins: 12,
       percentile: 2,
+      archetype: "Iron Pillar",
+      totalPositions: 15,
+      avgHoldingPeriod: 45,
+      winRate: 80,
     },
   },
   {
-    id: "solana-diamond",
-    name: "Solana Diamond",
+    id: "toly-solana",
+    name: "Toly",
     chain: "solana",
-    address: "Toly...Sol",
+    address: "Toly7QHnbmrXaUzFdtWxNWgzrub8VvkxtukiRrQiPbS",
     description:
       "The 'Volatility Surfer'. Weathered a -65% drawdown on core positions to eventually capture a 45x multiple.",
     ethosScore: {
@@ -72,6 +71,74 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
       earlyExits: 3,
       convictionWins: 8,
       percentile: 8,
+      archetype: "Diamond Hand",
+      totalPositions: 12,
+      avgHoldingPeriod: 67,
+      winRate: 67,
+    },
+  },
+  {
+    id: "zinger-solana",
+    name: "Zinger",
+    chain: "solana",
+    address: "6qemckK3fajDuKhVNyvRxNd9a3ubFXxMWkHSEgMVxxov",
+    description:
+      "The 'Alpha Hunter'. Known for early entries into breakout tokens with exceptional timing and conviction.",
+    ethosScore: {
+      score: 1180,
+      percentile: 88,
+      level: "Veteran",
+      updatedAt: new Date().toISOString(),
+    },
+    ethosProfile: {
+      id: "profile_zinger",
+      name: "zinger.sol",
+      username: "zingertrader",
+      credibilityScore: 1180,
+    },
+    convictionMetrics: {
+      score: 91.7,
+      patienceTax: 2100,
+      upsideCapture: 93,
+      earlyExits: 2,
+      convictionWins: 18,
+      percentile: 4,
+      archetype: "Iron Pillar",
+      totalPositions: 22,
+      avgHoldingPeriod: 38,
+      winRate: 82,
+    },
+  },
+  {
+    id: "deployer-base",
+    name: "Deployer",
+    chain: "base",
+    address: "0xc4Fdf12dC03424bEb5c117B4B19726401a9dD1AB",
+    description:
+      "The 'Infrastructure Builder'. Focuses on protocol tokens and infrastructure plays with long-term conviction.",
+    ethosScore: {
+      score: 1350,
+      percentile: 90,
+      level: "Guardian",
+      updatedAt: new Date().toISOString(),
+    },
+    ethosProfile: {
+      id: "profile_deployer",
+      name: "deployer.base.eth",
+      username: "basedeployer",
+      credibilityScore: 1350,
+    },
+    convictionMetrics: {
+      score: 86.2,
+      patienceTax: 5200,
+      upsideCapture: 78,
+      earlyExits: 4,
+      convictionWins: 9,
+      percentile: 12,
+      archetype: "Diamond Hand",
+      totalPositions: 16,
+      avgHoldingPeriod: 89,
+      winRate: 69,
     },
   },
 ];

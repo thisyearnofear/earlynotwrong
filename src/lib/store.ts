@@ -1,13 +1,20 @@
 import { create } from "zustand";
-import { EthosScore, EthosProfile } from "./ethos";
+import { EthosScore, EthosProfile, ConvictionAttestation } from "./ethos";
+import { ConvictionMetrics } from "./market";
 
-interface ConvictionMetrics {
-  score: number;
-  patienceTax: number;
-  upsideCapture: number;
-  earlyExits: number;
-  convictionWins: number;
-  percentile: number;
+interface AnalysisParams {
+  timeHorizon: 30 | 90 | 180 | 365;
+  minTradeValue: number;
+  includeSmallCaps: boolean;
+}
+
+interface AttestationState {
+  canAttest: boolean;
+  isAttesting: boolean;
+  attestationId?: string;
+  attestationError?: string;
+  userConsent: boolean;
+  showAttestationDialog: boolean;
 }
 
 interface AppState {
@@ -31,6 +38,16 @@ interface AppState {
   // Conviction Data
   convictionMetrics: ConvictionMetrics | null;
   setConvictionMetrics: (metrics: ConvictionMetrics) => void;
+
+  // Attestation State
+  attestationState: AttestationState;
+  setAttestationState: (state: Partial<AttestationState>) => void;
+  setUserConsent: (consent: boolean) => void;
+  showAttestationDialog: (show: boolean) => void;
+
+  // Analysis Control
+  parameters: AnalysisParams;
+  setParameters: (params: Partial<AnalysisParams>) => void;
 
   // UI State
   isShowcaseMode: boolean;
@@ -65,6 +82,37 @@ export const useAppStore = create<AppState>((set) => ({
   convictionMetrics: null,
   setConvictionMetrics: (metrics) => set({ convictionMetrics: metrics }),
 
+  // Attestation State
+  attestationState: {
+    canAttest: false,
+    isAttesting: false,
+    userConsent: false,
+    showAttestationDialog: false,
+  },
+  setAttestationState: (state) =>
+    set((current) => ({
+      attestationState: { ...current.attestationState, ...state },
+    })),
+  setUserConsent: (consent) =>
+    set((state) => ({
+      attestationState: { ...state.attestationState, userConsent: consent },
+    })),
+  showAttestationDialog: (show) =>
+    set((state) => ({
+      attestationState: { ...state.attestationState, showAttestationDialog: show },
+    })),
+
+  // Analysis Control
+  parameters: {
+    timeHorizon: 180,
+    minTradeValue: 100,
+    includeSmallCaps: true,
+  },
+  setParameters: (params) =>
+    set((state) => ({
+      parameters: { ...state.parameters, ...params },
+    })),
+
   // UI State
   isShowcaseMode: false,
   toggleShowcaseMode: (enabled) =>
@@ -81,6 +129,17 @@ export const useAppStore = create<AppState>((set) => ({
       ethosScore: null,
       ethosProfile: null,
       convictionMetrics: null,
+      attestationState: {
+        canAttest: false,
+        isAttesting: false,
+        userConsent: false,
+        showAttestationDialog: false,
+      },
+      parameters: {
+        timeHorizon: 180,
+        minTradeValue: 100,
+        includeSmallCaps: true,
+      },
       isShowcaseMode: false,
     }),
 }));

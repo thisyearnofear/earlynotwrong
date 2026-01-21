@@ -22,13 +22,32 @@ import {
   ShieldCheck,
   Clock,
   AlertTriangle,
+  Settings,
+  Share2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ConvictionBadge } from "@/components/ui/conviction-badge";
+import { AttestationDialog } from "@/components/ui/attestation-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export default function Home() {
   const { analyzeWallet, isAnalyzing, isConnected, isShowcaseMode } =
     useConviction();
-  const { ethosScore, convictionMetrics, logs } = useAppStore();
+  const {
+    ethosScore,
+    convictionMetrics,
+    logs,
+    parameters,
+    setParameters,
+    showAttestationDialog,
+  } = useAppStore();
 
   const hasScanned = !isAnalyzing && logs.length > 0;
 
@@ -92,39 +111,100 @@ export default function Home() {
                 exit={{ opacity: 0, height: 0 }}
                 className="flex flex-col items-center gap-8 pt-4 w-full"
               >
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  <Button
-                    size="lg"
-                    className="h-12 px-8 text-base rounded-full"
-                    onClick={() => analyzeWallet()}
-                  >
-                    {isConnected ? "Start Deep Scan" : "Connect to Scan"}
-                    <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="lg"
-                    className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-foreground"
-                  >
-                    Read the Thesis
-                  </Button>
-                </div>
+                <div className="flex flex-col items-center gap-8 pt-4">
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-12 w-12 rounded-full border-border/50 hover:border-signal/50"
+                        >
+                          <Settings className="w-5 h-5" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Analysis Parameters</DialogTitle>
+                          <DialogDescription>
+                            Fine-tune the behavioral heuristics for your conviction audit.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-6 py-4">
+                          <div className="space-y-3">
+                            <label className="text-xs font-mono uppercase text-foreground-muted flex justify-between">
+                              Time Horizon <span>{parameters.timeHorizon} Days</span>
+                            </label>
+                            <input
+                              type="range"
+                              min="30"
+                              max="365"
+                              step="30"
+                              value={parameters.timeHorizon}
+                              onChange={(e) =>
+                                setParameters({
+                                  timeHorizon: parseInt(e.target.value) as any,
+                                })
+                              }
+                              className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
+                            />
+                          </div>
+                          <div className="space-y-3">
+                            <label className="text-xs font-mono uppercase text-foreground-muted flex justify-between">
+                              Min. Trade Value <span>${parameters.minTradeValue}</span>
+                            </label>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1000"
+                              step="50"
+                              value={parameters.minTradeValue}
+                              onChange={(e) =>
+                                setParameters({
+                                  minTradeValue: parseInt(e.target.value),
+                                })
+                              }
+                              className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
+                            />
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
 
-                <div className="flex flex-col items-center gap-4">
-                  <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
-                    Or analyze a public profile
-                  </p>
-                  <div className="flex flex-wrap justify-center gap-3">
-                    {SHOWCASE_WALLETS.map((wallet) => (
-                      <Button
-                        key={wallet.id}
-                        variant="outline"
-                        className="border-border/50 hover:border-signal/50 hover:bg-surface-hover font-mono text-xs"
-                        onClick={() => analyzeWallet(wallet.id)}
-                      >
-                        {wallet.name}
-                      </Button>
-                    ))}
+                    <Button
+                      size="lg"
+                      className="h-12 px-8 text-base rounded-full"
+                      onClick={() => analyzeWallet()}
+                      disabled={isAnalyzing}
+                    >
+                      {isConnected ? "Start Deep Scan" : "Connect to Scan"}
+                      <ArrowRight className="ml-2 w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="lg"
+                      className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-foreground"
+                    >
+                      Read the Thesis
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-4">
+                    <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
+                      Or analyze a public profile
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-3">
+                      {SHOWCASE_WALLETS.map((wallet) => (
+                        <Button
+                          key={wallet.id}
+                          variant="outline"
+                          className="border-border/50 hover:border-signal/50 hover:bg-surface-hover font-mono text-xs"
+                          onClick={() => analyzeWallet(wallet.id)}
+                        >
+                          {wallet.name}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -187,26 +267,49 @@ export default function Home() {
                     {/* Conditional Content based on Data Availability */}
                     {convictionMetrics ? (
                       <>
-                        <CardHeader>
-                          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                            Conviction Index
-                          </CardTitle>
-                          <CardDescription>
-                            Aggregate behavioral score based on historical
-                            trades.
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="flex flex-col md:flex-row items-end justify-between gap-8">
-                          <div className="space-y-2">
-                            <div className="text-7xl md:text-9xl font-bold text-foreground tracking-tighter text-glow">
-                              {convictionMetrics.score}
+                        <CardHeader className="pb-2">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                                Conviction Index
+                              </CardTitle>
+                              <CardDescription>
+                                Behavioral score based on last {parameters.timeHorizon}d.
+                              </CardDescription>
                             </div>
-                            <div className="flex items-center gap-2 text-patience font-mono text-sm">
-                              <TrendingUp className="w-4 h-4" />
-                              Top {convictionMetrics.percentile}% of Traders
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="font-mono text-[10px] text-signal hover:bg-signal/10 h-7"
+                              onClick={() => showAttestationDialog(true)}
+                            >
+                              <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                              SHARE RECEIPT
+                            </Button>
                           </div>
-                          <div className="space-y-4 w-full md:w-auto min-w-60">
+                        </CardHeader>
+                        <CardContent className="flex flex-col xl:flex-row items-center xl:items-end justify-between gap-8 pt-4">
+                          <div className="flex flex-col md:flex-row items-center md:items-end gap-6 md:gap-10">
+                            <div className="space-y-2">
+                              <div className="text-7xl md:text-8xl lg:text-9xl font-bold text-foreground tracking-tighter text-glow">
+                                {convictionMetrics.score}
+                              </div>
+                              <div className="flex items-center gap-2 text-patience font-mono text-sm">
+                                <TrendingUp className="w-4 h-4" />
+                                Top {convictionMetrics.percentile}% of Traders
+                              </div>
+                            </div>
+
+                            {convictionMetrics.archetype && (
+                              <div className="pb-2 scale-90 md:scale-100 origin-bottom-left">
+                                <ConvictionBadge
+                                  archetype={convictionMetrics.archetype}
+                                  showDescription
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-4 w-full xl:w-auto min-w-60">
                             {/* Metrics Bars */}
                             <div className="space-y-1">
                               <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
@@ -388,6 +491,9 @@ export default function Home() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Attestation Dialog */}
+      <AttestationDialog />
     </div>
   );
 }
