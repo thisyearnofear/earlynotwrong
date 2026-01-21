@@ -118,7 +118,9 @@ export function useConviction() {
           }
 
           // Always try to resolve Farcaster identity (works for both chains)
-          farcasterPromise = ethosClient.resolveFarcasterIdentity(activeAddress);
+          // If showcase wallet has a manual FID mapping, use it
+          const fid = targetShowcase?.farcasterFid;
+          farcasterPromise = ethosClient.resolveFarcasterIdentity(activeAddress, fid);
 
           let [score, profile, farcasterIdentity] = await Promise.all([
             retryWithBackoff(() => scorePromise, {

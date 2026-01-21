@@ -174,15 +174,18 @@ export class EthosClient {
   }
 
   /**
-   * Resolve Farcaster identity for a wallet address
+   * Resolve Farcaster identity for a wallet address or FID
    */
-  async resolveFarcasterIdentity(address: string): Promise<FarcasterIdentity | null> {
+  async resolveFarcasterIdentity(
+    address: string,
+    fid?: number
+  ): Promise<FarcasterIdentity | null> {
     try {
-      // Use Neynar API to resolve address to Farcaster profile
+      // Use Neynar API to resolve address/FID to Farcaster profile
       const response = await fetch('/api/farcaster/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address })
+        body: JSON.stringify({ address, fid })
       });
 
       if (!response.ok) {

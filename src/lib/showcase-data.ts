@@ -7,6 +7,7 @@ export interface ShowcaseWallet {
   ethosProfile?: {
     username?: string;
   };
+  farcasterFid?: number; // Manual FID mapping when showcase wallet != verified wallet
 }
 
 export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
@@ -17,6 +18,7 @@ export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
     address: "0xFB70BDE99b4933A576Ea4e38645Ee1E88B1D6b19", // jesse.base.eth
     description:
       "The 'Ecosystem Aligner'. Jesse's primary Base address. Real-time audit of protocol alignment and holding behavior.",
+    farcasterFid: 99, // Jesse Pollak's Farcaster profile
   },
   {
     id: "toly-solana",
