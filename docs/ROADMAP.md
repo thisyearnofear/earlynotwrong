@@ -64,9 +64,9 @@ Core loop works: connect → analyze → see conviction score. Showcase wallets 
 - [x] Compare current vs. historical archetype
 
 ### 1.4 Enhanced Error States
-- [ ] Graceful degradation when APIs fail
-- [ ] Informative error messages with recovery actions
-- [ ] Offline/cached mode for previously analyzed wallets
+- [x] Graceful degradation when APIs fail
+- [x] Informative error messages with recovery actions
+- [x] Offline/cached mode for previously analyzed wallets
 
 ---
 
@@ -198,3 +198,12 @@ Core loop works: connect → analyze → see conviction score. Showcase wallets 
   - Integrated score change detection with trend indicators (up/down/stable)
   - Wired up automatic history saving after each analysis (showcase & real users)
   - Full archetype evolution tracking over time
+- **Phase 1.4 COMPLETED**: Enhanced Error States
+  - Built comprehensive error handling system with error classification
+  - Implemented retry logic with exponential backoff for API calls
+  - Created analysis cache system for offline/cached mode (24h TTL, 20 max entries)
+  - Added ErrorPanel component with user-friendly error messages and recovery actions
+  - Integrated error state management into Zustand store
+  - Created ErrorBoundary component for React error catching
+  - Added loadCachedAnalysis function for instant cached results
+  - Terminal displays contextual error messages with recovery tips

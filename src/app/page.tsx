@@ -337,8 +337,41 @@ export default function Home() {
               </motion.div>
             )}
 
+            {/* STATE: ERROR */}
+            {!isAnalyzing && errorState.hasError && (
+              <motion.div
+                key="error"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="w-full max-w-3xl mx-auto"
+              >
+                <ErrorPanel
+                  errorType={errorState.errorType!}
+                  errorMessage={errorState.errorMessage!}
+                  errorDetails={errorState.errorDetails}
+                  canRetry={errorState.canRetry}
+                  canUseCached={errorState.canUseCached}
+                  recoveryAction={errorState.recoveryAction}
+                  onRetry={() => {
+                    clearError();
+                    if (activeAddress) {
+                      analyzeWallet(isShowcaseMode ? SHOWCASE_WALLETS[0]?.id : undefined);
+                    }
+                  }}
+                  onUseCached={() => {
+                    if (activeAddress && analysisChain) {
+                      clearError();
+                      loadCachedAnalysis(activeAddress, analysisChain);
+                    }
+                  }}
+                  onDismiss={clearError}
+                />
+              </motion.div>
+            )}
+
             {/* STATE: RESULTS (DASHBOARD) */}
-            {!isAnalyzing && hasScanned && (
+            {!isAnalyzing && hasScanned && !errorState.hasError && (
               <motion.div
                 key="dashboard"
                 initial="hidden"
