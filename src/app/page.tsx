@@ -42,11 +42,13 @@ export default function Home() {
     useConviction();
   const {
     ethosScore,
+    ethosProfile,
     convictionMetrics,
     logs,
     parameters,
     setParameters,
     showAttestationDialog,
+    reset,
   } = useAppStore();
 
   const hasScanned = !isAnalyzing && logs.length > 0;
@@ -143,7 +145,7 @@ export default function Home() {
                               value={parameters.timeHorizon}
                               onChange={(e) =>
                                 setParameters({
-                                  timeHorizon: parseInt(e.target.value) as any,
+                                  timeHorizon: parseInt(e.target.value) as 30 | 90 | 180 | 365,
                                 })
                               }
                               className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
@@ -180,13 +182,108 @@ export default function Home() {
                       {isConnected ? "Start Deep Scan" : "Connect to Scan"}
                       <ArrowRight className="ml-2 w-4 h-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="lg"
-                      className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-foreground"
-                    >
-                      Read the Thesis
-                    </Button>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="lg"
+                          className="h-12 px-8 text-base rounded-full text-foreground-muted hover:text-foreground"
+                        >
+                          Read the Thesis
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto font-mono">
+                        <DialogHeader>
+                          <DialogTitle className="font-mono text-xs text-foreground-muted tracking-widest uppercase">
+                            {">"} THESIS.md
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-6 text-sm leading-relaxed">
+                          <div className="border-t border-border pt-4">
+                            <p className="text-xs text-signal tracking-widest uppercase mb-2">
+                              [PREMISE]
+                            </p>
+                            <p className="text-foreground text-lg font-medium">
+                              Being early feels like being wrong.
+                              <br />
+                              <span className="text-foreground-muted">
+                                Until it doesn&apos;t.
+                              </span>
+                            </p>
+                          </div>
+
+                          <div className="border-t border-border pt-4">
+                            <p className="text-xs text-signal tracking-widest uppercase mb-2">
+                              [ASYMMETRY]
+                            </p>
+                            <p className="text-foreground-muted">
+                              Losses capped at −1x. Wins uncapped.
+                            </p>
+                            <p className="text-foreground mt-2">
+                              The most expensive mistake isn&apos;t being
+                              wrong—it&apos;s selling winners too early.
+                            </p>
+                          </div>
+
+                          <div className="border-t border-border pt-4">
+                            <p className="text-xs text-signal tracking-widest uppercase mb-2">
+                              [THE PROBLEM]
+                            </p>
+                            <ul className="space-y-1 text-foreground-muted">
+                              <li>
+                                • Exit profitable positions prematurely due to
+                                volatility
+                              </li>
+                              <li>
+                                • Hold losers longer than winners, despite
+                                asymmetric payoffs
+                              </li>
+                              <li>
+                                • Misinterpret &quot;early&quot; as
+                                &quot;wrong&quot; due to short-term drawdowns
+                              </li>
+                              <li>
+                                • Lack objective evidence of how patience
+                                affects P&L
+                              </li>
+                            </ul>
+                          </div>
+
+                          <div className="border-t border-border pt-4">
+                            <p className="text-xs text-signal tracking-widest uppercase mb-2">
+                              [CONVICTION INDEX]
+                            </p>
+                            <p className="text-foreground">
+                              Not performance. Behavior under uncertainty.
+                            </p>
+                            <p className="text-foreground-muted mt-2">
+                              A wallet-level score measuring how consistently a
+                              trader allows upside to compound, caps downside
+                              efficiently, and holds through drawdowns when
+                              asymmetry remains.
+                            </p>
+                          </div>
+
+                          <div className="border-t border-border pt-4">
+                            <p className="text-xs text-signal tracking-widest uppercase mb-2">
+                              [META-SIGNAL]
+                            </p>
+                            <p className="text-foreground-muted">
+                              Not trade copying. Not alerts.
+                            </p>
+                            <p className="text-foreground mt-2">
+                              Meta-signal about the trader, not the trade.
+                            </p>
+                          </div>
+
+                          <div className="border-t border-border pt-4 pb-2">
+                            <p className="text-xs text-foreground-dim tracking-widest uppercase">
+                              [EOF]
+                            </p>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
 
                   <div className="flex flex-col items-center gap-4">
@@ -366,9 +463,7 @@ export default function Home() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            // Reset state to allow trying again
-                          }}
+                          onClick={() => reset()}
                           className="mt-4"
                         >
                           Try Another Wallet
@@ -429,7 +524,16 @@ export default function Home() {
                       <Button
                         variant="outline"
                         className="w-full mt-4 border-border hover:bg-surface text-xs font-mono"
-                        disabled={!ethosScore}
+                        disabled={!ethosProfile?.username}
+                        onClick={() => {
+                          if (ethosProfile?.username) {
+                            window.open(
+                              `https://ethos.network/profile/${ethosProfile.username}`,
+                              "_blank",
+                              "noopener,noreferrer"
+                            );
+                          }
+                        }}
                       >
                         VIEW ETHOS PROFILE
                       </Button>
