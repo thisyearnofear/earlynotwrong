@@ -6,6 +6,7 @@
 import { ethosClient, ConvictionAttestation, AttestationResponse } from './ethos';
 import { ConvictionMetrics } from './market';
 import { WalletClient } from 'viem';
+import { prepareEthosReview, writeEthosReview, shouldPromptForReview, getEthosReviewURL } from './ethos-reviews';
 
 export interface AttestationRequest {
     walletAddress: string;
@@ -14,6 +15,7 @@ export interface AttestationRequest {
     timeHorizon: number;
     userConsent: boolean;
     walletClient?: WalletClient;
+    writeEthosReview?: boolean; // Optional: write review to Ethos alongside attestation
 }
 
 export interface AttestationStatus {
@@ -103,12 +105,37 @@ export class AttestationService {
                 console.log('Initiating Real On-Chain Attestation on Base...');
                 const txHash = await ethosClient.submitOnChainAttestation(attestation, request.walletClient);
                 
-                return {
+                const response: AttestationResponse = {
                     id: txHash, // Use tx hash as ID
                     hash: txHash,
                     status: 'pending', // It's submitted to the mempool
                     message: 'On-chain attestation submitted successfully',
                 };
+
+                // Optional: Write Ethos review alongside attestation
+                if (request.writeEthosReview && shouldPromptForReview(request.convictionMetrics.score)) {
+                    try {
+                        const ethosReview = prepareEthosReview(request.walletAddress, request.convictionMetrics);
+                        const reviewResponse = await writeEthosReview(ethosReview);
+                        
+                        if (reviewResponse.success) {
+                            response.reviewId = reviewResponse.reviewId;
+                            response.reviewUrl = reviewResponse.reviewUrl;
+                            console.log('Ethos review written successfully:', reviewResponse.reviewId);
+                        } else {
+                            // Review writing failed, but attestation succeeded
+                            // Provide fallback URL for manual review
+                            console.warn('Ethos review writing failed:', reviewResponse.error);
+                            response.reviewUrl = getEthosReviewURL(request.walletAddress, request.convictionMetrics);
+                        }
+                    } catch (reviewError) {
+                        console.error('Ethos review integration error:', reviewError);
+                        // Don't fail the entire attestation if review fails
+                        response.reviewUrl = getEthosReviewURL(request.walletAddress, request.convictionMetrics);
+                    }
+                }
+                
+                return response;
             }
 
             // FALLBACK / SOLANA SIMULATION

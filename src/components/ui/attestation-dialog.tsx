@@ -39,6 +39,7 @@ export function AttestationDialog() {
     const [eligibilityStatus, setEligibilityStatus] = React.useState<any>(null);
     const [isCheckingEligibility, setIsCheckingEligibility] = React.useState(false);
     const [shareReceipt, setShareReceipt] = React.useState<any>(null);
+    const [writeReview, setWriteReview] = React.useState(false);
 
     // Check eligibility when dialog opens
     React.useEffect(() => {
@@ -80,6 +81,7 @@ export function AttestationDialog() {
                 timeHorizon: parameters.timeHorizon,
                 userConsent: attestationState.userConsent,
                 walletClient: walletClient ?? undefined,
+                writeEthosReview: writeReview,
             });
 
             setAttestationState({
@@ -90,12 +92,18 @@ export function AttestationDialog() {
             // Use the new Toast system
             useAppStore.getState().showToast("Attestation submitted to Base", "success");
 
-            // Generate share receipt
+            // Generate share receipt with review URL if available
             const receipt = attestationService.generateConvictionReceipt(
                 activeAddress,
                 convictionMetrics,
                 response.id
             );
+            
+            // Add review URL to receipt if present
+            if (response.reviewUrl) {
+                (receipt as any).reviewUrl = response.reviewUrl;
+            }
+            
             setShareReceipt(receipt);
 
         } catch (error) {
@@ -231,6 +239,26 @@ export function AttestationDialog() {
                                         BaseScan
                                     </Button>
                                 </div>
+                                
+                                {/* Show Ethos review link if available */}
+                                {shareReceipt?.reviewUrl && (
+                                    <div className="mt-3 p-3 rounded-lg bg-ethos/5 border border-ethos/20">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Shield className="w-4 h-4 text-ethos" />
+                                                <span className="text-sm text-foreground">Ethos Review</span>
+                                            </div>
+                                            <Button
+                                                variant="link"
+                                                size="sm"
+                                                className="text-xs text-ethos"
+                                                onClick={() => window.open(shareReceipt.reviewUrl, '_blank')}
+                                            >
+                                                View on Ethos →
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -281,6 +309,27 @@ export function AttestationDialog() {
                                                 </p>
                                             </div>
                                         </label>
+                                        
+                                        {/* Ethos Review Option */}
+                                        {convictionMetrics && convictionMetrics.score >= 50 && (
+                                            <label className="flex items-start gap-3 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={writeReview}
+                                                    onChange={(e) => setWriteReview(e.target.checked)}
+                                                    className="mt-1 accent-ethos"
+                                                    disabled={!attestationState.userConsent}
+                                                />
+                                                <div className="text-sm">
+                                                    <p className="text-foreground group-hover:text-ethos transition-colors">
+                                                        Also publish my conviction as an Ethos review (optional)
+                                                    </p>
+                                                    <p className="text-foreground-muted mt-1 text-xs">
+                                                        Makes your {convictionMetrics.score}/100 conviction score visible on Ethos Network for broader reputation building.
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        )}
                                     </div>
 
                                     {/* Action Buttons */}

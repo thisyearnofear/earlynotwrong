@@ -86,11 +86,13 @@ export interface ConvictionAttestation {
 }
 
 export interface AttestationResponse {
-  id: string;
-  hash?: string;
+  id: string; // EAS attestation UID or tx hash
+  hash?: string; // Transaction hash
   status: 'pending' | 'confirmed' | 'failed';
   message?: string;
   signature?: string;
+  reviewId?: string; // Optional Ethos review ID
+  reviewUrl?: string; // Optional Ethos review link
 }
 
 export class EthosClient {
@@ -505,47 +507,76 @@ export class EthosClient {
   }
 
   /**
-   * Write conviction analysis as an attestation to Ethos Network
+   * Write conviction analysis as an attestation
+   * Note: This method is called after on-chain attestation via submitOnChainAttestation
+   * It serves as a bridge for any additional off-chain metadata storage if needed
    */
   async writeConvictionAttestation(
     attestation: ConvictionAttestation,
     signature: string
   ): Promise<AttestationResponse> {
     try {
-      // TODO: Replace with actual Ethos write endpoint or contract call
-      // For now, we simulate a successful write with the real signature we just generated
-
-      console.log('Submitting Attestation to Ethos:', {
+      console.log('Processing conviction attestation:', {
         attestation,
-        signature,
-        domain: ETHOS_DOMAIN
+        signature: signature.substring(0, 20) + '...',
+        chain: attestation.chain
       });
 
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // The actual on-chain write happens via submitOnChainAttestation
+      // This method can be used for additional processing or metadata storage
+      // For now, we return a success response that will be populated with 
+      // the actual transaction data by the attestation-service
 
       return {
-        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-        hash: '0x' + Math.random().toString(36).substring(2, 66), // Simulated tx hash
+        id: signature, // Will be replaced with actual attestation UID
         status: 'pending',
-        message: 'Attestation submitted successfully (Simulated)',
+        message: 'Conviction attestation data prepared',
         signature
       };
     } catch (error) {
-      console.error('Conviction attestation failed:', error);
-      throw new Error(`Failed to write conviction attestation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Conviction attestation processing failed:', error);
+      throw new Error(`Failed to process conviction attestation: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Get existing conviction attestations for an address
-   * Note: This is a placeholder - would need proper attestation schema
+   * Get existing conviction attestations for an address from EAS
    */
   async getConvictionAttestations(address: string): Promise<ConvictionAttestation[]> {
     try {
-      // Placeholder implementation
-      console.warn('Attestation reading not yet implemented - returning empty array');
-      return [];
+      // Import dynamically to avoid circular dependencies
+      const { getConvictionAttestationsByRecipient, decodeConvictionData } = await import('./eas-graphql');
+      
+      // Fetch attestations from EAS GraphQL
+      const easAttestations = await getConvictionAttestationsByRecipient(address);
+      
+      if (easAttestations.length === 0) {
+        return [];
+      }
+
+      // Decode and map to ConvictionAttestation format
+      const convictionAttestations: ConvictionAttestation[] = [];
+      
+      for (const easAtt of easAttestations) {
+        const decodedData = decodeConvictionData(easAtt.data);
+        
+        if (decodedData) {
+          convictionAttestations.push({
+            subject: easAtt.recipient,
+            convictionScore: Number(decodedData.score),
+            patienceTax: Number(decodedData.patienceTax) / 100, // Convert back from integer representation
+            upsideCapture: 0, // Not stored in simplified on-chain schema
+            archetype: decodedData.archetype,
+            totalPositions: 0, // Not stored in simplified on-chain schema
+            winRate: 0, // Not stored in simplified on-chain schema
+            analysisDate: new Date(easAtt.time * 1000).toISOString(),
+            timeHorizon: 365, // Default assumption
+            chain: 'base',
+          });
+        }
+      }
+
+      return convictionAttestations;
     } catch (error) {
       console.warn('Failed to fetch conviction attestations:', error);
       return [];
