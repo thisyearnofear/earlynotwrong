@@ -572,29 +572,39 @@ export default function Home() {
                         <ShieldCheck className="w-5 h-5 text-ethos" />
                       </div>
 
-                      {/* Farcaster Identity Display */}
+                      {/* Farcaster Identity Display - Hero */}
                       {farcasterIdentity && (
-                        <div className="flex items-center gap-3 mb-3 p-2 rounded-lg bg-surface/30 border border-border/30">
+                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20">
                           {farcasterIdentity.pfpUrl && (
                             <img
                               src={farcasterIdentity.pfpUrl}
                               alt={farcasterIdentity.username}
-                              className="w-8 h-8 rounded-full"
+                              className="w-12 h-12 rounded-full ring-2 ring-signal/30"
                             />
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-foreground truncate">
+                            <div className="text-base font-semibold text-foreground truncate">
                               {farcasterIdentity.displayName || farcasterIdentity.username}
                             </div>
-                            <div className="text-xs text-foreground-muted">
+                            <div className="text-sm text-foreground-muted">
                               @{farcasterIdentity.username}
                             </div>
+                            {farcasterIdentity.bio && (
+                              <div className="text-xs text-foreground-muted mt-1 line-clamp-2">
+                                {farcasterIdentity.bio}
+                              </div>
+                            )}
+                            {farcasterIdentity.followerCount && (
+                              <div className="text-xs text-signal mt-1 font-mono">
+                                {farcasterIdentity.followerCount.toLocaleString()} followers
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
 
                       <div className="text-3xl font-bold text-foreground">
-                        {ethosScore ? "Verified" : "Unknown"}
+                        {ethosScore ? "Verified" : farcasterIdentity ? "Farcaster Verified" : "Unknown"}
                       </div>
                       <CardDescription className="text-xs">
                         {ethosScore
@@ -676,95 +686,14 @@ export default function Home() {
                   </motion.div>
                 )}
 
-                {/* Historical Tracking Panel */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4"
-                >
-                  <Card className="glass-panel border-border/50 bg-surface/40">
-                    <CardHeader>
-                      <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        Historical Tracking
-                      </CardTitle>
-                      <CardDescription>
-                        Your conviction score evolution over time
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <HistoryPanel
-                        currentAddress={isShowcaseMode ? SHOWCASE_WALLETS[0]?.address : activeAddress}
-                      />
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Reputation Perks Panel */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-8"
-                >
-                  <ReputationPerks />
-                </motion.div>
-
-                {/* Alpha Discovery Panel */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-8"
-                >
-                  <AlphaDiscovery />
-                </motion.div>
-
-                {/* Token Conviction Heatmap */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4"
-                >
-                  <TokenHeatmap />
-                </motion.div>
-
-                {/* Real-Time Alerts Panel */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-6"
-                >
-                  <ConvictionAlerts />
-                </motion.div>
-
-                {/* Cohort Analysis Panel */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-6"
-                >
-                  <CohortAnalysis />
-                </motion.div>
-
-                {/* Position Explorer */}
+                {/* Position Explorer - HERO SECTION */}
                 {positionAnalyses.length > 0 && analysisChain && (
                   <motion.div
                     variants={{
                       hidden: { opacity: 0, y: 20 },
                       visible: { opacity: 1, y: 0 },
                     }}
-                    className="col-span-1 md:col-span-6 lg:col-span-8"
+                    className="col-span-1 md:col-span-6 lg:col-span-12"
                   >
                     <Card className="glass-panel border-border/50 bg-surface/40">
                       <CardHeader>
@@ -785,6 +714,95 @@ export default function Home() {
                     </Card>
                   </motion.div>
                 )}
+
+                {/* Historical Tracking Panel - Hide for showcase mode */}
+                {!isShowcaseMode && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-4"
+                  >
+                    <Card className="glass-panel border-border/50 bg-surface/40">
+                      <CardHeader>
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          Historical Tracking
+                        </CardTitle>
+                        <CardDescription>
+                          Your conviction score evolution over time
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <HistoryPanel
+                          currentAddress={activeAddress}
+                        />
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+
+                {/* Reputation Perks Panel - Always show for progression visibility */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-12"
+                >
+                  <ReputationPerks />
+                </motion.div>
+
+                {/* Advanced Features - Hide in showcase mode to focus on actual data */}
+                {!isShowcaseMode && (
+                  <>
+                    {/* Alpha Discovery Panel */}
+                    <motion.div
+                      variants={{
+                        hidden: { opacity: 0, y: 20 },
+                        visible: { opacity: 1, y: 0 },
+                      }}
+                      className="col-span-1 md:col-span-6 lg:col-span-8"
+                    >
+                      <AlphaDiscovery />
+                    </motion.div>
+
+                    {/* Token Conviction Heatmap */}
+                    <motion.div
+                      variants={{
+                        hidden: { opacity: 0, y: 20 },
+                        visible: { opacity: 1, y: 0 },
+                      }}
+                      className="col-span-1 md:col-span-6 lg:col-span-4"
+                    >
+                      <TokenHeatmap />
+                    </motion.div>
+
+                    {/* Real-Time Alerts Panel */}
+                    <motion.div
+                      variants={{
+                        hidden: { opacity: 0, y: 20 },
+                        visible: { opacity: 1, y: 0 },
+                      }}
+                      className="col-span-1 md:col-span-6 lg:col-span-6"
+                    >
+                      <ConvictionAlerts />
+                    </motion.div>
+
+                    {/* Cohort Analysis Panel */}
+                    <motion.div
+                      variants={{
+                        hidden: { opacity: 0, y: 20 },
+                        visible: { opacity: 1, y: 0 },
+                      }}
+                      className="col-span-1 md:col-span-6 lg:col-span-6"
+                    >
+                      <CohortAnalysis />
+                    </motion.div>
+                  </>
+                )}
+
               </motion.div>
             )}
           </AnimatePresence>
