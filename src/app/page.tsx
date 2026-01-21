@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { useConviction } from "@/hooks/use-conviction";
@@ -28,6 +29,9 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
 import { AttestationDialog } from "@/components/ui/attestation-dialog";
+import { PositionExplorer } from "@/components/ui/position-explorer";
+import { ShareDialog } from "@/components/ui/share-dialog";
+import { HistoryPanel } from "@/components/ui/history-panel";
 import {
   Dialog,
   DialogContent,
@@ -38,12 +42,14 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Home() {
-  const { analyzeWallet, isAnalyzing, isConnected, isShowcaseMode } =
+  const { analyzeWallet, isAnalyzing, isConnected, isShowcaseMode, activeAddress } =
     useConviction();
   const {
     ethosScore,
     ethosProfile,
     convictionMetrics,
+    positionAnalyses,
+    analysisChain,
     logs,
     parameters,
     setParameters,
@@ -51,6 +57,7 @@ export default function Home() {
     reset,
   } = useAppStore();
 
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
 
   const formatCurrency = (val: number) =>
@@ -378,10 +385,10 @@ export default function Home() {
                               variant="ghost"
                               size="sm"
                               className="font-mono text-[10px] text-signal hover:bg-signal/10 h-7"
-                              onClick={() => showAttestationDialog(true)}
+                              onClick={() => setShareDialogOpen(true)}
                             >
                               <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                              SHARE RECEIPT
+                              SHARE
                             </Button>
                           </div>
                         </CardHeader>
@@ -590,6 +597,61 @@ export default function Home() {
                     </Card>
                   </motion.div>
                 )}
+
+                {/* Historical Tracking Panel */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4"
+                >
+                  <Card className="glass-panel border-border/50 bg-surface/40">
+                    <CardHeader>
+                      <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Historical Tracking
+                      </CardTitle>
+                      <CardDescription>
+                        Your conviction score evolution over time
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <HistoryPanel 
+                        currentAddress={isShowcaseMode ? SHOWCASE_WALLETS[0]?.address : activeAddress}
+                      />
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Position Explorer */}
+                {positionAnalyses.length > 0 && analysisChain && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-8"
+                  >
+                    <Card className="glass-panel border-border/50 bg-surface/40">
+                      <CardHeader>
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+                          <Activity className="w-4 h-4" />
+                          Position Breakdown
+                        </CardTitle>
+                        <CardDescription>
+                          Drill into individual trades to see entry/exit timing and counterfactual analysis.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <PositionExplorer
+                          positions={positionAnalyses}
+                          chain={analysisChain}
+                        />
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -598,6 +660,16 @@ export default function Home() {
 
       {/* Attestation Dialog */}
       <AttestationDialog />
+
+      {/* Share Dialog */}
+      {convictionMetrics && analysisChain && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          metrics={convictionMetrics}
+          chain={analysisChain}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { EthosScore, EthosProfile, ConvictionAttestation } from "./ethos";
 import { ConvictionMetrics } from "./market";
+import { PositionAnalysis } from "./api-client";
 
 interface AnalysisParams {
   timeHorizon: 30 | 90 | 180 | 365;
@@ -38,6 +39,11 @@ interface AppState {
   // Conviction Data
   convictionMetrics: ConvictionMetrics | null;
   setConvictionMetrics: (metrics: ConvictionMetrics) => void;
+  
+  // Position Analysis Data
+  positionAnalyses: PositionAnalysis[];
+  analysisChain: "solana" | "base" | null;
+  setPositionAnalyses: (positions: PositionAnalysis[], chain: "solana" | "base") => void;
 
   // Attestation State
   attestationState: AttestationState;
@@ -81,6 +87,11 @@ export const useAppStore = create<AppState>((set) => ({
   // Conviction Data
   convictionMetrics: null,
   setConvictionMetrics: (metrics) => set({ convictionMetrics: metrics }),
+  
+  // Position Analysis Data
+  positionAnalyses: [],
+  analysisChain: null,
+  setPositionAnalyses: (positions, chain) => set({ positionAnalyses: positions, analysisChain: chain }),
 
   // Attestation State
   attestationState: {
@@ -129,6 +140,8 @@ export const useAppStore = create<AppState>((set) => ({
       ethosScore: null,
       ethosProfile: null,
       convictionMetrics: null,
+      positionAnalyses: [],
+      analysisChain: null,
       attestationState: {
         canAttest: false,
         isAttesting: false,

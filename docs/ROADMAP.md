@@ -58,10 +58,10 @@ Core loop works: connect → analyze → see conviction score. Showcase wallets 
 - [ ] Rate limiting and request queuing
 
 ### 1.3 Historical Conviction Tracking
-- [ ] Store attestations locally (or via Ethos)
-- [ ] Show CI evolution over time (sparkline/chart)
-- [ ] "Your conviction is improving/declining" insights
-- [ ] Compare current vs. historical archetype
+- [x] Store attestations locally (or via Ethos)
+- [x] Show CI evolution over time (sparkline/chart)
+- [x] "Your conviction is improving/declining" insights
+- [x] Compare current vs. historical archetype
 
 ### 1.4 Enhanced Error States
 - [ ] Graceful degradation when APIs fail
@@ -191,3 +191,10 @@ Core loop works: connect → analyze → see conviction score. Showcase wallets 
 - Initial roadmap created
 - Fixed dead buttons (Thesis modal, Try Another Wallet, View Ethos Profile)
 - Thesis modal implemented with terminal-style design
+- **Phase 1.3 COMPLETED**: Historical Conviction Tracking
+  - Implemented local storage persistence for all conviction analyses
+  - Added HistoryPanel component showing recent analyses and score trends
+  - Created ScoreEvolutionChart with interactive sparkline visualization using recharts
+  - Integrated score change detection with trend indicators (up/down/stable)
+  - Wired up automatic history saving after each analysis (showcase & real users)
+  - Full archetype evolution tracking over time

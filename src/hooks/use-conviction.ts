@@ -3,9 +3,9 @@ import { useAccount } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useAppStore } from "@/lib/store";
 import { ethosClient } from "@/lib/ethos";
-import { marketClient } from "@/lib/market";
-import { transactionClient } from "@/lib/transaction-client";
+import { apiClient } from "@/lib/api-client";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
+import { saveConvictionAnalysis } from "@/lib/history";
 
 export function useConviction() {
   const { address: evmAddress, isConnected: isEvmConnected } = useAccount();
@@ -19,6 +19,7 @@ export function useConviction() {
     finishAnalysis,
     setEthosData,
     setConvictionMetrics,
+    setPositionAnalyses,
     isAnalyzing,
     addLog,
     reset,
@@ -135,30 +136,31 @@ export function useConviction() {
           addLog(`> ANALYSIS COMPLETE.`);
 
           setConvictionMetrics(targetShowcase.convictionMetrics);
+          
+          // Save to history
+          saveConvictionAnalysis(
+            activeAddress,
+            chain,
+            targetShowcase.convictionMetrics,
+            parameters.timeHorizon,
+            true // isShowcase
+          );
         } else {
-          // Real User Mode: Fetch and analyze actual transactions
+          // Real User Mode: Fetch and analyze actual transactions via server API
           await new Promise((resolve) => setTimeout(resolve, 600));
           addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
-          let transactions;
           try {
-            if (chain === 'solana') {
-              transactions = await transactionClient.fetchSolanaTransactions(
-                activeAddress,
-                parameters.timeHorizon,
-                parameters.minTradeValue
-              );
-            } else {
-              transactions = await transactionClient.fetchBaseTransactions(
-                activeAddress,
-                parameters.timeHorizon,
-                parameters.minTradeValue
-              );
-            }
+            const txResult = await apiClient.fetchTransactions(
+              activeAddress,
+              chain,
+              parameters.timeHorizon,
+              parameters.minTradeValue
+            );
 
-            addLog(`> FOUND ${transactions.length} QUALIFYING TRANSACTIONS`);
+            addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
 
-            if (transactions.length === 0) {
+            if (txResult.count === 0) {
               addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
               addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
               addLog(`> OR TRY A SHOWCASE PROFILE TO SEE FULL ANALYSIS`);
@@ -170,43 +172,36 @@ export function useConviction() {
             setAnalysisStep("Grouping positions...");
             addLog(`> GROUPING TRANSACTIONS INTO POSITIONS...`);
 
-            const positions = transactionClient.groupTransactionsIntoPositions(transactions);
+            const positions = apiClient.groupTransactionsIntoPositions(txResult.transactions);
             addLog(`> IDENTIFIED ${positions.length} TRADING POSITIONS`);
 
             await new Promise((resolve) => setTimeout(resolve, 600));
             setAnalysisStep("Analyzing conviction...");
             addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
+            addLog(`> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`);
 
-            // Analyze a sample of positions for post-exit performance
-            let analyzedCount = 0;
-            const maxAnalyze = Math.min(5, positions.length); // Limit for performance
+            const batchResult = await apiClient.batchAnalyzePositions(positions, chain);
 
-            for (const position of positions.slice(0, maxAnalyze)) {
-              if (position.exits.length > 0) {
-                const lastExit = position.exits[position.exits.length - 1];
-                await marketClient.analyzePostExitPerformance(
-                  position.tokenAddress,
-                  chain,
-                  lastExit.priceUsd,
-                  lastExit.timestamp,
-                  lastExit.valueUsd
-                );
-                analyzedCount++;
-                addLog(`> ANALYZED ${analyzedCount}/${maxAnalyze} POSITIONS...`);
-                await new Promise((resolve) => setTimeout(resolve, 300));
-              }
-            }
-
+            await new Promise((resolve) => setTimeout(resolve, 400));
             setAnalysisStep("Calculating metrics...");
             addLog(`> CALCULATING CONVICTION SCORE...`);
-            await new Promise((resolve) => setTimeout(resolve, 800));
+            await new Promise((resolve) => setTimeout(resolve, 600));
 
-            const convictionMetrics = await marketClient.calculateConvictionMetrics(positions, chain);
-            addLog(`> CONVICTION_SCORE: ${convictionMetrics.score}`);
-            addLog(`> PATIENCE_TAX: $${convictionMetrics.patienceTax}`);
+            addLog(`> CONVICTION_SCORE: ${batchResult.metrics.score}`);
+            addLog(`> PATIENCE_TAX: $${batchResult.metrics.patienceTax}`);
             addLog(`> ANALYSIS COMPLETE.`);
 
-            setConvictionMetrics(convictionMetrics);
+            setConvictionMetrics(batchResult.metrics);
+            setPositionAnalyses(batchResult.positions, chain);
+            
+            // Save to history
+            saveConvictionAnalysis(
+              activeAddress,
+              chain,
+              batchResult.metrics,
+              parameters.timeHorizon,
+              false // isShowcase
+            );
 
           } catch (error) {
             console.error("Transaction analysis failed:", error);
