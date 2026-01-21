@@ -290,30 +290,28 @@ export function AttestationDialog() {
                                             disabled={!attestationState.userConsent || attestationState.isAttesting}
                                             className="w-full relative overflow-hidden group h-12"
                                         >
-                                            <div className="absolute inset-0 bg-gradient-to-r from-signal/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
                                             {attestationState.isAttesting ? (
                                                 <>
                                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                    ANCHORING ON BASE...
+                                                    SUBMITTING TO BASE EAS...
                                                 </>
                                             ) : (
                                                 <>
                                                     <Shield className="w-4 h-4 mr-2" />
-                                                    ATTEST ON BASE
+                                                    WRITE ON-CHAIN ATTESTATION
                                                 </>
                                             )}
                                         </Button>
                                         
-                                        <div className="flex items-center justify-center gap-2 grayscale opacity-50">
-                                            <span className="text-[10px] font-mono uppercase tracking-widest text-foreground-muted">
-                                                Powered by
+                                        <div className="flex items-center justify-center gap-2 opacity-40">
+                                            <span className="text-[9px] font-mono uppercase tracking-widest text-foreground-muted">
+                                                Deployment:
                                             </span>
-                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-bold text-foreground">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                                BASE
+                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-mono text-foreground">
+                                                BASE_MAINNET
                                             </div>
-                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-bold text-ethos">
-                                                ETHOS
+                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-mono text-foreground">
+                                                EAS_PROTOCOL
                                             </div>
                                         </div>
                                     </div>
