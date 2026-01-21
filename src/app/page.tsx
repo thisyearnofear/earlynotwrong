@@ -659,17 +659,34 @@ export default function Home() {
                       <Button
                         variant="outline"
                         className="w-full mt-4 border-border hover:bg-surface text-xs font-mono"
-                        disabled={!ethosProfile?.username && !farcasterIdentity?.username}
-                        onClick={() => {
+                        disabled={!ethosProfile?.username && !farcasterIdentity?.username && !activeAddress}
+                        onClick={async () => {
                           // Try to open Ethos profile - multiple fallback strategies
                           if (ethosProfile) {
                             const profileUrl = ethosClient.getProfileUrl(ethosProfile);
                             window.open(profileUrl, "_blank", "noopener,noreferrer");
-                          } else if (farcasterIdentity?.username) {
-                            // Fallback: Try to find profile via X.com username
+                            return;
+                          }
+                          
+                          // Try Web3.bio universal resolver as fallback
+                          if (activeAddress) {
+                            try {
+                              const { findEthosProfileViaWeb3Bio } = await import('@/lib/web3bio');
+                              const ethosUrl = await findEthosProfileViaWeb3Bio(activeAddress);
+                              
+                              if (ethosUrl) {
+                                window.open(ethosUrl, "_blank", "noopener,noreferrer");
+                                return;
+                              }
+                            } catch (error) {
+                              console.warn('Web3.bio lookup failed:', error);
+                            }
+                          }
+                          
+                          // Manual fallbacks
+                          if (farcasterIdentity?.username) {
                             window.open(`https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`, "_blank", "noopener,noreferrer");
                           } else if (activeAddress) {
-                            // Last resort: Try address lookup
                             window.open(`https://app.ethos.network/profile/${activeAddress}`, "_blank", "noopener,noreferrer");
                           }
                         }}
