@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { serverCache, CacheKeys, CacheTTL } from "@/lib/server-cache";
 
 interface PriceRequest {
   tokenAddress: string;
@@ -88,111 +89,123 @@ async function getTokenMetadata(
   tokenAddress: string,
   chain: "solana" | "base"
 ): Promise<TokenMetadata | null> {
-  try {
-    if (chain === "solana" && BIRDEYE_API_KEY) {
-      const response = await fetch(
-        `${BIRDEYE_URL}/defi/token_overview?address=${tokenAddress}`,
-        {
-          headers: { "X-API-KEY": BIRDEYE_API_KEY },
-          next: { revalidate: 3600 },
+  const cacheKey = CacheKeys.tokenMetadata(tokenAddress, chain);
+
+  return serverCache.get(
+    cacheKey,
+    async () => {
+      try {
+        if (chain === "solana" && BIRDEYE_API_KEY) {
+          const response = await fetch(
+            `${BIRDEYE_URL}/defi/token_overview?address=${tokenAddress}`,
+            {
+              headers: { "X-API-KEY": BIRDEYE_API_KEY },
+            }
+          );
+
+          if (!response.ok) throw new Error("Birdeye metadata fetch failed");
+
+          const data = await response.json();
+          if (!data.success || !data.data) return null;
+
+          const token = data.data;
+          return {
+            address: tokenAddress,
+            symbol: token.symbol || "UNKNOWN",
+            name: token.name || "Unknown Token",
+            decimals: token.decimals || 9,
+            logoUri: token.logoURI,
+          };
+        } else {
+          const response = await fetch(
+            `${DEXSCREENER_URL}/tokens/${tokenAddress}`
+          );
+
+          if (!response.ok) throw new Error("DexScreener metadata fetch failed");
+
+          const data = await response.json();
+          const pair = data.pairs?.[0];
+
+          if (!pair) return null;
+
+          return {
+            address: tokenAddress,
+            symbol: pair.baseToken?.symbol || "UNKNOWN",
+            name: pair.baseToken?.name || "Unknown Token",
+            decimals: 18,
+            logoUri: pair.info?.imageUrl,
+          };
         }
-      );
-
-      if (!response.ok) throw new Error("Birdeye metadata fetch failed");
-
-      const data = await response.json();
-      if (!data.success || !data.data) return null;
-
-      const token = data.data;
-      return {
-        address: tokenAddress,
-        symbol: token.symbol || "UNKNOWN",
-        name: token.name || "Unknown Token",
-        decimals: token.decimals || 9,
-        logoUri: token.logoURI,
-      };
-    } else {
-      const response = await fetch(
-        `${DEXSCREENER_URL}/tokens/${tokenAddress}`,
-        { next: { revalidate: 3600 } }
-      );
-
-      if (!response.ok) throw new Error("DexScreener metadata fetch failed");
-
-      const data = await response.json();
-      const pair = data.pairs?.[0];
-
-      if (!pair) return null;
-
-      return {
-        address: tokenAddress,
-        symbol: pair.baseToken?.symbol || "UNKNOWN",
-        name: pair.baseToken?.name || "Unknown Token",
-        decimals: 18,
-        logoUri: pair.info?.imageUrl,
-      };
-    }
-  } catch (error) {
-    console.warn(`Token metadata fetch failed for ${tokenAddress}:`, error);
-    return null;
-  }
+      } catch (error) {
+        console.warn(`Token metadata fetch failed for ${tokenAddress}:`, error);
+        return null;
+      }
+    },
+    CacheTTL.METADATA
+  );
 }
 
 async function getPriceAnalysis(
   tokenAddress: string,
   chain: "solana" | "base"
 ): Promise<PriceAnalysis | null> {
-  try {
-    if (chain === "solana" && BIRDEYE_API_KEY) {
-      const response = await fetch(
-        `${BIRDEYE_URL}/defi/price?list_address=${tokenAddress}`,
-        {
-          headers: { "X-API-KEY": BIRDEYE_API_KEY },
-          next: { revalidate: 300 },
+  const cacheKey = CacheKeys.tokenPrice(tokenAddress, chain);
+
+  return serverCache.get(
+    cacheKey,
+    async () => {
+      try {
+        if (chain === "solana" && BIRDEYE_API_KEY) {
+          const response = await fetch(
+            `${BIRDEYE_URL}/defi/price?list_address=${tokenAddress}`,
+            {
+              headers: { "X-API-KEY": BIRDEYE_API_KEY },
+            }
+          );
+
+          if (!response.ok) throw new Error("Birdeye price fetch failed");
+
+          const data = await response.json();
+          if (!data.success || !data.data) return null;
+
+          const priceData = data.data;
+          return {
+            currentPrice: priceData.value || 0,
+            priceChange24h: priceData.priceChange24hPercent || 0,
+            priceChange7d: priceData.priceChange7dPercent || 0,
+            allTimeHigh: priceData.ath || 0,
+            volume24h: priceData.volume24h,
+            lastUpdated: Date.now(),
+          };
+        } else {
+          const response = await fetch(
+            `${DEXSCREENER_URL}/tokens/${tokenAddress}`
+          );
+
+          if (!response.ok) throw new Error("DexScreener price fetch failed");
+
+          const data = await response.json();
+          const pair = data.pairs?.[0];
+
+          if (!pair) return null;
+
+          return {
+            currentPrice: parseFloat(pair.priceUsd || "0"),
+            priceChange24h: parseFloat(pair.priceChange?.h24 || "0"),
+            priceChange7d: parseFloat(pair.priceChange?.h6 || "0") * 4,
+            allTimeHigh: parseFloat(pair.priceUsd || "0"),
+            volume24h: parseFloat(pair.volume?.h24 || "0"),
+            marketCap: parseFloat(pair.marketCap || "0"),
+            lastUpdated: Date.now(),
+          };
         }
-      );
-
-      if (!response.ok) throw new Error("Birdeye price fetch failed");
-
-      const data = await response.json();
-      if (!data.success || !data.data) return null;
-
-      const priceData = data.data;
-      return {
-        currentPrice: priceData.value || 0,
-        priceChange24h: priceData.priceChange24hPercent || 0,
-        priceChange7d: priceData.priceChange7dPercent || 0,
-        allTimeHigh: priceData.ath || 0,
-        volume24h: priceData.volume24h,
-        lastUpdated: Date.now(),
-      };
-    } else {
-      const response = await fetch(
-        `${DEXSCREENER_URL}/tokens/${tokenAddress}`,
-        { next: { revalidate: 300 } }
-      );
-
-      if (!response.ok) throw new Error("DexScreener price fetch failed");
-
-      const data = await response.json();
-      const pair = data.pairs?.[0];
-
-      if (!pair) return null;
-
-      return {
-        currentPrice: parseFloat(pair.priceUsd || "0"),
-        priceChange24h: parseFloat(pair.priceChange?.h24 || "0"),
-        priceChange7d: parseFloat(pair.priceChange?.h6 || "0") * 4,
-        allTimeHigh: parseFloat(pair.priceUsd || "0"),
-        volume24h: parseFloat(pair.volume?.h24 || "0"),
-        marketCap: parseFloat(pair.marketCap || "0"),
-        lastUpdated: Date.now(),
-      };
-    }
-  } catch (error) {
-    console.warn(`Price analysis failed for ${tokenAddress}:`, error);
-    return null;
-  }
+      } catch (error) {
+        console.warn(`Price analysis failed for ${tokenAddress}:`, error);
+        return null;
+      }
+    },
+    CacheTTL.PRICE_CURRENT
+  );
 }
 
 async function getHistoricalPrices(

@@ -1,5 +1,5 @@
 const ETHOS_API_URL = "https://api.ethos.network/api/v2";
-const ETHOS_CLIENT_ID = "early-not-wrong";
+const ETHOS_CLIENT_ID = "early-not-wrong@1.0.0";
 
 export interface EthosScore {
   score: number;
@@ -85,6 +85,28 @@ export class EthosClient {
       };
     } catch (error) {
       console.warn('Ethos score fetch failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get credibility score by User Key (e.g., service:x.com:username:toly)
+   */
+  async getScoreByUserKey(userKey: string): Promise<EthosScore | null> {
+    try {
+      const searchParams = new URLSearchParams({ userkey: userKey });
+      const response = await this.fetch<{ score: number; percentile?: number; level?: string }>(
+        `/score/userkey?${searchParams.toString()}`
+      );
+
+      return {
+        score: response.score,
+        percentile: response.percentile,
+        level: response.level,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.warn('Ethos score fetch by userkey failed:', error);
       return null;
     }
   }

@@ -77,6 +77,8 @@ interface ConvictionMetrics {
   winRate: number;
 }
 
+import { serverCache, CacheKeys, CacheTTL } from "@/lib/server-cache";
+
 const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
 const BIRDEYE_URL = "https://public-api.birdeye.so";
 const DEXSCREENER_URL = "https://api.dexscreener.com/latest/dex";
@@ -93,8 +95,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Extract unique token addresses for batch fetching
+    const uniqueTokens = Array.from(
+      new Set(positions.map((p) => p.tokenAddress))
+    );
+
+    // Batch fetch metadata and prices for all unique tokens
+    const [metadataMap, priceMap] = await Promise.all([
+      batchGetTokenMetadata(uniqueTokens, chain),
+      batchGetPriceData(uniqueTokens, chain),
+    ]);
+
+    // Analyze positions with pre-fetched data
     const positionAnalyses = await Promise.all(
-      positions.map((position) => analyzePosition(position, chain))
+      positions.map((position) =>
+        analyzePosition(position, chain, metadataMap, priceMap)
+      )
     );
 
     const convictionMetrics = calculateConvictionMetrics(
@@ -118,15 +134,18 @@ export async function POST(request: NextRequest) {
 
 async function analyzePosition(
   position: Position,
-  chain: "solana" | "base"
+  chain: "solana" | "base",
+  metadataMap: Map<string, { name: string; symbol: string; logoUri?: string } | null>,
+  priceMap: Map<string, { currentPrice: number; priceChange24h: number } | null>
 ): Promise<PositionAnalysis> {
-  const [metadata, priceData, patienceTaxData] = await Promise.all([
-    getTokenMetadata(position.tokenAddress, chain),
-    getPriceData(position.tokenAddress, chain),
-    position.exits.length > 0
-      ? calculatePatienceTax(position, chain)
-      : Promise.resolve(null),
-  ]);
+  // Use pre-fetched data from maps
+  const metadata = metadataMap.get(position.tokenAddress) ?? null;
+  const priceData = priceMap.get(position.tokenAddress) ?? null;
+  
+  // Only fetch patience tax (not batchable due to unique timestamps per position)
+  const patienceTaxData = position.exits.length > 0
+    ? await calculatePatienceTax(position, chain)
+    : null;
 
   const entryDetails = {
     avgPrice:
@@ -202,100 +221,148 @@ async function analyzePosition(
   };
 }
 
+/**
+ * Batch fetch metadata for multiple tokens (with caching and deduplication)
+ */
+async function batchGetTokenMetadata(
+  tokenAddresses: string[],
+  chain: "solana" | "base"
+): Promise<Map<string, { name: string; symbol: string; logoUri?: string } | null>> {
+  const results = await Promise.all(
+    tokenAddresses.map((address) => getTokenMetadata(address, chain))
+  );
+
+  const map = new Map<string, { name: string; symbol: string; logoUri?: string } | null>();
+  tokenAddresses.forEach((address, index) => {
+    map.set(address, results[index]);
+  });
+
+  return map;
+}
+
+/**
+ * Batch fetch price data for multiple tokens (with caching and deduplication)
+ */
+async function batchGetPriceData(
+  tokenAddresses: string[],
+  chain: "solana" | "base"
+): Promise<Map<string, { currentPrice: number; priceChange24h: number } | null>> {
+  const results = await Promise.all(
+    tokenAddresses.map((address) => getPriceData(address, chain))
+  );
+
+  const map = new Map<string, { currentPrice: number; priceChange24h: number } | null>();
+  tokenAddresses.forEach((address, index) => {
+    map.set(address, results[index]);
+  });
+
+  return map;
+}
+
 async function getTokenMetadata(
   tokenAddress: string,
   chain: "solana" | "base"
 ): Promise<{ name: string; symbol: string; logoUri?: string } | null> {
-  try {
-    if (chain === "solana" && BIRDEYE_API_KEY) {
-      const response = await fetch(
-        `${BIRDEYE_URL}/defi/token_overview?address=${tokenAddress}`,
-        {
-          headers: { "X-API-KEY": BIRDEYE_API_KEY },
-          next: { revalidate: 3600 },
+  const cacheKey = CacheKeys.tokenMetadata(tokenAddress, chain);
+
+  return serverCache.get(
+    cacheKey,
+    async () => {
+      try {
+        if (chain === "solana" && BIRDEYE_API_KEY) {
+          const response = await fetch(
+            `${BIRDEYE_URL}/defi/token_overview?address=${tokenAddress}`,
+            {
+              headers: { "X-API-KEY": BIRDEYE_API_KEY },
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              return {
+                name: data.data.name || "Unknown",
+                symbol: data.data.symbol || "???",
+                logoUri: data.data.logoURI,
+              };
+            }
+          }
         }
-      );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          return {
-            name: data.data.name || "Unknown",
-            symbol: data.data.symbol || "???",
-            logoUri: data.data.logoURI,
-          };
+        const response = await fetch(`${DEXSCREENER_URL}/tokens/${tokenAddress}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          const pair = data.pairs?.[0];
+          if (pair) {
+            return {
+              name: pair.baseToken?.name || "Unknown",
+              symbol: pair.baseToken?.symbol || "???",
+              logoUri: pair.info?.imageUrl,
+            };
+          }
         }
+
+        return null;
+      } catch (error) {
+        console.warn(`Metadata fetch failed for ${tokenAddress}:`, error);
+        return null;
       }
-    }
-
-    const response = await fetch(`${DEXSCREENER_URL}/tokens/${tokenAddress}`, {
-      next: { revalidate: 3600 },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const pair = data.pairs?.[0];
-      if (pair) {
-        return {
-          name: pair.baseToken?.name || "Unknown",
-          symbol: pair.baseToken?.symbol || "???",
-          logoUri: pair.info?.imageUrl,
-        };
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.warn(`Metadata fetch failed for ${tokenAddress}:`, error);
-    return null;
-  }
+    },
+    CacheTTL.METADATA
+  );
 }
 
 async function getPriceData(
   tokenAddress: string,
   chain: "solana" | "base"
 ): Promise<{ currentPrice: number; priceChange24h: number } | null> {
-  try {
-    if (chain === "solana" && BIRDEYE_API_KEY) {
-      const response = await fetch(
-        `${BIRDEYE_URL}/defi/price?list_address=${tokenAddress}`,
-        {
-          headers: { "X-API-KEY": BIRDEYE_API_KEY },
-          next: { revalidate: 300 },
+  const cacheKey = CacheKeys.tokenPrice(tokenAddress, chain);
+
+  return serverCache.get(
+    cacheKey,
+    async () => {
+      try {
+        if (chain === "solana" && BIRDEYE_API_KEY) {
+          const response = await fetch(
+            `${BIRDEYE_URL}/defi/price?list_address=${tokenAddress}`,
+            {
+              headers: { "X-API-KEY": BIRDEYE_API_KEY },
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              return {
+                currentPrice: data.data.value || 0,
+                priceChange24h: data.data.priceChange24hPercent || 0,
+              };
+            }
+          }
         }
-      );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          return {
-            currentPrice: data.data.value || 0,
-            priceChange24h: data.data.priceChange24hPercent || 0,
-          };
+        const response = await fetch(`${DEXSCREENER_URL}/tokens/${tokenAddress}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          const pair = data.pairs?.[0];
+          if (pair) {
+            return {
+              currentPrice: parseFloat(pair.priceUsd || "0"),
+              priceChange24h: parseFloat(pair.priceChange?.h24 || "0"),
+            };
+          }
         }
+
+        return null;
+      } catch (error) {
+        console.warn(`Price fetch failed for ${tokenAddress}:`, error);
+        return null;
       }
-    }
-
-    const response = await fetch(`${DEXSCREENER_URL}/tokens/${tokenAddress}`, {
-      next: { revalidate: 300 },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const pair = data.pairs?.[0];
-      if (pair) {
-        return {
-          currentPrice: parseFloat(pair.priceUsd || "0"),
-          priceChange24h: parseFloat(pair.priceChange?.h24 || "0"),
-        };
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.warn(`Price fetch failed for ${tokenAddress}:`, error);
-    return null;
-  }
+    },
+    CacheTTL.PRICE_CURRENT
+  );
 }
 
 async function calculatePatienceTax(
@@ -319,23 +386,36 @@ async function calculatePatienceTax(
     let priceHistory: Array<{ timestamp: number; price: number }> = [];
 
     if (chain === "solana" && BIRDEYE_API_KEY) {
-      const response = await fetch(
-        `${BIRDEYE_URL}/defi/history_price?address=${position.tokenAddress}&address_type=token&type=1H&time_from=${Math.floor(exitTimestamp / 1000)}&time_to=${Math.floor(endTimestamp / 1000)}`,
-        {
-          headers: { "X-API-KEY": BIRDEYE_API_KEY },
-          next: { revalidate: 3600 },
-        }
+      const cacheKey = CacheKeys.priceHistory(
+        position.tokenAddress,
+        chain,
+        exitTimestamp,
+        endTimestamp
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data?.items) {
-          priceHistory = data.data.items.map((item: any) => ({
-            timestamp: item.unixTime * 1000,
-            price: item.value || 0,
-          }));
-        }
-      }
+      priceHistory = await serverCache.get(
+        cacheKey,
+        async () => {
+          const response = await fetch(
+            `${BIRDEYE_URL}/defi/history_price?address=${position.tokenAddress}&address_type=token&type=1H&time_from=${Math.floor(exitTimestamp / 1000)}&time_to=${Math.floor(endTimestamp / 1000)}`,
+            {
+              headers: { "X-API-KEY": BIRDEYE_API_KEY },
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data?.items) {
+              return data.data.items.map((item: any) => ({
+                timestamp: item.unixTime * 1000,
+                price: item.value || 0,
+              }));
+            }
+          }
+          return [];
+        },
+        CacheTTL.PRICE_HISTORY
+      );
     }
 
     if (priceHistory.length === 0) {

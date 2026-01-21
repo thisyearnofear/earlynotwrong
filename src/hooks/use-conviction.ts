@@ -96,42 +96,67 @@ export function useConviction() {
         addLog(`> CONNECTING TO ETHOS REPUTATION ORACLE...`);
 
         try {
-          if (targetShowcase) {
-            // In showcase mode, we simulate the fetch delay but return real static data
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            setEthosData(
-              targetShowcase.ethosScore,
-              targetShowcase.ethosProfile,
-            );
-            addLog(`> ETHOS_SCORE_FOUND: ${targetShowcase.ethosScore.score}`);
-          } else {
-            // Real Data Fetch with retry
-            const [score, profile] = await Promise.all([
-              retryWithBackoff(() => ethosClient.getScoreByAddress(activeAddress), {
-                maxRetries: 2,
-              }).catch((e) => {
-                console.warn("Ethos Score Fetch Error:", e);
-                return null;
-              }),
-              retryWithBackoff(() => ethosClient.getProfileByAddress(activeAddress), {
-                maxRetries: 2,
-              }).catch((e) => {
-                console.warn("Ethos Profile Fetch Error:", e);
-                return null;
-              }),
-            ]);
+          // Attempt to fetch real Ethos data
+          let scorePromise;
+          let profilePromise;
 
-            setEthosData(score, profile);
-            if (score?.score) {
-              addLog(`> ETHOS_SCORE_FOUND: ${score.score}`);
-            } else {
-              addLog(`> ETHOS_SCORE: UNKNOWN`);
+          // Special handling for Solana (Ethos is EVM-native, so we resolve via X.com handle if available)
+          if (chain === 'solana' && targetShowcase?.ethosProfile?.username) {
+            const userKey = `service:x.com:username:${targetShowcase.ethosProfile.username}`;
+            addLog(`> RESOLVING ETHOS ID VIA X.COM: @${targetShowcase.ethosProfile.username}`);
+            scorePromise = ethosClient.getScoreByUserKey(userKey);
+            // Profile lookup by address won't work for Solana, and we don't have profile-by-userkey yet
+            // So we'll rely on the fallback for the profile part
+            profilePromise = Promise.resolve(null);
+          } else {
+            // Standard EVM address lookup
+            scorePromise = ethosClient.getScoreByAddress(activeAddress);
+            profilePromise = ethosClient.getProfileByAddress(activeAddress);
+          }
+
+          let [score, profile] = await Promise.all([
+            retryWithBackoff(() => scorePromise, {
+              maxRetries: 2,
+            }).catch((e) => {
+              console.warn("Ethos Score Fetch Error:", e);
+              return null;
+            }),
+            retryWithBackoff(() => profilePromise, {
+              maxRetries: 2,
+            }).catch((e) => {
+              console.warn("Ethos Profile Fetch Error:", e);
+              return null;
+            }),
+          ]);
+
+          // Fallback to hardcoded data for Showcase wallets if API fails (or returns nothing)
+          if (targetShowcase) {
+            if (!score && targetShowcase.ethosScore) {
+              score = targetShowcase.ethosScore;
+              addLog(`> USING ARCHIVED ETHOS SCORE (LIVE FETCH FAILED)`);
             }
+            if (!profile && targetShowcase.ethosProfile) {
+              profile = targetShowcase.ethosProfile;
+              // Ensure we use the profile with the correct username/links
+            }
+          }
+
+          setEthosData(score, profile);
+          if (score?.score) {
+            addLog(`> ETHOS_SCORE_FOUND: ${score.score}`);
+          } else {
+            addLog(`> ETHOS_SCORE: UNKNOWN`);
           }
         } catch (error) {
           console.error("Ethos fetch failed", error);
-          addLog(`> ETHOS_CONNECTION_ERROR`);
-          setEthosData(null, null);
+          // If critical failure, try fallback one last time
+          if (targetShowcase) {
+            setEthosData(targetShowcase.ethosScore, targetShowcase.ethosProfile);
+            addLog(`> USING ARCHIVED ETHOS DATA (CONNECTION ERROR)`);
+          } else {
+            addLog(`> ETHOS_CONNECTION_ERROR`);
+            setEthosData(null, null);
+          }
         }
 
         await new Promise((resolve) => setTimeout(resolve, 800));
@@ -140,137 +165,130 @@ export function useConviction() {
         setAnalysisStep("Scanning tx history...");
         addLog(`> INITIATING DEEP SCAN (${parameters.timeHorizon} DAYS)...`);
 
-        if (targetShowcase) {
-          // Showcase Mode: Use pre-calculated data
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          addLog(`> INDEXING 142 TRANSACTIONS...`);
+        // Real User Mode & Showcase Mode: Fetch and analyze actual transactions via server API
+        // This ensures Showcase wallets prove the platform actually works!
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
+
+        try {
+          const txResult = await retryWithBackoff(
+            () => apiClient.fetchTransactions(
+              activeAddress,
+              chain,
+              parameters.timeHorizon,
+              parameters.minTradeValue
+            ),
+            { maxRetries: 2, initialDelay: 2000 }
+          );
+
+          addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
+
+          if (txResult.count === 0) {
+            // Special handling for Showcase: If live data finds nothing (unlikely for whales),
+            // fallback to hardcoded metrics so the demo isn't empty.
+            if (targetShowcase) {
+              addLog(`> WARNING: LIVE DATA INCOMPLETE, LOADING SNAPSHOT...`);
+              setConvictionMetrics(targetShowcase.convictionMetrics);
+              // We don't have hardcoded positions, so the list will be empty, 
+              // but the score will be visible.
+              finishAnalysis();
+              return;
+            }
+
+            addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
+            addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
+            addLog(`> OR TRY A SHOWCASE PROFILE TO SEE FULL ANALYSIS`);
+            
+            setError({
+              errorType: "data",
+              errorMessage: "No qualifying transactions found",
+              errorDetails: "This wallet has no transaction history matching your criteria.",
+              canRetry: false,
+              canUseCached: hasCachedAnalysis(activeAddress, chain),
+              recoveryAction: "Try adjusting the time horizon or minimum trade value, or check your history panel for previous analyses.",
+            });
+            
+            finishAnalysis();
+            return;
+          }
 
           await new Promise((resolve) => setTimeout(resolve, 800));
-          setAnalysisStep("Analyzing exits...");
-          addLog(`> DETECTING PREMATURE EXITS...`);
-          addLog(`> CALC_PATIENCE_TAX...`);
+          setAnalysisStep("Grouping positions...");
+          addLog(`> GROUPING TRANSACTIONS INTO POSITIONS...`);
 
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          setAnalysisStep("Calculating score...");
-          addLog(`> GENERATING CONVICTION METRICS...`);
+          const positions = apiClient.groupTransactionsIntoPositions(txResult.transactions);
+          addLog(`> IDENTIFIED ${positions.length} TRADING POSITIONS`);
+
           await new Promise((resolve) => setTimeout(resolve, 600));
+          setAnalysisStep("Analyzing conviction...");
+          addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
+          addLog(`> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`);
+
+          const batchResult = await retryWithBackoff(
+            () => apiClient.batchAnalyzePositions(positions, chain),
+            { maxRetries: 2, initialDelay: 2000 }
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          setAnalysisStep("Calculating metrics...");
+          addLog(`> CALCULATING CONVICTION SCORE...`);
+          await new Promise((resolve) => setTimeout(resolve, 600));
+
+          addLog(`> CONVICTION_SCORE: ${batchResult.metrics.score}`);
+          addLog(`> PATIENCE_TAX: $${batchResult.metrics.patienceTax}`);
           addLog(`> ANALYSIS COMPLETE.`);
 
-          setConvictionMetrics(targetShowcase.convictionMetrics);
+          setConvictionMetrics(batchResult.metrics);
+          setPositionAnalyses(batchResult.positions, chain);
+          
+          // Get Ethos data for caching
+          const currentEthosScore = useAppStore.getState().ethosScore;
+          const currentEthosProfile = useAppStore.getState().ethosProfile;
+          
+          // Cache complete analysis
+          cacheAnalysis(
+            activeAddress,
+            chain,
+            batchResult.metrics,
+            batchResult.positions,
+            currentEthosScore,
+            currentEthosProfile,
+            parameters
+          );
           
           // Save to history
           saveConvictionAnalysis(
             activeAddress,
             chain,
-            targetShowcase.convictionMetrics,
+            batchResult.metrics,
             parameters.timeHorizon,
-            true // isShowcase
+            !!targetShowcase
           );
-        } else {
-          // Real User Mode: Fetch and analyze actual transactions via server API
-          await new Promise((resolve) => setTimeout(resolve, 600));
-          addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
-          try {
-            const txResult = await retryWithBackoff(
-              () => apiClient.fetchTransactions(
-                activeAddress,
-                chain,
-                parameters.timeHorizon,
-                parameters.minTradeValue
-              ),
-              { maxRetries: 2, initialDelay: 2000 }
-            );
-
-            addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
-
-            if (txResult.count === 0) {
-              addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
-              addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
-              addLog(`> OR TRY A SHOWCASE PROFILE TO SEE FULL ANALYSIS`);
-              
-              setError({
-                errorType: "data",
-                errorMessage: "No qualifying transactions found",
-                errorDetails: "This wallet has no transaction history matching your criteria.",
-                canRetry: false,
-                canUseCached: hasCachedAnalysis(activeAddress, chain),
-                recoveryAction: "Try adjusting the time horizon or minimum trade value, or check your history panel for previous analyses.",
-              });
-              
-              finishAnalysis();
-              return;
-            }
-
-            await new Promise((resolve) => setTimeout(resolve, 800));
-            setAnalysisStep("Grouping positions...");
-            addLog(`> GROUPING TRANSACTIONS INTO POSITIONS...`);
-
-            const positions = apiClient.groupTransactionsIntoPositions(txResult.transactions);
-            addLog(`> IDENTIFIED ${positions.length} TRADING POSITIONS`);
-
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            setAnalysisStep("Analyzing conviction...");
-            addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
-            addLog(`> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`);
-
-            const batchResult = await retryWithBackoff(
-              () => apiClient.batchAnalyzePositions(positions, chain),
-              { maxRetries: 2, initialDelay: 2000 }
-            );
-
-            await new Promise((resolve) => setTimeout(resolve, 400));
-            setAnalysisStep("Calculating metrics...");
-            addLog(`> CALCULATING CONVICTION SCORE...`);
-            await new Promise((resolve) => setTimeout(resolve, 600));
-
-            addLog(`> CONVICTION_SCORE: ${batchResult.metrics.score}`);
-            addLog(`> PATIENCE_TAX: $${batchResult.metrics.patienceTax}`);
-            addLog(`> ANALYSIS COMPLETE.`);
-
-            setConvictionMetrics(batchResult.metrics);
-            setPositionAnalyses(batchResult.positions, chain);
-            
-            // Get Ethos data for caching
-            const currentEthosScore = useAppStore.getState().ethosScore;
-            const currentEthosProfile = useAppStore.getState().ethosProfile;
-            
-            // Cache complete analysis
-            cacheAnalysis(
-              activeAddress,
-              chain,
-              batchResult.metrics,
-              batchResult.positions,
-              currentEthosScore,
-              currentEthosProfile,
-              parameters
-            );
-            
-            // Save to history
-            saveConvictionAnalysis(
-              activeAddress,
-              chain,
-              batchResult.metrics,
-              parameters.timeHorizon,
-              false // isShowcase
-            );
-
-          } catch (error) {
-            console.error("Transaction analysis failed:", error);
-            const classified = classifyError(error);
-            const errorLines = formatErrorForTerminal(classified);
-            
-            errorLines.forEach(line => addLog(line));
-            
-            setError({
-              errorType: classified.type,
-              errorMessage: classified.message,
-              errorDetails: classified.details,
-              canRetry: classified.canRetry,
-              canUseCached: hasCachedAnalysis(activeAddress, chain),
-              recoveryAction: classified.recoveryAction,
-            });
+        } catch (error) {
+          console.error("Transaction analysis failed:", error);
+          
+          // Fallback for Showcase if analysis fails
+          if (targetShowcase) {
+            addLog(`> LIVE ANALYSIS FAILED, LOADING SNAPSHOT...`);
+            setConvictionMetrics(targetShowcase.convictionMetrics);
+            finishAnalysis();
+            return;
           }
+
+          const classified = classifyError(error);
+          const errorLines = formatErrorForTerminal(classified);
+          
+          errorLines.forEach(line => addLog(line));
+          
+          setError({
+            errorType: classified.type,
+            errorMessage: classified.message,
+            errorDetails: classified.details,
+            canRetry: classified.canRetry,
+            canUseCached: hasCachedAnalysis(activeAddress, chain),
+            recoveryAction: classified.recoveryAction,
+          });
         }
 
         finishAnalysis();
