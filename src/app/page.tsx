@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
+import { ScoreBreakdownDialog } from "@/components/ui/score-breakdown";
 import { ethosClient } from "@/lib/ethos";
 import { AttestationDialog } from "@/components/ui/attestation-dialog";
 import { PositionExplorer } from "@/components/ui/position-explorer";
@@ -69,6 +70,7 @@ export default function Home() {
   } = useAppStore();
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
 
   const formatCurrency = (val: number) =>
@@ -425,15 +427,25 @@ export default function Home() {
                                 Behavioral score based on last {parameters.timeHorizon}d.
                               </CardDescription>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="font-mono text-[10px] text-signal hover:bg-signal/10 h-7"
-                              onClick={() => setShareDialogOpen(true)}
-                            >
-                              <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                              SHARE
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="font-mono text-[10px] text-foreground hover:bg-surface/60 h-7"
+                                onClick={() => setBreakdownOpen(true)}
+                              >
+                                Details
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="font-mono text-[10px] text-signal hover:bg-signal/10 h-7"
+                                onClick={() => setShareDialogOpen(true)}
+                              >
+                                <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                                SHARE
+                              </Button>
+                            </div>
                           </div>
                         </CardHeader>
                         <CardContent className="flex flex-col xl:flex-row items-center xl:items-end justify-between gap-8 pt-4">
@@ -496,6 +508,14 @@ export default function Home() {
                             </div>
                           </div>
                         </CardContent>
+                        {/* Score Breakdown Dialog */}
+                        <ScoreBreakdownDialog
+                          open={breakdownOpen}
+                          onOpenChange={setBreakdownOpen}
+                          metrics={convictionMetrics}
+                          positionCount={positionAnalyses.length}
+                          ethosScore={ethosScore?.score}
+                        />
                       </>
                     ) : (
                       /* Empty State for Score Card */

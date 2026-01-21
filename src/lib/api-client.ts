@@ -53,6 +53,16 @@ export interface TransactionResult {
   success: boolean;
   transactions: TokenTransaction[];
   count: number;
+  quality?: {
+    totalRaw: number;
+    invalidFiltered: number;
+    dataCompleteness: {
+      symbolRate: number;
+      priceRate: number;
+      amountRate: number;
+    };
+    avgTradeSize: number;
+  };
 }
 
 export interface PriceResult {
