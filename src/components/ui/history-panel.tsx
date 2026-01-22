@@ -9,7 +9,14 @@ import {
   getScoreChange,
   getScoreEvolution,
 } from "@/lib/history";
-import { TrendingUp, TrendingDown, Minus, Clock, Eye, EyeOff } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Clock,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScoreEvolutionChart } from "@/components/ui/score-evolution-chart";
 
@@ -26,23 +33,28 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
   > | null>(null);
 
   useEffect(() => {
-    const allHistory = getConvictionHistory();
-    setHistory(allHistory);
-    if (currentAddress) {
-      setScoreChange(getScoreChange(currentAddress));
-    }
-    // Auto-hide demo entries if user has real analyses
-    const hasRealAnalyses = allHistory.some((h) => !h.isShowcase);
-    if (hasRealAnalyses) {
-      setShowDemo(false);
-    }
+    // Schedule updates to avoid cascading render warnings during effect execution
+    const handle = requestAnimationFrame(() => {
+      const allHistory = getConvictionHistory();
+      setHistory(allHistory);
+      if (currentAddress) {
+        setScoreChange(getScoreChange(currentAddress));
+      }
+      // Auto-hide demo entries if user has real analyses
+      const hasRealAnalyses = allHistory.some((h) => !h.isShowcase);
+      if (hasRealAnalyses) {
+        setShowDemo(false);
+      }
+    });
+
+    return () => cancelAnimationFrame(handle);
   }, [currentAddress]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
     );
 
     if (diffDays === 0) return "Today";
@@ -81,7 +93,8 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
   const demoCount = history.filter((h) => h.isShowcase).length;
   const hasRealAnalyses = history.some((h) => !h.isShowcase);
 
-  const hasEvolution = currentAddress && getScoreEvolution(currentAddress).length >= 2;
+  const hasEvolution =
+    currentAddress && getScoreEvolution(currentAddress).length >= 2;
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -111,9 +124,7 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {getTrendIcon(scoreChange.trend)}
-              <span className="text-sm text-foreground-muted">
-                Score Trend
-              </span>
+              <span className="text-sm text-foreground-muted">Score Trend</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-foreground-muted">
@@ -127,7 +138,7 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
                     ? "text-patience"
                     : scoreChange.trend === "down"
                       ? "text-impatience"
-                      : "text-foreground"
+                      : "text-foreground",
                 )}
               >
                 {scoreChange.current.toFixed(1)}
@@ -140,7 +151,7 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
                       ? "text-patience"
                       : scoreChange.change < 0
                         ? "text-impatience"
-                        : "text-foreground-muted"
+                        : "text-foreground-muted",
                   )}
                 >
                   ({scoreChange.change > 0 ? "+" : ""}
@@ -189,7 +200,7 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
                 "flex items-center justify-between p-3 rounded-lg border transition-colors",
                 analysis.address === currentAddress
                   ? "bg-signal/10 border-signal/30"
-                  : "bg-surface/30 border-border hover:bg-surface/50"
+                  : "bg-surface/30 border-border hover:bg-surface/50",
               )}
             >
               <div className="flex items-center gap-3">
@@ -200,7 +211,7 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
                       ? "bg-patience/20 text-patience"
                       : analysis.metrics.score >= 40
                         ? "bg-signal/20 text-signal"
-                        : "bg-impatience/20 text-impatience"
+                        : "bg-impatience/20 text-impatience",
                   )}
                 >
                   {Math.round(analysis.metrics.score)}

@@ -26,9 +26,12 @@ const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
 
 // Base/stablecoin tokens used for trading pairs
 const KNOWN_BASE_TOKENS = [
-  "So11111111111111111111111111111111111111112", // SOL
+  "So11111111111111111111111111111111111111112", // SOL / WSOL
   "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC (Solana)
   "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT (Solana)
+  "mSoLzYq7mSqcxt3ED4PSc69RzY83W95G5p7s8pAnJdV", // mSOL
+  "J1toso9YmRAn99mX6K399Nn5E7f9oY1s3vshV68yTth", // jitoSOL
+  "7dHbS7qBSnS6fJ686mD9B756S8PqM756S8PqM756S8Pq", // stSOL
 ];
 
 // Common wrapped/synthetic tokens to filter as base pairs
@@ -247,7 +250,9 @@ async function fetchSolanaViaBirdeye(
 
     // Determine if this is a buy or sell based on SOL/stablecoin flow
     const isSolOrStable = (symbol: string) =>
-      ["SOL", "USDC", "USDT"].includes(symbol?.toUpperCase());
+      ["SOL", "USDC", "USDT", "MSOL", "JITOSOL", "STSOL", "WSOL"].includes(
+        symbol?.toUpperCase(),
+      );
 
     const isBuy =
       isSolOrStable(fromToken.symbol) && !isSolOrStable(toToken.symbol);
@@ -582,11 +587,13 @@ async function parseSolanaSwap(
     // Handle decimal conversion based on token type
     const isSol =
       baseTransfer.mint === "So11111111111111111111111111111111111111112";
-    if (isSol && baseAmountRaw > 1_000_000_000) {
-      baseAmountRaw = baseAmountRaw / 1e9; // Convert lamports to SOL
-    }
-    // USDC/USDT have 6 decimals
-    if (!isSol && baseAmountRaw > 1_000_000) {
+
+    // Helius tokenAmount is generally already the uiAmount (scaled float).
+    // We only divide if the number is so large it's clearly a raw lamport/atomic value.
+    // Threshold: 10^12 (1000 SOL or 1M USDC).
+    if (isSol && baseAmountRaw > 1_000_000_000_000) {
+      baseAmountRaw = baseAmountRaw / 1e9;
+    } else if (!isSol && baseAmountRaw > 1_000_000_000_000) {
       baseAmountRaw = baseAmountRaw / 1e6;
     }
 

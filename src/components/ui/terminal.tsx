@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -11,11 +11,18 @@ interface TerminalProps {
 
 export function Terminal({ logs, className }: TerminalProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    const handle = requestAnimationFrame(() => {
+      setMounted(true);
+    });
+
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
+
+    return () => cancelAnimationFrame(handle);
   }, [logs]);
 
   return (
@@ -45,7 +52,7 @@ export function Terminal({ logs, className }: TerminalProps) {
         {logs.map((log, index) => {
           const isNetworkLog = log.startsWith("> NETWORK:");
           const network = isNetworkLog ? log.split(":")[1].trim() : "";
-          
+
           return (
             <motion.div
               key={index}
@@ -64,19 +71,29 @@ export function Terminal({ logs, className }: TerminalProps) {
               )}
             >
               <span className="opacity-50 mr-2">
-                [{new Date().toISOString().split("T")[1].split(".")[0]}]
+                [
+                {mounted
+                  ? new Date().toISOString().split("T")[1].split(".")[0]
+                  : "--:--:--"}
+                ]
               </span>
               {isNetworkLog ? (
                 <>
                   {"> NETWORK: "}
-                  <span className={cn(
-                    "px-1.5 py-0.5 rounded text-[10px] font-bold",
-                    network === "SOLANA_MAINNET" ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
-                  )}>
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.5 rounded text-[10px] font-bold",
+                      network === "SOLANA_MAINNET"
+                        ? "bg-purple-500/20 text-purple-400"
+                        : "bg-blue-500/20 text-blue-400",
+                    )}
+                  >
                     {network}
                   </span>
                 </>
-              ) : log}
+              ) : (
+                log
+              )}
             </motion.div>
           );
         })}

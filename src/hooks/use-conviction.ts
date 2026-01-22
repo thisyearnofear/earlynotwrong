@@ -112,70 +112,78 @@ export function useConviction() {
         addLog(`> CONNECTING TO ETHOS REPUTATION ORACLE...`);
 
         try {
-          // Attempt to fetch real Ethos data
-          let scorePromise;
-          let profilePromise;
-          // Always try to resolve Farcaster identity (works for both chains)
-          // If showcase wallet has a manual FID mapping, use it
+          // 1. Resolve Farcaster identity first (works for both chains)
+          // This allows us to bridge Solana wallets to EVM-native Ethos scores
           const fid = targetShowcase?.farcasterFid;
-          const farcasterPromise = ethosClient.resolveFarcasterIdentity(
-            activeAddress,
-            fid,
-          );
+          const farcasterIdentity = await retryWithBackoff(
+            () => ethosClient.resolveFarcasterIdentity(activeAddress!, fid),
+            { maxRetries: 1 },
+          ).catch((e) => {
+            console.warn("Farcaster Identity Fetch Error:", e);
+            return null;
+          });
 
-          // Special handling for Solana (Ethos is EVM-native, so we resolve via X.com handle if available)
-          if (chain === "solana") {
-            if (targetShowcase?.ethosProfile?.username) {
-              const userKey = `service:x.com:username:${targetShowcase.ethosProfile.username}`;
-              addLog(
-                `> RESOLVING ETHOS ID VIA X.COM: @${targetShowcase.ethosProfile.username}`,
-              );
-              scorePromise = ethosClient.getScoreByUserKey(userKey);
-              // Profile lookup by address won't work for Solana, and we don't have profile-by-userkey yet
-              profilePromise = Promise.resolve(null);
-            } else {
-              // Standard Solana address - Ethos doesn't support these directly yet
-              scorePromise = Promise.resolve(null);
-              profilePromise = Promise.resolve(null);
-            }
-          } else {
-            // Standard EVM address lookup
-            scorePromise = ethosClient.getScoreByAddress(activeAddress);
-            profilePromise = ethosClient.getProfileByAddress(activeAddress);
+          setFarcasterIdentity(farcasterIdentity);
+          if (farcasterIdentity) {
+            addLog(`> FARCASTER_IDENTITY: @${farcasterIdentity.username}`);
           }
 
-          const [score, profile, farcasterIdentity] = await Promise.all([
-            retryWithBackoff(() => scorePromise, {
-              maxRetries: 2,
-            }).catch((e) => {
-              console.warn("Ethos Score Fetch Error:", e);
-              return null;
-            }),
-            retryWithBackoff(() => profilePromise, {
-              maxRetries: 2,
-            }).catch((e) => {
-              console.warn("Ethos Profile Fetch Error:", e);
-              return null;
-            }),
-            retryWithBackoff(() => farcasterPromise, {
-              maxRetries: 1,
-            }).catch((e) => {
-              console.warn("Farcaster Identity Fetch Error:", e);
-              return null;
-            }),
-          ]);
+          // 2. Determine which address/key to use for Ethos lookup
+          let ethosLookupAddress = chain === "base" ? activeAddress : null;
+          let userKey = null;
+
+          // If Solana, try to bridge via Farcaster verified EVM address
+          if (
+            chain === "solana" &&
+            farcasterIdentity?.verifiedAddresses?.ethAddresses?.length
+          ) {
+            ethosLookupAddress =
+              farcasterIdentity.verifiedAddresses.ethAddresses[0];
+            addLog(
+              `> LINKED EVM WALLET FOUND: ${ethosLookupAddress.slice(0, 6)}...${ethosLookupAddress.slice(-4)}`,
+            );
+          }
+
+          // Fallback for Solana showcase wallets with X.com handles
+          if (
+            chain === "solana" &&
+            !ethosLookupAddress &&
+            targetShowcase?.ethosProfile?.username
+          ) {
+            userKey = `service:x.com:username:${targetShowcase.ethosProfile.username}`;
+            addLog(
+              `> RESOLVING ETHOS ID VIA X.COM: @${targetShowcase.ethosProfile.username}`,
+            );
+          }
+
+          // 3. Fetch Ethos data using resolved address or userKey
+          let score = null;
+          let profile = null;
+
+          if (ethosLookupAddress) {
+            [score, profile] = await Promise.all([
+              retryWithBackoff(
+                () => ethosClient.getScoreByAddress(ethosLookupAddress!),
+                { maxRetries: 2 },
+              ).catch(() => null),
+              retryWithBackoff(
+                () => ethosClient.getProfileByAddress(ethosLookupAddress!),
+                { maxRetries: 2 },
+              ).catch(() => null),
+            ]);
+          } else if (userKey) {
+            score = await retryWithBackoff(
+              () => ethosClient.getScoreByUserKey(userKey!),
+              { maxRetries: 2 },
+            ).catch(() => null);
+          }
 
           setEthosData(score, profile);
-          setFarcasterIdentity(farcasterIdentity);
 
           if (score?.score) {
             addLog(`> ETHOS_SCORE_FOUND: ${score.score}`);
           } else {
             addLog(`> ETHOS_SCORE: UNKNOWN`);
-          }
-
-          if (farcasterIdentity) {
-            addLog(`> FARCASTER_IDENTITY: @${farcasterIdentity.username}`);
           }
         } catch (error) {
           console.error("Ethos fetch failed", error);
