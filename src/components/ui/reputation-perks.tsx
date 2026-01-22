@@ -106,10 +106,24 @@ export function ReputationPerks({ className, compact = false }: ReputationPerksP
               {unlockedFeatures.map((feature) => (
                 <div
                   key={feature.key}
-                  className="flex items-center gap-2 p-2 rounded bg-patience/5 border border-patience/20"
+                  className={cn(
+                    "flex items-center gap-2 p-2 rounded border",
+                    feature.key === "communityNominate" 
+                      ? "bg-signal/10 border-signal/30" 
+                      : "bg-patience/5 border-patience/20"
+                  )}
                 >
-                  <Check className="w-3 h-3 text-patience flex-shrink-0" />
-                  <span className="text-xs text-foreground truncate">{feature.name}</span>
+                  {feature.key === "communityNominate" ? (
+                    <Users className="w-3 h-3 text-signal flex-shrink-0" />
+                  ) : (
+                    <Check className="w-3 h-3 text-patience flex-shrink-0" />
+                  )}
+                  <span className={cn(
+                    "text-xs truncate",
+                    feature.key === "communityNominate" ? "text-signal font-medium" : "text-foreground"
+                  )}>
+                    {feature.name}
+                  </span>
                 </div>
               ))}
             </div>

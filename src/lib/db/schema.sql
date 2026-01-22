@@ -139,3 +139,22 @@ SELECT
 FROM conviction_analyses
 WHERE analyzed_at > NOW() - INTERVAL '90 days'
 GROUP BY chain;
+
+-- Table: Personal Watchlists (User-specific tracking)
+CREATE TABLE IF NOT EXISTS personal_watchlists (
+  id SERIAL PRIMARY KEY,
+  user_address VARCHAR(64) NOT NULL, -- The user who is watching
+  watched_address VARCHAR(64) NOT NULL, -- The wallet being watched
+  chain VARCHAR(10) NOT NULL CHECK (chain IN ('solana', 'base')),
+  
+  -- Metadata snapshot (optional, can be refreshed)
+  name VARCHAR(255),
+  tags VARCHAR(100)[], -- e.g., ['whale', 'competitor']
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  
+  -- Prevent duplicate tracking of same wallet by same user
+  UNIQUE(user_address, watched_address, chain)
+);
+
+CREATE INDEX IF NOT EXISTS idx_personal_watchlist_user ON personal_watchlists(user_address);

@@ -12,11 +12,11 @@ import {
   TrendingUp,
   Users,
   Filter,
-  ExternalLink,
   Zap,
   Crown,
   Target,
 } from "lucide-react";
+import { WatchlistButton } from "@/components/ui/watchlist-button";
 
 interface AlphaWallet {
   address: string;
@@ -34,6 +34,11 @@ interface AlphaWallet {
     displayName?: string;
     pfpUrl?: string;
   };
+  nominator?: {
+    address: string;
+    ethos: number;
+  };
+  endorsements?: number;
 }
 
 interface AlphaDiscoveryProps {
@@ -53,33 +58,70 @@ export function AlphaDiscovery({
     chain: null as "solana" | "base" | null,
   });
 
+  const [viewMode, setViewMode] = useState<"discovery" | "community">("discovery");
+
   const fetchAlphaWallets = React.useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        minEthosScore: filters.minEthosScore.toString(),
-        minConvictionScore: filters.minConvictionScore.toString(),
-        limit: "10",
-      });
+      let data;
+      
+      if (viewMode === "discovery") {
+        const params = new URLSearchParams({
+          minEthosScore: filters.minEthosScore.toString(),
+          minConvictionScore: filters.minConvictionScore.toString(),
+          limit: "10",
+        });
 
-      if (filters.chain) {
-        params.append("chain", filters.chain);
-      }
+        if (filters.chain) {
+          params.append("chain", filters.chain);
+        }
 
-      const response = await fetch(`/api/alpha/discover?${params}`);
-      const data = await response.json();
-
-      if (data.success) {
-        setWallets(data.wallets);
-        onDataLoaded?.(data.wallets.length > 0);
+        const response = await fetch(`/api/alpha/discover?${params}`);
+        data = await response.json();
+        
+        if (data.success) {
+          setWallets(data.wallets);
+          onDataLoaded?.(data.wallets.length > 0);
+        }
+      } else {
+        // Community Watchlist Mode
+        const params = new URLSearchParams({
+          status: "approved",
+        });
+        if (filters.chain) params.append("chain", filters.chain);
+        
+        const response = await fetch(`/api/community/watchlist?${params}`);
+        const result = await response.json();
+        
+        if (result.traders) {
+          // Map community traders to AlphaWallet shape
+          const mapped = result.traders.map((t: any) => ({
+            address: t.wallets[0], // Use primary wallet
+            chain: t.chain,
+            convictionScore: t.avg_conviction_score || 0,
+            ethosScore: t.added_by_ethos || 0, // Use nominator's score as proxy for credibility? Or fetch?
+            totalPositions: t.total_analyses || 0,
+            patienceTax: 0,
+            upsideCapture: 0,
+            archetype: "Community Pick",
+            alphaRating: "High", // Default for community curated
+            lastAnalyzed: Date.now(),
+            farcasterIdentity: t.farcaster ? { username: t.farcaster, displayName: t.name } : undefined,
+            nominator: t.added_by ? { address: t.added_by, ethos: t.added_by_ethos } : undefined,
+            endorsements: t.endorsement_count || 0
+          }));
+          setWallets(mapped);
+          onDataLoaded?.(mapped.length > 0);
+        }
       }
     } catch (error) {
-      console.error("Failed to fetch alpha wallets:", error);
+      console.error("Failed to fetch wallets:", error);
       onDataLoaded?.(false);
     } finally {
       setLoading(false);
     }
   }, [
+    viewMode,
     filters.minEthosScore,
     filters.minConvictionScore,
     filters.chain,
@@ -121,9 +163,35 @@ export function AlphaDiscovery({
     >
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            Alpha Discovery
+          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              Alpha Discovery
+            </div>
+            <div className="flex items-center bg-surface/50 rounded-lg p-0.5 border border-border/50">
+              <button
+                onClick={() => setViewMode("discovery")}
+                className={cn(
+                  "px-2 py-0.5 text-[10px] rounded-md transition-all font-mono",
+                  viewMode === "discovery" 
+                    ? "bg-signal/20 text-signal shadow-sm" 
+                    : "text-foreground-muted hover:text-foreground"
+                )}
+              >
+                ALGO
+              </button>
+              <button
+                onClick={() => setViewMode("community")}
+                className={cn(
+                  "px-2 py-0.5 text-[10px] rounded-md transition-all font-mono",
+                  viewMode === "community" 
+                    ? "bg-patience/20 text-patience shadow-sm" 
+                    : "text-foreground-muted hover:text-foreground"
+                )}
+              >
+                CURATED
+              </button>
+            </div>
           </CardTitle>
           <div className="flex items-center gap-2">
             <Button
@@ -216,6 +284,23 @@ export function AlphaDiscovery({
                         <span>Ethos: {wallet.ethosScore}</span>
                         <span>{formatTimeAgo(wallet.lastAnalyzed)}</span>
                       </div>
+                      
+                      {wallet.nominator && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 text-[10px] text-foreground-muted bg-surface/50 w-fit px-1.5 py-0.5 rounded border border-border/30">
+                            <Users className="w-3 h-3 text-signal" />
+                            <span>Nominated by</span>
+                            <span className="font-mono text-foreground">{formatAddress(wallet.nominator.address)}</span>
+                            <span className="text-signal">({wallet.nominator.ethos})</span>
+                          </div>
+                          {wallet.endorsements !== undefined && wallet.endorsements > 0 && (
+                            <div className="flex items-center gap-1 text-[10px] text-patience bg-patience/10 px-1.5 py-0.5 rounded border border-patience/20">
+                              <Zap className="w-3 h-3" />
+                              <span>{wallet.endorsements} Endorsements</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -232,17 +317,18 @@ export function AlphaDiscovery({
                       size="sm"
                     />
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => {
-                        // In a real app, this would navigate to the wallet analysis
-                        console.log("Analyze wallet:", wallet.address);
+                    <WatchlistButton 
+                      wallet={{
+                        address: wallet.address,
+                        chain: wallet.chain,
+                        convictionScore: wallet.convictionScore,
+                        ethosScore: wallet.ethosScore,
+                        archetype: wallet.archetype,
+                        farcasterUsername: wallet.farcasterIdentity?.username,
+                        displayName: wallet.farcasterIdentity?.displayName
                       }}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </Button>
+                      variant="icon"
+                    />
                   </div>
                 </div>
               ))

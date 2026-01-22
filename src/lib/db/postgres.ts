@@ -419,6 +419,130 @@ function mapWatchlistRow(row: Record<string, unknown>): WatchlistTrader {
 }
 
 // =============================================================================
+// Personal Watchlist (My Radar)
+// =============================================================================
+
+export interface PersonalWatchlistEntry {
+  id: number;
+  userAddress: string;
+  watchedAddress: string;
+  chain: "solana" | "base";
+  name: string | null;
+  tags: string[];
+  createdAt: Date;
+  // Enriched data from latest analysis
+  latestScore?: number;
+  latestArchetype?: string | null;
+  latestAnalyzedAt?: Date;
+}
+
+/**
+ * Get a user's personal watchlist with live analysis data
+ */
+export async function getPersonalWatchlist(
+  userAddress: string
+): Promise<PersonalWatchlistEntry[]> {
+  try {
+    // Join with the latest analysis for each watched wallet to show fresh data
+    const result = await sql`
+      SELECT 
+        pw.*,
+        ca.score as latest_score,
+        ca.archetype as latest_archetype,
+        ca.analyzed_at as latest_analyzed_at
+      FROM personal_watchlists pw
+      LEFT JOIN LATERAL (
+        SELECT score, archetype, analyzed_at
+        FROM conviction_analyses ca
+        WHERE ca.address = pw.watched_address
+          AND ca.chain = pw.chain
+        ORDER BY ca.analyzed_at DESC
+        LIMIT 1
+      ) ca ON true
+      WHERE pw.user_address = ${userAddress.toLowerCase()}
+      ORDER BY pw.created_at DESC
+    `;
+
+    return result.rows.map(mapPersonalWatchlistRow);
+  } catch (error) {
+    console.warn("Failed to get personal watchlist:", error);
+    return [];
+  }
+}
+
+/**
+ * Add to personal watchlist
+ */
+export async function addToPersonalWatchlist(
+  userAddress: string,
+  watchedAddress: string,
+  chain: "solana" | "base",
+  name?: string,
+  tags: string[] = []
+): Promise<PersonalWatchlistEntry | null> {
+  try {
+    const result = await sql`
+      INSERT INTO personal_watchlists (
+        user_address, watched_address, chain, name, tags
+      ) VALUES (
+        ${userAddress.toLowerCase()},
+        ${watchedAddress},
+        ${chain},
+        ${name || null},
+        ${tags}::varchar[]
+      )
+      ON CONFLICT (user_address, watched_address, chain) 
+      DO UPDATE SET
+        name = COALESCE(EXCLUDED.name, personal_watchlists.name),
+        tags = EXCLUDED.tags
+      RETURNING *
+    `;
+
+    return mapPersonalWatchlistRow(result.rows[0]);
+  } catch (error) {
+    console.warn("Failed to add to personal watchlist:", error);
+    return null;
+  }
+}
+
+/**
+ * Remove from personal watchlist
+ */
+export async function removeFromPersonalWatchlist(
+  userAddress: string,
+  watchedAddress: string,
+  chain: "solana" | "base"
+): Promise<boolean> {
+  try {
+    await sql`
+      DELETE FROM personal_watchlists
+      WHERE user_address = ${userAddress.toLowerCase()}
+        AND watched_address = ${watchedAddress}
+        AND chain = ${chain}
+    `;
+    return true;
+  } catch (error) {
+    console.warn("Failed to remove from personal watchlist:", error);
+    return false;
+  }
+}
+
+function mapPersonalWatchlistRow(row: Record<string, unknown>): PersonalWatchlistEntry {
+  return {
+    id: row.id as number,
+    userAddress: row.user_address as string,
+    watchedAddress: row.watched_address as string,
+    chain: row.chain as "solana" | "base",
+    name: row.name as string | null,
+    tags: (row.tags as string[]) || [],
+    createdAt: new Date(row.created_at as string),
+    latestScore: row.latest_score !== null ? Number(row.latest_score) : undefined,
+    latestArchetype: row.latest_archetype as string | null || undefined,
+    latestAnalyzedAt: row.latest_analyzed_at ? new Date(row.latest_analyzed_at as string) : undefined,
+  };
+}
+
+// =============================================================================
 // Health Check
 // =============================================================================
 
