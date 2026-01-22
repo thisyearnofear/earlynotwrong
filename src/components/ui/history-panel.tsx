@@ -9,7 +9,7 @@ import {
   getScoreChange,
   getScoreEvolution,
 } from "@/lib/history";
-import { TrendingUp, TrendingDown, Minus, Clock, Trash2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Clock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScoreEvolutionChart } from "@/components/ui/score-evolution-chart";
 
@@ -20,14 +20,21 @@ interface HistoryPanelProps {
 
 export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
   const [history, setHistory] = useState<HistoricalAnalysis[]>([]);
+  const [showDemo, setShowDemo] = useState(false);
   const [scoreChange, setScoreChange] = useState<ReturnType<
     typeof getScoreChange
   > | null>(null);
 
   useEffect(() => {
-    setHistory(getConvictionHistory());
+    const allHistory = getConvictionHistory();
+    setHistory(allHistory);
     if (currentAddress) {
       setScoreChange(getScoreChange(currentAddress));
+    }
+    // Auto-hide demo entries if user has real analyses
+    const hasRealAnalyses = allHistory.some((h) => !h.isShowcase);
+    if (hasRealAnalyses) {
+      setShowDemo(false);
     }
   }, [currentAddress]);
 
@@ -65,7 +72,14 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
     return null;
   }
 
-  const recentHistory = history.slice(0, 5);
+  // Filter history based on showDemo toggle
+  const filteredHistory = showDemo
+    ? history
+    : history.filter((h) => !h.isShowcase);
+
+  const recentHistory = filteredHistory.slice(0, 5);
+  const demoCount = history.filter((h) => h.isShowcase).length;
+  const hasRealAnalyses = history.some((h) => !h.isShowcase);
 
   const hasEvolution = currentAddress && getScoreEvolution(currentAddress).length >= 2;
 
@@ -144,7 +158,27 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
           <h3 className="text-xs font-mono text-foreground-muted uppercase tracking-wider">
             Recent Analyses
           </h3>
-          <Clock className="w-3 h-3 text-foreground-dim" />
+          <div className="flex items-center gap-2">
+            {demoCount > 0 && hasRealAnalyses && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDemo(!showDemo)}
+                className="text-xs h-6 px-2"
+                title={showDemo ? "Hide demo entries" : "Show demo entries"}
+              >
+                {showDemo ? (
+                  <EyeOff className="w-3 h-3" />
+                ) : (
+                  <Eye className="w-3 h-3" />
+                )}
+                <span className="ml-1 text-foreground-muted">
+                  {showDemo ? "Hide" : `+${demoCount}`} demo
+                </span>
+              </Button>
+            )}
+            <Clock className="w-3 h-3 text-foreground-dim" />
+          </div>
         </div>
 
         <div className="space-y-1">

@@ -1,6 +1,6 @@
 /**
  * History Service
- * Persists conviction analyses to local storage for historical tracking.
+ * Persists conviction analyses to local storage AND Postgres for historical tracking.
  */
 
 import { ConvictionMetrics } from "./market";
@@ -31,6 +31,26 @@ export function getConvictionHistory(): HistoricalAnalysis[] {
   }
 }
 
+/**
+ * Save analysis to Postgres (fire and forget, non-blocking)
+ */
+async function saveToPostgres(
+  address: string,
+  chain: "solana" | "base",
+  metrics: ConvictionMetrics,
+  timeHorizon: number
+): Promise<void> {
+  try {
+    await fetch("/api/analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, chain, metrics, timeHorizon }),
+    });
+  } catch {
+    // Silently fail - Postgres is optional enhancement
+  }
+}
+
 export function saveConvictionAnalysis(
   address: string,
   chain: "solana" | "base",
@@ -57,6 +77,11 @@ export function saveConvictionAnalysis(
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedHistory));
   } catch (error) {
     console.warn("Failed to save conviction history:", error);
+  }
+
+  // Also save to Postgres for real cohort data (non-blocking)
+  if (!isShowcase) {
+    saveToPostgres(address, chain, metrics, timeHorizon);
   }
 
   return analysis;

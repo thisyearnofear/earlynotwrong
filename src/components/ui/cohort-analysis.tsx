@@ -1,312 +1,328 @@
 "use client";
 
 import * as React from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/store";
-import { ethosClient } from "@/lib/ethos";
 import { cn } from "@/lib/utils";
 import {
-    Users,
-    TrendingUp,
-    Target,
-    BarChart3,
-    Filter,
-    Crown,
-    Zap,
-    Shield
+  Users,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  RefreshCw,
+  Crown,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
 
-interface CohortData {
-    tier: 'premium' | 'whale' | 'alpha' | 'elite';
-    userCount: number;
-    avgConvictionScore: number;
-    avgPatienceTax: number;
-    avgUpsideCapture: number;
-    avgHoldingPeriod: number;
-    topArchetype: string;
-    performance: {
-        winRate: number;
-        avgReturn: number;
-        sharpeRatio: number;
-    };
+interface TraderBenchmark {
+  id: string;
+  name: string;
+  chain: "solana" | "base";
+  ethosScore: number | null;
+  farcaster?: string;
+}
+
+interface BenchmarkStats {
+  traderCount: number;
+  avgEthosScore: number;
+  minEthosScore: number;
+  maxEthosScore: number;
+  traders: TraderBenchmark[];
+  chains: {
+    solana: number;
+    base: number;
+  };
 }
 
 interface CohortAnalysisProps {
-    className?: string;
+  className?: string;
 }
 
-// Mock cohort data for demo
-const MOCK_COHORT_DATA: CohortData[] = [
-    {
-        tier: 'elite',
-        userCount: 47,
-        avgConvictionScore: 91.2,
-        avgPatienceTax: 1200,
-        avgUpsideCapture: 89.5,
-        avgHoldingPeriod: 145,
-        topArchetype: 'Iron Pillar',
-        performance: {
-            winRate: 78.2,
-            avgReturn: 245.8,
-            sharpeRatio: 2.1
-        }
-    },
-    {
-        tier: 'alpha',
-        userCount: 156,
-        avgConvictionScore: 84.7,
-        avgPatienceTax: 2100,
-        avgUpsideCapture: 82.1,
-        avgHoldingPeriod: 98,
-        topArchetype: 'Diamond Hand',
-        performance: {
-            winRate: 71.5,
-            avgReturn: 189.3,
-            sharpeRatio: 1.7
-        }
-    },
-    {
-        tier: 'whale',
-        userCount: 423,
-        avgConvictionScore: 76.3,
-        avgPatienceTax: 3400,
-        avgUpsideCapture: 74.8,
-        avgHoldingPeriod: 67,
-        topArchetype: 'Profit Phantom',
-        performance: {
-            winRate: 64.2,
-            avgReturn: 142.7,
-            sharpeRatio: 1.3
-        }
-    },
-    {
-        tier: 'premium',
-        userCount: 1247,
-        avgConvictionScore: 68.9,
-        avgPatienceTax: 5200,
-        avgUpsideCapture: 65.4,
-        avgHoldingPeriod: 42,
-        topArchetype: 'Exit Voyager',
-        performance: {
-            winRate: 58.7,
-            avgReturn: 98.4,
-            sharpeRatio: 0.9
-        }
-    }
-];
-
 export function CohortAnalysis({ className }: CohortAnalysisProps) {
-    const { ethosScore, convictionMetrics } = useAppStore();
-    const reputationPerks = ethosClient.getReputationPerks(ethosScore?.score || null);
-    const userTier = reputationPerks.tier;
+  const { ethosScore, convictionMetrics } = useAppStore();
+  const [benchmark, setBenchmark] = useState<BenchmarkStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    const getTierIcon = (tier: string) => {
-        switch (tier) {
-            case 'elite': return <Crown className="w-4 h-4 text-patience" />;
-            case 'alpha': return <Zap className="w-4 h-4 text-signal" />;
-            case 'whale': return <Users className="w-4 h-4 text-foreground" />;
-            case 'premium': return <Shield className="w-4 h-4 text-foreground-muted" />;
-            default: return <Shield className="w-4 h-4 text-border" />;
-        }
-    };
+  const fetchBenchmark = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/cohort/benchmark");
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.success) {
+        setBenchmark(data.benchmark);
+      } else {
+        throw new Error(data.error || "Unknown error");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load benchmark");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    const getTierColor = (tier: string, isUserTier: boolean = false) => {
-        const baseColors = {
-            elite: "border-patience/30 bg-patience/5",
-            alpha: "border-signal/30 bg-signal/5",
-            whale: "border-foreground/30 bg-foreground/5",
-            premium: "border-foreground-muted/30 bg-foreground-muted/5"
-        };
+  useEffect(() => {
+    fetchBenchmark();
+  }, [fetchBenchmark]);
 
-        if (isUserTier) {
-            return cn(baseColors[tier as keyof typeof baseColors], "ring-2 ring-signal/50");
-        }
+  const userScore = ethosScore?.score || 0;
+  const userCI = convictionMetrics?.score || 0;
 
-        return baseColors[tier as keyof typeof baseColors];
-    };
+  const getComparisonText = (
+    userValue: number,
+    benchmarkValue: number,
+    metric: string
+  ) => {
+    if (userValue === 0) return null;
+    const diff = userValue - benchmarkValue;
+    const percentDiff = Math.abs(Math.round((diff / benchmarkValue) * 100));
 
-    const getPerformanceColor = (value: number, metric: 'winRate' | 'return' | 'sharpe') => {
-        const thresholds = {
-            winRate: { good: 70, excellent: 75 },
-            return: { good: 150, excellent: 200 },
-            sharpe: { good: 1.5, excellent: 2.0 }
-        };
+    if (diff > 0) {
+      return {
+        text: `${percentDiff}% above benchmark`,
+        positive: true,
+      };
+    } else if (diff < 0) {
+      return {
+        text: `${percentDiff}% below benchmark`,
+        positive: false,
+      };
+    }
+    return { text: "At benchmark", positive: true };
+  };
 
-        const threshold = thresholds[metric];
-        if (value >= threshold.excellent) return "text-patience";
-        if (value >= threshold.good) return "text-signal";
-        return "text-foreground";
-    };
+  const ethosComparison = benchmark
+    ? getComparisonText(userScore, benchmark.avgEthosScore, "Ethos")
+    : null;
 
-    const getUserPercentile = (userScore: number, cohortAvg: number) => {
-        if (userScore > cohortAvg * 1.2) return "Top 10%";
-        if (userScore > cohortAvg * 1.1) return "Top 25%";
-        if (userScore > cohortAvg * 0.9) return "Average";
-        if (userScore > cohortAvg * 0.8) return "Bottom 25%";
-        return "Bottom 10%";
-    };
+  return (
+    <Card
+      className={cn("glass-panel border-border/50 bg-surface/40", className)}
+    >
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Elite Traders Benchmark
+            {loading && <Loader2 className="w-3 h-3 animate-spin" />}
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchBenchmark}
+            disabled={loading}
+            className="text-xs"
+          >
+            <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
+          </Button>
+        </div>
+      </CardHeader>
 
-    return (
-        <Card className={cn("glass-panel border-border/50 bg-surface/40", className)}>
-            <CardHeader>
-                <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4" />
-                        Cohort Analysis
-                    </CardTitle>
-                    <div className="flex items-center gap-2 text-xs text-foreground-muted">
-                        <Target className="w-3 h-3" />
-                        <span>Your Tier: {userTier}</span>
+      <CardContent>
+        <EthosGatedContent
+          minScore={500}
+          title="Elite Traders Benchmark"
+          description="Compare your metrics against tracked high-conviction traders."
+          className="min-h-[400px]"
+        >
+          {error ? (
+            <div className="text-center py-8 text-foreground-muted">
+              <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <div className="text-sm text-impatience">{error}</div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchBenchmark}
+                className="mt-2"
+              >
+                Try Again
+              </Button>
+            </div>
+          ) : loading && !benchmark ? (
+            <div className="text-center py-8 text-foreground-muted">
+              <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin" />
+              <div className="text-sm">Loading benchmark data...</div>
+            </div>
+          ) : benchmark ? (
+            <div className="space-y-6">
+              {/* Benchmark Overview */}
+              <div className="p-4 rounded-lg border border-patience/30 bg-patience/5">
+                <div className="flex items-center gap-3 mb-4">
+                  <Crown className="w-5 h-5 text-patience" />
+                  <div>
+                    <div className="font-semibold text-foreground">
+                      Watchlist Benchmark
                     </div>
+                    <div className="text-xs text-foreground-muted">
+                      {benchmark.traderCount} tracked traders •{" "}
+                      {benchmark.chains.solana} Solana • {benchmark.chains.base}{" "}
+                      Base
+                    </div>
+                  </div>
                 </div>
-            </CardHeader>
 
-            <CardContent>
-                <EthosGatedContent
-                    minScore={500}
-                    title="Reputation Cohort Comparison"
-                    description="Compare your conviction metrics against other traders in your reputation tier."
-                    className="min-h-[500px]"
-                >
-                    <div className="space-y-4">
-                        {MOCK_COHORT_DATA.map((cohort) => {
-                            const isUserTier = cohort.tier === userTier;
-
-                            return (
-                                <div
-                                    key={cohort.tier}
-                                    className={cn(
-                                        "p-4 rounded-lg border transition-all duration-200",
-                                        getTierColor(cohort.tier, isUserTier)
-                                    )}
-                                >
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-3">
-                                            {getTierIcon(cohort.tier)}
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-foreground capitalize">
-                                                        {cohort.tier} Tier
-                                                    </span>
-                                                    {isUserTier && (
-                                                        <span className="px-2 py-0.5 text-xs bg-signal/20 text-signal rounded font-mono">
-                                                            YOUR TIER
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-xs text-foreground-muted">
-                                                    {cohort.userCount} active traders
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-sm font-mono text-foreground">
-                                                {cohort.avgConvictionScore} CI
-                                            </div>
-                                            <div className="text-xs text-foreground-muted">
-                                                Avg Score
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                        <div className="text-center">
-                                            <div className="text-lg font-mono text-foreground">
-                                                {cohort.avgUpsideCapture}%
-                                            </div>
-                                            <div className="text-xs text-foreground-muted">
-                                                Upside Capture
-                                            </div>
-                                            {isUserTier && convictionMetrics && (
-                                                <div className="text-xs text-signal mt-1">
-                                                    You: {getUserPercentile(convictionMetrics.upsideCapture, cohort.avgUpsideCapture)}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="text-center">
-                                            <div className="text-lg font-mono text-foreground">
-                                                ${(cohort.avgPatienceTax / 1000).toFixed(1)}K
-                                            </div>
-                                            <div className="text-xs text-foreground-muted">
-                                                Patience Tax
-                                            </div>
-                                            {isUserTier && convictionMetrics && (
-                                                <div className="text-xs text-signal mt-1">
-                                                    You: {getUserPercentile(convictionMetrics.patienceTax, cohort.avgPatienceTax)}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="text-center">
-                                            <div className="text-lg font-mono text-foreground">
-                                                {cohort.avgHoldingPeriod}d
-                                            </div>
-                                            <div className="text-xs text-foreground-muted">
-                                                Avg Hold
-                                            </div>
-                                            {isUserTier && convictionMetrics && (
-                                                <div className="text-xs text-signal mt-1">
-                                                    You: {getUserPercentile(convictionMetrics.avgHoldingPeriod, cohort.avgHoldingPeriod)}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="text-center">
-                                            <div className="text-lg font-mono text-foreground">
-                                                {cohort.performance.winRate}%
-                                            </div>
-                                            <div className="text-xs text-foreground-muted">
-                                                Win Rate
-                                            </div>
-                                            {isUserTier && convictionMetrics && (
-                                                <div className="text-xs text-signal mt-1">
-                                                    You: {getUserPercentile(convictionMetrics.winRate, cohort.performance.winRate)}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between pt-3 border-t border-border/30">
-                                        <div className="flex items-center gap-4 text-xs text-foreground-muted">
-                                            <span>Top Archetype: {cohort.topArchetype}</span>
-                                            <span className={getPerformanceColor(cohort.performance.avgReturn, 'return')}>
-                                                Avg Return: {cohort.performance.avgReturn}%
-                                            </span>
-                                        </div>
-                                        <div className="text-xs font-mono">
-                                            <span className={getPerformanceColor(cohort.performance.sharpeRatio, 'sharpe')}>
-                                                Sharpe: {cohort.performance.sharpeRatio}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-mono text-patience">
+                      {benchmark.avgEthosScore}
                     </div>
+                    <div className="text-xs text-foreground-muted">
+                      Avg Ethos Score
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-mono text-foreground">
+                      {benchmark.minEthosScore}
+                    </div>
+                    <div className="text-xs text-foreground-muted">
+                      Min Score
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-mono text-foreground">
+                      {benchmark.maxEthosScore}
+                    </div>
+                    <div className="text-xs text-foreground-muted">
+                      Max Score
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                    <div className="mt-6 pt-4 border-t border-border/50">
-                        <div className="text-xs text-foreground-muted space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span>Data updated every 24 hours</span>
-                                <span>Based on last 180 days of activity</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-1">
-                                    <div className="w-2 h-2 rounded-full bg-patience" />
-                                    <span>Top 10% Performance</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <div className="w-2 h-2 rounded-full bg-signal" />
-                                    <span>Above Average</span>
-                                </div>
-                            </div>
+              {/* Your Comparison */}
+              {userScore > 0 && (
+                <div className="p-4 rounded-lg border border-signal/30 bg-signal/5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="font-semibold text-foreground">
+                      Your Position
+                    </div>
+                    {ethosComparison && (
+                      <div
+                        className={cn(
+                          "flex items-center gap-1 text-xs font-mono",
+                          ethosComparison.positive
+                            ? "text-patience"
+                            : "text-impatience"
+                        )}
+                      >
+                        {ethosComparison.positive ? (
+                          <TrendingUp className="w-3 h-3" />
+                        ) : (
+                          <TrendingDown className="w-3 h-3" />
+                        )}
+                        {ethosComparison.text}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-foreground-muted mb-1">
+                        Your Ethos Score
+                      </div>
+                      <div className="text-xl font-mono text-foreground">
+                        {userScore}
+                      </div>
+                      <div className="w-full bg-border/30 rounded-full h-2 mt-2">
+                        <div
+                          className="bg-signal h-2 rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(100, (userScore / benchmark.maxEthosScore) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {userCI > 0 && (
+                      <div>
+                        <div className="text-xs text-foreground-muted mb-1">
+                          Your Conviction Index
                         </div>
+                        <div className="text-xl font-mono text-foreground">
+                          {userCI.toFixed(1)}
+                        </div>
+                        <div className="w-full bg-border/30 rounded-full h-2 mt-2">
+                          <div
+                            className="bg-patience h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, userCI)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tracked Traders List */}
+              <div>
+                <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-3">
+                  Tracked Traders
+                </div>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {benchmark.traders.map((trader) => (
+                    <div
+                      key={trader.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-surface/30 border border-border/50"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={cn(
+                            "w-2 h-2 rounded-full",
+                            trader.chain === "solana"
+                              ? "bg-purple-500"
+                              : "bg-blue-500"
+                          )}
+                        />
+                        <span className="text-sm font-mono text-foreground">
+                          {trader.name}
+                        </span>
+                        {trader.farcaster && (
+                          <a
+                            href={`https://warpcast.com/${trader.farcaster}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-foreground-muted hover:text-signal"
+                          >
+                            @{trader.farcaster}
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {trader.ethosScore !== null ? (
+                          <span className="text-sm font-mono text-foreground">
+                            {trader.ethosScore}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-foreground-muted">
+                            —
+                          </span>
+                        )}
+                        <span className="text-xs text-foreground-muted uppercase">
+                          {trader.chain}
+                        </span>
+                      </div>
                     </div>
-                </EthosGatedContent>
-            </CardContent>
-        </Card>
-    );
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-4 pt-4 border-t border-border/50">
+            <div className="text-xs text-foreground-muted">
+              Benchmark based on {benchmark?.traderCount || 0} curated
+              high-conviction traders. Ethos scores fetched in real-time.
+            </div>
+          </div>
+        </EthosGatedContent>
+      </CardContent>
+    </Card>
+  );
 }
