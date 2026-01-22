@@ -39,6 +39,26 @@ export interface EthosScore {
   updatedAt?: string;
 }
 
+export interface EthosUserStats {
+  review: {
+    received: {
+      negative: number;
+      neutral: number;
+      positive: number;
+    };
+  };
+  vouch: {
+    given: {
+      amountWeiTotal: string;
+      count: number;
+    };
+    received: {
+      amountWeiTotal: string;
+      count: number;
+    };
+  };
+}
+
 export interface EthosProfile {
   id: number;
   profileId: number;
@@ -53,6 +73,7 @@ export interface EthosProfile {
     profile?: string;
     scoreBreakdown?: string;
   };
+  stats?: EthosUserStats;
 }
 
 export interface FarcasterIdentity {
@@ -169,6 +190,25 @@ export class EthosClient {
       };
     } catch (error) {
       console.warn("Ethos score fetch by userkey failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Get user statistics (vouches, reviews)
+   */
+  async getUserStats(userKey: string): Promise<EthosUserStats | null> {
+    try {
+      // In a real implementation, this would call /user/stats?userkey=...
+      // For now, we'll try to get it from the profile if it's an address
+      if (userKey.startsWith("address:")) {
+        const address = userKey.replace("address:", "");
+        const profile = await this.getProfileByAddress(address);
+        return profile?.stats || null;
+      }
+      return null;
+    } catch (error) {
+      console.warn("Ethos stats fetch failed:", error);
       return null;
     }
   }

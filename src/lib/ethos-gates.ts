@@ -20,20 +20,20 @@ const { featureGating, communityTiers } = APP_CONFIG.reputation;
 // =============================================================================
 
 export type EthosTier =
-  | "visitor" // 0 - Not connected or no score
-  | "member" // 1-99 - Has Ethos but low
-  | "premium" // 100+ - Basic premium
-  | "whale" // 500+ - Advanced features
-  | "alpha" // 1000+ - Real-time features
-  | "elite"; // 2000+ - Full access
+  | "visitor" // 0 - untrusted
+  | "member" // 1-999 - questionable
+  | "premium" // 1000+ - neutral/known start
+  | "whale" // 1400+ - known/established
+  | "alpha" // 1700+ - reputable
+  | "elite"; // 2000+ - exemplary
 
 export type CommunityRole =
-  | "viewer" // 0 - Can only view
-  | "nominator" // 1000+ - Can nominate
-  | "contributor" // 1200+ - Faster approval
-  | "curator" // 1400+ - Direct add
-  | "moderator" // 1600+ - Can remove
-  | "admin"; // 2000+ - Full control
+  | "viewer" // 0
+  | "nominator" // 1000+ - Neutral start
+  | "contributor" // 1200+ - Neutral
+  | "curator" // 1400+ - Known
+  | "moderator" // 1700+ - Reputable
+  | "admin"; // 2000+ - Exemplary
 
 export interface GateResult {
   allowed: boolean;
@@ -256,32 +256,32 @@ export async function checkGate(
  */
 export const gates = {
   // Analysis
-  extendedLookback: (score: number) => score >= 500,
-  fullHistory: (score: number) => score >= 1000,
+  extendedLookback: (score: number) => score >= 1400,
+  fullHistory: (score: number) => score >= 1700,
 
   // Real-time
-  alerts: (score: number) => score >= 1000,
+  alerts: (score: number) => score >= 1700,
   fastRefresh: (score: number) => score >= 2000,
 
   // Data
-  export: (score: number) => score >= 500,
+  export: (score: number) => score >= 1400,
 
   // Discovery
-  alphaDiscovery: (score: number) => score >= 1000,
-  tokenHeatmap: (score: number) => score >= 500,
-  cohortData: (score: number) => score >= 500,
+  alphaDiscovery: (score: number) => score >= 1400,
+  tokenHeatmap: (score: number) => score >= 1400,
+  cohortData: (score: number) => score >= 1400,
 
   // Community
   nominate: (score: number) => score >= 1000,
   endorse: (score: number) => score >= 1200,
   curate: (score: number) => score >= 1400,
-  moderate: (score: number) => score >= 1600,
+  moderate: (score: number) => score >= 1700,
   admin: (score: number) => score >= 2000,
 
   // Leaderboard filters
-  filterByEthos: (score: number) => score >= 500,
-  filterByConviction: (score: number) => score >= 500,
-  filterByArchetype: (score: number) => score >= 1000,
+  filterByEthos: (score: number) => score >= 1400,
+  filterByConviction: (score: number) => score >= 1400,
+  filterByArchetype: (score: number) => score >= 1700,
 };
 
 // =============================================================================
@@ -355,6 +355,8 @@ export type FeatureKey =
   | "whaleTracking"
   | "communityNominate"
   | "communityEndorse"
+  | "communityCurate"
+  | "advancedAnalytics"
   | "communityModerate";
 
 export interface FeatureInfo {
@@ -374,8 +376,8 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "alphaDiscovery",
     name: "Alpha Discovery",
     description: "Find high-conviction wallets before they trend",
-    requiredScore: 1000,
-    requiredTier: "alpha",
+    requiredScore: 1400,
+    requiredTier: "whale",
     valueTeaser:
       "Discover wallets with 80+ conviction scores and track their moves",
   },
@@ -383,7 +385,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "tokenHeatmap",
     name: "Token Heatmap",
     description: "See what top traders are accumulating",
-    requiredScore: 500,
+    requiredScore: 1400,
     requiredTier: "whale",
     valueTeaser: "Visualize token conviction across trusted wallets",
   },
@@ -391,7 +393,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "cohortData",
     name: "Cohort Analysis",
     description: "Compare your conviction against the community",
-    requiredScore: 500,
+    requiredScore: 1400,
     requiredTier: "whale",
     valueTeaser: "See where you rank among all analyzed traders",
   },
@@ -399,7 +401,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "realTimeAlerts",
     name: "Real-time Alerts",
     description: "Get notified when watchlist traders move",
-    requiredScore: 1000,
+    requiredScore: 1700,
     requiredTier: "alpha",
     valueTeaser:
       "60-second refresh on whale movements with instant notifications",
@@ -408,7 +410,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "dataExport",
     name: "Data Export",
     description: "Export your analysis data",
-    requiredScore: 500,
+    requiredScore: 1400,
     requiredTier: "whale",
     valueTeaser: "Download conviction metrics and position history as CSV/JSON",
   },
@@ -417,15 +419,15 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "extendedHistory",
     name: "Extended History",
     description: "Analyze up to 1 year of trading history",
-    requiredScore: 1000,
+    requiredScore: 1700,
     requiredTier: "alpha",
-    valueTeaser: "180-day lookback for deeper conviction patterns",
+    valueTeaser: "365-day lookback for deeper conviction patterns",
   },
   advancedFilters: {
     key: "advancedFilters",
     name: "Advanced Filters",
     description: "Filter by Ethos score, conviction, and archetype",
-    requiredScore: 500,
+    requiredScore: 1400,
     requiredTier: "whale",
     valueTeaser: "Find exactly the traders you want to follow",
   },
@@ -433,7 +435,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     key: "whaleTracking",
     name: "Whale Tracking",
     description: "Monitor high-value wallet movements",
-    requiredScore: 1000,
+    requiredScore: 1700,
     requiredTier: "alpha",
     valueTeaser: "Track top 50 conviction traders with real-time updates",
   },
@@ -442,7 +444,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     name: "Nominate Traders",
     description: "Suggest wallets for the community watchlist",
     requiredScore: 1000,
-    requiredTier: "alpha",
+    requiredTier: "premium",
     valueTeaser: "Help curate the community's trusted trader list",
   },
   communityEndorse: {
@@ -450,15 +452,31 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     name: "Endorse Nominations",
     description: "Vote on community watchlist nominations",
     requiredScore: 1200,
-    requiredTier: "alpha",
+    requiredTier: "premium",
     valueTeaser: "Your endorsement helps approve trusted traders faster",
+  },
+  communityCurate: {
+    key: "communityCurate",
+    name: "Curation Rights",
+    description: "Add traders directly without review",
+    requiredScore: 1400,
+    requiredTier: "whale",
+    valueTeaser: "Trust level high enough to bypass the nomination queue",
+  },
+  advancedAnalytics: {
+    key: "advancedAnalytics",
+    name: "Deep Performance Audit",
+    description: "Detailed drawdown and volatility analysis",
+    requiredScore: 1800,
+    requiredTier: "alpha",
+    valueTeaser: "Analyze the 'why' behind every win and loss with raw metadata",
   },
   communityModerate: {
     key: "communityModerate",
     name: "Moderate Watchlist",
     description: "Remove bad actors from community watchlist",
-    requiredScore: 1600,
-    requiredTier: "elite",
+    requiredScore: 1700,
+    requiredTier: "alpha",
     valueTeaser: "Help maintain watchlist quality as a trusted moderator",
   },
 };
@@ -536,7 +554,7 @@ export function getTierInfo(tier: EthosTier): {
         bgColor: "bg-signal/10",
         borderColor: "border-signal/30",
         icon: "zap",
-        minScore: 1000,
+        minScore: 1700,
       };
     case "whale":
       return {
@@ -545,7 +563,7 @@ export function getTierInfo(tier: EthosTier): {
         bgColor: "bg-foreground/10",
         borderColor: "border-foreground/30",
         icon: "users",
-        minScore: 500,
+        minScore: 1400,
       };
     case "premium":
       return {
@@ -554,7 +572,7 @@ export function getTierInfo(tier: EthosTier): {
         bgColor: "bg-foreground-muted/10",
         borderColor: "border-foreground-muted/30",
         icon: "shield",
-        minScore: 100,
+        minScore: 1000,
       };
     default:
       return {

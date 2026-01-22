@@ -18,26 +18,26 @@ export const APP_CONFIG = {
   // Reputation Weighting
   reputation: {
     ethosScoreThresholds: {
-      elite: 2000,    // 1.5x multiplier
-      high: 1000,     // 1.3x multiplier  
-      medium: 500,    // 1.15x multiplier
-      low: 100,       // 1.05x multiplier
-      unknown: 0      // 1.0x multiplier
+      elite: 2000,    // Exemplary (1.5x)
+      high: 1700,     // Reputable (1.35x)
+      medium: 1400,   // Known (1.15x)
+      low: 1000,      // Entry (1.05x)
+      unknown: 0
     },
     featureGating: {
-      premiumAccess: 100,      // Basic analytics
-      whaleAnalysis: 500,      // Alpha discovery + token heatmap
-      alphaSignals: 1000,      // Real-time alerts + cohort analysis
-      eliteInsights: 2000,     // Advanced analytics + early access
+      premiumAccess: 1000,     // Entry: Basic analytics
+      whaleAnalysis: 1400,     // Known: Alpha discovery + heatmap
+      alphaSignals: 1700,      // Reputable: Real-time alerts
+      eliteInsights: 2000,     // Exemplary: Advanced audit
     },
     // Community watchlist contribution tiers
     communityTiers: {
-      viewer: 0,          // Can view community watchlist
-      nominator: 1000,    // Can nominate wallets (requires 2 endorsements)
-      contributor: 1200,  // Can add wallets (requires 1 endorsement)
-      curator: 1400,      // Can add wallets directly + vote on nominations
-      moderator: 1600,    // Can remove wallets + curate
-      admin: 2000,        // Full control + featured picks
+      viewer: 0,
+      nominator: 1000,    // Entry level nomination
+      contributor: 1200,  // Neutral
+      curator: 1400,      // Known
+      moderator: 1700,    // Reputable
+      admin: 2000,        // Exemplary
     },
     perks: {
       // Ethos 100+: Premium Access

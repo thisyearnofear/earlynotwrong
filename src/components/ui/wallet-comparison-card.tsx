@@ -21,6 +21,10 @@ export interface WalletComparisonData {
     upsideCapture: number;
     patienceTax: number;
   };
+  stats?: {
+    vouchesReceived?: number;
+    reviewsReceived?: number;
+  };
 }
 
 interface WalletComparisonCardProps {
@@ -120,8 +124,8 @@ export function WalletComparisonCard({
                 </div>
                 
                 <div className="flex flex-wrap gap-1.5 pt-2">
-                  <SocialProofBadge type="vouches" count={Math.floor(wallet.ethosScore / 15)} />
-                  <SocialProofBadge type="reviews" count={Math.floor(wallet.ethosScore / 50)} />
+                  <SocialProofBadge type="vouches" count={wallet.stats?.vouchesReceived ?? 0} />
+                  <SocialProofBadge type="reviews" count={wallet.stats?.reviewsReceived ?? 0} />
                 </div>
               </CardContent>
             </Card>

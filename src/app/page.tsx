@@ -863,18 +863,17 @@ export default function Home() {
                               @{farcasterIdentity.username}
                             </div>
                             <div className="flex gap-1.5 mt-2">
-                              {/* Mocked social proof counts for demo - will be wired to API in Task 5 */}
                               <SocialProofBadge
                                 type="vouches"
-                                count={Math.floor(
-                                  (ethosScore?.score || 0) / 12,
-                                )}
+                                count={ethosProfile?.stats?.vouch?.received?.count ?? 0}
                               />
                               <SocialProofBadge
                                 type="reviews"
-                                count={Math.floor(
-                                  (ethosScore?.score || 0) / 45,
-                                )}
+                                count={
+                                  (ethosProfile?.stats?.review?.received?.positive ?? 0) +
+                                  (ethosProfile?.stats?.review?.received?.neutral ?? 0) +
+                                  (ethosProfile?.stats?.review?.received?.negative ?? 0)
+                                }
                               />
                             </div>
                           </div>

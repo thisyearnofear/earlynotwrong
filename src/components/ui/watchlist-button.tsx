@@ -24,8 +24,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Star, Globe, Lock, Loader2, Check } from "lucide-react";
+import { Star, Globe, Lock, Loader2, Check, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 
@@ -118,46 +119,70 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant={variant === "icon" ? "ghost" : variant}
-            size={variant === "icon" ? "icon" : size}
-            className={cn(isPinned && "text-patience border-patience/30 bg-patience/5", className)}
-          >
-            <Star className={cn("w-4 h-4", isPinned ? "fill-current" : "mr-2")} />
-            {variant !== "icon" && (isPinned ? "Tracked" : "Track")}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 bg-surface border-border/50 backdrop-blur-md">
-          <DropdownMenuLabel>Tracking Options</DropdownMenuLabel>
-          <DropdownMenuSeparator />
+      <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={isPinned ? "default" : "outline"}
+              size={size === "icon" ? "icon" : "sm"}
+              className={cn(
+                "h-8",
+                isPinned ? "bg-patience text-black hover:bg-patience/90" : "border-border/50",
+                className
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePin();
+              }}
+            >
+              <Star className={cn("w-3.5 h-3.5", isPinned ? "fill-current" : "mr-1.5")} />
+              {size !== "icon" && (isPinned ? "Tracked" : "Track")}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {isPinned ? "Remove from your Personal Radar" : "Pin to your Personal Radar (Private)"}
+          </TooltipContent>
+        </Tooltip>
 
-          <DropdownMenuItem onClick={handlePin} className="cursor-pointer">
-            <Star className={cn("w-4 h-4 mr-2", isPinned ? "fill-current text-patience" : "")} />
-            <div className="flex flex-col">
-              <span>{isPinned ? "Remove from Radar" : "Add to My Radar"}</span>
-              <span className="text-[10px] text-foreground-muted">Private • Local Storage</span>
-            </div>
-          </DropdownMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-border/50"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Globe className="w-3.5 h-3.5 text-foreground-muted" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64 bg-surface border-border/50 backdrop-blur-md">
+            <DropdownMenuLabel className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-signal" />
+              Community Actions
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
 
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            disabled={!canNominate}
-            onClick={() => canNominate && setOpenNominateDialog(true)}
-            className="cursor-pointer"
-          >
-            {canNominate ? <Globe className="w-4 h-4 mr-2 text-signal" /> : <Lock className="w-4 h-4 mr-2 text-foreground-muted" />}
-            <div className="flex flex-col">
-              <span className={cn(!canNominate && "text-foreground-muted")}>Nominate to Community</span>
-              <span className="text-[10px] text-foreground-muted">
-                {canNominate ? "Public • Requires Approval" : "Requires 1000+ Ethos"}
-              </span>
-            </div>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuItem
+              disabled={!canNominate}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canNominate) setOpenNominateDialog(true);
+              }}
+              className="cursor-pointer py-2"
+            >
+              <Globe className={cn("w-4 h-4 mr-3", canNominate ? "text-signal" : "text-foreground-muted")} />
+              <div className="flex flex-col">
+                <span className={cn("text-sm", !canNominate && "text-foreground-muted")}>Nominate to Global Watchlist</span>
+                <span className="text-[10px] text-foreground-muted leading-tight mt-0.5">
+                  {canNominate
+                    ? "Suggest this trader for community-wide tracking. Requires reputation to approve."
+                    : `Requires 1000+ Ethos (You have ${userEthos})`}
+                </span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <Dialog open={openNominateDialog} onOpenChange={setOpenNominateDialog}>
         <DialogContent>

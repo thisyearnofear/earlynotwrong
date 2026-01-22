@@ -15,22 +15,27 @@ import {
   Star,
   Check,
   Lock,
+  Info,
+  Circle,
+  BarChart3,
+  Search,
+  AlertCircle
 } from "lucide-react";
 import {
   getEthosTier,
   getTierInfo,
-  getFeatureAccess,
-  getNextTierUnlocks,
   FEATURES,
   type FeatureKey,
 } from "@/lib/ethos-gates";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LucideIcon } from "lucide-react";
 
 interface ReputationPerksProps {
   className?: string;
   compact?: boolean;
 }
 
-const TierIcon = ({ icon, className }: { icon: "shield" | "users" | "zap" | "crown"; className?: string }) => {
+const TierIcon = ({ icon, className }: { icon: string; className?: string }) => {
   const iconClass = cn("w-5 h-5", className);
   switch (icon) {
     case "crown": return <Crown className={iconClass} />;
@@ -40,22 +45,21 @@ const TierIcon = ({ icon, className }: { icon: "shield" | "users" | "zap" | "cro
   }
 };
 
+const MILESTONES: { score: number; label: string; icon: LucideIcon; color: string; features: FeatureKey[] }[] = [
+  { score: 1000, label: "Entry", icon: Shield, color: "text-foreground-muted", features: ["extendedLookback", "advancedFilters"] },
+  { score: 1200, label: "Neutral", icon: Star, color: "text-signal", features: ["communityEndorse"] },
+  { score: 1400, label: "Known", icon: Users, color: "text-foreground", features: ["dataExport", "tokenHeatmap", "cohortData", "communityCurate"] },
+  { score: 1700, label: "Reputable", icon: Zap, color: "text-signal", features: ["alphaDiscovery", "realTimeAlerts", "communityNominate", "communityModerate"] },
+  { score: 1800, label: "Advanced", icon: BarChart3, color: "text-patience", features: ["advancedAnalytics"] },
+  { score: 2000, label: "Exemplary", icon: Crown, color: "text-patience", features: ["fastRefresh"] as any },
+];
+
 export function ReputationPerks({ className, compact = false }: ReputationPerksProps) {
   const { ethosScore } = useAppStore();
   const currentScore = ethosScore?.score || 0;
-  
+
   const tier = getEthosTier(currentScore);
   const tierInfo = getTierInfo(tier);
-  const access = getFeatureAccess(currentScore);
-  const nextUnlocks = getNextTierUnlocks(currentScore);
-
-  // Group features by unlock status
-  const unlockedFeatures = Object.values(FEATURES).filter(
-    f => currentScore >= f.requiredScore
-  );
-  const lockedFeatures = Object.values(FEATURES).filter(
-    f => currentScore < f.requiredScore
-  );
 
   if (compact) {
     return (
@@ -66,11 +70,6 @@ export function ReputationPerks({ className, compact = false }: ReputationPerksP
             <span className={cn("font-bold uppercase text-sm", tierInfo.color)}>{tierInfo.name}</span>
             <span className="text-xs text-foreground-muted font-mono">{currentScore} Ethos</span>
           </div>
-          {nextUnlocks && (
-            <div className="text-xs text-foreground-muted truncate">
-              {nextUnlocks.pointsAway} to {nextUnlocks.nextTier}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -81,8 +80,8 @@ export function ReputationPerks({ className, compact = false }: ReputationPerksP
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-            <Star className="w-4 h-4" />
-            Ethos Access
+            <Shield className="w-4 h-4" />
+            Reputation Roadmap
           </CardTitle>
           <div className={cn(
             "flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-mono",
@@ -95,126 +94,105 @@ export function ReputationPerks({ className, compact = false }: ReputationPerksP
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        {/* Unlocked Features */}
-        {unlockedFeatures.length > 0 && (
-          <div className="space-y-3">
-            <h4 className="text-xs font-mono text-foreground-muted uppercase tracking-wider">
-              Unlocked ({unlockedFeatures.length})
-            </h4>
-            <div className="grid grid-cols-2 gap-2">
-              {unlockedFeatures.map((feature) => (
-                <div
-                  key={feature.key}
-                  className={cn(
-                    "flex items-center gap-2 p-2 rounded border",
-                    feature.key === "communityNominate" 
-                      ? "bg-signal/10 border-signal/30" 
-                      : "bg-patience/5 border-patience/20"
-                  )}
-                >
-                  {feature.key === "communityNominate" ? (
-                    <Users className="w-3 h-3 text-signal flex-shrink-0" />
-                  ) : (
-                    <Check className="w-3 h-3 text-patience flex-shrink-0" />
-                  )}
-                  <span className={cn(
-                    "text-xs truncate",
-                    feature.key === "communityNominate" ? "text-signal font-medium" : "text-foreground"
+      <CardContent className="space-y-8">
+        {/* Progress Timeline */}
+        <div className="relative pt-2 pb-4 px-2">
+          {/* Vertical Line */}
+          <div className="absolute left-6 top-0 bottom-0 w-px bg-border/50" />
+
+          <div className="space-y-6">
+            {MILESTONES.map((milestone, idx) => {
+              const Icon = milestone.icon;
+              const isUnlocked = currentScore >= milestone.score;
+              const isNext = !isUnlocked && (idx === 0 || currentScore >= MILESTONES[idx - 1].score);
+
+              return (
+                <div key={milestone.score} className={cn(
+                  "relative flex items-start gap-6 transition-opacity",
+                  !isUnlocked && !isNext && "opacity-40"
+                )}>
+                  {/* Node */}
+                  <div className={cn(
+                    "relative z-10 w-9 h-9 rounded-full border flex items-center justify-center bg-surface shrink-0",
+                    isUnlocked ? "border-patience/50 shadow-[0_0_15px_rgba(52,211,153,0.2)]" : isNext ? "border-signal/50 animate-pulse" : "border-border"
                   )}>
-                    {feature.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+                    {isUnlocked ? (
+                      <Check className="w-5 h-5 text-patience" />
+                    ) : (
+                      <Icon className={cn("w-4 h-4", isNext ? "text-signal" : "text-foreground-dim")} />
+                    )}
+                  </div>
 
-        {/* Next Tier Progress */}
-        {nextUnlocks && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-mono text-foreground-muted uppercase tracking-wider">
-                Next: {getTierInfo(nextUnlocks.nextTier).name}
-              </h4>
-              <span className="text-xs font-mono text-foreground-muted">
-                {currentScore} / {nextUnlocks.requiredScore}
-              </span>
-            </div>
+                  {/* Content */}
+                  <div className="flex-1 pt-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex flex-col">
+                        <span className={cn(
+                          "text-sm font-bold uppercase tracking-tight",
+                          isUnlocked ? "text-foreground" : isNext ? "text-signal" : "text-foreground-muted"
+                        )}>
+                          {milestone.label}
+                        </span>
+                        <span className="text-[10px] font-mono text-foreground-muted">
+                          {milestone.score} Ethos Required
+                        </span>
+                      </div>
+                      {isUnlocked && (
+                        <div className="px-2 py-0.5 rounded bg-patience/10 border border-patience/20 text-[10px] font-mono text-patience uppercase">
+                          Active
+                        </div>
+                      )}
+                    </div>
 
-            <div className="w-full bg-surface rounded-full h-2">
-              <div
-                className="bg-gradient-to-r from-signal to-patience h-2 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, (currentScore / nextUnlocks.requiredScore) * 100)}%`
-                }}
-              />
-            </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {milestone.features.map(fKey => {
+                        const feature = FEATURES[fKey];
+                        if (!feature) return null;
 
-            <p className="text-xs text-foreground-muted">
-              <span className="text-signal font-medium">{nextUnlocks.pointsAway}</span> points to unlock:
-            </p>
-
-            <div className="space-y-1">
-              {nextUnlocks.unlocks.slice(0, 3).map((feature) => (
-                <div key={feature.key} className="flex items-center gap-2 text-xs">
-                  <ChevronRight className="w-3 h-3 text-foreground-muted" />
-                  <span className="text-foreground">{feature.name}</span>
-                  <span className="text-foreground-dim">— {feature.description}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Locked Features Preview */}
-        {lockedFeatures.length > 0 && (
-          <div className="space-y-3 pt-4 border-t border-border/50">
-            <h4 className="text-xs font-mono text-foreground-muted uppercase tracking-wider">
-              Locked ({lockedFeatures.length})
-            </h4>
-            <div className="grid grid-cols-2 gap-2">
-              {lockedFeatures.slice(0, 4).map((feature) => (
-                <div
-                  key={feature.key}
-                  className="flex items-center gap-2 p-2 rounded bg-surface/30 border border-border/50 opacity-60"
-                >
-                  <Lock className="w-3 h-3 text-foreground-muted flex-shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-xs text-foreground-muted truncate block">{feature.name}</span>
-                    <span className="text-[10px] text-foreground-dim">{feature.requiredScore}+</span>
+                        return (
+                          <Tooltip key={fKey}>
+                            <TooltipTrigger asChild>
+                              <div className={cn(
+                                "inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] cursor-help transition-colors",
+                                isUnlocked
+                                  ? "bg-surface/60 border border-border/50 text-foreground"
+                                  : "bg-surface/20 border border-border/20 text-foreground-dim"
+                              )}>
+                                {feature.name}
+                                <Info className="w-3 h-3 opacity-50" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[200px] space-y-1">
+                              <p className="font-bold">{feature.name}</p>
+                              <p className="text-foreground-muted">{feature.description}</p>
+                              <p className="text-signal italic pt-1">{feature.valueTeaser}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        )}
+        </div>
 
-        {/* Elite Status */}
-        {tier === "elite" && (
-          <div className="p-4 rounded-lg bg-patience/5 border border-patience/20">
-            <div className="flex items-center gap-2 mb-2">
-              <Crown className="w-4 h-4 text-patience" />
-              <span className="text-sm font-semibold text-patience">Elite Access Achieved</span>
-            </div>
-            <p className="text-xs text-foreground-muted">
-              Full platform access unlocked. Thank you for building trust in the ecosystem.
-            </p>
-          </div>
-        )}
-
-        {/* CTA */}
-        {tier !== "elite" && (
+        {/* Action */}
+        <div className="pt-4 border-t border-border/50">
+          <p className="text-xs text-foreground-muted mb-4 leading-relaxed">
+            Reputation is cross-chain. Your Ethos score updates in real-time as you build trust within the ecosystem.
+          </p>
           <Button
             variant="outline"
             size="sm"
-            className="w-full"
+            className="w-full h-10 group"
             onClick={() => window.open("https://ethos.network", "_blank")}
           >
-            <ExternalLink className="w-3 h-3 mr-2" />
-            Build Reputation on Ethos
+            <ExternalLink className="w-4 h-4 mr-2 text-foreground-muted group-hover:text-signal transition-colors" />
+            Grow Influence on Ethos
           </Button>
-        )}
+        </div>
       </CardContent>
     </Card>
   );

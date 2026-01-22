@@ -12,7 +12,7 @@
 
 import { serverCache } from '@/lib/server-cache';
 import { ethosClient } from '@/lib/ethos';
-import type { EthosScore, EthosProfile } from '@/lib/ethos';
+import type { EthosScore, EthosProfile, EthosUserStats } from '@/lib/ethos';
 
 /**
  * Cache TTLs optimized for Ethos data characteristics
@@ -34,6 +34,7 @@ const EthosCacheKeys = {
   reviews: (address: string) => `ethos:reviews:${address.toLowerCase()}`,
   vouches: (address: string) => `ethos:vouches:${address.toLowerCase()}`,
   attestations: (address: string) => `ethos:attestations:${address.toLowerCase()}`,
+  userStats: (userkey: string) => `ethos:stats:${userkey.toLowerCase()}`,
 } as const;
 
 /**
@@ -46,7 +47,7 @@ export class CachedEthosService {
    */
   async getScoreByAddress(address: string): Promise<EthosScore | null> {
     const key = EthosCacheKeys.score(address);
-    
+
     return serverCache.get(
       key,
       () => ethosClient.getScoreByAddress(address),
@@ -59,7 +60,7 @@ export class CachedEthosService {
    */
   async getScoreByUserKey(userKey: string): Promise<EthosScore | null> {
     const key = EthosCacheKeys.scoreByUserKey(userKey);
-    
+
     return serverCache.get(
       key,
       () => ethosClient.getScoreByUserKey(userKey),
@@ -72,7 +73,7 @@ export class CachedEthosService {
    */
   async getProfileByAddress(address: string): Promise<EthosProfile | null> {
     const key = EthosCacheKeys.profile(address);
-    
+
     return serverCache.get(
       key,
       () => ethosClient.getProfileByAddress(address),
@@ -85,7 +86,7 @@ export class CachedEthosService {
    */
   async getConvictionAttestations(address: string) {
     const key = EthosCacheKeys.attestations(address);
-    
+
     return serverCache.get(
       key,
       () => ethosClient.getConvictionAttestations(address),
