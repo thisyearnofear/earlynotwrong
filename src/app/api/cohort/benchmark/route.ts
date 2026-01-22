@@ -8,6 +8,7 @@ interface TraderBenchmark {
   chain: "solana" | "base";
   ethosScore: number | null;
   farcaster?: string;
+  address: string;
 }
 
 interface BenchmarkStats {
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
         chain: trader.chain,
         ethosScore,
         farcaster: trader.socials?.farcaster,
+        address: primaryWallet,
       } as TraderBenchmark;
     });
 

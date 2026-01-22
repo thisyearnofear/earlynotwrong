@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Crown,
   Loader2,
+  ExternalLink,
+  Search,
 } from "lucide-react";
 
 interface TraderBenchmark {
@@ -22,6 +24,7 @@ interface TraderBenchmark {
   chain: "solana" | "base";
   ethosScore: number | null;
   farcaster?: string;
+  address: string;
 }
 
 interface BenchmarkStats {
@@ -39,11 +42,13 @@ interface BenchmarkStats {
 interface CohortAnalysisProps {
   className?: string;
   onDataLoaded?: (hasData: boolean) => void;
+  onAnalyze?: (address: string, chain: "solana" | "base") => void;
 }
 
 export function CohortAnalysis({
   className,
   onDataLoaded,
+  onAnalyze,
 }: CohortAnalysisProps) {
   const { ethosScore, convictionMetrics } = useAppStore();
   const [benchmark, setBenchmark] = useState<BenchmarkStats | null>(null);
@@ -284,44 +289,61 @@ export function CohortAnalysis({
                   {benchmark.traders.map((trader) => (
                     <div
                       key={trader.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-surface/30 border border-border/50"
+                      onClick={() => onAnalyze?.(trader.address, trader.chain)}
+                      className="flex items-center justify-between p-2 rounded-lg bg-surface/30 border border-border/50 group hover:border-signal/50 hover:bg-surface/50 transition-all duration-200 cursor-pointer"
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
                         <div
                           className={cn(
-                            "w-2 h-2 rounded-full",
+                            "w-2 h-2 rounded-full shrink-0",
                             trader.chain === "solana"
-                              ? "bg-purple-500"
-                              : "bg-blue-500",
+                              ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+                              : "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]",
                           )}
                         />
-                        <span className="text-sm font-mono text-foreground">
-                          {trader.name}
-                        </span>
-                        {trader.farcaster && (
-                          <a
-                            href={`https://warpcast.com/${trader.farcaster}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-foreground-muted hover:text-signal"
-                          >
-                            @{trader.farcaster}
-                          </a>
-                        )}
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-mono text-foreground truncate">
+                            {trader.name}
+                          </span>
+                          {trader.farcaster && (
+                            <a
+                              href={`https://warpcast.com/${trader.farcaster}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-foreground-muted hover:text-signal transition-colors inline-flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              @{trader.farcaster}
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {trader.ethosScore !== null ? (
-                          <span className="text-sm font-mono text-foreground">
-                            {trader.ethosScore}
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-end mr-1">
+                          {trader.ethosScore !== null ? (
+                            <span className="text-sm font-mono text-foreground">
+                              {trader.ethosScore}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-foreground-muted">
+                              —
+                            </span>
+                          )}
+                          <span className="text-[10px] text-foreground-muted uppercase tracking-tighter">
+                            {trader.chain}
                           </span>
-                        ) : (
-                          <span className="text-xs text-foreground-muted">
-                            —
-                          </span>
-                        )}
-                        <span className="text-xs text-foreground-muted uppercase">
-                          {trader.chain}
-                        </span>
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-signal/10 hover:text-signal"
+                          onClick={() => onAnalyze?.(trader.address, trader.chain)}
+                          title="Analyze Trader"
+                        >
+                          <Search className="w-4 h-4" />
+                        </Button>
                       </div>
                     </div>
                   ))}

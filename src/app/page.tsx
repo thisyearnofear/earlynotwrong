@@ -170,7 +170,11 @@ export default function Home() {
         id: "cohort",
         hasData: hasCohortData,
         component: (
-          <CohortAnalysis key="cohort" onDataLoaded={handleCohortData} />
+          <CohortAnalysis
+            key="cohort"
+            onDataLoaded={handleCohortData}
+            onAnalyze={analyzeWallet}
+          />
         ),
         className: "col-span-1 md:col-span-6 lg:col-span-6",
       },
@@ -674,8 +678,8 @@ export default function Home() {
                               >
                                 Details
                               </Button>
-                              
-                              <WatchlistButton 
+
+                              <WatchlistButton
                                 wallet={{
                                   address: activeAddress || "",
                                   chain: analysisChain || "solana",
