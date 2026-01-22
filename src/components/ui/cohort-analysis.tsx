@@ -137,9 +137,7 @@ export function CohortAnalysis({
 
       <CardContent>
         <EthosGatedContent
-          minScore={500}
-          title="Elite Traders Benchmark"
-          description="Compare your metrics against tracked high-conviction traders."
+          feature="cohortData"
           className="min-h-100"
         >
           {error ? (

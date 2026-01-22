@@ -175,9 +175,7 @@ export function TokenHeatmap({ className, onDataLoaded }: TokenHeatmapProps) {
 
       <CardContent>
         <EthosGatedContent
-          minScore={500}
-          title="Token Conviction Analysis"
-          description="See which tokens have the highest concentration of credible, high-conviction holders."
+          feature="tokenHeatmap"
           className="min-h-62.5"
         >
           {error ? (

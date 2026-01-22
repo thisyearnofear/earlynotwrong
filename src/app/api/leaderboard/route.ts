@@ -20,7 +20,7 @@ interface LeaderboardFilters {
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  
+
   const filters: LeaderboardFilters = {
     chain: searchParams.get("chain") as "solana" | "base" | undefined,
     minEthos: parseInt(searchParams.get("minEthos") || "0"),
@@ -28,6 +28,11 @@ export async function GET(request: NextRequest) {
     archetype: searchParams.get("archetype") || undefined,
     limit: Math.min(parseInt(searchParams.get("limit") || "50"), 100),
   };
+
+  const requester = searchParams.get("requester");
+  if (requester === "DEMO") {
+    filters.minEthos = 0;
+  }
 
   try {
     // First, try to get from leaderboard table

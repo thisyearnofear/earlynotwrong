@@ -219,9 +219,7 @@ export function ConvictionAlerts({
 
       <CardContent>
         <EthosGatedContent
-          minScore={1000}
-          title="Real-Time Conviction Alerts"
-          description="Get instant notifications when tracked traders make significant moves."
+          feature="realTimeAlerts"
           className="min-h-100"
         >
           {error ? (

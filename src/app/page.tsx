@@ -61,6 +61,7 @@ import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { WatchlistButton } from "@/components/ui/watchlist-button";
 import { PersonalRadar } from "@/components/ui/personal-radar";
+import { LeaderboardPanel } from "@/components/ui/leaderboard-panel";
 
 export default function Home() {
   const {
@@ -178,6 +179,14 @@ export default function Home() {
         ),
         className: "col-span-1 md:col-span-6 lg:col-span-6",
       },
+      {
+        id: "leaderboard",
+        hasData: true,
+        component: (
+          <LeaderboardPanel key="leaderboard" />
+        ),
+        className: "col-span-1 md:col-span-6 lg:col-span-12",
+      }
     ];
 
     // If order is frozen, use the frozen order

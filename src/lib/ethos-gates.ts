@@ -164,7 +164,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         maxWatchlistSize: 50,
         canNominate: true,
         canEndorse: s >= communityTiers.contributor,
-        canModerate: false,
+        canModerate: s >= communityTiers.moderator,
         canFilterLeaderboard: true,
         leaderboardResultLimit: 50,
         canAccessCohortData: true,
@@ -190,7 +190,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         leaderboardResultLimit: 25,
         canAccessCohortData: true,
         canAccessTokenHeatmap: true,
-        canAccessAlphaDiscovery: false,
+        canAccessAlphaDiscovery: true,
       };
 
     case "premium":

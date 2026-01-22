@@ -4,6 +4,7 @@ import * as React from "react";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
+import { useAppStore } from "@/lib/store";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -64,12 +65,14 @@ export function AlphaDiscovery({
     setLoading(true);
     try {
       let data;
-      
+
       if (viewMode === "discovery") {
+        const { targetAddress, isShowcaseMode } = useAppStore.getState();
         const params = new URLSearchParams({
           minEthosScore: filters.minEthosScore.toString(),
           minConvictionScore: filters.minConvictionScore.toString(),
           limit: "10",
+          requester: isShowcaseMode ? "DEMO" : (targetAddress || ""),
         });
 
         if (filters.chain) {
@@ -78,7 +81,7 @@ export function AlphaDiscovery({
 
         const response = await fetch(`/api/alpha/discover?${params}`);
         data = await response.json();
-        
+
         if (data.success) {
           setWallets(data.wallets);
           onDataLoaded?.(data.wallets.length > 0);
@@ -89,10 +92,10 @@ export function AlphaDiscovery({
           status: "approved",
         });
         if (filters.chain) params.append("chain", filters.chain);
-        
+
         const response = await fetch(`/api/community/watchlist?${params}`);
         const result = await response.json();
-        
+
         if (result.traders) {
           // Map community traders to AlphaWallet shape
           const mapped = result.traders.map((t: any) => ({
@@ -173,8 +176,8 @@ export function AlphaDiscovery({
                 onClick={() => setViewMode("discovery")}
                 className={cn(
                   "px-2 py-0.5 text-[10px] rounded-md transition-all font-mono",
-                  viewMode === "discovery" 
-                    ? "bg-signal/20 text-signal shadow-sm" 
+                  viewMode === "discovery"
+                    ? "bg-signal/20 text-signal shadow-sm"
                     : "text-foreground-muted hover:text-foreground"
                 )}
               >
@@ -184,8 +187,8 @@ export function AlphaDiscovery({
                 onClick={() => setViewMode("community")}
                 className={cn(
                   "px-2 py-0.5 text-[10px] rounded-md transition-all font-mono",
-                  viewMode === "community" 
-                    ? "bg-patience/20 text-patience shadow-sm" 
+                  viewMode === "community"
+                    ? "bg-patience/20 text-patience shadow-sm"
                     : "text-foreground-muted hover:text-foreground"
                 )}
               >
@@ -219,9 +222,7 @@ export function AlphaDiscovery({
 
       <CardContent>
         <EthosGatedContent
-          minScore={500}
-          title="High-Conviction Tracker"
-          description="Monitor moves by Iron Pillar traders with proven conviction and high Ethos credibility."
+          feature="alphaDiscovery"
           className="min-h-75"
         >
           <div className="space-y-3">
@@ -284,7 +285,7 @@ export function AlphaDiscovery({
                         <span>Ethos: {wallet.ethosScore}</span>
                         <span>{formatTimeAgo(wallet.lastAnalyzed)}</span>
                       </div>
-                      
+
                       {wallet.nominator && (
                         <div className="mt-2 flex items-center gap-2">
                           <div className="flex items-center gap-1.5 text-[10px] text-foreground-muted bg-surface/50 w-fit px-1.5 py-0.5 rounded border border-border/30">
@@ -317,7 +318,7 @@ export function AlphaDiscovery({
                       size="sm"
                     />
 
-                    <WatchlistButton 
+                    <WatchlistButton
                       wallet={{
                         address: wallet.address,
                         chain: wallet.chain,
