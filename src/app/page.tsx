@@ -59,6 +59,8 @@ import {
 } from "@/components/ui/dialog";
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
+import { WatchlistButton } from "@/components/ui/watchlist-button";
+import { PersonalRadar } from "@/components/ui/personal-radar";
 
 export default function Home() {
   const {
@@ -262,9 +264,9 @@ export default function Home() {
             history to distinguish between bad timing and bad thesis.
           </motion.p>
 
-          {/* Action Buttons - Hide during analysis or result view to save space/focus */}
+          {/* Action Buttons - Hide during analysis, show after scan for new scan option */}
           <AnimatePresence>
-            {!isAnalyzing && !hasScanned && (
+            {!isAnalyzing && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
@@ -338,15 +340,26 @@ export default function Home() {
                       </DialogContent>
                     </Dialog>
 
-                    <Button
-                      size="lg"
-                      className="h-12 px-8 text-base rounded-full"
-                      onClick={() => analyzeWallet()}
-                      disabled={isAnalyzing}
-                    >
-                      {isConnected ? "Start Deep Scan" : "Connect to Scan"}
-                      <ArrowRight className="ml-2 w-4 h-4" />
-                    </Button>
+                    {!hasScanned ? (
+                      <Button
+                        size="lg"
+                        className="h-12 px-8 text-base rounded-full"
+                        onClick={() => analyzeWallet()}
+                        disabled={isAnalyzing}
+                      >
+                        {isConnected ? "Start Deep Scan" : "Connect to Scan"}
+                        <ArrowRight className="ml-2 w-4 h-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        size="lg"
+                        className="h-12 px-8 text-base rounded-full"
+                        onClick={() => reset()}
+                      >
+                        New Scan
+                        <ArrowRight className="ml-2 w-4 h-4" />
+                      </Button>
+                    )}
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button
@@ -511,6 +524,7 @@ export default function Home() {
                           </Button>
                         ))}
                       </div>
+                      <PersonalRadar onAnalyze={analyzeWallet} />
                     </div>
                   </div>
                 </div>
@@ -589,6 +603,23 @@ export default function Home() {
                 }}
                 className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-6 relative z-10"
               >
+                {/* Back to Home Button */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-12"
+                >
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-foreground-muted hover:text-foreground mb-4"
+                    onClick={() => reset()}
+                  >
+                    ← Back to Home
+                  </Button>
+                </motion.div>
+
                 {/* Score Card */}
                 <motion.div
                   variants={{
@@ -643,6 +674,19 @@ export default function Home() {
                               >
                                 Details
                               </Button>
+                              
+                              <WatchlistButton 
+                                wallet={{
+                                  address: activeAddress || "",
+                                  chain: analysisChain || "solana",
+                                  convictionScore: convictionMetrics.score,
+                                  ethosScore: ethosScore?.score,
+                                  archetype: convictionMetrics.archetype,
+                                  farcasterUsername: farcasterIdentity?.username,
+                                  displayName: farcasterIdentity?.displayName
+                                }}
+                              />
+
                               <Button
                                 variant="ghost"
                                 size="sm"
