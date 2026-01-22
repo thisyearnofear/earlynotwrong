@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { EthosScore, EthosProfile, ConvictionAttestation, FarcasterIdentity } from "./ethos";
+import { EthosScore, EthosProfile, FarcasterIdentity } from "./ethos";
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis, TransactionResult } from "./api-client";
 
@@ -68,7 +68,10 @@ interface AppState {
   targetAddress: string | null;
   analysisChain: "solana" | "base" | null;
   dataQuality: TransactionResult["quality"] | null;
-  setPositionAnalyses: (positions: PositionAnalysis[], chain: "solana" | "base") => void;
+  setPositionAnalyses: (
+    positions: PositionAnalysis[],
+    chain: "solana" | "base",
+  ) => void;
   setTargetAddress: (address: string | null) => void;
   setDataQuality: (quality: TransactionResult["quality"]) => void;
 
@@ -79,8 +82,11 @@ interface AppState {
   showAttestationDialog: (show: boolean) => void;
 
   // Comparison State
-  comparisonWallets: any[];
-  addToComparison: (wallet: any) => void;
+  comparisonWallets: { address: string; [key: string]: unknown }[];
+  addToComparison: (wallet: {
+    address: string;
+    [key: string]: unknown;
+  }) => void;
   removeFromComparison: (address: string) => void;
   clearComparison: () => void;
 
@@ -153,8 +159,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   farcasterIdentity: null,
   setEthosData: (score, profile) =>
     set({ ethosScore: score, ethosProfile: profile }),
-  setFarcasterIdentity: (identity) =>
-    set({ farcasterIdentity: identity }),
+  setFarcasterIdentity: (identity) => set({ farcasterIdentity: identity }),
 
   // Conviction Data
   convictionMetrics: null,
@@ -165,7 +170,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   targetAddress: null,
   analysisChain: null,
   dataQuality: null,
-  setPositionAnalyses: (positions, chain) => set({ positionAnalyses: positions, analysisChain: chain }),
+  setPositionAnalyses: (positions, chain) =>
+    set({ positionAnalyses: positions, analysisChain: chain }),
   setTargetAddress: (address) => set({ targetAddress: address }),
   setDataQuality: (quality) => set({ dataQuality: quality }),
 
@@ -186,7 +192,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   showAttestationDialog: (show) =>
     set((state) => ({
-      attestationState: { ...state.attestationState, showAttestationDialog: show },
+      attestationState: {
+        ...state.attestationState,
+        showAttestationDialog: show,
+      },
     })),
 
   // Analysis Control
@@ -209,7 +218,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeFromComparison: (address) =>
     set((state) => ({
       comparisonWallets: state.comparisonWallets.filter(
-        (w: any) => w.address !== address
+        (w) => w.address !== address,
       ),
     })),
   clearComparison: () => set({ comparisonWallets: [] }),
@@ -261,5 +270,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().hideToast();
     }, 3000);
   },
-  hideToast: () => set((state) => ({ toast: { ...state.toast, isVisible: false } })),
+  hideToast: () =>
+    set((state) => ({ toast: { ...state.toast, isVisible: false } })),
 }));

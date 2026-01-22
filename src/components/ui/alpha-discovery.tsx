@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
 import { Button } from "@/components/ui/button";
-import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Archetype } from "@/components/ui/conviction-badge";
 import {
@@ -185,6 +184,7 @@ export function AlphaDiscovery({
                         src={wallet.farcasterIdentity.pfpUrl}
                         alt={wallet.farcasterIdentity.username}
                         className="w-8 h-8 rounded-full"
+                        loading="lazy"
                       />
                     )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { useConviction } from "@/hooks/use-conviction";
@@ -93,6 +93,22 @@ export default function Home() {
   const [hasHeatmapData, setHasHeatmapData] = useState(true);
   const [hasAlertsData, setHasAlertsData] = useState(true);
   const [hasCohortData, setHasCohortData] = useState(true);
+  const [isOrderFrozen, setIsOrderFrozen] = useState(false);
+  const [frozenOrder, setFrozenOrder] = useState<string[] | null>(null);
+
+  // Load frozen order from session storage on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem("enw-panel-order");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setFrozenOrder(parsed);
+        setIsOrderFrozen(true);
+      } catch (e) {
+        console.error("Failed to parse stored panel order", e);
+      }
+    }
+  }, []);
 
   // Memoize callbacks to prevent infinite re-renders in children
   const handleAlphaData = useCallback(
@@ -123,7 +139,7 @@ export default function Home() {
 
   // Define advanced panels for dynamic reordering based on content availability
   const advancedPanels = useMemo(() => {
-    return [
+    const panels = [
       {
         id: "alpha",
         hasData: hasAlphaData,
@@ -156,7 +172,17 @@ export default function Home() {
         ),
         className: "col-span-1 md:col-span-6 lg:col-span-6",
       },
-    ].sort((a, b) => {
+    ];
+
+    // If order is frozen, use the frozen order
+    if (isOrderFrozen && frozenOrder) {
+      return [...panels].sort((a, b) => {
+        return frozenOrder.indexOf(a.id) - frozenOrder.indexOf(b.id);
+      });
+    }
+
+    // Otherwise sort by data availability
+    return panels.sort((a, b) => {
       // Show panels with data first
       if (a.hasData && !b.hasData) return -1;
       if (!a.hasData && b.hasData) return 1;
@@ -171,7 +197,23 @@ export default function Home() {
     handleHeatmapData,
     handleAlertsData,
     handleCohortData,
+    isOrderFrozen,
+    frozenOrder,
   ]);
+
+  // Freeze the panel order after initial load to prevent twitching during the session
+  useEffect(() => {
+    if (isOrderFrozen) return;
+
+    const timer = setTimeout(() => {
+      const order = advancedPanels.map((p) => p.id);
+      setFrozenOrder(order);
+      setIsOrderFrozen(true);
+      sessionStorage.setItem("enw-panel-order", JSON.stringify(order));
+    }, 4000); // 4 seconds allows most data to resolve before freezing layout
+
+    return () => clearTimeout(timer);
+  }, [advancedPanels, isOrderFrozen]);
 
   return (
     <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
@@ -745,7 +787,7 @@ export default function Home() {
 
                       {/* Farcaster Identity Display - Hero */}
                       {farcasterIdentity && (
-                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20 max-h-[140px] overflow-hidden">
+                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20 max-h-35 overflow-hidden">
                           {farcasterIdentity.pfpUrl && (
                             <a
                               href={`https://warpcast.com/${farcasterIdentity.username}`}
@@ -757,6 +799,7 @@ export default function Home() {
                                 src={farcasterIdentity.pfpUrl}
                                 alt={farcasterIdentity.username}
                                 className="w-12 h-12 rounded-full ring-2 ring-signal/30 hover:ring-signal/50 transition-all"
+                                loading="lazy"
                               />
                             </a>
                           )}
@@ -1051,7 +1094,7 @@ export default function Home() {
                       }}
                       className="col-span-1 md:col-span-6 lg:col-span-12"
                     >
-                      <Card className="glass-panel border-border/50 bg-surface/40 border-signal/20">
+                      <Card className="glass-panel border-signal/20 bg-surface/40 overflow-hidden">
                         <CardContent className="p-8 text-center">
                           <div className="space-y-4">
                             <Lock className="w-12 h-12 text-signal mx-auto" />
