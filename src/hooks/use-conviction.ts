@@ -28,6 +28,7 @@ export function useConviction() {
     setFarcasterIdentity,
     setConvictionMetrics,
     setPositionAnalyses,
+    setTargetAddress,
     setDataQuality,
     isAnalyzing,
     addLog,
@@ -73,6 +74,7 @@ export function useConviction() {
         reset(); // Clear previous state
         clearError(); // Clear any previous errors
         clearExpiredCache(); // Clean up expired cache entries
+        setTargetAddress(activeAddress);
         startAnalysis();
 
         // Step 1: Identity Resolution
@@ -337,6 +339,7 @@ export function useConviction() {
 
       try {
         reset();
+        setTargetAddress(address);
         startAnalysis();
         clearError();
 

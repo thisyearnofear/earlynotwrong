@@ -152,22 +152,24 @@ export async function writeEthosReview(
 }
 
 /**
- * Generate a pre-filled URL for user to manually create an Ethos review
- * This serves as a fallback when automated review writing isn't available
+ * Generate a deep-link URL to write an Ethos review
+ * Opens Ethos app at the profile page where user can manually write review
  */
 export function getEthosReviewURL(
   subject: string,
   metrics: ConvictionMetrics
 ): string {
-  const comment = generateReviewComment(metrics);
-  const sentiment = getReviewSentiment(metrics.score);
-  
-  // Encode comment for URL
-  const encodedComment = encodeURIComponent(comment);
-  
-  // Construct Ethos app URL with pre-filled data
-  // Note: Adjust based on actual Ethos UI structure
-  return `https://app.ethos.network/profile/${subject}?review=${sentiment.toLowerCase()}&comment=${encodedComment}`;
+  // Simply link to the profile page - Ethos will handle the review UI
+  // Users can manually write reviews based on our conviction insights
+  return `https://app.ethos.network/profile/${subject}`;
+}
+
+/**
+ * Generate review text for clipboard copy
+ * User can paste this into Ethos review form
+ */
+export function getReviewTextForClipboard(metrics: ConvictionMetrics): string {
+  return generateReviewComment(metrics);
 }
 
 /**

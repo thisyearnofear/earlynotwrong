@@ -4,10 +4,29 @@ import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Search } from "lucide-react";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger,
+  DialogDescription 
+} from "@/components/ui/dialog";
+import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
+import { useRouter } from "next/navigation";
 
 export function Navbar() {
   const { theme, setTheme } = useAppStore();
+  const router = useRouter();
+
+  const handleWalletSelected = (identity: any) => {
+    // For now, redirect to home or a placeholder analyze page
+    // In Phase 2/3 this will trigger the full analysis flow for that wallet
+    console.log("Selected wallet:", identity);
+    // router.push(`/analyze/${identity.address}`);
+  };
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-md h-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
@@ -28,6 +47,33 @@ export function Navbar() {
             <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
             SYSTEM ONLINE
           </div>
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-foreground-muted hover:text-foreground"
+              >
+                <Search className="w-4 h-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Analyze Any Wallet</DialogTitle>
+                <DialogDescription>
+                  Enter an address, ENS, or Farcaster handle to inspect conviction.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <WalletSearchInput 
+                  onWalletSelected={handleWalletSelected}
+                  className="max-w-none"
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Button
             variant="ghost"
             size="icon"

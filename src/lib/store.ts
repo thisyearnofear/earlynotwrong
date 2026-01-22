@@ -65,9 +65,11 @@ interface AppState {
 
   // Position Analysis Data
   positionAnalyses: PositionAnalysis[];
+  targetAddress: string | null;
   analysisChain: "solana" | "base" | null;
   dataQuality: TransactionResult["quality"] | null;
   setPositionAnalyses: (positions: PositionAnalysis[], chain: "solana" | "base") => void;
+  setTargetAddress: (address: string | null) => void;
   setDataQuality: (quality: TransactionResult["quality"]) => void;
 
   // Attestation State
@@ -76,7 +78,13 @@ interface AppState {
   setUserConsent: (consent: boolean) => void;
   showAttestationDialog: (show: boolean) => void;
 
-  // Analysis Control
+  // Comparison State
+  comparisonWallets: any[];
+  addToComparison: (wallet: any) => void;
+  removeFromComparison: (address: string) => void;
+  clearComparison: () => void;
+
+  // Analysis Parameters
   parameters: AnalysisParams;
   setParameters: (params: Partial<AnalysisParams>) => void;
 
@@ -154,9 +162,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Position Analysis Data
   positionAnalyses: [],
+  targetAddress: null,
   analysisChain: null,
   dataQuality: null,
   setPositionAnalyses: (positions, chain) => set({ positionAnalyses: positions, analysisChain: chain }),
+  setTargetAddress: (address) => set({ targetAddress: address }),
   setDataQuality: (quality) => set({ dataQuality: quality }),
 
   // Attestation State
@@ -190,6 +200,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       parameters: { ...state.parameters, ...params },
     })),
 
+  // Comparison State Implementation
+  comparisonWallets: [],
+  addToComparison: (wallet) =>
+    set((state) => ({
+      comparisonWallets: [...state.comparisonWallets, wallet].slice(0, 3), // Max 3 wallets
+    })),
+  removeFromComparison: (address) =>
+    set((state) => ({
+      comparisonWallets: state.comparisonWallets.filter(
+        (w: any) => w.address !== address
+      ),
+    })),
+  clearComparison: () => set({ comparisonWallets: [] }),
+
   // UI State
   isShowcaseMode: false,
   toggleShowcaseMode: (enabled) =>
@@ -207,6 +231,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ethosProfile: null,
       convictionMetrics: null,
       positionAnalyses: [],
+      targetAddress: null,
       analysisChain: null,
       attestationState: {
         canAttest: false,
@@ -220,6 +245,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         includeSmallCaps: true,
       },
       isShowcaseMode: false,
+      comparisonWallets: [],
     }),
 
   // Toast Implementation

@@ -26,6 +26,7 @@ import {
   Settings,
   Share2,
   Lock,
+  MessageSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
@@ -43,6 +44,7 @@ import { ConvictionAlerts } from "@/components/ui/conviction-alerts";
 import { CohortAnalysis } from "@/components/ui/cohort-analysis";
 import { BehavioralInsights } from "@/components/ui/behavioral-insights";
 import { DataQualityBadge } from "@/components/ui/data-quality-badge";
+import { SocialProofBadge } from "@/components/ui/social-proof-badge";
 import {
   Dialog,
   DialogContent,
@@ -51,8 +53,12 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
+import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
   const { analyzeWallet, loadCachedAnalysis, isAnalyzing, isConnected, isShowcaseMode, activeAddress } =
     useConviction();
   const {
@@ -61,6 +67,7 @@ export default function Home() {
     farcasterIdentity,
     convictionMetrics,
     positionAnalyses,
+    targetAddress,
     analysisChain,
     dataQuality,
     logs,
@@ -309,21 +316,59 @@ export default function Home() {
                     </Dialog>
                   </div>
 
-                  <div className="flex flex-col items-center gap-4">
-                    <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
-                      Or analyze a public profile
-                    </p>
-                    <div className="flex flex-wrap justify-center gap-3">
-                      {SHOWCASE_WALLETS.map((wallet) => (
-                        <Button
-                          key={wallet.id}
-                          variant="outline"
-                          className="border-border/50 hover:border-signal/50 hover:bg-surface-hover font-mono text-xs"
-                          onClick={() => analyzeWallet(wallet.id)}
-                        >
-                          {wallet.name}
-                        </Button>
-                      ))}
+                  <div className="flex flex-col items-center gap-6 w-full max-w-lg mt-4">
+                    <div className="w-full space-y-3">
+                      <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest text-center">
+                        Analyze any public profile
+                      </p>
+                      <WalletSearchInput 
+                        onWalletSelected={async (identity: ResolvedIdentity) => {
+                          console.log("Analyzing wallet:", identity);
+                          
+                          // Update store with resolved identity data
+                          const { setEthosData, setFarcasterIdentity } = useAppStore.getState();
+                          
+                          // Update Ethos data (score and profile together)
+                          setEthosData(
+                            identity.ethos?.score || null,
+                            identity.ethos?.profile || null
+                          );
+                          
+                          // Update Farcaster identity if available
+                          if (identity.farcaster) {
+                            setFarcasterIdentity(identity.farcaster);
+                          }
+                          
+                          // Trigger conviction analysis
+                          await analyzeWallet(identity.address);
+                          
+                          // Scroll to results after analysis starts
+                          setTimeout(() => {
+                            const resultsSection = document.getElementById('conviction-results');
+                            resultsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 500);
+                        }}
+                        className="max-w-none"
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col items-center gap-3">
+                      <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
+                        Quick start showcase
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {SHOWCASE_WALLETS.slice(0, 3).map((wallet) => (
+                          <Button
+                            key={wallet.id}
+                            variant="ghost"
+                            size="sm"
+                            className="border border-border/30 hover:border-signal/30 font-mono text-[10px] h-7 px-3"
+                            onClick={() => analyzeWallet(wallet.id)}
+                          >
+                            {wallet.name}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -385,6 +430,7 @@ export default function Home() {
             {/* STATE: RESULTS (DASHBOARD) */}
             {!isAnalyzing && hasScanned && !errorState.hasError && (
               <motion.div
+                id="conviction-results"
                 key="dashboard"
                 initial="hidden"
                 animate="visible"
@@ -564,8 +610,18 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
                 >
-                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full">
-                    <CardHeader>
+                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
+                    {/* Analyzing Other Wallet Indicator */}
+                    {isConnected && targetAddress && targetAddress !== activeAddress && (
+                      <div className="absolute top-0 left-0 right-0 bg-signal/10 border-b border-signal/20 py-1 px-4 flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
+                        <span className="text-[10px] font-mono text-signal uppercase font-bold tracking-widest">
+                          Inspecting Public Profile
+                        </span>
+                      </div>
+                    )}
+
+                    <CardHeader className={cn(isConnected && targetAddress && targetAddress !== activeAddress ? "pt-8" : "pt-6")}>
                       <div className="flex items-center justify-between mb-2">
                         <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
                           Reputation
@@ -597,11 +653,11 @@ export default function Home() {
                             <div className="text-sm text-foreground-muted truncate">
                               @{farcasterIdentity.username}
                             </div>
-                            {farcasterIdentity.bio && (
-                              <div className="text-xs text-foreground-muted mt-1 line-clamp-2">
-                                {farcasterIdentity.bio}
-                              </div>
-                            )}
+                            <div className="flex gap-1.5 mt-2">
+                              {/* Mocked social proof counts for demo - will be wired to API in Task 5 */}
+                              <SocialProofBadge type="vouches" count={Math.floor((ethosScore?.score || 0) / 12)} />
+                              <SocialProofBadge type="reviews" count={Math.floor((ethosScore?.score || 0) / 45)} />
+                            </div>
                           </div>
                         </div>
                       )}
@@ -615,7 +671,7 @@ export default function Home() {
                           : "No reputation signal found"}
                       </CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-4">
                       <div className="p-4 rounded-lg bg-surface/50 border border-border space-y-3">
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-foreground-muted">
@@ -656,43 +712,64 @@ export default function Home() {
                           </span>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        className="w-full mt-4 border-border hover:bg-surface text-xs font-mono"
-                        disabled={!ethosProfile?.username && !farcasterIdentity?.username && !activeAddress}
-                        onClick={async () => {
-                          // Try to open Ethos profile - multiple fallback strategies
-                          if (ethosProfile) {
-                            const profileUrl = ethosClient.getProfileUrl(ethosProfile);
-                            window.open(profileUrl, "_blank", "noopener,noreferrer");
-                            return;
-                          }
-                          
-                          // Try Web3.bio universal resolver as fallback
-                          if (activeAddress) {
-                            try {
-                              const { findEthosProfileViaWeb3Bio } = await import('@/lib/web3bio');
-                              const ethosUrl = await findEthosProfileViaWeb3Bio(activeAddress);
-                              
-                              if (ethosUrl) {
-                                window.open(ethosUrl, "_blank", "noopener,noreferrer");
-                                return;
-                              }
-                            } catch (error) {
-                              console.warn('Web3.bio lookup failed:', error);
+                      
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          variant="outline"
+                          className="w-full border-border hover:bg-surface text-xs font-mono"
+                          disabled={!ethosProfile?.username && !farcasterIdentity?.username && !targetAddress}
+                          onClick={async () => {
+                            // Try to open Ethos profile - multiple fallback strategies
+                            if (ethosProfile) {
+                              const profileUrl = ethosClient.getProfileUrl(ethosProfile);
+                              window.open(profileUrl, "_blank", "noopener,noreferrer");
+                              return;
                             }
-                          }
-                          
-                          // Manual fallbacks
-                          if (farcasterIdentity?.username) {
-                            window.open(`https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`, "_blank", "noopener,noreferrer");
-                          } else if (activeAddress) {
-                            window.open(`https://app.ethos.network/profile/${activeAddress}`, "_blank", "noopener,noreferrer");
-                          }
-                        }}
-                      >
-                        VIEW ETHOS PROFILE
-                      </Button>
+                            
+                            // Try Web3.bio universal resolver as fallback
+                            if (targetAddress) {
+                              try {
+                                const { findEthosProfileViaWeb3Bio } = await import('@/lib/web3bio');
+                                const ethosUrl = await findEthosProfileViaWeb3Bio(targetAddress);
+                                
+                                if (ethosUrl) {
+                                  window.open(ethosUrl, "_blank", "noopener,noreferrer");
+                                  return;
+                                }
+                              } catch (error) {
+                                console.warn('Web3.bio lookup failed:', error);
+                              }
+                            }
+                            
+                            // Manual fallbacks
+                            if (farcasterIdentity?.username) {
+                              window.open(`https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`, "_blank", "noopener,noreferrer");
+                            } else if (targetAddress) {
+                              window.open(`https://app.ethos.network/profile/${targetAddress}`, "_blank", "noopener,noreferrer");
+                            }
+                          }}
+                        >
+                          VIEW ETHOS PROFILE
+                        </Button>
+
+                        {/* Write Review Button - only for others and high credibility users */}
+                        {targetAddress && targetAddress !== activeAddress && (ethosScore?.score || 0) >= 500 && (
+                          <Button
+                            variant="ghost"
+                            className="w-full text-signal hover:bg-signal/10 text-xs font-mono"
+                            onClick={() => {
+                              if (convictionMetrics) {
+                                const { getEthosReviewURL } = require('@/lib/ethos-reviews');
+                                const url = getEthosReviewURL(targetAddress, convictionMetrics);
+                                window.open(url, "_blank");
+                              }
+                            }}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 mr-2" />
+                            VOUCH FOR CONVICTION
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
