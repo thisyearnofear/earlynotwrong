@@ -6,12 +6,16 @@ import { ethosClient } from "@/lib/ethos";
 import { apiClient } from "@/lib/api-client";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { saveConvictionAnalysis } from "@/lib/history";
-import { classifyError, formatErrorForTerminal, retryWithBackoff } from "@/lib/error-handler";
+import {
+  classifyError,
+  formatErrorForTerminal,
+  retryWithBackoff,
+} from "@/lib/error-handler";
 import {
   cacheAnalysis,
   getCachedAnalysis,
   hasCachedAnalysis,
-  clearExpiredCache
+  clearExpiredCache,
 } from "@/lib/analysis-cache";
 
 export function useConviction() {
@@ -41,26 +45,34 @@ export function useConviction() {
   } = useAppStore();
 
   const analyzeWallet = useCallback(
-    async (showcaseId?: string) => {
-      // Determine target: Showcase Wallet or Connected User
+    async (addressOrShowcaseId?: string) => {
+      // Determine target: Showcase Wallet, Direct Address, or Connected User
       let activeAddress: string | null = null;
       let targetShowcase = null;
-      let chain: 'solana' | 'base' = 'solana';
+      let chain: "solana" | "base" = "solana";
 
-      if (showcaseId) {
-        targetShowcase = SHOWCASE_WALLETS.find((w) => w.id === showcaseId);
+      if (addressOrShowcaseId) {
+        targetShowcase = SHOWCASE_WALLETS.find(
+          (w) => w.id === addressOrShowcaseId,
+        );
         if (targetShowcase) {
           activeAddress = targetShowcase.address;
           chain = targetShowcase.chain;
           toggleShowcaseMode(true);
+        } else {
+          // If not a showcase ID, assume it's a direct address
+          activeAddress = addressOrShowcaseId;
+          // Simple heuristic: 0x prefix = EVM (Base), otherwise assume Solana
+          chain = addressOrShowcaseId.startsWith("0x") ? "base" : "solana";
+          toggleShowcaseMode(false);
         }
       } else {
         if (isEvmConnected && evmAddress) {
           activeAddress = evmAddress;
-          chain = 'base';
+          chain = "base";
         } else if (isSolanaConnected && solanaAddress) {
           activeAddress = solanaAddress;
-          chain = 'solana';
+          chain = "solana";
         }
         toggleShowcaseMode(false);
       }
@@ -103,28 +115,36 @@ export function useConviction() {
           // Attempt to fetch real Ethos data
           let scorePromise;
           let profilePromise;
-          let farcasterPromise;
+          // Always try to resolve Farcaster identity (works for both chains)
+          // If showcase wallet has a manual FID mapping, use it
+          const fid = targetShowcase?.farcasterFid;
+          const farcasterPromise = ethosClient.resolveFarcasterIdentity(
+            activeAddress,
+            fid,
+          );
 
           // Special handling for Solana (Ethos is EVM-native, so we resolve via X.com handle if available)
-          if (chain === 'solana' && targetShowcase?.ethosProfile?.username) {
-            const userKey = `service:x.com:username:${targetShowcase.ethosProfile.username}`;
-            addLog(`> RESOLVING ETHOS ID VIA X.COM: @${targetShowcase.ethosProfile.username}`);
-            scorePromise = ethosClient.getScoreByUserKey(userKey);
-            // Profile lookup by address won't work for Solana, and we don't have profile-by-userkey yet
-            // So we'll rely on the fallback for the profile part
-            profilePromise = Promise.resolve(null);
+          if (chain === "solana") {
+            if (targetShowcase?.ethosProfile?.username) {
+              const userKey = `service:x.com:username:${targetShowcase.ethosProfile.username}`;
+              addLog(
+                `> RESOLVING ETHOS ID VIA X.COM: @${targetShowcase.ethosProfile.username}`,
+              );
+              scorePromise = ethosClient.getScoreByUserKey(userKey);
+              // Profile lookup by address won't work for Solana, and we don't have profile-by-userkey yet
+              profilePromise = Promise.resolve(null);
+            } else {
+              // Standard Solana address - Ethos doesn't support these directly yet
+              scorePromise = Promise.resolve(null);
+              profilePromise = Promise.resolve(null);
+            }
           } else {
             // Standard EVM address lookup
             scorePromise = ethosClient.getScoreByAddress(activeAddress);
             profilePromise = ethosClient.getProfileByAddress(activeAddress);
           }
 
-          // Always try to resolve Farcaster identity (works for both chains)
-          // If showcase wallet has a manual FID mapping, use it
-          const fid = targetShowcase?.farcasterFid;
-          farcasterPromise = ethosClient.resolveFarcasterIdentity(activeAddress, fid);
-
-          let [score, profile, farcasterIdentity] = await Promise.all([
+          const [score, profile, farcasterIdentity] = await Promise.all([
             retryWithBackoff(() => scorePromise, {
               maxRetries: 2,
             }).catch((e) => {
@@ -175,23 +195,28 @@ export function useConviction() {
         addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
         try {
-          const effectiveMinTradeValue = targetShowcase ? Math.min(parameters.minTradeValue, 1) : parameters.minTradeValue;
+          const effectiveMinTradeValue = targetShowcase
+            ? Math.min(parameters.minTradeValue, 1)
+            : parameters.minTradeValue;
           const txResult = await retryWithBackoff(
-            () => apiClient.fetchTransactions(
-              activeAddress,
-              chain,
-              parameters.timeHorizon,
-              effectiveMinTradeValue
-            ),
-            { maxRetries: 2, initialDelay: 2000 }
+            () =>
+              apiClient.fetchTransactions(
+                activeAddress,
+                chain,
+                parameters.timeHorizon,
+                effectiveMinTradeValue,
+              ),
+            { maxRetries: 2, initialDelay: 2000 },
           );
 
           addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
-          
+
           // Log and store data quality if available
           if (txResult.quality) {
             const q = txResult.quality;
-            addLog(`> DATA_QUALITY: SYMBOLS ${q.dataCompleteness.symbolRate}% | PRICES ${q.dataCompleteness.priceRate}% | AVG_SIZE $${q.avgTradeSize.toFixed(0)}`);
+            addLog(
+              `> DATA_QUALITY: SYMBOLS ${q.dataCompleteness.symbolRate}% | PRICES ${q.dataCompleteness.priceRate}% | AVG_SIZE $${q.avgTradeSize.toFixed(0)}`,
+            );
             setDataQuality(txResult.quality);
           }
 
@@ -202,10 +227,12 @@ export function useConviction() {
             setError({
               errorType: "data",
               errorMessage: "No qualifying transactions found",
-              errorDetails: "This wallet has no transaction history matching your current filters.",
+              errorDetails:
+                "This wallet has no transaction history matching your current filters.",
               canRetry: true,
               canUseCached: hasCachedAnalysis(activeAddress, chain),
-              recoveryAction: "Try lowering the 'Min. Trade Value' in settings or extended the 'Time Horizon' to find more history.",
+              recoveryAction:
+                "Try lowering the 'Min. Trade Value' in settings or extended the 'Time Horizon' to find more history.",
             });
 
             finishAnalysis();
@@ -216,23 +243,34 @@ export function useConviction() {
           setAnalysisStep("Grouping positions...");
           addLog(`> GROUPING TRANSACTIONS INTO POSITIONS...`);
 
-          const positions = apiClient.groupTransactionsIntoPositions(txResult.transactions);
+          const positions = apiClient.groupTransactionsIntoPositions(
+            txResult.transactions,
+          );
           addLog(`> IDENTIFIED ${positions.length} TRADING POSITIONS`);
 
           await new Promise((resolve) => setTimeout(resolve, 600));
           setAnalysisStep("Analyzing conviction...");
           addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
-          addLog(`> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`);
+          addLog(
+            `> BATCH ANALYZING ${positions.length} POSITIONS (SERVER-SIDE)...`,
+          );
 
           // Get current Ethos score for reputation weighting
           const currentEthosScore = useAppStore.getState().ethosScore;
           if (currentEthosScore?.score) {
-            addLog(`> APPLYING REPUTATION WEIGHTING (ETHOS: ${currentEthosScore.score})...`);
+            addLog(
+              `> APPLYING REPUTATION WEIGHTING (ETHOS: ${currentEthosScore.score})...`,
+            );
           }
 
           const batchResult = await retryWithBackoff(
-            () => apiClient.batchAnalyzePositions(positions, chain, currentEthosScore?.score),
-            { maxRetries: 2, initialDelay: 2000 }
+            () =>
+              apiClient.batchAnalyzePositions(
+                positions,
+                chain,
+                currentEthosScore?.score,
+              ),
+            { maxRetries: 2, initialDelay: 2000 },
           );
 
           await new Promise((resolve) => setTimeout(resolve, 400));
@@ -249,7 +287,8 @@ export function useConviction() {
 
           // Cache results
           const currentEthosProfile = useAppStore.getState().ethosProfile;
-          const currentFarcasterIdentity = useAppStore.getState().farcasterIdentity;
+          const currentFarcasterIdentity =
+            useAppStore.getState().farcasterIdentity;
 
           cacheAnalysis(
             activeAddress,
@@ -259,7 +298,7 @@ export function useConviction() {
             currentEthosScore,
             currentEthosProfile,
             currentFarcasterIdentity,
-            parameters
+            parameters,
           );
 
           saveConvictionAnalysis(
@@ -267,16 +306,15 @@ export function useConviction() {
             chain,
             batchResult.metrics,
             parameters.timeHorizon,
-            !!showcaseId
+            !!addressOrShowcaseId,
           );
-
         } catch (error) {
           console.error("Transaction analysis failed:", error);
 
           const classified = classifyError(error);
           const errorLines = formatErrorForTerminal(classified);
 
-          errorLines.forEach(line => addLog(line));
+          errorLines.forEach((line) => addLog(line));
 
           setError({
             errorType: classified.type,
@@ -294,14 +332,16 @@ export function useConviction() {
         const classified = classifyError(error);
         const errorLines = formatErrorForTerminal(classified);
 
-        errorLines.forEach(line => addLog(line));
+        errorLines.forEach((line) => addLog(line));
 
         setError({
           errorType: classified.type,
           errorMessage: classified.message,
           errorDetails: classified.details,
           canRetry: classified.canRetry,
-          canUseCached: activeAddress ? hasCachedAnalysis(activeAddress, chain) : false,
+          canUseCached: activeAddress
+            ? hasCachedAnalysis(activeAddress, chain)
+            : false,
           recoveryAction: classified.recoveryAction,
         });
 
@@ -317,7 +357,11 @@ export function useConviction() {
       startAnalysis,
       setAnalysisStep,
       setEthosData,
+      setFarcasterIdentity,
+      setTargetAddress,
+      setDataQuality,
       setConvictionMetrics,
+      setPositionAnalyses,
       finishAnalysis,
       reset,
       toggleShowcaseMode,
@@ -367,7 +411,19 @@ export function useConviction() {
         return false;
       }
     },
-    [parameters, reset, startAnalysis, clearError, setEthosData, setConvictionMetrics, setPositionAnalyses, addLog, finishAnalysis]
+    [
+      parameters,
+      reset,
+      startAnalysis,
+      clearError,
+      setEthosData,
+      setFarcasterIdentity,
+      setTargetAddress,
+      setConvictionMetrics,
+      setPositionAnalyses,
+      addLog,
+      finishAnalysis,
+    ],
   );
 
   return {

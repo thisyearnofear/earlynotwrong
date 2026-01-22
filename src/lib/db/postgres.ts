@@ -41,8 +41,13 @@ export interface WatchlistTrader {
   twitter: string | null;
   ens: string | null;
   addedBy: string | null;
+  addedByEthos: number;
   addedAt: Date;
+  status: "nominated" | "approved" | "featured" | "rejected";
+  endorsementCount: number;
   isActive: boolean;
+  avgConvictionScore: number | null;
+  totalAnalyses: number;
 }
 
 export interface CohortStats {
@@ -277,10 +282,26 @@ export async function getWatchlist(
 }
 
 /**
+ * Input type for adding to watchlist (only required fields)
+ */
+export interface AddWatchlistInput {
+  traderId: string;
+  name: string;
+  chain: "solana" | "base";
+  wallets: string[];
+  farcaster?: string | null;
+  twitter?: string | null;
+  ens?: string | null;
+  addedBy?: string | null;
+  addedByEthos?: number;
+  status?: "nominated" | "approved" | "featured";
+}
+
+/**
  * Add a trader to the watchlist
  */
 export async function addToWatchlist(
-  trader: Omit<WatchlistTrader, "id" | "addedAt" | "isActive">
+  trader: AddWatchlistInput
 ): Promise<WatchlistTrader | null> {
   try {
     // Serialize wallets array as Postgres array literal
@@ -288,7 +309,7 @@ export async function addToWatchlist(
 
     const result = await sql`
       INSERT INTO watchlist_traders (
-        trader_id, name, chain, wallets, farcaster, twitter, ens, added_by
+        trader_id, name, chain, wallets, farcaster, twitter, ens, added_by, added_by_ethos, status
       ) VALUES (
         ${trader.traderId},
         ${trader.name},
@@ -297,7 +318,9 @@ export async function addToWatchlist(
         ${trader.farcaster || null},
         ${trader.twitter || null},
         ${trader.ens || null},
-        ${trader.addedBy || null}
+        ${trader.addedBy || null},
+        ${trader.addedByEthos || 0},
+        ${trader.status || "approved"}
       )
       ON CONFLICT (trader_id) DO UPDATE SET
         name = EXCLUDED.name,
@@ -385,8 +408,13 @@ function mapWatchlistRow(row: Record<string, unknown>): WatchlistTrader {
     twitter: row.twitter as string | null,
     ens: row.ens as string | null,
     addedBy: row.added_by as string | null,
+    addedByEthos: Number(row.added_by_ethos) || 0,
     addedAt: new Date(row.added_at as string),
+    status: (row.status as WatchlistTrader["status"]) || "approved",
+    endorsementCount: Number(row.endorsement_count) || 0,
     isActive: row.is_active as boolean,
+    avgConvictionScore: row.avg_conviction_score ? Number(row.avg_conviction_score) : null,
+    totalAnalyses: Number(row.total_analyses) || 0,
   };
 }
 

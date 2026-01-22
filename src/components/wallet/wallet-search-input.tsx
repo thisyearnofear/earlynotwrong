@@ -2,12 +2,12 @@
 
 /**
  * Wallet Search Input Component
- * 
+ *
  * Allows users to search and analyze any wallet by:
  * - Ethereum/Solana address
  * - ENS name (vitalik.eth)
  * - Farcaster handle (@username)
- * 
+ *
  * Uses identity resolution service to normalize inputs.
  */
 
@@ -35,7 +35,10 @@ export function WalletSearchInput({
   showResolvedPreview = true,
 }: WalletSearchInputProps) {
   const [input, setInput] = useState("");
-  const { identity, loading, error, resolve, reset } = useWalletIdentity(null, false);
+  const { identity, loading, error, resolve, reset } = useWalletIdentity(
+    null,
+    false,
+  );
 
   const handleSearch = async () => {
     if (!input.trim()) return;
@@ -86,7 +89,7 @@ export function WalletSearchInput({
             "text-foreground placeholder:text-foreground-muted",
             "focus:outline-none focus:ring-2 focus:ring-signal focus:border-transparent",
             "disabled:opacity-50 disabled:cursor-not-allowed",
-            "transition-all duration-200"
+            "transition-all duration-200",
           )}
         />
 
@@ -126,11 +129,14 @@ export function WalletSearchInput({
       {/* Error State */}
       {error && (
         <div className="flex items-start gap-2 p-3 bg-impatience/10 border border-impatience/30 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-impatience flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-impatience shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-impatience">Could not resolve wallet</p>
+            <p className="text-sm font-medium text-impatience">
+              Could not resolve wallet
+            </p>
             <p className="text-xs text-foreground-muted mt-1">
-              {error || "Please check the address, ENS name, or handle and try again."}
+              {error ||
+                "Please check the address, ENS name, or handle and try again."}
             </p>
           </div>
         </div>
@@ -142,7 +148,7 @@ export function WalletSearchInput({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 flex-1 min-w-0">
               {/* Avatar/Icon */}
-              <div className="w-12 h-12 rounded-full bg-signal/20 border border-signal/30 flex items-center justify-center flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-signal/20 border border-signal/30 flex items-center justify-center shrink-0">
                 {identity.ens.avatar ? (
                   <img
                     src={identity.ens.avatar}
@@ -158,9 +164,9 @@ export function WalletSearchInput({
               <div className="flex-1 min-w-0">
                 {/* Primary Name */}
                 <h3 className="font-semibold text-foreground truncate">
-                  {identity.ens.name || 
-                   identity.farcaster?.displayName || 
-                   `${identity.address.slice(0, 6)}...${identity.address.slice(-4)}`}
+                  {identity.ens.name ||
+                    identity.farcaster?.displayName ||
+                    `${identity.address.slice(0, 6)}...${identity.address.slice(-4)}`}
                 </h3>
 
                 {/* Secondary Info */}
@@ -174,7 +180,8 @@ export function WalletSearchInput({
                     <span className="text-border">•</span>
                   )}
                   <span className="font-mono">
-                    {identity.address.slice(0, 6)}...{identity.address.slice(-4)}
+                    {identity.address.slice(0, 6)}...
+                    {identity.address.slice(-4)}
                   </span>
                 </div>
 
@@ -190,7 +197,7 @@ export function WalletSearchInput({
             </div>
 
             {/* Success Icon */}
-            <CheckCircle2 className="w-5 h-5 text-signal flex-shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-signal shrink-0" />
           </div>
 
           {/* Social Proof Badges */}
@@ -218,11 +225,7 @@ export function WalletSearchInput({
           </div>
 
           {/* Analyze Button */}
-          <Button
-            onClick={handleSelect}
-            className="w-full"
-            variant="default"
-          >
+          <Button onClick={handleSelect} className="w-full" variant="default">
             Analyze Wallet
           </Button>
         </div>

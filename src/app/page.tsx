@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { Terminal } from "@/components/ui/terminal";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
+import { getEthosReviewURL } from "@/lib/ethos-reviews";
 import {
   Card,
   CardContent,
@@ -55,12 +56,16 @@ import {
 } from "@/components/ui/dialog";
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
-import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const router = useRouter();
-  const { analyzeWallet, loadCachedAnalysis, isAnalyzing, isConnected, isShowcaseMode, activeAddress } =
-    useConviction();
+  const {
+    analyzeWallet,
+    loadCachedAnalysis,
+    isAnalyzing,
+    isConnected,
+    isShowcaseMode,
+    activeAddress,
+  } = useConviction();
   const {
     ethosScore,
     ethosProfile,
@@ -73,7 +78,6 @@ export default function Home() {
     logs,
     parameters,
     setParameters,
-    showAttestationDialog,
     reset,
     errorState,
     clearError,
@@ -159,13 +163,15 @@ export default function Home() {
                         <DialogHeader>
                           <DialogTitle>Analysis Parameters</DialogTitle>
                           <DialogDescription>
-                            Fine-tune the behavioral heuristics for your conviction audit.
+                            Fine-tune the behavioral heuristics for your
+                            conviction audit.
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-6 py-4">
                           <div className="space-y-3">
                             <label className="text-xs font-mono uppercase text-foreground-muted flex justify-between">
-                              Time Horizon <span>{parameters.timeHorizon} Days</span>
+                              Time Horizon{" "}
+                              <span>{parameters.timeHorizon} Days</span>
                             </label>
                             <input
                               type="range"
@@ -175,7 +181,11 @@ export default function Home() {
                               value={parameters.timeHorizon}
                               onChange={(e) =>
                                 setParameters({
-                                  timeHorizon: parseInt(e.target.value) as 30 | 90 | 180 | 365,
+                                  timeHorizon: parseInt(e.target.value) as
+                                    | 30
+                                    | 90
+                                    | 180
+                                    | 365,
                                 })
                               }
                               className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
@@ -183,7 +193,8 @@ export default function Home() {
                           </div>
                           <div className="space-y-3">
                             <label className="text-xs font-mono uppercase text-foreground-muted flex justify-between">
-                              Min. Trade Value <span>${parameters.minTradeValue}</span>
+                              Min. Trade Value{" "}
+                              <span>${parameters.minTradeValue}</span>
                             </label>
                             <input
                               type="range"
@@ -321,37 +332,44 @@ export default function Home() {
                       <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest text-center">
                         Analyze any public profile
                       </p>
-                      <WalletSearchInput 
-                        onWalletSelected={async (identity: ResolvedIdentity) => {
+                      <WalletSearchInput
+                        onWalletSelected={async (
+                          identity: ResolvedIdentity,
+                        ) => {
                           console.log("Analyzing wallet:", identity);
-                          
+
                           // Update store with resolved identity data
-                          const { setEthosData, setFarcasterIdentity } = useAppStore.getState();
-                          
+                          const { setEthosData, setFarcasterIdentity } =
+                            useAppStore.getState();
+
                           // Update Ethos data (score and profile together)
                           setEthosData(
                             identity.ethos?.score || null,
-                            identity.ethos?.profile || null
+                            identity.ethos?.profile || null,
                           );
-                          
+
                           // Update Farcaster identity if available
                           if (identity.farcaster) {
                             setFarcasterIdentity(identity.farcaster);
                           }
-                          
+
                           // Trigger conviction analysis
                           await analyzeWallet(identity.address);
-                          
+
                           // Scroll to results after analysis starts
                           setTimeout(() => {
-                            const resultsSection = document.getElementById('conviction-results');
-                            resultsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            const resultsSection =
+                              document.getElementById("conviction-results");
+                            resultsSection?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
                           }, 500);
                         }}
                         className="max-w-none"
                       />
                     </div>
-                    
+
                     <div className="flex flex-col items-center gap-3">
                       <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
                         Quick start showcase
@@ -413,7 +431,9 @@ export default function Home() {
                   onRetry={() => {
                     clearError();
                     if (activeAddress) {
-                      analyzeWallet(isShowcaseMode ? SHOWCASE_WALLETS[0]?.id : undefined);
+                      analyzeWallet(
+                        isShowcaseMode ? SHOWCASE_WALLETS[0]?.id : undefined,
+                      );
                     }
                   }}
                   onUseCached={() => {
@@ -475,14 +495,19 @@ export default function Home() {
                                 </CardTitle>
                                 {dataQuality && (
                                   <DataQualityBadge
-                                    symbolRate={dataQuality.dataCompleteness.symbolRate}
-                                    priceRate={dataQuality.dataCompleteness.priceRate}
+                                    symbolRate={
+                                      dataQuality.dataCompleteness.symbolRate
+                                    }
+                                    priceRate={
+                                      dataQuality.dataCompleteness.priceRate
+                                    }
                                     avgTradeSize={dataQuality.avgTradeSize}
                                   />
                                 )}
                               </div>
                               <CardDescription>
-                                Behavioral score based on last {parameters.timeHorizon}d.
+                                Behavioral score based on last{" "}
+                                {parameters.timeHorizon}d.
                               </CardDescription>
                             </div>
                             <div className="flex gap-2">
@@ -612,16 +637,26 @@ export default function Home() {
                 >
                   <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
                     {/* Analyzing Other Wallet Indicator */}
-                    {isConnected && targetAddress && targetAddress !== activeAddress && (
-                      <div className="absolute top-0 left-0 right-0 bg-signal/10 border-b border-signal/20 py-1 px-4 flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
-                        <span className="text-[10px] font-mono text-signal uppercase font-bold tracking-widest">
-                          Inspecting Public Profile
-                        </span>
-                      </div>
-                    )}
+                    {isConnected &&
+                      targetAddress &&
+                      targetAddress !== activeAddress && (
+                        <div className="absolute top-0 left-0 right-0 bg-signal/10 border-b border-signal/20 py-1 px-4 flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
+                          <span className="text-[10px] font-mono text-signal uppercase font-bold tracking-widest">
+                            Inspecting Public Profile
+                          </span>
+                        </div>
+                      )}
 
-                    <CardHeader className={cn(isConnected && targetAddress && targetAddress !== activeAddress ? "pt-8" : "pt-6")}>
+                    <CardHeader
+                      className={cn(
+                        isConnected &&
+                          targetAddress &&
+                          targetAddress !== activeAddress
+                          ? "pt-8"
+                          : "pt-6",
+                      )}
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
                           Reputation
@@ -648,22 +683,37 @@ export default function Home() {
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="text-base font-semibold text-foreground truncate">
-                              {farcasterIdentity.displayName || farcasterIdentity.username}
+                              {farcasterIdentity.displayName ||
+                                farcasterIdentity.username}
                             </div>
                             <div className="text-sm text-foreground-muted truncate">
                               @{farcasterIdentity.username}
                             </div>
                             <div className="flex gap-1.5 mt-2">
                               {/* Mocked social proof counts for demo - will be wired to API in Task 5 */}
-                              <SocialProofBadge type="vouches" count={Math.floor((ethosScore?.score || 0) / 12)} />
-                              <SocialProofBadge type="reviews" count={Math.floor((ethosScore?.score || 0) / 45)} />
+                              <SocialProofBadge
+                                type="vouches"
+                                count={Math.floor(
+                                  (ethosScore?.score || 0) / 12,
+                                )}
+                              />
+                              <SocialProofBadge
+                                type="reviews"
+                                count={Math.floor(
+                                  (ethosScore?.score || 0) / 45,
+                                )}
+                              />
                             </div>
                           </div>
                         </div>
                       )}
 
                       <div className="text-3xl font-bold text-foreground">
-                        {ethosScore ? "Verified" : farcasterIdentity ? "Farcaster Verified" : "Unknown"}
+                        {ethosScore
+                          ? "Verified"
+                          : farcasterIdentity
+                            ? "Farcaster Verified"
+                            : "Unknown"}
                       </div>
                       <CardDescription className="text-xs">
                         {ethosScore
@@ -682,21 +732,30 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-sm">
-                          <span className="text-foreground-muted">
-                            Tier
-                          </span>
-                          <span className={cn(
-                            "font-mono text-xs px-2 py-1 rounded",
-                            (ethosScore?.score ?? 0) >= 2000 ? "bg-patience/20 text-patience" :
-                              (ethosScore?.score ?? 0) >= 1000 ? "bg-signal/20 text-signal" :
-                                (ethosScore?.score ?? 0) >= 500 ? "bg-foreground/20 text-foreground" :
-                                  (ethosScore?.score ?? 0) >= 100 ? "bg-foreground-muted/20 text-foreground-muted" :
-                                    "bg-surface text-foreground-muted"
-                          )}>
-                            {(ethosScore?.score ?? 0) >= 2000 ? "Elite" :
-                              (ethosScore?.score ?? 0) >= 1000 ? "High" :
-                                (ethosScore?.score ?? 0) >= 500 ? "Medium" :
-                                  (ethosScore?.score ?? 0) >= 100 ? "Low" : "Unknown"}
+                          <span className="text-foreground-muted">Tier</span>
+                          <span
+                            className={cn(
+                              "font-mono text-xs px-2 py-1 rounded",
+                              (ethosScore?.score ?? 0) >= 2000
+                                ? "bg-patience/20 text-patience"
+                                : (ethosScore?.score ?? 0) >= 1000
+                                  ? "bg-signal/20 text-signal"
+                                  : (ethosScore?.score ?? 0) >= 500
+                                    ? "bg-foreground/20 text-foreground"
+                                    : (ethosScore?.score ?? 0) >= 100
+                                      ? "bg-foreground-muted/20 text-foreground-muted"
+                                      : "bg-surface text-foreground-muted",
+                            )}
+                          >
+                            {(ethosScore?.score ?? 0) >= 2000
+                              ? "Elite"
+                              : (ethosScore?.score ?? 0) >= 1000
+                                ? "High"
+                                : (ethosScore?.score ?? 0) >= 500
+                                  ? "Medium"
+                                  : (ethosScore?.score ?? 0) >= 100
+                                    ? "Low"
+                                    : "Unknown"}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-sm">
@@ -712,40 +771,65 @@ export default function Home() {
                           </span>
                         </div>
                       </div>
-                      
+
                       <div className="flex flex-col gap-2">
                         <Button
                           variant="outline"
                           className="w-full border-border hover:bg-surface text-xs font-mono"
-                          disabled={!ethosProfile?.username && !farcasterIdentity?.username && !targetAddress}
+                          disabled={
+                            !ethosProfile?.username &&
+                            !farcasterIdentity?.username &&
+                            !targetAddress
+                          }
                           onClick={async () => {
                             // Try to open Ethos profile - multiple fallback strategies
                             if (ethosProfile) {
-                              const profileUrl = ethosClient.getProfileUrl(ethosProfile);
-                              window.open(profileUrl, "_blank", "noopener,noreferrer");
+                              const profileUrl =
+                                ethosClient.getProfileUrl(ethosProfile);
+                              window.open(
+                                profileUrl,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
                               return;
                             }
-                            
+
                             // Try Web3.bio universal resolver as fallback
                             if (targetAddress) {
                               try {
-                                const { findEthosProfileViaWeb3Bio } = await import('@/lib/web3bio');
-                                const ethosUrl = await findEthosProfileViaWeb3Bio(targetAddress);
-                                
+                                const { findEthosProfileViaWeb3Bio } =
+                                  await import("@/lib/web3bio");
+                                const ethosUrl =
+                                  await findEthosProfileViaWeb3Bio(
+                                    targetAddress,
+                                  );
+
                                 if (ethosUrl) {
-                                  window.open(ethosUrl, "_blank", "noopener,noreferrer");
+                                  window.open(
+                                    ethosUrl,
+                                    "_blank",
+                                    "noopener,noreferrer",
+                                  );
                                   return;
                                 }
                               } catch (error) {
-                                console.warn('Web3.bio lookup failed:', error);
+                                console.warn("Web3.bio lookup failed:", error);
                               }
                             }
-                            
+
                             // Manual fallbacks
                             if (farcasterIdentity?.username) {
-                              window.open(`https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`, "_blank", "noopener,noreferrer");
+                              window.open(
+                                `https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
                             } else if (targetAddress) {
-                              window.open(`https://app.ethos.network/profile/${targetAddress}`, "_blank", "noopener,noreferrer");
+                              window.open(
+                                `https://app.ethos.network/profile/${targetAddress}`,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
                             }
                           }}
                         >
@@ -753,22 +837,26 @@ export default function Home() {
                         </Button>
 
                         {/* Write Review Button - only for others and high credibility users */}
-                        {targetAddress && targetAddress !== activeAddress && (ethosScore?.score || 0) >= 500 && (
-                          <Button
-                            variant="ghost"
-                            className="w-full text-signal hover:bg-signal/10 text-xs font-mono"
-                            onClick={() => {
-                              if (convictionMetrics) {
-                                const { getEthosReviewURL } = require('@/lib/ethos-reviews');
-                                const url = getEthosReviewURL(targetAddress, convictionMetrics);
-                                window.open(url, "_blank");
-                              }
-                            }}
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 mr-2" />
-                            VOUCH FOR CONVICTION
-                          </Button>
-                        )}
+                        {targetAddress &&
+                          targetAddress !== activeAddress &&
+                          (ethosScore?.score || 0) >= 500 && (
+                            <Button
+                              variant="ghost"
+                              className="w-full text-signal hover:bg-signal/10 text-xs font-mono"
+                              onClick={() => {
+                                if (convictionMetrics) {
+                                  const url = getEthosReviewURL(
+                                    targetAddress,
+                                    convictionMetrics,
+                                  );
+                                  window.open(url, "_blank");
+                                }
+                              }}
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 mr-2" />
+                              VOUCH FOR CONVICTION
+                            </Button>
+                          )}
                       </div>
                     </CardContent>
                   </Card>
@@ -806,7 +894,8 @@ export default function Home() {
                           Position Breakdown
                         </CardTitle>
                         <CardDescription>
-                          Drill into individual trades to see entry/exit timing and counterfactual analysis.
+                          Drill into individual trades to see entry/exit timing
+                          and counterfactual analysis.
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -839,9 +928,7 @@ export default function Home() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <HistoryPanel
-                          currentAddress={activeAddress}
-                        />
+                        <HistoryPanel currentAddress={activeAddress} />
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -859,97 +946,113 @@ export default function Home() {
                 </motion.div>
 
                 {/* Locked Features Message for users below Ethos 1000 */}
-                {!isShowcaseMode && isConnected && (ethosScore?.score ?? 0) < 1000 && (
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-12"
-                  >
-                    <Card className="glass-panel border-border/50 bg-surface/40 border-signal/20">
-                      <CardContent className="p-8 text-center">
-                        <div className="space-y-4">
-                          <Lock className="w-12 h-12 text-signal mx-auto" />
-                          <div>
-                            <h3 className="text-xl font-bold text-foreground mb-2">
-                              Advanced Features Locked
-                            </h3>
-                            <p className="text-foreground-muted max-w-2xl mx-auto">
-                              Alpha Discovery, Token Heatmap, Conviction Alerts, and Cohort Analysis require an Ethos score of 1000+.
-                              {ethosScore?.score ? (
-                                <span className="block mt-2 text-signal font-mono">
-                                  Your score: {ethosScore.score} / 1000 ({Math.round((ethosScore.score / 1000) * 100)}% unlocked)
-                                </span>
-                              ) : (
-                                <span className="block mt-2 text-signal">
-                                  Connect your wallet to check your Ethos score
-                                </span>
-                              )}
-                            </p>
+                {!isShowcaseMode &&
+                  isConnected &&
+                  (ethosScore?.score ?? 0) < 1000 && (
+                    <motion.div
+                      variants={{
+                        hidden: { opacity: 0, y: 20 },
+                        visible: { opacity: 1, y: 0 },
+                      }}
+                      className="col-span-1 md:col-span-6 lg:col-span-12"
+                    >
+                      <Card className="glass-panel border-border/50 bg-surface/40 border-signal/20">
+                        <CardContent className="p-8 text-center">
+                          <div className="space-y-4">
+                            <Lock className="w-12 h-12 text-signal mx-auto" />
+                            <div>
+                              <h3 className="text-xl font-bold text-foreground mb-2">
+                                Advanced Features Locked
+                              </h3>
+                              <p className="text-foreground-muted max-w-2xl mx-auto">
+                                Alpha Discovery, Token Heatmap, Conviction
+                                Alerts, and Cohort Analysis require an Ethos
+                                score of 1000+.
+                                {ethosScore?.score ? (
+                                  <span className="block mt-2 text-signal font-mono">
+                                    Your score: {ethosScore.score} / 1000 (
+                                    {Math.round(
+                                      (ethosScore.score / 1000) * 100,
+                                    )}
+                                    % unlocked)
+                                  </span>
+                                ) : (
+                                  <span className="block mt-2 text-signal">
+                                    Connect your wallet to check your Ethos
+                                    score
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              className="border-signal/50 text-signal hover:bg-signal/10"
+                              onClick={() =>
+                                window.open(
+                                  "https://ethos.network",
+                                  "_blank",
+                                  "noopener,noreferrer",
+                                )
+                              }
+                            >
+                              Build Reputation on Ethos →
+                            </Button>
                           </div>
-                          <Button
-                            variant="outline"
-                            className="border-signal/50 text-signal hover:bg-signal/10"
-                            onClick={() => window.open('https://ethos.network', '_blank', 'noopener,noreferrer')}
-                          >
-                            Build Reputation on Ethos →
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )}
 
                 {/* Advanced Features - Gated for connected wallets with Ethos > 1000 */}
-                {!isShowcaseMode && isConnected && (ethosScore?.score ?? 0) >= 1000 && (
-                  <>
-                    {/* Alpha Discovery Panel */}
-                    <motion.div
-                      variants={{
-                        hidden: { opacity: 0, y: 20 },
-                        visible: { opacity: 1, y: 0 },
-                      }}
-                      className="col-span-1 md:col-span-6 lg:col-span-8"
-                    >
-                      <AlphaDiscovery />
-                    </motion.div>
+                {!isShowcaseMode &&
+                  isConnected &&
+                  (ethosScore?.score ?? 0) >= 1000 && (
+                    <>
+                      {/* Alpha Discovery Panel */}
+                      <motion.div
+                        variants={{
+                          hidden: { opacity: 0, y: 20 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        className="col-span-1 md:col-span-6 lg:col-span-8"
+                      >
+                        <AlphaDiscovery />
+                      </motion.div>
 
-                    {/* Token Conviction Heatmap */}
-                    <motion.div
-                      variants={{
-                        hidden: { opacity: 0, y: 20 },
-                        visible: { opacity: 1, y: 0 },
-                      }}
-                      className="col-span-1 md:col-span-6 lg:col-span-4"
-                    >
-                      <TokenHeatmap />
-                    </motion.div>
+                      {/* Token Conviction Heatmap */}
+                      <motion.div
+                        variants={{
+                          hidden: { opacity: 0, y: 20 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        className="col-span-1 md:col-span-6 lg:col-span-4"
+                      >
+                        <TokenHeatmap />
+                      </motion.div>
 
-                    {/* Real-Time Alerts Panel */}
-                    <motion.div
-                      variants={{
-                        hidden: { opacity: 0, y: 20 },
-                        visible: { opacity: 1, y: 0 },
-                      }}
-                      className="col-span-1 md:col-span-6 lg:col-span-6"
-                    >
-                      <ConvictionAlerts />
-                    </motion.div>
+                      {/* Real-Time Alerts Panel */}
+                      <motion.div
+                        variants={{
+                          hidden: { opacity: 0, y: 20 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        className="col-span-1 md:col-span-6 lg:col-span-6"
+                      >
+                        <ConvictionAlerts />
+                      </motion.div>
 
-                    {/* Cohort Analysis Panel */}
-                    <motion.div
-                      variants={{
-                        hidden: { opacity: 0, y: 20 },
-                        visible: { opacity: 1, y: 0 },
-                      }}
-                      className="col-span-1 md:col-span-6 lg:col-span-6"
-                    >
-                      <CohortAnalysis />
-                    </motion.div>
-                  </>
-                )}
-
+                      {/* Cohort Analysis Panel */}
+                      <motion.div
+                        variants={{
+                          hidden: { opacity: 0, y: 20 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        className="col-span-1 md:col-span-6 lg:col-span-6"
+                      >
+                        <CohortAnalysis />
+                      </motion.div>
+                    </>
+                  )}
               </motion.div>
             )}
           </AnimatePresence>

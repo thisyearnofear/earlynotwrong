@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_analyses_score ON conviction_analyses(score DESC)
 CREATE INDEX IF NOT EXISTS idx_analyses_percentile ON conviction_analyses(percentile DESC);
 CREATE INDEX IF NOT EXISTS idx_analyses_analyzed_at ON conviction_analyses(analyzed_at DESC);
 
--- Table: Editable watchlist
+-- Table: Editable watchlist (includes community nominations)
 CREATE TABLE IF NOT EXISTS watchlist_traders (
   id SERIAL PRIMARY KEY,
   trader_id VARCHAR(100) NOT NULL UNIQUE,
@@ -55,15 +55,76 @@ CREATE TABLE IF NOT EXISTS watchlist_traders (
   twitter VARCHAR(100),
   ens VARCHAR(255),
   
-  -- Metadata
+  -- Community contribution tracking
   added_by VARCHAR(64), -- wallet that added this trader
+  added_by_ethos INTEGER DEFAULT 0, -- Ethos score at time of addition
   added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  is_active BOOLEAN DEFAULT TRUE
+  
+  -- Status: 'nominated' -> 'approved' -> 'featured' or 'rejected'
+  status VARCHAR(20) DEFAULT 'approved' CHECK (status IN ('nominated', 'approved', 'featured', 'rejected')),
+  endorsement_count INTEGER DEFAULT 0,
+  is_active BOOLEAN DEFAULT TRUE,
+  
+  -- Analytics (updated periodically)
+  avg_conviction_score INTEGER,
+  total_analyses INTEGER DEFAULT 0,
+  last_analyzed_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Index for fast lookups
 CREATE INDEX IF NOT EXISTS idx_watchlist_chain ON watchlist_traders(chain);
 CREATE INDEX IF NOT EXISTS idx_watchlist_active ON watchlist_traders(is_active);
+CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist_traders(status);
+CREATE INDEX IF NOT EXISTS idx_watchlist_endorsements ON watchlist_traders(endorsement_count DESC);
+
+-- Table: Endorsements for community nominations
+CREATE TABLE IF NOT EXISTS watchlist_endorsements (
+  id SERIAL PRIMARY KEY,
+  trader_id VARCHAR(100) NOT NULL REFERENCES watchlist_traders(trader_id) ON DELETE CASCADE,
+  endorser_address VARCHAR(64) NOT NULL,
+  endorser_ethos INTEGER NOT NULL,
+  endorsed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  
+  -- Prevent duplicate endorsements
+  UNIQUE(trader_id, endorser_address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_endorsements_trader ON watchlist_endorsements(trader_id);
+
+-- Table: Alpha Leaderboard (top conviction wallets)
+CREATE TABLE IF NOT EXISTS alpha_leaderboard (
+  id SERIAL PRIMARY KEY,
+  address VARCHAR(64) NOT NULL,
+  chain VARCHAR(10) NOT NULL CHECK (chain IN ('solana', 'base')),
+  
+  -- Latest metrics
+  conviction_score INTEGER NOT NULL,
+  patience_tax DECIMAL(10,2),
+  win_rate DECIMAL(5,2),
+  archetype VARCHAR(50),
+  total_positions INTEGER DEFAULT 0,
+  
+  -- Identity
+  display_name VARCHAR(255),
+  farcaster VARCHAR(100),
+  ens VARCHAR(255),
+  ethos_score INTEGER,
+  
+  -- Ranking
+  rank INTEGER,
+  previous_rank INTEGER,
+  rank_change INTEGER GENERATED ALWAYS AS (COALESCE(previous_rank, rank) - rank) STORED,
+  
+  -- Timestamps
+  first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  last_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  
+  UNIQUE(address, chain)
+);
+
+CREATE INDEX IF NOT EXISTS idx_leaderboard_score ON alpha_leaderboard(conviction_score DESC);
+CREATE INDEX IF NOT EXISTS idx_leaderboard_chain ON alpha_leaderboard(chain);
+CREATE INDEX IF NOT EXISTS idx_leaderboard_ethos ON alpha_leaderboard(ethos_score DESC);
 
 -- View: Aggregate stats for real cohort comparison
 CREATE OR REPLACE VIEW cohort_stats AS

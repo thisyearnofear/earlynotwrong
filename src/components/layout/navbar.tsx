@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
@@ -11,35 +12,82 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogDescription
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
+import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
+import { useConviction } from "@/hooks/use-conviction";
 import { useRouter } from "next/navigation";
-import { getEthosTier, getTierInfo, getNextTierUnlocks } from "@/lib/ethos-gates";
+import {
+  getEthosTier,
+  getTierInfo,
+  getNextTierUnlocks,
+} from "@/lib/ethos-gates";
 import { cn } from "@/lib/utils";
 import { ReputationPerks } from "@/components/ui/reputation-perks";
 
-const TierIcon = ({ icon, className }: { icon: "shield" | "users" | "zap" | "crown"; className?: string }) => {
+const TierIcon = ({
+  icon,
+  className,
+}: {
+  icon: "shield" | "users" | "zap" | "crown";
+  className?: string;
+}) => {
   const iconClass = cn("w-3 h-3", className);
   switch (icon) {
-    case "crown": return <Crown className={iconClass} />;
-    case "zap": return <Zap className={iconClass} />;
-    case "users": return <Users className={iconClass} />;
-    default: return <Shield className={iconClass} />;
+    case "crown":
+      return <Crown className={iconClass} />;
+    case "zap":
+      return <Zap className={iconClass} />;
+    case "users":
+      return <Users className={iconClass} />;
+    default:
+      return <Shield className={iconClass} />;
   }
 };
 
 export function Navbar() {
   const { theme, setTheme, ethosScore } = useAppStore();
+  const { analyzeWallet } = useConviction();
+  const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
-  
+
   const currentScore = ethosScore?.score || 0;
   const tier = getEthosTier(currentScore);
   const tierInfo = getTierInfo(tier);
   const nextUnlocks = getNextTierUnlocks(currentScore);
 
-  const handleWalletSelected = (identity: any) => {
+  const handleWalletSelected = async (identity: ResolvedIdentity) => {
     console.log("Selected wallet:", identity);
+    setSearchOpen(false);
+
+    // Update store with resolved identity data
+    const { setEthosData, setFarcasterIdentity } = useAppStore.getState();
+
+    // Update Ethos data (score and profile together)
+    setEthosData(
+      identity.ethos?.score || null,
+      identity.ethos?.profile || null,
+    );
+
+    // Update Farcaster identity if available
+    if (identity.farcaster) {
+      setFarcasterIdentity(identity.farcaster);
+    }
+
+    // Trigger conviction analysis
+    await analyzeWallet(identity.address);
+
+    // If we're not on the home page, navigate there
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      router.push("/");
+    }
+
+    // Scroll to results after analysis starts
+    setTimeout(() => {
+      const resultsSection = document.getElementById("conviction-results");
+      resultsSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 500);
   };
 
   return (
@@ -66,18 +114,22 @@ export function Navbar() {
                   className={cn(
                     "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-mono cursor-pointer hover:opacity-80 transition-opacity",
                     tierInfo.bgColor,
-                    tierInfo.borderColor
+                    tierInfo.borderColor,
                   )}
-                  title={`Ethos ${currentScore} • ${tierInfo.name}${nextUnlocks ? ` • ${nextUnlocks.pointsAway} to ${nextUnlocks.nextTier}` : ''}`}
+                  title={`Ethos ${currentScore} • ${tierInfo.name}${nextUnlocks ? ` • ${nextUnlocks.pointsAway} to ${nextUnlocks.nextTier}` : ""}`}
                 >
                   <TierIcon icon={tierInfo.icon} className={tierInfo.color} />
                   <span className={tierInfo.color}>{currentScore}</span>
                   <span className="text-foreground-muted">•</span>
-                  <span className="text-foreground-dim uppercase">{tierInfo.name}</span>
+                  <span className="text-foreground-dim uppercase">
+                    {tierInfo.name}
+                  </span>
                   {nextUnlocks && (
                     <>
                       <span className="text-foreground-muted">→</span>
-                      <span className="text-foreground-muted">{nextUnlocks.requiredScore}</span>
+                      <span className="text-foreground-muted">
+                        {nextUnlocks.requiredScore}
+                      </span>
                     </>
                   )}
                 </div>
@@ -100,7 +152,7 @@ export function Navbar() {
             </div>
           )}
 
-          <Dialog>
+          <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
             <DialogTrigger asChild>
               <Button
                 variant="ghost"
@@ -114,11 +166,12 @@ export function Navbar() {
               <DialogHeader>
                 <DialogTitle>Analyze Any Wallet</DialogTitle>
                 <DialogDescription>
-                  Enter an address, ENS, or Farcaster handle to inspect conviction.
+                  Enter an address, ENS, or Farcaster handle to inspect
+                  conviction.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">
-                <WalletSearchInput 
+                <WalletSearchInput
                   onWalletSelected={handleWalletSelected}
                   className="max-w-none"
                 />

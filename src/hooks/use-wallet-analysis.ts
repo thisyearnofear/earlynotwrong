@@ -1,12 +1,13 @@
 /**
  * Wallet Analysis Hook
- * 
+ *
  * Provides easy interface for analyzing any wallet from components.
  * Handles identity resolution, Ethos data fetching, and caching.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import type { ResolvedIdentity } from '@/lib/services/identity-resolver';
+import { useState, useEffect, useCallback } from "react";
+import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
+import type { EthosProfile } from "@/lib/ethos";
 
 interface WalletAnalysisState {
   identity: ResolvedIdentity | null;
@@ -20,7 +21,7 @@ interface WalletData {
   ethos: {
     score: number | null;
     tier: string;
-    profile: any;
+    profile: EthosProfile | null;
     attestationCount: number;
   };
   socialProof: {
@@ -33,7 +34,7 @@ interface WalletData {
 
 /**
  * Hook for resolving wallet identity
- * 
+ *
  * @param input - Address, ENS, Farcaster handle, etc.
  * @param autoResolve - Automatically resolve on mount/input change
  */
@@ -46,22 +47,22 @@ export function useWalletIdentity(input: string | null, autoResolve = true) {
 
   const resolve = useCallback(async (inputValue: string) => {
     if (!inputValue?.trim()) {
-      setState({ identity: null, loading: false, error: 'Invalid input' });
+      setState({ identity: null, loading: false, error: "Invalid input" });
       return;
     }
 
-    setState(prev => ({ ...prev, loading: true, error: null }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const response = await fetch('/api/identity/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/identity/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: inputValue }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to resolve identity');
+        throw new Error(error.error || "Failed to resolve identity");
       }
 
       const data = await response.json();
@@ -74,7 +75,7 @@ export function useWalletIdentity(input: string | null, autoResolve = true) {
       setState({
         identity: null,
         loading: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   }, []);
@@ -98,7 +99,7 @@ export function useWalletIdentity(input: string | null, autoResolve = true) {
 
 /**
  * Hook for complete wallet analysis
- * 
+ *
  * @param address - Wallet address (must be resolved first)
  */
 export function useWalletData(address: string | null) {
@@ -108,7 +109,7 @@ export function useWalletData(address: string | null) {
 
   const fetch = useCallback(async (addr: string) => {
     if (!addr) {
-      setError('No address provided');
+      setError("No address provided");
       return;
     }
 
@@ -120,13 +121,13 @@ export function useWalletData(address: string | null) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to fetch wallet data');
+        throw new Error(error.error || "Failed to fetch wallet data");
       }
 
       const result = await response.json();
       setData(result.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : "Unknown error");
       setData(null);
     } finally {
       setLoading(false);
@@ -161,16 +162,16 @@ export function useWalletAnalysis(input: string | null) {
     identityLoading: identity.loading,
     identityError: identity.error,
     resolve: identity.resolve,
-    
+
     // Wallet data
     walletData: walletData.data,
     walletLoading: walletData.loading,
     walletError: walletData.error,
-    
+
     // Combined state
     loading: identity.loading || walletData.loading,
     error: identity.error || walletData.error,
-    
+
     // Actions
     reset: identity.reset,
     refetch: walletData.refetch,

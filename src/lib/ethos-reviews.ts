@@ -3,17 +3,17 @@
  * Writes optional reviews/endorsements to Ethos Network for conviction scores
  */
 
-import { ConvictionMetrics } from './market';
-import { ethosClient } from './ethos';
+import { ConvictionMetrics } from "./market";
+import { ethosClient } from "./ethos";
 
-export type ReviewSentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+export type ReviewSentiment = "POSITIVE" | "NEUTRAL" | "NEGATIVE";
 
 export interface EthosReview {
   subject: string; // Wallet address
   sentiment: ReviewSentiment;
   comment: string;
   score: number; // Conviction score
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface EthosReviewResponse {
@@ -27,38 +27,39 @@ export interface EthosReviewResponse {
  * Determine review sentiment based on conviction score
  */
 export function getReviewSentiment(convictionScore: number): ReviewSentiment {
-  if (convictionScore >= 80) return 'POSITIVE';
-  if (convictionScore >= 60) return 'POSITIVE';
-  if (convictionScore >= 40) return 'NEUTRAL';
-  return 'NEUTRAL'; // Don't auto-write negative reviews
+  if (convictionScore >= 80) return "POSITIVE";
+  if (convictionScore >= 60) return "POSITIVE";
+  if (convictionScore >= 40) return "NEUTRAL";
+  return "NEUTRAL"; // Don't auto-write negative reviews
 }
 
 /**
  * Generate review comment text based on conviction metrics
  */
 export function generateReviewComment(metrics: ConvictionMetrics): string {
-  const { score, archetype, upsideCapture, patienceTax, convictionWins } = metrics;
-  
+  const { score, archetype, upsideCapture, patienceTax, convictionWins } =
+    metrics;
+
   if (score >= 90) {
     return `Exceptional conviction trader - ${archetype} with ${score}/100 score. Captured ${upsideCapture}% of upside potential with ${convictionWins} conviction wins. A true diamond hand. 💎`;
   }
-  
+
   if (score >= 80) {
     return `High conviction ${archetype} - ${score}/100 score with ${upsideCapture}% upside capture. ${convictionWins} conviction wins demonstrate strong holding power.`;
   }
-  
+
   if (score >= 70) {
     return `Solid ${archetype} performance - ${score}/100 conviction score. ${upsideCapture}% upside capture shows good patience, with ${convictionWins} conviction wins.`;
   }
-  
+
   if (score >= 60) {
     return `Decent conviction trader - ${archetype} with ${score}/100 score. ${upsideCapture}% upside capture and ${convictionWins} conviction wins.`;
   }
-  
+
   if (score >= 50) {
     return `Moderate conviction - ${archetype} profile with ${score}/100 score. ${upsideCapture}% upside capture. Room for patience improvement.`;
   }
-  
+
   // For scores below 50, still provide neutral, constructive feedback
   return `${archetype} profile - ${score}/100 conviction score. Early analysis shows ${upsideCapture}% upside capture. Patience tax of $${patienceTax.toFixed(0)} suggests opportunity for improvement.`;
 }
@@ -73,28 +74,29 @@ export function shouldPromptForReview(convictionScore: number): boolean {
 
 /**
  * Write a review to Ethos Network (placeholder for actual implementation)
- * 
+ *
  * Note: Ethos Everywhere Wallet requires:
  * - Domain allowlisting (must be approved Ethos partner)
  * - JWT authentication via Privy
  * - Gas sponsorship for qualified users
- * 
+ *
  * Alternative approaches:
  * 1. Direct smart contract interaction (if Ethos exposes review contracts)
  * 2. Ethos SDK if available
  * 3. Partner API integration after approval
  */
 export async function writeEthosReview(
-  review: EthosReview
+  review: EthosReview,
 ): Promise<EthosReviewResponse> {
   try {
     // Check if user has sufficient Ethos credibility to write reviews
     const score = await ethosClient.getScoreByAddress(review.subject);
-    
+
     if (!score || score.score < 100) {
       return {
         success: false,
-        error: 'Insufficient Ethos credibility to write reviews. Build your Ethos profile first.',
+        error:
+          "Insufficient Ethos credibility to write reviews. Build your Ethos profile first.",
       };
     }
 
@@ -103,13 +105,17 @@ export async function writeEthosReview(
     // 1. Ethos Everywhere Wallet API (requires partner approval)
     // 2. Direct contract interaction (if public)
     // 3. Ethos SDK integration
-    
-    console.log('Ethos review writing not yet implemented. Would write:', review);
-    
+
+    console.log(
+      "Ethos review writing not yet implemented. Would write:",
+      review,
+    );
+
     // For now, return success=false to indicate feature is pending
     return {
       success: false,
-      error: 'Ethos review writing requires partner integration. Feature coming soon.',
+      error:
+        "Ethos review writing requires partner integration. Feature coming soon.",
     };
 
     // Future implementation would look like:
@@ -134,19 +140,18 @@ export async function writeEthosReview(
     }
 
     const data = await response.json();
-    
+
     return {
       reviewId: data.id,
       reviewUrl: `https://app.ethos.network/review/${data.id}`,
       success: true,
     };
     */
-
   } catch (error) {
-    console.error('Failed to write Ethos review:', error);
+    console.error("Failed to write Ethos review:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }
@@ -157,7 +162,7 @@ export async function writeEthosReview(
  */
 export function getEthosReviewURL(
   subject: string,
-  metrics: ConvictionMetrics
+  _metrics: ConvictionMetrics,
 ): string {
   // Simply link to the profile page - Ethos will handle the review UI
   // Users can manually write reviews based on our conviction insights
@@ -177,7 +182,7 @@ export function getReviewTextForClipboard(metrics: ConvictionMetrics): string {
  */
 export function prepareEthosReview(
   walletAddress: string,
-  metrics: ConvictionMetrics
+  metrics: ConvictionMetrics,
 ): EthosReview {
   return {
     subject: walletAddress,
@@ -190,7 +195,7 @@ export function prepareEthosReview(
       patienceTax: metrics.patienceTax,
       convictionWins: metrics.convictionWins,
       totalPositions: metrics.totalPositions,
-      source: 'early-not-wrong',
+      source: "early-not-wrong",
     },
   };
 }

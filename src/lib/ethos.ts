@@ -1,29 +1,34 @@
-import { WalletClient, encodeAbiParameters, parseAbiParameters } from 'viem';
-import { EAS_CONTRACT_ADDRESS, EAS_ABI, CONVICTION_SCHEMA_UID } from './eas-config';
+import { WalletClient, encodeAbiParameters, parseAbiParameters } from "viem";
+import {
+  EAS_CONTRACT_ADDRESS,
+  EAS_ABI,
+  CONVICTION_SCHEMA_UID,
+} from "./eas-config";
+import { APP_CONFIG } from "./config";
 
 const ETHOS_API_URL = "https://api.ethos.network/api/v2";
 const ETHOS_CLIENT_ID = "early-not-wrong@1.0.0";
 
 // EIP-712 Domain
 const ETHOS_DOMAIN = {
-  name: 'Ethos Conviction Attestation',
-  version: '1',
+  name: "Ethos Conviction Attestation",
+  version: "1",
   chainId: 8453, // Base
-  verifyingContract: '0x0000000000000000000000000000000000000000' as const, // Placeholder
+  verifyingContract: "0x0000000000000000000000000000000000000000" as const, // Placeholder
 } as const;
 
 // EIP-712 Types
 const ATTESTATION_TYPES = {
   Attestation: [
-    { name: 'subject', type: 'address' },
-    { name: 'convictionScore', type: 'uint256' },
-    { name: 'patienceTax', type: 'uint256' },
-    { name: 'upsideCapture', type: 'uint256' },
-    { name: 'archetype', type: 'string' },
-    { name: 'totalPositions', type: 'uint256' },
-    { name: 'winRate', type: 'uint256' },
-    { name: 'analysisDate', type: 'string' },
-    { name: 'timeHorizon', type: 'uint256' },
+    { name: "subject", type: "address" },
+    { name: "convictionScore", type: "uint256" },
+    { name: "patienceTax", type: "uint256" },
+    { name: "upsideCapture", type: "uint256" },
+    { name: "archetype", type: "string" },
+    { name: "totalPositions", type: "uint256" },
+    { name: "winRate", type: "uint256" },
+    { name: "analysisDate", type: "string" },
+    { name: "timeHorizon", type: "uint256" },
   ],
 } as const;
 
@@ -69,7 +74,7 @@ export interface ReputationWeightedMetrics {
   ethosScore: number;
   reputationMultiplier: number;
   weightedScore: number;
-  credibilityTier: 'Unknown' | 'Low' | 'Medium' | 'High' | 'Elite';
+  credibilityTier: "Unknown" | "Low" | "Medium" | "High" | "Elite";
 }
 
 export interface ConvictionAttestation {
@@ -82,13 +87,13 @@ export interface ConvictionAttestation {
   winRate: number;
   analysisDate: string;
   timeHorizon: number;
-  chain: 'solana' | 'base';
+  chain: "solana" | "base";
 }
 
 export interface AttestationResponse {
   id: string; // EAS attestation UID or tx hash
   hash?: string; // Transaction hash
-  status: 'pending' | 'confirmed' | 'failed';
+  status: "pending" | "confirmed" | "failed";
   message?: string;
   signature?: string;
   reviewId?: string; // Optional Ethos review ID
@@ -115,7 +120,9 @@ export class EthosClient {
     const response = await fetch(url, { ...options, headers });
 
     if (!response.ok) {
-      throw new Error(`Ethos API error: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Ethos API error: ${response.status} ${response.statusText}`,
+      );
     }
 
     return response.json();
@@ -127,7 +134,9 @@ export class EthosClient {
   async getScoreByAddress(address: string): Promise<EthosScore | null> {
     try {
       const searchParams = new URLSearchParams({ address });
-      const response = await this.fetch<{ score: number; percentile?: number }>(`/score/address?${searchParams.toString()}`);
+      const response = await this.fetch<{ score: number; percentile?: number }>(
+        `/score/address?${searchParams.toString()}`,
+      );
 
       return {
         score: response.score,
@@ -135,7 +144,7 @@ export class EthosClient {
         updatedAt: new Date().toISOString(),
       };
     } catch (error) {
-      console.warn('Ethos score fetch failed:', error);
+      console.warn("Ethos score fetch failed:", error);
       return null;
     }
   }
@@ -146,9 +155,11 @@ export class EthosClient {
   async getScoreByUserKey(userKey: string): Promise<EthosScore | null> {
     try {
       const searchParams = new URLSearchParams({ userkey: userKey });
-      const response = await this.fetch<{ score: number; percentile?: number; level?: string }>(
-        `/score/userkey?${searchParams.toString()}`
-      );
+      const response = await this.fetch<{
+        score: number;
+        percentile?: number;
+        level?: string;
+      }>(`/score/userkey?${searchParams.toString()}`);
 
       return {
         score: response.score,
@@ -157,7 +168,7 @@ export class EthosClient {
         updatedAt: new Date().toISOString(),
       };
     } catch (error) {
-      console.warn('Ethos score fetch by userkey failed:', error);
+      console.warn("Ethos score fetch by userkey failed:", error);
       return null;
     }
   }
@@ -167,10 +178,12 @@ export class EthosClient {
    */
   async getProfileByAddress(address: string): Promise<EthosProfile | null> {
     try {
-      const response = await this.fetch<EthosProfile>(`/user/by/address/${address}`);
+      const response = await this.fetch<EthosProfile>(
+        `/user/by/address/${address}`,
+      );
       return response;
     } catch (error) {
-      console.warn('Ethos profile fetch failed:', error);
+      console.warn("Ethos profile fetch failed:", error);
       return null;
     }
   }
@@ -180,14 +193,14 @@ export class EthosClient {
    */
   async resolveFarcasterIdentity(
     address: string,
-    fid?: number
+    fid?: number,
   ): Promise<FarcasterIdentity | null> {
     try {
       // Use Neynar API to resolve address/FID to Farcaster profile
-      const response = await fetch('/api/farcaster/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, fid })
+      const response = await fetch("/api/farcaster/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, fid }),
       });
 
       if (!response.ok) {
@@ -197,7 +210,7 @@ export class EthosClient {
       const data = await response.json();
       return data.identity || null;
     } catch (error) {
-      console.warn('Farcaster identity resolution failed:', error);
+      console.warn("Farcaster identity resolution failed:", error);
       return null;
     }
   }
@@ -215,13 +228,13 @@ export class EthosClient {
       if (identity?.verifiedAddresses) {
         return {
           ethereum: identity.verifiedAddresses.ethAddresses || [],
-          solana: identity.verifiedAddresses.solAddresses || []
+          solana: identity.verifiedAddresses.solAddresses || [],
         };
       }
 
       return null;
     } catch (error) {
-      console.warn('Linked wallet discovery failed:', error);
+      console.warn("Linked wallet discovery failed:", error);
       return null;
     }
   }
@@ -231,36 +244,40 @@ export class EthosClient {
    */
   calculateReputationWeighting(
     baseConvictionScore: number,
-    ethosScore: number | null
+    ethosScore: number | null,
   ): ReputationWeightedMetrics {
     const score = ethosScore || 0;
 
     // Reputation multiplier based on Ethos score tiers
     let reputationMultiplier = 1.0;
-    let credibilityTier: ReputationWeightedMetrics['credibilityTier'] = 'Unknown';
+    let credibilityTier: ReputationWeightedMetrics["credibilityTier"] =
+      "Unknown";
 
     if (score >= 2000) {
       reputationMultiplier = 1.5;
-      credibilityTier = 'Elite';
+      credibilityTier = "Elite";
     } else if (score >= 1000) {
       reputationMultiplier = 1.3;
-      credibilityTier = 'High';
+      credibilityTier = "High";
     } else if (score >= 500) {
       reputationMultiplier = 1.15;
-      credibilityTier = 'Medium';
+      credibilityTier = "Medium";
     } else if (score >= 100) {
       reputationMultiplier = 1.05;
-      credibilityTier = 'Low';
+      credibilityTier = "Low";
     }
 
-    const weightedScore = Math.min(100, baseConvictionScore * reputationMultiplier);
+    const weightedScore = Math.min(
+      100,
+      baseConvictionScore * reputationMultiplier,
+    );
 
     return {
       baseScore: baseConvictionScore,
       ethosScore: score,
       reputationMultiplier,
       weightedScore,
-      credibilityTier
+      credibilityTier,
     };
   }
 
@@ -268,7 +285,7 @@ export class EthosClient {
    * Get comprehensive feature access and perks based on Ethos score
    */
   getReputationPerks(ethosScore: number | null): {
-    tier: 'unknown' | 'premium' | 'whale' | 'alpha' | 'elite';
+    tier: "unknown" | "premium" | "whale" | "alpha" | "elite";
     features: {
       canAccessPremium: boolean;
       canAccessWhaleAnalysis: boolean;
@@ -295,44 +312,44 @@ export class EthosClient {
     };
   } {
     const score = ethosScore || 0;
-    const { reputation } = require('@/lib/config').APP_CONFIG;
+    const { reputation } = APP_CONFIG;
 
-    let tier: 'unknown' | 'premium' | 'whale' | 'alpha' | 'elite' = 'unknown';
+    let tier: "unknown" | "premium" | "whale" | "alpha" | "elite" = "unknown";
     let perks = reputation.perks.premium;
     let nextTier = undefined;
 
     if (score >= reputation.featureGating.eliteInsights) {
-      tier = 'elite';
+      tier = "elite";
       perks = reputation.perks.elite;
     } else if (score >= reputation.featureGating.alphaSignals) {
-      tier = 'alpha';
+      tier = "alpha";
       perks = reputation.perks.alpha;
       nextTier = {
-        name: 'Elite Insights',
+        name: "Elite Insights",
         requiredScore: reputation.featureGating.eliteInsights,
-        newPerks: ['Early Access Features', 'Custom Dashboard', 'API Access']
+        newPerks: ["Early Access Features", "Custom Dashboard", "API Access"],
       };
     } else if (score >= reputation.featureGating.whaleAnalysis) {
-      tier = 'whale';
+      tier = "whale";
       perks = reputation.perks.whale;
       nextTier = {
-        name: 'Alpha Signals',
+        name: "Alpha Signals",
         requiredScore: reputation.featureGating.alphaSignals,
-        newPerks: ['Real-Time Alerts', 'Whale Tracking', 'Priority Support']
+        newPerks: ["Real-Time Alerts", "Whale Tracking", "Priority Support"],
       };
     } else if (score >= reputation.featureGating.premiumAccess) {
-      tier = 'premium';
+      tier = "premium";
       perks = reputation.perks.premium;
       nextTier = {
-        name: 'Whale Analysis',
+        name: "Whale Analysis",
         requiredScore: reputation.featureGating.whaleAnalysis,
-        newPerks: ['Cohort Comparison', 'Advanced Filters', 'Data Export']
+        newPerks: ["Cohort Comparison", "Advanced Filters", "Data Export"],
       };
     } else {
       nextTier = {
-        name: 'Premium Access',
+        name: "Premium Access",
         requiredScore: reputation.featureGating.premiumAccess,
-        newPerks: ['Extended History', 'Faster Refresh', 'Basic Analytics']
+        newPerks: ["Extended History", "Faster Refresh", "Basic Analytics"],
       };
     }
 
@@ -345,7 +362,7 @@ export class EthosClient {
         canAccessEliteInsights: score >= reputation.featureGating.eliteInsights,
       },
       perks,
-      nextTier
+      nextTier,
     };
   }
 
@@ -364,7 +381,7 @@ export class EthosClient {
       canAccessPremium: reputationPerks.features.canAccessPremium,
       canAccessWhaleAnalysis: reputationPerks.features.canAccessWhaleAnalysis,
       canAccessAlphaSignals: reputationPerks.features.canAccessAlphaSignals,
-      requiredScoreForNext: reputationPerks.nextTier?.requiredScore || null
+      requiredScoreForNext: reputationPerks.nextTier?.requiredScore || null,
     };
   }
 
@@ -374,32 +391,41 @@ export class EthosClient {
   classifyWalletForAlpha(
     convictionScore: number,
     ethosScore: number | null,
-    totalPositions: number
+    totalPositions: number,
   ): {
     isHighConviction: boolean;
     isIronPillar: boolean;
     isCredible: boolean;
-    alphaRating: 'Unknown' | 'Low' | 'Medium' | 'High' | 'Elite';
+    alphaRating: "Unknown" | "Low" | "Medium" | "High" | "Elite";
   } {
     const score = ethosScore || 0;
-    const { alphaDiscovery, reputation } = require('@/lib/config').APP_CONFIG;
+    const { alphaDiscovery, reputation } = APP_CONFIG;
 
-    const isHighConviction = convictionScore >= alphaDiscovery.highConvictionThreshold;
+    const isHighConviction =
+      convictionScore >= alphaDiscovery.highConvictionThreshold;
     const isIronPillar = convictionScore >= alphaDiscovery.ironPillarThreshold;
     const isCredible = score >= reputation.featureGating.premiumAccess;
-    const hasMinPositions = totalPositions >= alphaDiscovery.minPositionsForRanking;
+    const hasMinPositions =
+      totalPositions >= alphaDiscovery.minPositionsForRanking;
 
-    let alphaRating: 'Unknown' | 'Low' | 'Medium' | 'High' | 'Elite' = 'Unknown';
+    let alphaRating: "Unknown" | "Low" | "Medium" | "High" | "Elite" =
+      "Unknown";
 
     if (isCredible && hasMinPositions) {
       if (isIronPillar && score >= reputation.ethosScoreThresholds.elite) {
-        alphaRating = 'Elite';
-      } else if (isHighConviction && score >= reputation.ethosScoreThresholds.high) {
-        alphaRating = 'High';
-      } else if (isHighConviction && score >= reputation.ethosScoreThresholds.medium) {
-        alphaRating = 'Medium';
+        alphaRating = "Elite";
+      } else if (
+        isHighConviction &&
+        score >= reputation.ethosScoreThresholds.high
+      ) {
+        alphaRating = "High";
+      } else if (
+        isHighConviction &&
+        score >= reputation.ethosScoreThresholds.medium
+      ) {
+        alphaRating = "Medium";
       } else if (score >= reputation.ethosScoreThresholds.low) {
-        alphaRating = 'Low';
+        alphaRating = "Low";
       }
     }
 
@@ -407,7 +433,7 @@ export class EthosClient {
       isHighConviction,
       isIronPillar,
       isCredible,
-      alphaRating
+      alphaRating,
     };
   }
   getProfileUrl(profile: EthosProfile): string {
@@ -433,7 +459,7 @@ export class EthosClient {
    */
   async signAttestation(
     attestation: ConvictionAttestation,
-    walletClient: WalletClient
+    walletClient: WalletClient,
   ): Promise<string> {
     if (!walletClient.account) {
       throw new Error("No account connected");
@@ -457,7 +483,7 @@ export class EthosClient {
       account: walletClient.account,
       domain: ETHOS_DOMAIN,
       types: ATTESTATION_TYPES,
-      primaryType: 'Attestation',
+      primaryType: "Attestation",
       message,
     });
   }
@@ -467,7 +493,7 @@ export class EthosClient {
    */
   async submitOnChainAttestation(
     attestation: ConvictionAttestation,
-    walletClient: WalletClient
+    walletClient: WalletClient,
   ): Promise<string> {
     if (!walletClient.account) {
       throw new Error("No account connected");
@@ -476,29 +502,34 @@ export class EthosClient {
     // Encode the data according to the schema: "uint256 score, uint256 patienceTax, string archetype"
     // Note: We are simplifying the on-chain data to the core metrics to save gas
     const encodedData = encodeAbiParameters(
-      parseAbiParameters('uint256 score, uint256 patienceTax, string archetype'),
+      parseAbiParameters(
+        "uint256 score, uint256 patienceTax, string archetype",
+      ),
       [
         BigInt(Math.floor(attestation.convictionScore)),
         BigInt(Math.floor(attestation.patienceTax)),
-        attestation.archetype
-      ]
+        attestation.archetype,
+      ],
     );
 
     const hash = await walletClient.writeContract({
       address: EAS_CONTRACT_ADDRESS,
       abi: EAS_ABI,
-      functionName: 'attest',
-      args: [{
-        schema: CONVICTION_SCHEMA_UID as `0x${string}`,
-        data: {
-          recipient: attestation.subject as `0x${string}`,
-          expirationTime: BigInt(0), // No expiration
-          revocable: true,
-          refUID: '0x0000000000000000000000000000000000000000000000000000000000000000',
-          data: encodedData,
-          value: BigInt(0),
-        }
-      }],
+      functionName: "attest",
+      args: [
+        {
+          schema: CONVICTION_SCHEMA_UID as `0x${string}`,
+          data: {
+            recipient: attestation.subject as `0x${string}`,
+            expirationTime: BigInt(0), // No expiration
+            revocable: true,
+            refUID:
+              "0x0000000000000000000000000000000000000000000000000000000000000000",
+            data: encodedData,
+            value: BigInt(0),
+          },
+        },
+      ],
       account: walletClient.account,
       chain: undefined, // Let wallet infer chain (Base)
     });
@@ -513,53 +544,59 @@ export class EthosClient {
    */
   async writeConvictionAttestation(
     attestation: ConvictionAttestation,
-    signature: string
+    signature: string,
   ): Promise<AttestationResponse> {
     try {
-      console.log('Processing conviction attestation:', {
+      console.log("Processing conviction attestation:", {
         attestation,
-        signature: signature.substring(0, 20) + '...',
-        chain: attestation.chain
+        signature: signature.substring(0, 20) + "...",
+        chain: attestation.chain,
       });
 
       // The actual on-chain write happens via submitOnChainAttestation
       // This method can be used for additional processing or metadata storage
-      // For now, we return a success response that will be populated with 
+      // For now, we return a success response that will be populated with
       // the actual transaction data by the attestation-service
 
       return {
         id: signature, // Will be replaced with actual attestation UID
-        status: 'pending',
-        message: 'Conviction attestation data prepared',
-        signature
+        status: "pending",
+        message: "Conviction attestation data prepared",
+        signature,
       };
     } catch (error) {
-      console.error('Conviction attestation processing failed:', error);
-      throw new Error(`Failed to process conviction attestation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Conviction attestation processing failed:", error);
+      throw new Error(
+        `Failed to process conviction attestation: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   }
 
   /**
    * Get existing conviction attestations for an address from EAS
    */
-  async getConvictionAttestations(address: string): Promise<ConvictionAttestation[]> {
+  async getConvictionAttestations(
+    address: string,
+  ): Promise<ConvictionAttestation[]> {
     try {
       // Import dynamically to avoid circular dependencies
-      const { getConvictionAttestationsByRecipient, decodeConvictionData } = await import('./eas-graphql');
-      
+      const { getConvictionAttestationsByRecipient, decodeConvictionData } =
+        await import("./eas-graphql");
+
       // Fetch attestations from EAS GraphQL
-      const easAttestations = await getConvictionAttestationsByRecipient(address);
-      
+      const easAttestations =
+        await getConvictionAttestationsByRecipient(address);
+
       if (easAttestations.length === 0) {
         return [];
       }
 
       // Decode and map to ConvictionAttestation format
       const convictionAttestations: ConvictionAttestation[] = [];
-      
+
       for (const easAtt of easAttestations) {
         const decodedData = decodeConvictionData(easAtt.data);
-        
+
         if (decodedData) {
           convictionAttestations.push({
             subject: easAtt.recipient,
@@ -571,14 +608,14 @@ export class EthosClient {
             winRate: 0, // Not stored in simplified on-chain schema
             analysisDate: new Date(easAtt.time * 1000).toISOString(),
             timeHorizon: 365, // Default assumption
-            chain: 'base',
+            chain: "base",
           });
         }
       }
 
       return convictionAttestations;
     } catch (error) {
-      console.warn('Failed to fetch conviction attestations:', error);
+      console.warn("Failed to fetch conviction attestations:", error);
       return [];
     }
   }
@@ -592,7 +629,7 @@ export class EthosClient {
       // Require minimum credibility score to prevent spam
       return (score?.score || 0) >= 100;
     } catch (error) {
-      console.warn('Permission check failed:', error);
+      console.warn("Permission check failed:", error);
       return false;
     }
   }
