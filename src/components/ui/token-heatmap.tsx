@@ -178,7 +178,7 @@ export function TokenHeatmap({ className, onDataLoaded }: TokenHeatmapProps) {
           minScore={500}
           title="Token Conviction Analysis"
           description="See which tokens have the highest concentration of credible, high-conviction holders."
-          className="min-h-[250px]"
+          className="min-h-62.5"
         >
           {error ? (
             <div className="text-center py-8 text-foreground-muted">

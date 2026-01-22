@@ -8,14 +8,12 @@ import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
-  Users,
   TrendingUp,
   TrendingDown,
   BarChart3,
   RefreshCw,
   Crown,
   Loader2,
-  ExternalLink,
 } from "lucide-react";
 
 interface TraderBenchmark {
@@ -85,7 +83,7 @@ export function CohortAnalysis({
   const getComparisonText = (
     userValue: number,
     benchmarkValue: number,
-    metric: string,
+    _metric: string,
   ) => {
     if (userValue === 0) return null;
     const diff = userValue - benchmarkValue;
@@ -137,7 +135,7 @@ export function CohortAnalysis({
           minScore={500}
           title="Elite Traders Benchmark"
           description="Compare your metrics against tracked high-conviction traders."
-          className="min-h-[400px]"
+          className="min-h-100"
         >
           {error ? (
             <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
@@ -282,7 +280,7 @@ export function CohortAnalysis({
                 <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-3">
                   Tracked Traders
                 </div>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                <div className="space-y-2 max-h-75 overflow-y-auto">
                   {benchmark.traders.map((trader) => (
                     <div
                       key={trader.id}

@@ -66,7 +66,13 @@ export class IdentityResolverService {
    * Resolve any input to a complete identity
    */
   async resolve(input: string): Promise<ResolvedIdentity | null> {
-    const normalizedInput = input.trim().toLowerCase();
+    const trimmed = input.trim();
+
+    // Solana addresses are case-sensitive. Ethereum are not.
+    // We only lowercase if it's clearly not a raw wallet address (e.g. has dots or is short).
+    const isProbablyAddress =
+      /^[a-zA-Z0-9]{30,65}$/.test(trimmed) || trimmed.startsWith("0x");
+    const normalizedInput = isProbablyAddress ? trimmed : trimmed.toLowerCase();
 
     // Generate cache key
     const cacheKey = `identity:resolved:${normalizedInput}`;
@@ -84,6 +90,16 @@ export class IdentityResolverService {
           return this.resolveFromFarcaster(normalizedInput);
         } else if (this.isLensHandle(normalizedInput)) {
           return this.resolveFromLens(normalizedInput);
+        }
+
+        // Fallback for unresolvable inputs that look like wallets but didn't match formats exactly.
+        // This ensures that wallets without social profiles can still be analyzed.
+        if (
+          normalizedInput.length >= 30 &&
+          !normalizedInput.includes(".") &&
+          !normalizedInput.includes(" ")
+        ) {
+          return this.resolveFromAddress(normalizedInput);
         }
 
         return null;
@@ -164,7 +180,10 @@ export class IdentityResolverService {
 
     // Use existing Farcaster API
     try {
-      const response = await fetch("/api/farcaster/resolve", {
+      // Internal server-side fetches must use absolute URLs.
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const response = await fetch(`${baseUrl}/api/farcaster/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: cleanHandle }),
@@ -207,6 +226,7 @@ export class IdentityResolverService {
   ): Promise<ResolvedIdentity | null> {
     // TODO: Implement Lens resolution if needed
     // For now, return null
+    void _handle;
     console.warn("Lens resolution not yet implemented");
     return null;
   }
@@ -277,7 +297,10 @@ export class IdentityResolverService {
     address: string,
   ): Promise<FarcasterIdentity | null> {
     try {
-      const response = await fetch("/api/farcaster/resolve", {
+      // Internal server-side fetches must use absolute URLs.
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const response = await fetch(`${baseUrl}/api/farcaster/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address }),
@@ -299,9 +322,12 @@ export class IdentityResolverService {
 
   private isAddress(input: string): boolean {
     // Ethereum address (0x + 40 hex chars) or Solana address (32-44 alphanumeric)
+    // Solana addresses are case-sensitive and use Base58.
     return (
-      /^0x[a-f0-9]{40}$/i.test(input) ||
-      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input)
+      /^0x[a-fA-F0-9]{40}$/.test(input) ||
+      /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input) ||
+      // Lenient fallback for other wallet formats or those with minor typos
+      (/^[a-zA-Z0-9]{30,65}$/.test(input) && !input.includes("."))
     );
   }
 

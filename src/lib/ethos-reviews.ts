@@ -166,6 +166,7 @@ export function getEthosReviewURL(
 ): string {
   // Simply link to the profile page - Ethos will handle the review UI
   // Users can manually write reviews based on our conviction insights
+  void _metrics;
   return `https://app.ethos.network/profile/${subject}`;
 }
 

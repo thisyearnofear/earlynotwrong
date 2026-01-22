@@ -1,12 +1,12 @@
 /**
  * Server-Side Cache with Request Deduplication
- * 
+ *
  * Features:
  * - In-memory LRU cache with TTL
  * - Automatic request deduplication for in-flight requests
  * - Type-safe generic interface
  * - Memory-efficient with configurable limits
- * 
+ *
  * Phase 1.2 Enhancement: Reduces redundant API calls by 70-90%
  */
 
@@ -24,9 +24,9 @@ interface CacheConfig {
  * Simple LRU Cache with TTL support
  */
 class ServerCache {
-  private cache: Map<string, CacheEntry<any>>;
+  private cache: Map<string, CacheEntry<unknown>>;
   private accessOrder: string[];
-  private inFlightRequests: Map<string, Promise<any>>;
+  private inFlightRequests: Map<string, Promise<unknown>>;
   private config: CacheConfig;
 
   constructor(config: Partial<CacheConfig> = {}) {
@@ -46,7 +46,7 @@ class ServerCache {
   async get<T>(
     key: string,
     fetcher: () => Promise<T>,
-    ttl?: number
+    ttl?: number,
   ): Promise<T> {
     // Check cache first
     const cached = this.cache.get(key);
@@ -95,13 +95,13 @@ class ServerCache {
   has(key: string): boolean {
     const cached = this.cache.get(key);
     if (!cached) return false;
-    
+
     if (cached.expires <= Date.now()) {
       this.cache.delete(key);
       this.removeFromAccessOrder(key);
       return false;
     }
-    
+
     return true;
   }
 
@@ -134,7 +134,7 @@ class ServerCache {
   clearExpired(): number {
     let count = 0;
     const now = Date.now();
-    
+
     for (const [key, entry] of this.cache.entries()) {
       if (entry.expires <= now) {
         this.cache.delete(key);
@@ -142,7 +142,7 @@ class ServerCache {
         count++;
       }
     }
-    
+
     return count;
   }
 
@@ -196,7 +196,7 @@ class ServerCache {
 
   private evictLRU(): void {
     if (this.accessOrder.length === 0) return;
-    
+
     const lruKey = this.accessOrder[0];
     this.cache.delete(lruKey);
     this.accessOrder.shift();
@@ -215,13 +215,12 @@ const globalCache = new ServerCache({
 export const CacheKeys = {
   tokenMetadata: (address: string, chain: string) =>
     `metadata:${chain}:${address}`,
-  
-  tokenPrice: (address: string, chain: string) =>
-    `price:${chain}:${address}`,
-  
+
+  tokenPrice: (address: string, chain: string) => `price:${chain}:${address}`,
+
   priceHistory: (address: string, chain: string, from: number, to: number) =>
     `history:${chain}:${address}:${from}:${to}`,
-  
+
   transactions: (address: string, chain: string, timeHorizon: number) =>
     `transactions:${chain}:${address}:${timeHorizon}`,
 };
@@ -230,10 +229,10 @@ export const CacheKeys = {
  * TTL presets for different data types
  */
 export const CacheTTL = {
-  METADATA: 24 * 60 * 60 * 1000,      // 24 hours - token metadata rarely changes
-  PRICE_CURRENT: 5 * 60 * 1000,       // 5 minutes - current prices
-  PRICE_HISTORY: 60 * 60 * 1000,      // 1 hour - historical prices
-  TRANSACTIONS: 10 * 60 * 1000,       // 10 minutes - transaction history
+  METADATA: 24 * 60 * 60 * 1000, // 24 hours - token metadata rarely changes
+  PRICE_CURRENT: 5 * 60 * 1000, // 5 minutes - current prices
+  PRICE_HISTORY: 60 * 60 * 1000, // 1 hour - historical prices
+  TRANSACTIONS: 10 * 60 * 1000, // 10 minutes - transaction history
 };
 
 export { globalCache as serverCache };

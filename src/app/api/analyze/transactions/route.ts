@@ -37,32 +37,31 @@ const WRAPPED_TOKENS = [
   "0x4200000000000000000000000000000000000006", // WETH (Base)
 ];
 
-// ERC-20 stablecoins (Base chain)
-const BASE_STABLECOINS = [
-  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC (Base)
-  "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", // DAI (Base)
-];
-
 // Token patterns to exclude (LP tokens, NFTs, etc.)
-function shouldExcludeToken(symbol: string | null | undefined, address: string): boolean {
+function shouldExcludeToken(
+  symbol: string | null | undefined,
+  address: string,
+): boolean {
   if (!symbol) return false;
-  
+
   const symbolUpper = symbol.toUpperCase();
-  
+
   // Exclude LP tokens
-  if (symbolUpper.includes("-LP") || 
-      symbolUpper.includes("LP-") || 
-      symbolUpper.includes("UNI-V2") ||
-      symbolUpper.includes("CAKE-LP") ||
-      symbolUpper.includes("SLP")) {
+  if (
+    symbolUpper.includes("-LP") ||
+    symbolUpper.includes("LP-") ||
+    symbolUpper.includes("UNI-V2") ||
+    symbolUpper.includes("CAKE-LP") ||
+    symbolUpper.includes("SLP")
+  ) {
     return true;
   }
-  
+
   // Exclude wrapped versions we want to treat as base
   if (WRAPPED_TOKENS.includes(address)) {
     return false; // These are base tokens, not tradeable assets
   }
-  
+
   return false;
 }
 
@@ -90,7 +89,7 @@ function validateTransactions(transactions: TokenTransaction[]): {
       invalid++;
       continue;
     }
-    
+
     // Exclude suspicious LP tokens
     if (shouldExcludeToken(tx.tokenSymbol, tx.tokenAddress)) {
       invalid++;
@@ -125,7 +124,7 @@ export async function POST(request: NextRequest) {
     if (!address || !chain) {
       return NextResponse.json(
         { error: "Missing required fields: address, chain" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -135,18 +134,22 @@ export async function POST(request: NextRequest) {
       rawTransactions = await fetchSolanaTransactions(
         address,
         timeHorizonDays,
-        minTradeValue
+        minTradeValue,
       );
     } else {
       rawTransactions = await fetchBaseTransactions(
         address,
         timeHorizonDays,
-        minTradeValue
+        minTradeValue,
       );
     }
-    
+
     // Validate and filter transactions
-    const { valid: transactions, invalid, quality } = validateTransactions(rawTransactions);
+    const {
+      valid: transactions,
+      invalid,
+      quality,
+    } = validateTransactions(rawTransactions);
 
     return NextResponse.json({
       success: true,
@@ -156,9 +159,15 @@ export async function POST(request: NextRequest) {
         totalRaw: rawTransactions.length,
         invalidFiltered: invalid,
         dataCompleteness: {
-          symbolRate: Math.round((quality.withSymbols / Math.max(transactions.length, 1)) * 100),
-          priceRate: Math.round((quality.withValidPrices / Math.max(transactions.length, 1)) * 100),
-          amountRate: Math.round((quality.withValidAmounts / Math.max(transactions.length, 1)) * 100),
+          symbolRate: Math.round(
+            (quality.withSymbols / Math.max(transactions.length, 1)) * 100,
+          ),
+          priceRate: Math.round(
+            (quality.withValidPrices / Math.max(transactions.length, 1)) * 100,
+          ),
+          amountRate: Math.round(
+            (quality.withValidAmounts / Math.max(transactions.length, 1)) * 100,
+          ),
         },
         avgTradeSize: Math.round(quality.avgValueUsd * 100) / 100,
       },
@@ -167,7 +176,7 @@ export async function POST(request: NextRequest) {
     console.error("Transaction fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch transactions", details: String(error) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -175,12 +184,16 @@ export async function POST(request: NextRequest) {
 async function fetchSolanaTransactions(
   address: string,
   timeHorizonDays: number,
-  minTradeValue: number
+  minTradeValue: number,
 ): Promise<TokenTransaction[]> {
   // Try Birdeye first (best for trading history), then Helius as fallback
   if (BIRDEYE_API_KEY) {
     try {
-      const birdeyeTxs = await fetchSolanaViaBirdeye(address, timeHorizonDays, minTradeValue);
+      const birdeyeTxs = await fetchSolanaViaBirdeye(
+        address,
+        timeHorizonDays,
+        minTradeValue,
+      );
       if (birdeyeTxs.length > 0) {
         return birdeyeTxs;
       }
@@ -196,14 +209,14 @@ async function fetchSolanaTransactions(
 async function fetchSolanaViaBirdeye(
   address: string,
   timeHorizonDays: number,
-  minTradeValue: number
+  minTradeValue: number,
 ): Promise<TokenTransaction[]> {
   const cutoffTime = Date.now() - timeHorizonDays * 24 * 60 * 60 * 1000;
   const transactions: TokenTransaction[] = [];
-  
+
   // Birdeye wallet trade history API
   const url = `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${address}&tx_type=swap&limit=100`;
-  
+
   const response = await fetch(url, {
     headers: {
       "X-API-KEY": BIRDEYE_API_KEY!,
@@ -217,7 +230,7 @@ async function fetchSolanaViaBirdeye(
   }
 
   const data = await response.json();
-  
+
   if (!data.success || !data.data?.items) {
     return [];
   }
@@ -229,21 +242,23 @@ async function fetchSolanaViaBirdeye(
     // Birdeye provides parsed swap data directly
     const fromToken = tx.from;
     const toToken = tx.to;
-    
+
     if (!fromToken || !toToken) continue;
 
     // Determine if this is a buy or sell based on SOL/stablecoin flow
-    const isSolOrStable = (symbol: string) => 
+    const isSolOrStable = (symbol: string) =>
       ["SOL", "USDC", "USDT"].includes(symbol?.toUpperCase());
-    
-    const isBuy = isSolOrStable(fromToken.symbol) && !isSolOrStable(toToken.symbol);
-    const isSell = !isSolOrStable(fromToken.symbol) && isSolOrStable(toToken.symbol);
-    
+
+    const isBuy =
+      isSolOrStable(fromToken.symbol) && !isSolOrStable(toToken.symbol);
+    const isSell =
+      !isSolOrStable(fromToken.symbol) && isSolOrStable(toToken.symbol);
+
     if (!isBuy && !isSell) continue; // Skip token-to-token for now
-    
+
     const targetToken = isBuy ? toToken : fromToken;
     const valueToken = isBuy ? fromToken : toToken;
-    
+
     const valueUsd = valueToken.uiAmount * (valueToken.priceUsd || 0);
     if (valueUsd < minTradeValue) continue;
 
@@ -266,7 +281,7 @@ async function fetchSolanaViaBirdeye(
 async function fetchSolanaViaHelius(
   address: string,
   timeHorizonDays: number,
-  minTradeValue: number
+  minTradeValue: number,
 ): Promise<TokenTransaction[]> {
   const cutoffTime = Date.now() - timeHorizonDays * 24 * 60 * 60 * 1000;
   const transactions: TokenTransaction[] = [];
@@ -279,7 +294,9 @@ async function fetchSolanaViaHelius(
   }
 
   for (let page = 0; page < maxPages; page++) {
-    const url = new URL(`https://api.helius.xyz/v0/addresses/${address}/transactions`);
+    const url = new URL(
+      `https://api.helius.xyz/v0/addresses/${address}/transactions`,
+    );
     url.searchParams.set("api-key", HELIUS_API_KEY);
     if (lastSignature) {
       url.searchParams.set("before", lastSignature);
@@ -340,7 +357,7 @@ async function getLatestBlock(): Promise<number> {
 async function fetchBaseTransactions(
   address: string,
   timeHorizonDays: number,
-  minTradeValue: number
+  minTradeValue: number,
 ): Promise<TokenTransaction[]> {
   const cutoffTime = Date.now() - timeHorizonDays * 24 * 60 * 60 * 1000;
   const latestBlock = await getLatestBlock();
@@ -433,11 +450,17 @@ async function fetchBaseTransactions(
 
 async function getSolPrice(): Promise<number> {
   try {
-    const response = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112', {
-      next: { revalidate: 600 }
-    });
+    const response = await fetch(
+      "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
+      {
+        next: { revalidate: 600 },
+      },
+    );
     const data = await response.json();
-    return parseFloat(data.data?.So11111111111111111111111111111111111111112?.price || APP_CONFIG.fallbacks.solPrice.toString());
+    return parseFloat(
+      data.data?.So11111111111111111111111111111111111111112?.price ||
+        APP_CONFIG.fallbacks.solPrice.toString(),
+    );
   } catch (error) {
     console.warn("Failed to fetch live SOL price, using fallback:", error);
     return APP_CONFIG.fallbacks.solPrice;
@@ -451,15 +474,15 @@ async function getSolanaTokenSymbol(mint: string): Promise<string | null> {
   if (tokenMetadataCache.has(mint)) {
     return tokenMetadataCache.get(mint) || null;
   }
-  
+
   // Try Jupiter API with auth
   if (JUPITER_API_KEY) {
     try {
       const response = await fetch(`https://tokens.jup.ag/token/${mint}`, {
-        headers: { "Authorization": `Bearer ${JUPITER_API_KEY}` },
+        headers: { Authorization: `Bearer ${JUPITER_API_KEY}` },
         next: { revalidate: 86400 },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         const symbol = data.symbol || null;
@@ -472,20 +495,24 @@ async function getSolanaTokenSymbol(mint: string): Promise<string | null> {
       // Fall through to DexScreener
     }
   }
-  
+
   // Fallback: DexScreener (free, no key)
   try {
-    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, {
-      next: { revalidate: 3600 },
-    });
-    
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
+      {
+        next: { revalidate: 3600 },
+      },
+    );
+
     if (response.ok) {
       const data = await response.json();
       const pair = data.pairs?.[0];
       if (pair) {
-        const symbol = pair.baseToken?.address === mint 
-          ? pair.baseToken?.symbol 
-          : pair.quoteToken?.symbol;
+        const symbol =
+          pair.baseToken?.address === mint
+            ? pair.baseToken?.symbol
+            : pair.quoteToken?.symbol;
         if (symbol) {
           tokenMetadataCache.set(mint, symbol);
           return symbol;
@@ -495,44 +522,66 @@ async function getSolanaTokenSymbol(mint: string): Promise<string | null> {
   } catch {
     // Ignore
   }
-  
+
   tokenMetadataCache.set(mint, null);
   return null;
 }
 
-async function parseSolanaSwap(tx: any, walletAddress: string): Promise<TokenTransaction | null> {
+async function parseSolanaSwap(
+  tx: {
+    tokenTransfers?: Array<{
+      mint: string;
+      toUserAccount: string;
+      tokenAmount: number | string;
+      tokenSymbol?: string;
+    }>;
+    feePayer?: string;
+    signature: string;
+    timestamp: number;
+    slot: number;
+  },
+  walletAddress: string,
+): Promise<TokenTransaction | null> {
   try {
     const tokenTransfers = tx.tokenTransfers || [];
     if (tokenTransfers.length < 2) return null;
 
     // Find base token (SOL, USDC, or USDT)
-    const baseTransfer = tokenTransfers.find(
-      (t: any) => KNOWN_BASE_TOKENS.includes(t.mint)
+    const baseTransfer = tokenTransfers.find((t) =>
+      KNOWN_BASE_TOKENS.includes(t.mint),
     );
 
     if (!baseTransfer) return null;
 
     // Find the traded token (non-base token)
     const tokenTransfer = tokenTransfers.find(
-      (t: any) => !KNOWN_BASE_TOKENS.includes(t.mint)
+      (t) => !KNOWN_BASE_TOKENS.includes(t.mint),
     );
 
     if (!tokenTransfer) return null;
 
     // Determine buy/sell: if wallet received the token, it's a buy
-    const isBuy = tokenTransfer.toUserAccount === walletAddress || 
-                  tokenTransfer.toUserAccount === tx.feePayer;
+    const isBuy =
+      tokenTransfer.toUserAccount === walletAddress ||
+      tokenTransfer.toUserAccount === tx.feePayer;
     const type = isBuy ? "buy" : "sell";
-    
+
     // tokenAmount can be a number or string - handle both
     const rawTokenAmount = tokenTransfer.tokenAmount;
-    const amount = typeof rawTokenAmount === 'number' ? rawTokenAmount : parseFloat(rawTokenAmount || "0");
-    
+    const amount =
+      typeof rawTokenAmount === "number"
+        ? rawTokenAmount
+        : parseFloat(rawTokenAmount || "0");
+
     const rawBaseAmount = baseTransfer.tokenAmount;
-    let baseAmountRaw = typeof rawBaseAmount === 'number' ? rawBaseAmount : parseFloat(rawBaseAmount || "0");
-    
+    let baseAmountRaw =
+      typeof rawBaseAmount === "number"
+        ? rawBaseAmount
+        : parseFloat(rawBaseAmount || "0");
+
     // Handle decimal conversion based on token type
-    const isSol = baseTransfer.mint === "So11111111111111111111111111111111111111112";
+    const isSol =
+      baseTransfer.mint === "So11111111111111111111111111111111111111112";
     if (isSol && baseAmountRaw > 1_000_000_000) {
       baseAmountRaw = baseAmountRaw / 1e9; // Convert lamports to SOL
     }
@@ -549,20 +598,21 @@ async function parseSolanaSwap(tx: any, walletAddress: string): Promise<TokenTra
     } else {
       valueUsd = baseAmountRaw; // USDC/USDT is 1:1 USD
     }
-    
+
     const priceUsd = amount > 0 ? valueUsd / amount : 0;
 
     // Get token symbol - use provided or lookup
     let tokenSymbol = tokenTransfer.tokenSymbol;
     if (!tokenSymbol) {
-      tokenSymbol = await getSolanaTokenSymbol(tokenTransfer.mint);
+      const resolved = await getSolanaTokenSymbol(tokenTransfer.mint);
+      tokenSymbol = resolved || undefined;
     }
 
     return {
       hash: tx.signature,
       timestamp: tx.timestamp * 1000,
       tokenAddress: tokenTransfer.mint,
-      tokenSymbol,
+      tokenSymbol: tokenSymbol || "UNKNOWN",
       type,
       amount,
       priceUsd,
@@ -577,28 +627,45 @@ async function parseSolanaSwap(tx: any, walletAddress: string): Promise<TokenTra
 
 async function getBaseTokenPrice(tokenAddress: string): Promise<number> {
   try {
-    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
+    );
     const data = await response.json();
     const pair = data.pairs?.[0];
     return parseFloat(pair?.priceUsd || "0");
   } catch (error) {
-    console.warn(`Failed to fetch price for Base token ${tokenAddress}:`, error);
+    console.warn(
+      `Failed to fetch price for Base token ${tokenAddress}:`,
+      error,
+    );
     return 0;
   }
 }
 
 async function parseBaseTransfer(
-  transfer: any,
+  transfer: {
+    rawContract?: { address: string };
+    value: number | string;
+    hash: string;
+    category?: string;
+    metadata?: {
+      value?: string;
+      blockTimestamp?: string;
+    };
+    blockNum: string;
+    asset: string;
+    from: string;
+  },
   minTradeValue: number,
-  userAddress: string
+  userAddress: string,
 ): Promise<TokenTransaction | null> {
   try {
     // Skip if the token being transferred IS the user's address (e.g., ENS-style tokens)
     const tokenAddress = transfer.rawContract?.address?.toLowerCase();
-    if (tokenAddress === userAddress.toLowerCase()) {
+    if (!tokenAddress || tokenAddress === userAddress.toLowerCase()) {
       return null;
     }
-    
+
     // Skip external ETH transfers (we want token trades, not plain ETH sends)
     if (transfer.category === "external") {
       return null;
@@ -606,17 +673,20 @@ async function parseBaseTransfer(
 
     const isSell = transfer.from.toLowerCase() === userAddress.toLowerCase();
     const type = isSell ? "sell" : "buy";
-    
+
     // Alchemy value is often in USD for known tokens, but we should verify
     let valueUsd = parseFloat(transfer.metadata?.value || "0");
-    const amount = parseFloat(transfer.value || "0");
-    
+    const amount =
+      typeof transfer.value === "number"
+        ? transfer.value
+        : parseFloat(transfer.value || "0");
+
     let priceUsd = 0;
     if (valueUsd > 0 && amount > 0) {
       priceUsd = valueUsd / amount;
     } else {
       // Legitimate alternative: fetch real-time price if metadata is missing
-      priceUsd = await getBaseTokenPrice(transfer.rawContract.address);
+      priceUsd = await getBaseTokenPrice(tokenAddress);
       valueUsd = priceUsd * amount;
     }
 
@@ -624,9 +694,11 @@ async function parseBaseTransfer(
 
     return {
       hash: transfer.hash,
-      timestamp: new Date(transfer.metadata.blockTimestamp).getTime(),
-      tokenAddress: transfer.rawContract.address,
-      tokenSymbol: transfer.asset,
+      timestamp: transfer.metadata?.blockTimestamp
+        ? new Date(transfer.metadata.blockTimestamp).getTime()
+        : Date.now(),
+      tokenAddress: tokenAddress,
+      tokenSymbol: transfer.asset || "UNKNOWN",
       type,
       amount,
       priceUsd,
@@ -639,7 +711,10 @@ async function parseBaseTransfer(
   }
 }
 
-async function getBlockByTimestamp(timestamp: number, currentBlock: number): Promise<number> {
+async function getBlockByTimestamp(
+  timestamp: number,
+  currentBlock: number,
+): Promise<number> {
   const now = Date.now();
   const daysDiff = (now - timestamp) / (24 * 60 * 60 * 1000);
   // Base is ~2s blocks, so 0.5 blocks/sec

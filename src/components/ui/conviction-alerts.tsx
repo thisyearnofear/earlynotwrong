@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
 import { Button } from "@/components/ui/button";
-import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
   Bell,
@@ -14,7 +13,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Clock,
-  Users,
   RefreshCw,
   ExternalLink,
   Volume2,
@@ -60,7 +58,6 @@ export function ConvictionAlerts({
   className,
   onDataLoaded,
 }: ConvictionAlertsProps) {
-  const { ethosScore } = useAppStore();
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +222,7 @@ export function ConvictionAlerts({
           minScore={1000}
           title="Real-Time Conviction Alerts"
           description="Get instant notifications when tracked traders make significant moves."
-          className="min-h-[400px]"
+          className="min-h-100"
         >
           {error ? (
             <div className="text-center py-8 text-foreground-muted">

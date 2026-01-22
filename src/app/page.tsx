@@ -216,7 +216,10 @@ export default function Home() {
   }, [advancedPanels, isOrderFrozen]);
 
   return (
-    <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
+    <div
+      className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative"
+      suppressHydrationWarning
+    >
       <TunnelBackground />
       <Navbar />
 
@@ -1094,7 +1097,10 @@ export default function Home() {
                       }}
                       className="col-span-1 md:col-span-6 lg:col-span-12"
                     >
-                      <Card className="glass-panel border-signal/20 bg-surface/40 overflow-hidden">
+                      <Card
+                        className="glass-panel border-signal/20 bg-surface/40 overflow-hidden"
+                        suppressHydrationWarning
+                      >
                         <CardContent className="p-8 text-center">
                           <div className="space-y-4">
                             <Lock className="w-12 h-12 text-signal mx-auto" />
