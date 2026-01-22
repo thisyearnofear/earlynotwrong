@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, TrendingUp, Radar, ExternalLink, Clock, AlertCircle, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
+
 
 interface PersonalRadarProps {
   onAnalyze?: (address: string) => void;
@@ -56,7 +58,7 @@ export function PersonalRadar({ onAnalyze }: PersonalRadarProps) {
       <CardContent className="space-y-2">
         {watchlist.map((entry) => {
           const stale = isStale(entry.lastAnalyzed);
-          
+
           return (
             <div
               key={`${entry.chain}:${entry.address}`}
@@ -85,7 +87,7 @@ export function PersonalRadar({ onAnalyze }: PersonalRadarProps) {
                   ) : (
                     <span className="text-[10px] text-foreground-muted italic">No score</span>
                   )}
-                  
+
                   <div className="flex items-center gap-1 text-[10px] text-foreground-muted">
                     <Clock className="w-3 h-3" />
                     {formatLastUpdated(entry.lastAnalyzed)}
@@ -117,7 +119,7 @@ export function PersonalRadar({ onAnalyze }: PersonalRadarProps) {
             </div>
           );
         })}
-        
+
         <div className="pt-2 text-[10px] text-center text-foreground-muted font-mono">
           {watchlist.length}/5 • Stored in Cloud
         </div>

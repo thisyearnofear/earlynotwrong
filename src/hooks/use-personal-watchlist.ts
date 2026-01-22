@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { toast } from "sonner";
+import { useAppStore } from "@/lib/store";
+
 
 export interface PersonalWatchlistEntry {
   address: string;
@@ -19,7 +20,9 @@ const STORAGE_KEY = "enw_personal_watchlist";
 export function usePersonalWatchlist() {
   const { address: evmAddress, isConnected: isEvmConnected } = useAccount();
   const { publicKey: solanaPublicKey, connected: isSolanaConnected } = useWallet();
-  
+  const { showToast } = useAppStore();
+
+
   // Determine current user address
   const userAddress = isEvmConnected ? evmAddress : (isSolanaConnected ? solanaPublicKey?.toBase58() : null);
 
@@ -49,11 +52,11 @@ export function usePersonalWatchlist() {
   // 1. If not connected: Use LocalStorage purely.
   // 2. If connected: Fetch DB list. Merge with LocalStorage (if any new items there). Save merged back to DB. Clear LocalStorage? 
   //    Actually, keeping LocalStorage as a "guest cache" is fine, but we should prioritize DB when connected.
-  
+
   useEffect(() => {
     async function loadWatchlist() {
       setIsLoading(true);
-      
+
       // A. Guest Mode: Load Local Storage
       if (!userAddress) {
         const local = loadFromLocalStorage();
@@ -82,7 +85,7 @@ export function usePersonalWatchlist() {
           }));
 
           setWatchlist(dbList);
-          
+
           // Optional: Check if we have local items to migrate? 
           // For simplicity, let's keep them separate for now or maybe "Import local to account" feature later.
           // Merging automatically can be confusing if user switches accounts.
@@ -131,7 +134,8 @@ export function usePersonalWatchlist() {
         });
       } catch (error) {
         console.error("Failed to save to DB", error);
-        toast.error("Failed to sync with account");
+        showToast("Failed to sync with account", "error");
+
         // Revert optimistic update? For now, we'll leave it in UI state but it won't persist on refresh.
       }
     }
@@ -155,7 +159,8 @@ export function usePersonalWatchlist() {
         });
       } catch (error) {
         console.error("Failed to delete from DB", error);
-        toast.error("Failed to sync with account");
+        showToast("Failed to sync with account", "error");
+
       }
     }
   }, [userAddress, loadFromLocalStorage, saveToLocalStorage]);

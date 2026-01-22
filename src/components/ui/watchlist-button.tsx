@@ -26,7 +26,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Star, Globe, Lock, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+
+
 
 interface WatchlistButtonProps {
   wallet: {
@@ -46,9 +47,10 @@ interface WatchlistButtonProps {
 export function WatchlistButton({ wallet, variant = "outline", size = "sm", className }: WatchlistButtonProps) {
   const { address: evmAddress } = useAccount();
   const { publicKey: solanaPublicKey } = useWallet();
-  const { ethosScore } = useAppStore(); // User's own Ethos score
+  const { ethosScore, showToast } = useAppStore(); // User's own Ethos score
+
   const { isWatched, addToWatchlist, removeFromWatchlist } = usePersonalWatchlist();
-  
+
   const [openNominateDialog, setOpenNominateDialog] = useState(false);
   const [isNominating, setIsNominating] = useState(false);
 
@@ -59,7 +61,8 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
   const handlePin = () => {
     if (isPinned) {
       removeFromWatchlist(wallet.address, wallet.chain);
-      toast.success("Removed from Personal Radar");
+      showToast("Removed from Personal Radar", "success");
+
     } else {
       addToWatchlist({
         address: wallet.address,
@@ -69,7 +72,8 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
         ethosScore: wallet.ethosScore,
         archetype: wallet.archetype,
       });
-      toast.success("Added to Personal Radar");
+      showToast("Added to Personal Radar", "success");
+
     }
   };
 
@@ -77,11 +81,12 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
     setIsNominating(true);
     try {
       const nominatorAddress = evmAddress || solanaPublicKey?.toBase58();
-      
+
       if (!nominatorAddress) {
-        toast.error("Please connect your wallet to nominate");
+        showToast("Please connect your wallet to nominate", "error");
         return;
       }
+
 
       const response = await fetch("/api/community/watchlist", {
         method: "POST",
@@ -101,10 +106,11 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
         throw new Error(data.error || "Failed to nominate");
       }
 
-      toast.success(data.message);
+      showToast(data.message, "success");
       setOpenNominateDialog(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to nominate");
+      showToast(error instanceof Error ? error.message : "Failed to nominate", "error");
+
     } finally {
       setIsNominating(false);
     }
@@ -114,8 +120,8 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button 
-            variant={variant === "icon" ? "ghost" : variant} 
+          <Button
+            variant={variant === "icon" ? "ghost" : variant}
             size={variant === "icon" ? "icon" : size}
             className={cn(isPinned && "text-patience border-patience/30 bg-patience/5", className)}
           >
@@ -126,7 +132,7 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
         <DropdownMenuContent align="end" className="w-56 bg-surface border-border/50 backdrop-blur-md">
           <DropdownMenuLabel>Tracking Options</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          
+
           <DropdownMenuItem onClick={handlePin} className="cursor-pointer">
             <Star className={cn("w-4 h-4 mr-2", isPinned ? "fill-current text-patience" : "")} />
             <div className="flex flex-col">
@@ -137,8 +143,8 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem 
-            disabled={!canNominate} 
+          <DropdownMenuItem
+            disabled={!canNominate}
             onClick={() => canNominate && setOpenNominateDialog(true)}
             className="cursor-pointer"
           >
@@ -172,7 +178,7 @@ export function WatchlistButton({ wallet, variant = "outline", size = "sm", clas
                 {wallet.convictionScore ? `CI: ${wallet.convictionScore}` : "No Score"}
               </Badge>
             </div>
-            
+
             <div className="text-xs text-foreground-muted">
               <p>• Requires 1 endorsement from a Contributor (1200+ Ethos) or 2 from Nominators.</p>
               <p>• You will be recorded as the nominator.</p>

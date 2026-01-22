@@ -481,6 +481,9 @@ export async function addToPersonalWatchlist(
   tags: string[] = []
 ): Promise<PersonalWatchlistEntry | null> {
   try {
+    // Serialize tags array as Postgres array literal
+    const tagsArray = `{${tags.map((t) => `"${t}"`).join(",")}}`;
+
     const result = await sql`
       INSERT INTO personal_watchlists (
         user_address, watched_address, chain, name, tags
@@ -489,7 +492,7 @@ export async function addToPersonalWatchlist(
         ${watchedAddress},
         ${chain},
         ${name || null},
-        ${tags}::varchar[]
+        ${tagsArray}::varchar[]
       )
       ON CONFLICT (user_address, watched_address, chain) 
       DO UPDATE SET
