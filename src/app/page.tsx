@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { useConviction } from "@/hooks/use-conviction";
@@ -9,7 +9,10 @@ import { cn } from "@/lib/utils";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { Terminal } from "@/components/ui/terminal";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
-import { getEthosReviewURL } from "@/lib/ethos-reviews";
+import {
+  getEthosReviewURL,
+  getReviewTextForClipboard,
+} from "@/lib/ethos-reviews";
 import {
   Card,
   CardContent,
@@ -84,6 +87,30 @@ export default function Home() {
   } = useAppStore();
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+
+  // Content state for dynamic reordering
+  const [hasAlphaData, setHasAlphaData] = useState(true);
+  const [hasHeatmapData, setHasHeatmapData] = useState(true);
+  const [hasAlertsData, setHasAlertsData] = useState(true);
+  const [hasCohortData, setHasCohortData] = useState(true);
+
+  // Memoize callbacks to prevent infinite re-renders in children
+  const handleAlphaData = useCallback(
+    (has: boolean) => setHasAlphaData(has),
+    [],
+  );
+  const handleHeatmapData = useCallback(
+    (has: boolean) => setHasHeatmapData(has),
+    [],
+  );
+  const handleAlertsData = useCallback(
+    (has: boolean) => setHasAlertsData(has),
+    [],
+  );
+  const handleCohortData = useCallback(
+    (has: boolean) => setHasCohortData(has),
+    [],
+  );
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
 
@@ -93,6 +120,58 @@ export default function Home() {
       currency: "USD",
       maximumFractionDigits: 0,
     }).format(val);
+
+  // Define advanced panels for dynamic reordering based on content availability
+  const advancedPanels = useMemo(() => {
+    return [
+      {
+        id: "alpha",
+        hasData: hasAlphaData,
+        component: (
+          <AlphaDiscovery key="alpha" onDataLoaded={handleAlphaData} />
+        ),
+        className: "col-span-1 md:col-span-6 lg:col-span-8",
+      },
+      {
+        id: "heatmap",
+        hasData: hasHeatmapData,
+        component: (
+          <TokenHeatmap key="heatmap" onDataLoaded={handleHeatmapData} />
+        ),
+        className: "col-span-1 md:col-span-6 lg:col-span-4",
+      },
+      {
+        id: "alerts",
+        hasData: hasAlertsData,
+        component: (
+          <ConvictionAlerts key="alerts" onDataLoaded={handleAlertsData} />
+        ),
+        className: "col-span-1 md:col-span-6 lg:col-span-6",
+      },
+      {
+        id: "cohort",
+        hasData: hasCohortData,
+        component: (
+          <CohortAnalysis key="cohort" onDataLoaded={handleCohortData} />
+        ),
+        className: "col-span-1 md:col-span-6 lg:col-span-6",
+      },
+    ].sort((a, b) => {
+      // Show panels with data first
+      if (a.hasData && !b.hasData) return -1;
+      if (!a.hasData && b.hasData) return 1;
+      return 0;
+    });
+  }, [
+    hasAlphaData,
+    hasHeatmapData,
+    hasAlertsData,
+    hasCohortData,
+    handleAlphaData,
+    handleHeatmapData,
+    handleAlertsData,
+    handleCohortData,
+  ]);
 
   return (
     <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
@@ -845,11 +924,27 @@ export default function Home() {
                               className="w-full text-signal hover:bg-signal/10 text-xs font-mono"
                               onClick={() => {
                                 if (convictionMetrics) {
+                                  // Copy summary to clipboard first to help user write the review
+                                  const reviewText =
+                                    getReviewTextForClipboard(
+                                      convictionMetrics,
+                                    );
+                                  navigator.clipboard.writeText(reviewText);
+                                  useAppStore
+                                    .getState()
+                                    .showToast(
+                                      "Conviction summary copied! Paste it on Ethos.",
+                                      "success",
+                                    );
+
                                   const url = getEthosReviewURL(
                                     targetAddress,
                                     convictionMetrics,
                                   );
-                                  window.open(url, "_blank");
+                                  // Brief delay so they see the toast
+                                  setTimeout(() => {
+                                    window.open(url, "_blank");
+                                  }, 800);
                                 }
                               }}
                             >
@@ -1008,49 +1103,21 @@ export default function Home() {
                   isConnected &&
                   (ethosScore?.score ?? 0) >= 1000 && (
                     <>
-                      {/* Alpha Discovery Panel */}
-                      <motion.div
-                        variants={{
-                          hidden: { opacity: 0, y: 20 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                        className="col-span-1 md:col-span-6 lg:col-span-8"
-                      >
-                        <AlphaDiscovery />
-                      </motion.div>
-
-                      {/* Token Conviction Heatmap */}
-                      <motion.div
-                        variants={{
-                          hidden: { opacity: 0, y: 20 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                        className="col-span-1 md:col-span-6 lg:col-span-4"
-                      >
-                        <TokenHeatmap />
-                      </motion.div>
-
-                      {/* Real-Time Alerts Panel */}
-                      <motion.div
-                        variants={{
-                          hidden: { opacity: 0, y: 20 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                        className="col-span-1 md:col-span-6 lg:col-span-6"
-                      >
-                        <ConvictionAlerts />
-                      </motion.div>
-
-                      {/* Cohort Analysis Panel */}
-                      <motion.div
-                        variants={{
-                          hidden: { opacity: 0, y: 20 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                        className="col-span-1 md:col-span-6 lg:col-span-6"
-                      >
-                        <CohortAnalysis />
-                      </motion.div>
+                      {advancedPanels.map((panel) => (
+                        <motion.div
+                          key={panel.id}
+                          variants={{
+                            hidden: { opacity: 0, y: 20 },
+                            visible: { opacity: 1, y: 0 },
+                          }}
+                          className={cn(
+                            panel.className,
+                            !panel.hasData && "opacity-60",
+                          )}
+                        >
+                          {panel.component}
+                        </motion.div>
+                      ))}
                     </>
                   )}
               </motion.div>

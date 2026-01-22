@@ -53,9 +53,13 @@ interface ApiAlert {
 
 interface ConvictionAlertsProps {
   className?: string;
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
+export function ConvictionAlerts({
+  className,
+  onDataLoaded,
+}: ConvictionAlertsProps) {
   const { ethosScore } = useAppStore();
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +72,9 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/alerts?hours=24&minValue=100&limit=20");
+      const response = await fetch(
+        "/api/alerts?hours=24&minValue=100&limit=20",
+      );
       if (!response.ok) {
         throw new Error(`Failed to fetch alerts: ${response.status}`);
       }
@@ -76,15 +82,17 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
       if (data.success) {
         setAlerts(data.alerts);
         setLastRefresh(new Date());
+        onDataLoaded?.(data.alerts.length > 0);
       } else {
         throw new Error(data.error || "Unknown error");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load alerts");
+      onDataLoaded?.(false);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onDataLoaded]);
 
   useEffect(() => {
     fetchAlerts();
@@ -197,12 +205,16 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
                     ? "high"
                     : filter === "high"
                       ? "critical"
-                      : "all"
+                      : "all",
                 )
               }
               className="text-xs font-mono"
             >
-              {filter === "all" ? "All" : filter === "high" ? "High+" : "Critical"}
+              {filter === "all"
+                ? "All"
+                : filter === "high"
+                  ? "High+"
+                  : "Critical"}
             </Button>
           </div>
         </div>
@@ -237,10 +249,11 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
               </div>
             </div>
           ) : filteredAlerts.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">
-              <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <div className="text-sm">No alerts in the last 24 hours</div>
-              <div className="text-xs mt-1">
+            <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
+              <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
+                No Alerts Detected
+              </div>
+              <div className="text-[10px] opacity-40">
                 {filter !== "all"
                   ? "Try adjusting the filter to see more alerts"
                   : "Watchlist traders haven't made significant moves"}
@@ -253,7 +266,7 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
                   key={alert.id}
                   className={cn(
                     "p-4 rounded-lg border-l-4 bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors",
-                    getSeverityColor(alert.severity)
+                    getSeverityColor(alert.severity),
                   )}
                 >
                   <div className="flex items-start justify-between mb-3">
@@ -276,7 +289,7 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
                               "text-xs px-1.5 py-0.5 rounded font-mono",
                               alert.token.chain === "solana"
                                 ? "bg-purple-500/20 text-purple-300"
-                                : "bg-blue-500/20 text-blue-300"
+                                : "bg-blue-500/20 text-blue-300",
                             )}
                           >
                             {alert.token.chain.toUpperCase()}
@@ -332,27 +345,29 @@ export function ConvictionAlerts({ className }: ConvictionAlertsProps) {
             </div>
           )}
 
-          <div className="mt-4 pt-4 border-t border-border/50">
-            <div className="flex items-center justify-between text-xs text-foreground-muted">
-              <span>
-                {lastRefresh
-                  ? `Updated ${formatTimeAgo(lastRefresh.getTime())}`
-                  : "Loading..."}
-                {" • "}
-                {filteredAlerts.length} alerts
-              </span>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-impatience" />
-                  <span>Critical</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-signal" />
-                  <span>High</span>
+          {filteredAlerts.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <div className="flex items-center justify-between text-xs text-foreground-muted">
+                <span>
+                  {lastRefresh
+                    ? `Updated ${formatTimeAgo(lastRefresh.getTime())}`
+                    : "Loading..."}
+                  {" • "}
+                  {filteredAlerts.length} alerts
+                </span>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-impatience" />
+                    <span>Critical</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-signal" />
+                    <span>High</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </EthosGatedContent>
       </CardContent>
     </Card>

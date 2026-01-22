@@ -29,17 +29,18 @@ interface TokenConviction {
 
 interface TokenHeatmapProps {
   className?: string;
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-export function TokenHeatmap({ className }: TokenHeatmapProps) {
+export function TokenHeatmap({ className, onDataLoaded }: TokenHeatmapProps) {
   const [tokens, setTokens] = useState<TokenConviction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"conviction" | "holders" | "value">(
-    "conviction"
+    "conviction",
   );
   const [chainFilter, setChainFilter] = useState<"all" | "solana" | "base">(
-    "all"
+    "all",
   );
 
   const fetchTokens = useCallback(async () => {
@@ -58,15 +59,17 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
       const data = await response.json();
       if (data.success) {
         setTokens(data.tokens);
+        onDataLoaded?.(data.tokens.length > 0);
       } else {
         throw new Error(data.error || "Unknown error");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tokens");
+      onDataLoaded?.(false);
     } finally {
       setLoading(false);
     }
-  }, [chainFilter]);
+  }, [chainFilter, onDataLoaded]);
 
   useEffect(() => {
     fetchTokens();
@@ -128,7 +131,7 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
                     ? "holders"
                     : sortBy === "holders"
                       ? "value"
-                      : "conviction"
+                      : "conviction",
                 )
               }
               className="text-xs font-mono"
@@ -149,7 +152,7 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
                     ? "solana"
                     : chainFilter === "solana"
                       ? "base"
-                      : "all"
+                      : "all",
                 )
               }
               className="text-xs font-mono"
@@ -164,9 +167,7 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
               disabled={loading}
               className="text-xs"
             >
-              <RefreshCw
-                className={cn("w-3 h-3", loading && "animate-spin")}
-              />
+              <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
             </Button>
           </div>
         </div>
@@ -201,11 +202,12 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
               </div>
             </div>
           ) : sortedTokens.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">
-              <Flame className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <div className="text-sm">No tokens found</div>
-              <div className="text-xs mt-1">
-                Try adjusting the chain filter
+            <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
+              <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
+                No Tokens Detected
+              </div>
+              <div className="text-[10px] opacity-40">
+                Try adjusting the chain filter or check back later
               </div>
             </div>
           ) : (
@@ -222,7 +224,7 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
                           "w-2 h-2 rounded-full",
                           token.chain === "solana"
                             ? "bg-purple-500"
-                            : "bg-blue-500"
+                            : "bg-blue-500",
                         )}
                       />
                       <span className="font-mono text-sm font-semibold text-foreground">
@@ -244,7 +246,7 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
                     <div
                       className={cn(
                         "px-2 py-1 rounded text-xs font-mono font-bold",
-                        getIntensityColor(token.convictionIntensity)
+                        getIntensityColor(token.convictionIntensity),
                       )}
                     >
                       {token.convictionIntensity}
@@ -266,23 +268,25 @@ export function TokenHeatmap({ className }: TokenHeatmapProps) {
             </div>
           )}
 
-          <div className="mt-4 pt-4 border-t border-border/50">
-            <div className="flex items-center justify-between text-xs text-foreground-muted">
-              <span>
-                Showing {sortedTokens.length} tokens with credible conviction
-              </span>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-patience" />
-                  <span>90+ Intensity</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-signal" />
-                  <span>80+ Intensity</span>
+          {sortedTokens.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <div className="flex items-center justify-between text-xs text-foreground-muted">
+                <span>
+                  Showing {sortedTokens.length} tokens with credible conviction
+                </span>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-patience" />
+                    <span>90+ Intensity</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-signal" />
+                    <span>80+ Intensity</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </EthosGatedContent>
       </CardContent>
     </Card>

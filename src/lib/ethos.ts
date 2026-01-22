@@ -327,7 +327,7 @@ export class EthosClient {
       nextTier = {
         name: "Elite Insights",
         requiredScore: reputation.featureGating.eliteInsights,
-        newPerks: ["Early Access Features", "Custom Dashboard", "API Access"],
+        newPerks: ["Early Access Features", "Custom Dashboard"],
       };
     } else if (score >= reputation.featureGating.whaleAnalysis) {
       tier = "whale";

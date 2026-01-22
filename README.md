@@ -182,7 +182,7 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 - **4-Tier Perk Structure**: Premium (100+), Whale (500+), Alpha (1000+), Elite (2000+)
 - **Progressive Perks**: Faster refresh rates, deeper history, advanced features unlock by tier
 - **Visual Tier Indicators**: Clear progression path with next-tier requirements and new perks preview
-- **Elite Status**: Maximum perks for 2000+ Ethos users including API access and early feature access
+- **Elite Status**: Maximum perks for 2000+ Ethos users including early feature access
 
 ### 🆕 Real-Time Conviction Alerts (Ethos 1000+)
 - **Live Monitoring**: Instant notifications when high-conviction traders make significant moves
@@ -206,7 +206,7 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 - **Ethos 100+**: Basic analytics, 5min refresh, 90-day history
 - **Ethos 500+**: Alpha discovery, cohort analysis, data export, 3min refresh
 - **Ethos 1000+**: Real-time alerts, whale tracking, priority support, 1min refresh  
-- **Ethos 2000+**: API access, custom dashboard, early access, 30sec refresh
+- **Ethos 2000+**: Custom dashboard, early access, 30sec refresh
 
 ---
 

@@ -1,9 +1,9 @@
 /**
  * Ethos Gates - Single Source of Truth for Access Control
- * 
+ *
  * All feature gating, tier detection, and capability checks flow through here.
  * Consolidates: config thresholds, perks, community roles, and UI messaging.
- * 
+ *
  * When tokens are added later, extend checkAccess() to combine:
  * - Ethos score check
  * - Token balance check (Base & Solana)
@@ -19,21 +19,21 @@ const { featureGating, communityTiers } = APP_CONFIG.reputation;
 // Types
 // =============================================================================
 
-export type EthosTier = 
-  | "visitor"      // 0 - Not connected or no score
-  | "member"       // 1-99 - Has Ethos but low
-  | "premium"      // 100+ - Basic premium
-  | "whale"        // 500+ - Advanced features
-  | "alpha"        // 1000+ - Real-time features
-  | "elite";       // 2000+ - Full access
+export type EthosTier =
+  | "visitor" // 0 - Not connected or no score
+  | "member" // 1-99 - Has Ethos but low
+  | "premium" // 100+ - Basic premium
+  | "whale" // 500+ - Advanced features
+  | "alpha" // 1000+ - Real-time features
+  | "elite"; // 2000+ - Full access
 
 export type CommunityRole =
-  | "viewer"       // 0 - Can only view
-  | "nominator"    // 1000+ - Can nominate
-  | "contributor"  // 1200+ - Faster approval
-  | "curator"      // 1400+ - Direct add
-  | "moderator"    // 1600+ - Can remove
-  | "admin";       // 2000+ - Full control
+  | "viewer" // 0 - Can only view
+  | "nominator" // 1000+ - Can nominate
+  | "contributor" // 1200+ - Faster approval
+  | "curator" // 1400+ - Direct add
+  | "moderator" // 1600+ - Can remove
+  | "admin"; // 2000+ - Full control
 
 export interface GateResult {
   allowed: boolean;
@@ -48,27 +48,26 @@ export interface FeatureAccess {
   analysisLookbackDays: number;
   positionsPerAnalysis: number;
   dailyAnalysisLimit: number;
-  
+
   // Data access
   canExportData: boolean;
-  canAccessAPI: boolean;
   canViewFullHistory: boolean;
-  
+
   // Real-time features
   alertRefreshSeconds: number;
   canReceiveAlerts: boolean;
   maxWatchlistSize: number;
-  
+
   // Community features
   communityRole: CommunityRole;
   canNominate: boolean;
   canEndorse: boolean;
   canModerate: boolean;
-  
+
   // Leaderboard
   canFilterLeaderboard: boolean;
   leaderboardResultLimit: number;
-  
+
   // Premium features
   canAccessCohortData: boolean;
   canAccessTokenHeatmap: boolean;
@@ -107,14 +106,13 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
   const tier = getEthosTier(score);
   const role = getCommunityRole(score);
   const s = score || 0;
-  
+
   // Base access for everyone
   const base: FeatureAccess = {
     analysisLookbackDays: 30,
     positionsPerAnalysis: 20,
     dailyAnalysisLimit: 5,
     canExportData: false,
-    canAccessAPI: false,
     canViewFullHistory: false,
     alertRefreshSeconds: 300,
     canReceiveAlerts: false,
@@ -129,7 +127,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
     canAccessTokenHeatmap: false,
     canAccessAlphaDiscovery: false,
   };
-  
+
   // Tier upgrades
   switch (tier) {
     case "elite":
@@ -139,7 +137,6 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         positionsPerAnalysis: 200,
         dailyAnalysisLimit: Infinity,
         canExportData: true,
-        canAccessAPI: true,
         canViewFullHistory: true,
         alertRefreshSeconds: 30,
         canReceiveAlerts: true,
@@ -153,7 +150,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         canAccessTokenHeatmap: true,
         canAccessAlphaDiscovery: true,
       };
-      
+
     case "alpha":
       return {
         ...base,
@@ -161,7 +158,6 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         positionsPerAnalysis: 100,
         dailyAnalysisLimit: 50,
         canExportData: true,
-        canAccessAPI: false,
         canViewFullHistory: true,
         alertRefreshSeconds: 60,
         canReceiveAlerts: true,
@@ -175,7 +171,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         canAccessTokenHeatmap: true,
         canAccessAlphaDiscovery: true,
       };
-      
+
     case "whale":
       return {
         ...base,
@@ -183,8 +179,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         positionsPerAnalysis: 50,
         dailyAnalysisLimit: 20,
         canExportData: true,
-        canAccessAPI: false,
-        canViewFullHistory: false,
+        canViewFullHistory: true,
         alertRefreshSeconds: 180,
         canReceiveAlerts: false,
         maxWatchlistSize: 20,
@@ -197,7 +192,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         canAccessTokenHeatmap: true,
         canAccessAlphaDiscovery: false,
       };
-      
+
     case "premium":
       return {
         ...base,
@@ -212,7 +207,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         canAccessTokenHeatmap: false,
         canAccessAlphaDiscovery: false,
       };
-      
+
     default:
       return base;
   }
@@ -228,7 +223,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
 export async function checkGate(
   walletAddress: string | null,
   requiredScore: number,
-  featureName: string
+  featureName: string,
 ): Promise<GateResult> {
   if (!walletAddress) {
     return {
@@ -239,19 +234,19 @@ export async function checkGate(
       message: "Connect wallet to access this feature",
     };
   }
-  
+
   const ethosResult = await ethosClient.getScoreByAddress(walletAddress);
   const score = ethosResult?.score || 0;
   const tier = getEthosTier(score);
   const allowed = score >= requiredScore;
-  
+
   return {
     allowed,
     tier,
     score,
     requiredScore,
-    message: allowed 
-      ? undefined 
+    message: allowed
+      ? undefined
       : `${featureName} requires Ethos score of ${requiredScore}+ (you have ${score})`,
   };
 }
@@ -263,27 +258,26 @@ export const gates = {
   // Analysis
   extendedLookback: (score: number) => score >= 500,
   fullHistory: (score: number) => score >= 1000,
-  
+
   // Real-time
   alerts: (score: number) => score >= 1000,
   fastRefresh: (score: number) => score >= 2000,
-  
+
   // Data
   export: (score: number) => score >= 500,
-  apiAccess: (score: number) => score >= 2000,
-  
+
   // Discovery
   alphaDiscovery: (score: number) => score >= 1000,
   tokenHeatmap: (score: number) => score >= 500,
   cohortData: (score: number) => score >= 500,
-  
+
   // Community
   nominate: (score: number) => score >= 1000,
   endorse: (score: number) => score >= 1200,
   curate: (score: number) => score >= 1400,
   moderate: (score: number) => score >= 1600,
   admin: (score: number) => score >= 2000,
-  
+
   // Leaderboard filters
   filterByEthos: (score: number) => score >= 500,
   filterByConviction: (score: number) => score >= 500,
@@ -301,10 +295,10 @@ export const gates = {
 export async function requireEthosScore(
   address: string | null,
   minScore: number,
-  featureName: string
+  featureName: string,
 ): Promise<{ error: Response } | { score: number; tier: EthosTier }> {
   const result = await checkGate(address, minScore, featureName);
-  
+
   if (!result.allowed) {
     return {
       error: new Response(
@@ -314,11 +308,11 @@ export async function requireEthosScore(
           requiredScore: result.requiredScore,
           tier: result.tier,
         }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
+        { status: 403, headers: { "Content-Type": "application/json" } },
       ),
     };
   }
-  
+
   return { score: result.score, tier: result.tier };
 }
 
@@ -350,13 +344,12 @@ export function getRateLimits(tier: EthosTier): {
 // Capabilities Registry - Single source for UI messaging
 // =============================================================================
 
-export type FeatureKey = 
+export type FeatureKey =
   | "alphaDiscovery"
   | "tokenHeatmap"
   | "cohortData"
   | "realTimeAlerts"
   | "dataExport"
-  | "apiAccess"
   | "extendedHistory"
   | "advancedFilters"
   | "whaleTracking"
@@ -383,7 +376,8 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     description: "Find high-conviction wallets before they trend",
     requiredScore: 1000,
     requiredTier: "alpha",
-    valueTeaser: "Discover wallets with 80+ conviction scores and track their moves",
+    valueTeaser:
+      "Discover wallets with 80+ conviction scores and track their moves",
   },
   tokenHeatmap: {
     key: "tokenHeatmap",
@@ -407,7 +401,8 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     description: "Get notified when watchlist traders move",
     requiredScore: 1000,
     requiredTier: "alpha",
-    valueTeaser: "60-second refresh on whale movements with instant notifications",
+    valueTeaser:
+      "60-second refresh on whale movements with instant notifications",
   },
   dataExport: {
     key: "dataExport",
@@ -417,14 +412,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     requiredTier: "whale",
     valueTeaser: "Download conviction metrics and position history as CSV/JSON",
   },
-  apiAccess: {
-    key: "apiAccess",
-    name: "API Access",
-    description: "Programmatic access to conviction data",
-    requiredScore: 2000,
-    requiredTier: "elite",
-    valueTeaser: "Build your own tools with our conviction analysis API",
-  },
+
   extendedHistory: {
     key: "extendedHistory",
     name: "Extended History",
@@ -480,7 +468,7 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
  */
 export function getFeatureLockMessage(
   featureKey: FeatureKey,
-  currentScore: number
+  currentScore: number,
 ): {
   title: string;
   description: string;
@@ -492,7 +480,7 @@ export function getFeatureLockMessage(
 } {
   const feature = FEATURES[featureKey];
   const pointsAway = Math.max(0, feature.requiredScore - currentScore);
-  
+
   // Find next milestone (could be a tier before the feature unlock)
   let nextMilestone: { tier: EthosTier; score: number } | null = null;
   const milestones = [
@@ -501,14 +489,14 @@ export function getFeatureLockMessage(
     { tier: "alpha" as EthosTier, score: 1000 },
     { tier: "elite" as EthosTier, score: 2000 },
   ];
-  
+
   for (const m of milestones) {
     if (currentScore < m.score) {
       nextMilestone = m;
       break;
     }
   }
-  
+
   return {
     title: `Unlock ${feature.name}`,
     description: feature.description,
@@ -590,17 +578,26 @@ export function getNextTierUnlocks(currentScore: number): {
   unlocks: FeatureInfo[];
 } | null {
   const tier = getEthosTier(currentScore);
-  
-  const tierOrder: EthosTier[] = ["visitor", "member", "premium", "whale", "alpha", "elite"];
+
+  const tierOrder: EthosTier[] = [
+    "visitor",
+    "member",
+    "premium",
+    "whale",
+    "alpha",
+    "elite",
+  ];
   const currentIdx = tierOrder.indexOf(tier);
-  
+
   if (currentIdx >= tierOrder.length - 1) return null; // Already elite
-  
+
   const nextTier = tierOrder[currentIdx + 1];
   const tierInfo = getTierInfo(nextTier);
-  
-  const unlocks = Object.values(FEATURES).filter(f => f.requiredTier === nextTier);
-  
+
+  const unlocks = Object.values(FEATURES).filter(
+    (f) => f.requiredTier === nextTier,
+  );
+
   return {
     nextTier,
     requiredScore: tierInfo.minScore,

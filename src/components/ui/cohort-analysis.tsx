@@ -40,9 +40,13 @@ interface BenchmarkStats {
 
 interface CohortAnalysisProps {
   className?: string;
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-export function CohortAnalysis({ className }: CohortAnalysisProps) {
+export function CohortAnalysis({
+  className,
+  onDataLoaded,
+}: CohortAnalysisProps) {
   const { ethosScore, convictionMetrics } = useAppStore();
   const [benchmark, setBenchmark] = useState<BenchmarkStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,15 +63,17 @@ export function CohortAnalysis({ className }: CohortAnalysisProps) {
       const data = await response.json();
       if (data.success) {
         setBenchmark(data.benchmark);
+        onDataLoaded?.(data.benchmark.traderCount > 0);
       } else {
         throw new Error(data.error || "Unknown error");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load benchmark");
+      onDataLoaded?.(false);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onDataLoaded]);
 
   useEffect(() => {
     fetchBenchmark();
@@ -79,7 +85,7 @@ export function CohortAnalysis({ className }: CohortAnalysisProps) {
   const getComparisonText = (
     userValue: number,
     benchmarkValue: number,
-    metric: string
+    metric: string,
   ) => {
     if (userValue === 0) return null;
     const diff = userValue - benchmarkValue;
@@ -134,14 +140,16 @@ export function CohortAnalysis({ className }: CohortAnalysisProps) {
           className="min-h-[400px]"
         >
           {error ? (
-            <div className="text-center py-8 text-foreground-muted">
-              <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <div className="text-sm text-impatience">{error}</div>
+            <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
+              <div className="text-xs font-mono uppercase tracking-tighter text-impatience mb-1">
+                Benchmark Error
+              </div>
+              <div className="text-[10px] opacity-40 mb-2">{error}</div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={fetchBenchmark}
-                className="mt-2"
+                className="h-7 text-[10px]"
               >
                 Try Again
               </Button>
@@ -150,6 +158,15 @@ export function CohortAnalysis({ className }: CohortAnalysisProps) {
             <div className="text-center py-8 text-foreground-muted">
               <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin" />
               <div className="text-sm">Loading benchmark data...</div>
+            </div>
+          ) : benchmark && benchmark.traderCount === 0 ? (
+            <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
+              <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
+                No Benchmark Data
+              </div>
+              <div className="text-[10px] opacity-40">
+                Not enough high-conviction traders tracked for comparison
+              </div>
             </div>
           ) : benchmark ? (
             <div className="space-y-6">
@@ -210,7 +227,7 @@ export function CohortAnalysis({ className }: CohortAnalysisProps) {
                           "flex items-center gap-1 text-xs font-mono",
                           ethosComparison.positive
                             ? "text-patience"
-                            : "text-impatience"
+                            : "text-impatience",
                         )}
                       >
                         {ethosComparison.positive ? (
@@ -277,7 +294,7 @@ export function CohortAnalysis({ className }: CohortAnalysisProps) {
                             "w-2 h-2 rounded-full",
                             trader.chain === "solana"
                               ? "bg-purple-500"
-                              : "bg-blue-500"
+                              : "bg-blue-500",
                           )}
                         />
                         <span className="text-sm font-mono text-foreground">

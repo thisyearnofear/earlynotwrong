@@ -39,9 +39,13 @@ interface AlphaWallet {
 
 interface AlphaDiscoveryProps {
   className?: string;
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-export function AlphaDiscovery({ className }: AlphaDiscoveryProps) {
+export function AlphaDiscovery({
+  className,
+  onDataLoaded,
+}: AlphaDiscoveryProps) {
   const [wallets, setWallets] = useState<AlphaWallet[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
@@ -68,13 +72,20 @@ export function AlphaDiscovery({ className }: AlphaDiscoveryProps) {
 
       if (data.success) {
         setWallets(data.wallets);
+        onDataLoaded?.(data.wallets.length > 0);
       }
     } catch (error) {
       console.error("Failed to fetch alpha wallets:", error);
+      onDataLoaded?.(false);
     } finally {
       setLoading(false);
     }
-  }, [filters.minEthosScore, filters.minConvictionScore, filters.chain]);
+  }, [
+    filters.minEthosScore,
+    filters.minConvictionScore,
+    filters.chain,
+    onDataLoaded,
+  ]);
 
   useEffect(() => {
     fetchAlphaWallets();
@@ -154,10 +165,13 @@ export function AlphaDiscovery({ className }: AlphaDiscoveryProps) {
                 </div>
               </div>
             ) : wallets.length === 0 ? (
-              <div className="text-center py-8 text-foreground-muted">
-                <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <div className="text-sm">No high-conviction wallets found</div>
-                <div className="text-xs mt-1">Try adjusting filters</div>
+              <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
+                <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
+                  No Alpha Detected
+                </div>
+                <div className="text-[10px] opacity-40">
+                  Try adjusting filters or check back later
+                </div>
               </div>
             ) : (
               wallets.map((wallet) => (
@@ -235,19 +249,21 @@ export function AlphaDiscovery({ className }: AlphaDiscoveryProps) {
             )}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-border/50">
-            <div className="flex items-center justify-between text-xs text-foreground-muted">
-              <span>Showing {wallets.length} high-conviction wallets</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={fetchAlphaWallets}
-                className="text-xs"
-              >
-                Refresh
-              </Button>
+          {wallets.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <div className="flex items-center justify-between text-xs text-foreground-muted">
+                <span>Showing {wallets.length} high-conviction wallets</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={fetchAlphaWallets}
+                  className="text-xs"
+                >
+                  Refresh
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </EthosGatedContent>
       </CardContent>
     </Card>
