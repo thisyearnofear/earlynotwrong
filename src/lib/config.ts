@@ -30,6 +30,15 @@ export const APP_CONFIG = {
       alphaSignals: 1000,      // Real-time alerts + cohort analysis
       eliteInsights: 2000,     // Advanced analytics + early access
     },
+    // Community watchlist contribution tiers
+    communityTiers: {
+      viewer: 0,          // Can view community watchlist
+      nominator: 1000,    // Can nominate wallets (requires 2 endorsements)
+      contributor: 1200,  // Can add wallets (requires 1 endorsement)
+      curator: 1400,      // Can add wallets directly + vote on nominations
+      moderator: 1600,    // Can remove wallets + curate
+      admin: 2000,        // Full control + featured picks
+    },
     perks: {
       // Ethos 100+: Premium Access
       premium: {

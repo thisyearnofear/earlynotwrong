@@ -4,27 +4,42 @@ import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Search } from "lucide-react";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import { Sun, Moon, Search, Shield, Users, Zap, Crown } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
-  DialogDescription 
+  DialogDescription
 } from "@/components/ui/dialog";
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import { useRouter } from "next/navigation";
+import { getEthosTier, getTierInfo, getNextTierUnlocks } from "@/lib/ethos-gates";
+import { cn } from "@/lib/utils";
+import { ReputationPerks } from "@/components/ui/reputation-perks";
+
+const TierIcon = ({ icon, className }: { icon: "shield" | "users" | "zap" | "crown"; className?: string }) => {
+  const iconClass = cn("w-3 h-3", className);
+  switch (icon) {
+    case "crown": return <Crown className={iconClass} />;
+    case "zap": return <Zap className={iconClass} />;
+    case "users": return <Users className={iconClass} />;
+    default: return <Shield className={iconClass} />;
+  }
+};
 
 export function Navbar() {
-  const { theme, setTheme } = useAppStore();
+  const { theme, setTheme, ethosScore } = useAppStore();
   const router = useRouter();
+  
+  const currentScore = ethosScore?.score || 0;
+  const tier = getEthosTier(currentScore);
+  const tierInfo = getTierInfo(tier);
+  const nextUnlocks = getNextTierUnlocks(currentScore);
 
   const handleWalletSelected = (identity: any) => {
-    // For now, redirect to home or a placeholder analyze page
-    // In Phase 2/3 this will trigger the full analysis flow for that wallet
     console.log("Selected wallet:", identity);
-    // router.push(`/analyze/${identity.address}`);
   };
 
   return (
@@ -43,10 +58,47 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 text-xs font-mono text-foreground-muted mr-2">
-            <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
-            SYSTEM ONLINE
-          </div>
+          {/* Ethos Status Badge */}
+          {currentScore > 0 && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <div
+                  className={cn(
+                    "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-mono cursor-pointer hover:opacity-80 transition-opacity",
+                    tierInfo.bgColor,
+                    tierInfo.borderColor
+                  )}
+                  title={`Ethos ${currentScore} • ${tierInfo.name}${nextUnlocks ? ` • ${nextUnlocks.pointsAway} to ${nextUnlocks.nextTier}` : ''}`}
+                >
+                  <TierIcon icon={tierInfo.icon} className={tierInfo.color} />
+                  <span className={tierInfo.color}>{currentScore}</span>
+                  <span className="text-foreground-muted">•</span>
+                  <span className="text-foreground-dim uppercase">{tierInfo.name}</span>
+                  {nextUnlocks && (
+                    <>
+                      <span className="text-foreground-muted">→</span>
+                      <span className="text-foreground-muted">{nextUnlocks.requiredScore}</span>
+                    </>
+                  )}
+                </div>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Your Ethos Status</DialogTitle>
+                </DialogHeader>
+                <div className="py-2">
+                  <ReputationPerks />
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {currentScore === 0 && (
+            <div className="hidden md:flex items-center gap-2 text-xs font-mono text-foreground-muted mr-2">
+              <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
+              SYSTEM ONLINE
+            </div>
+          )}
 
           <Dialog>
             <DialogTrigger asChild>
