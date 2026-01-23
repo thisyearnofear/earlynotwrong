@@ -27,6 +27,8 @@ interface LeaderboardEntry {
     farcaster?: string;
     ens?: string;
     ethosScore?: number;
+    unifiedTrustScore?: number;
+    unifiedTrustTier?: string;
     rankChange?: number | null;
     lastUpdated: string;
 }
@@ -98,6 +100,7 @@ export function LeaderboardPanel({ className }: { className?: string }) {
                                     <th className="px-4 py-3 text-left font-medium">Rank</th>
                                     <th className="px-4 py-3 text-left font-medium">Trader</th>
                                     <th className="px-4 py-3 text-center font-medium">Score</th>
+                                    <th className="px-4 py-3 text-center font-medium">Trust</th>
                                     <th className="px-4 py-3 text-left font-medium">Archetype</th>
                                     <th className="px-4 py-3 text-right font-medium">Action</th>
                                 </tr>
@@ -152,6 +155,22 @@ export function LeaderboardPanel({ className }: { className?: string }) {
                                             <td className="px-4 py-4 text-center">
                                                 <div className="inline-flex flex-col items-center">
                                                     <span className="text-lg font-bold text-foreground font-mono">{entry.convictionScore}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 text-center">
+                                                <div className="inline-flex flex-col items-center">
+                                                    {entry.unifiedTrustScore ? (
+                                                        <div className="flex flex-col items-center">
+                                                            <span className="text-sm font-bold font-mono">
+                                                                {entry.unifiedTrustScore}
+                                                            </span>
+                                                            <span className="text-[8px] text-foreground-muted font-mono uppercase">
+                                                                {entry.unifiedTrustTier}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[10px] text-foreground-muted font-mono">-</span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">

@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
         ensName?: string;
         farcasterUsername?: string;
         ethosScore?: number;
+        unifiedTrustScore?: number;
+        unifiedTrustTier?: string;
       };
     };
 
@@ -38,7 +40,13 @@ export async function POST(request: NextRequest) {
       chain,
       metrics,
       timeHorizon,
-      identity
+      identity ? {
+        ensName: identity.ensName,
+        farcasterUsername: identity.farcasterUsername,
+        ethosScore: identity.ethosScore,
+        unifiedTrustScore: identity.unifiedTrustScore,
+        unifiedTrustTier: identity.unifiedTrustTier
+      } : undefined
     );
 
     if (!result) {

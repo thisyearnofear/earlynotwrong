@@ -3,12 +3,14 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Target, TrendingUp, Zap } from "lucide-react";
+import { Activity, Target, TrendingUp, Zap, Award, Coins } from "lucide-react";
 import { ConvictionMetrics } from "@/lib/market";
+import { UnifiedTrustScore } from "@/lib/services/trust-resolver";
 
 interface BehavioralInsightsProps {
   metrics: ConvictionMetrics;
   positionCount: number;
+  trust?: UnifiedTrustScore | null;
   className?: string;
 }
 
@@ -25,6 +27,7 @@ interface BehaviorMetric {
 export function BehavioralInsights({
   metrics,
   positionCount,
+  trust,
   className,
 }: BehavioralInsightsProps) {
   // Calculate derived behavioral metrics from what we have
@@ -150,6 +153,56 @@ export function BehavioralInsights({
           })}
         </div>
 
+        {/* FairScale-specific insights if available */}
+        {trust?.providers.fairscale && (
+          <div className="mt-6 p-4 rounded-lg bg-signal/5 border border-signal/20">
+            <div className="flex items-center gap-2 mb-3">
+              <Coins className="w-4 h-4 text-signal" />
+              <h3 className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                FairScale Insights
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-lg bg-surface/20 border border-border/30">
+                <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-1">
+                  FairScore
+                </div>
+                <div className="text-lg font-bold text-signal">
+                  {trust.providers.fairscale.fairscore.toFixed(1)}/10
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-surface/20 border border-border/30">
+                <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-1">
+                  Tier
+                </div>
+                <div className="text-lg font-bold text-signal capitalize">
+                  {trust.providers.fairscale.tier}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-2">
+                Achievements
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {trust.providers.fairscale.badges.slice(0, 3).map((badge, idx) => (
+                  <div
+                    key={idx}
+                    className="px-2 py-1 rounded-md bg-signal/10 border border-signal/20 text-[10px] font-mono text-signal capitalize"
+                  >
+                    {badge.label}
+                  </div>
+                ))}
+                {trust.providers.fairscale.badges.length > 3 && (
+                  <div className="px-2 py-1 rounded-md bg-surface/20 border border-border/30 text-[10px] font-mono text-foreground-muted">
+                    +{trust.providers.fairscale.badges.length - 3} more
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Summary Insight */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -159,7 +212,7 @@ export function BehavioralInsights({
         >
           <p className="text-xs text-foreground-muted font-mono leading-relaxed">
             <span className="text-signal font-semibold">Behavioral Summary:</span>{" "}
-            {panicSellRate > 30 
+            {panicSellRate > 30
               ? "High panic sell tendency detected. Consider extending holding periods to capture more upside."
               : convictionWinRate > 30
               ? "Strong conviction discipline. You're letting winners run and capturing outsized gains."

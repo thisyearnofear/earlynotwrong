@@ -62,6 +62,8 @@ import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { WatchlistButton } from "@/components/ui/watchlist-button";
 import { PersonalRadar } from "@/components/ui/personal-radar";
 import { LeaderboardPanel } from "@/components/ui/leaderboard-panel";
+import { UnifiedTrustCard } from "@/components/ui/unified-trust-card";
+import { FairScaleCard } from "@/components/ui/fairscale-card";
 
 export default function Home() {
   const {
@@ -76,6 +78,7 @@ export default function Home() {
     ethosScore,
     ethosProfile,
     farcasterIdentity,
+    unifiedTrustScore,
     convictionMetrics,
     positionAnalyses,
     targetAddress,
@@ -808,7 +811,7 @@ export default function Home() {
                   </Card>
                 </motion.div>
 
-                {/* Ethos Card */}
+                {/* Unified Trust Card */}
                 <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 20 },
@@ -817,18 +820,6 @@ export default function Home() {
                   className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
                 >
                   <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
-                    {/* Analyzing Other Wallet Indicator */}
-                    {isConnected &&
-                      targetAddress &&
-                      targetAddress !== activeAddress && (
-                        <div className="absolute top-0 left-0 right-0 bg-signal/10 border-b border-signal/20 py-1 px-4 flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
-                          <span className="text-[10px] font-mono text-signal uppercase font-bold tracking-widest">
-                            Inspecting Public Profile
-                          </span>
-                        </div>
-                      )}
-
                     <CardHeader
                       className={cn(
                         isConnected &&
@@ -840,9 +831,9 @@ export default function Home() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                          Reputation
+                          Unified Trust
                         </CardTitle>
-                        <ShieldCheck className="w-5 h-5 text-ethos" />
+                        <ShieldCheck className="w-5 h-5 text-signal" />
                       </div>
 
                       {/* Farcaster Identity Display - Hero */}
@@ -888,6 +879,51 @@ export default function Home() {
                           </div>
                         </div>
                       )}
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="h-[300px]">
+                        <UnifiedTrustCard trust={unifiedTrustScore} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                {/* Ethos Card */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                >
+                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
+                    {/* Analyzing Other Wallet Indicator */}
+                    {isConnected &&
+                      targetAddress &&
+                      targetAddress !== activeAddress && (
+                        <div className="absolute top-0 left-0 right-0 bg-signal/10 border-b border-signal/20 py-1 px-4 flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
+                          <span className="text-[10px] font-mono text-signal uppercase font-bold tracking-widest">
+                            Inspecting Public Profile
+                          </span>
+                        </div>
+                      )}
+
+                    <CardHeader
+                      className={cn(
+                        isConnected &&
+                          targetAddress &&
+                          targetAddress !== activeAddress
+                          ? "pt-8"
+                          : "pt-6",
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                          Ethos Network
+                        </CardTitle>
+                        <ShieldCheck className="w-5 h-5 text-ethos" />
+                      </div>
 
                       <div className="text-3xl font-bold text-foreground">
                         {ethosScore
@@ -1059,6 +1095,31 @@ export default function Home() {
                   </Card>
                 </motion.div>
 
+                {/* FairScale Card */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                >
+                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
+                    <CardHeader>
+                      <div className="flex items-center justify-between mb-2">
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
+                          FairScale
+                        </CardTitle>
+                        <TrendingUp className="w-5 h-5 text-signal" />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="h-[300px]">
+                        <FairScaleCard trust={unifiedTrustScore} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
                 {/* Behavioral Insights (Only show if we have data) */}
                 {convictionMetrics && (
                   <motion.div
@@ -1071,6 +1132,7 @@ export default function Home() {
                     <BehavioralInsights
                       metrics={convictionMetrics}
                       positionCount={positionAnalyses.length}
+                      trust={unifiedTrustScore}
                     />
                   </motion.div>
                 )}

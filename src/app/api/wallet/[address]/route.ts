@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { identityResolver } from "@/lib/services/identity-resolver";
 import { cachedEthosService } from "@/lib/services/ethos-cache";
+import { trustResolver } from "@/lib/services/trust-resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,10 +57,26 @@ export async function GET(
       cachedEthosService.getWalletEthosData(address),
     ]);
 
+    // Use unified trust from identity if available, otherwise fetch separately
+    let unifiedTrust = identity?.trust;
+    if (!unifiedTrust && includeIdentity) {
+      // Get Twitter handle if available for FairScale social score
+      const twitter = identity?.farcaster?.username;
+      unifiedTrust = await trustResolver.resolve(address, twitter);
+    }
+
     const response = {
       address: address.toLowerCase(),
       timestamp: new Date().toISOString(),
       identity: includeIdentity && identity ? identity : undefined,
+      trust: unifiedTrust ? {
+        score: unifiedTrust.score,
+        tier: unifiedTrust.tier,
+        credibilityLevel: unifiedTrust.credibilityLevel,
+        primaryProvider: unifiedTrust.primaryProvider,
+        providers: unifiedTrust.providers,
+        features: unifiedTrust.features,
+      } : undefined,
       ethos: {
         score: ethosData.score?.score || null,
         tier: ethosData.score
@@ -73,6 +90,7 @@ export async function GET(
         hasFarcaster: !!identity?.farcaster,
         hasENS: !!identity?.ens.name,
         attestations: ethosData.attestations.length,
+        hasTrustScore: !!unifiedTrust && unifiedTrust.score > 0,
       },
       conviction: includeConviction
         ? {

@@ -82,6 +82,20 @@ export class CachedEthosService {
   }
 
   /**
+   * Get Ethos profile by user key with caching
+   * Enables social identity → Ethos profile resolution
+   */
+  async getProfileByUserKey(userKey: string): Promise<EthosProfile | null> {
+    const key = `ethos:profile:userkey:${userKey}`;
+
+    return serverCache.get(
+      key,
+      () => ethosClient.getProfileByUserKey(userKey),
+      ETHOS_CACHE_TTL.PROFILE
+    );
+  }
+
+  /**
    * Get conviction attestations with caching
    */
   async getConvictionAttestations(address: string) {

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { EthosScore, EthosProfile, FarcasterIdentity } from "./ethos";
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis, TransactionResult } from "./api-client";
+import { UnifiedTrustScore } from "./services/trust-resolver";
 
 interface AnalysisParams {
   timeHorizon: 30 | 90 | 180 | 365;
@@ -53,11 +54,13 @@ interface AppState {
   ethosScore: EthosScore | null;
   ethosProfile: EthosProfile | null;
   farcasterIdentity: FarcasterIdentity | null;
+  unifiedTrustScore: UnifiedTrustScore | null;
   setEthosData: (
     score: EthosScore | null,
     profile: EthosProfile | null,
   ) => void;
   setFarcasterIdentity: (identity: FarcasterIdentity | null) => void;
+  setUnifiedTrustScore: (trust: UnifiedTrustScore | null) => void;
 
   // Conviction Data
   convictionMetrics: ConvictionMetrics | null;
@@ -157,9 +160,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   ethosScore: null,
   ethosProfile: null,
   farcasterIdentity: null,
+  unifiedTrustScore: null,
   setEthosData: (score, profile) =>
     set({ ethosScore: score, ethosProfile: profile }),
   setFarcasterIdentity: (identity) => set({ farcasterIdentity: identity }),
+  setUnifiedTrustScore: (trust) => set({ unifiedTrustScore: trust }),
 
   // Conviction Data
   convictionMetrics: null,
@@ -238,6 +243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       logs: [],
       ethosScore: null,
       ethosProfile: null,
+      unifiedTrustScore: null,
       convictionMetrics: null,
       positionAnalyses: [],
       targetAddress: null,

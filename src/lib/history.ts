@@ -38,25 +38,38 @@ async function saveToPostgres(
   address: string,
   chain: "solana" | "base",
   metrics: ConvictionMetrics,
-  timeHorizon: number
+  timeHorizon: number,
+  trustScore?: UnifiedTrustScore | null
 ): Promise<void> {
   try {
     await fetch("/api/analysis", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, chain, metrics, timeHorizon }),
+      body: JSON.stringify({
+        address,
+        chain,
+        metrics,
+        timeHorizon,
+        identity: trustScore ? {
+          unifiedTrustScore: trustScore.score,
+          unifiedTrustTier: trustScore.tier
+        } : undefined
+      }),
     });
   } catch {
     // Silently fail - Postgres is optional enhancement
   }
 }
 
+import { UnifiedTrustScore } from "./services/trust-resolver";
+
 export function saveConvictionAnalysis(
   address: string,
   chain: "solana" | "base",
   metrics: ConvictionMetrics,
   timeHorizon: number,
-  isShowcase: boolean = false
+  isShowcase: boolean = false,
+  trustScore?: UnifiedTrustScore | null
 ): HistoricalAnalysis {
   const history = getConvictionHistory();
 
@@ -81,7 +94,7 @@ export function saveConvictionAnalysis(
 
   // Also save to Postgres for real cohort data (non-blocking)
   if (!isShowcase) {
-    saveToPostgres(address, chain, metrics, timeHorizon);
+    saveToPostgres(address, chain, metrics, timeHorizon, trustScore);
   }
 
   return analysis;

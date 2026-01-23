@@ -226,3 +226,35 @@ export async function getSocialContext(
     twitterHandle: universalId.twitterHandle,
   };
 }
+
+/**
+ * Extract social handles from any wallet address
+ * Enables cross-chain identity bridging (e.g., Solana → Twitter → Ethos)
+ */
+export async function getSocialHandles(address: string): Promise<{
+  twitter?: string;
+  farcaster?: string;
+  github?: string;
+  lens?: string;
+} | null> {
+  try {
+    const universalId = await resolveUniversalIdentity(address);
+    
+    if (!universalId) {
+      return null;
+    }
+
+    const githubProfile = universalId.profiles.find(p => p.links?.github);
+    const lensProfile = universalId.profiles.find(p => p.platform === 'lens');
+
+    return {
+      twitter: universalId.twitterHandle,
+      farcaster: universalId.farcasterUsername,
+      github: githubProfile?.links?.github?.handle,
+      lens: lensProfile?.identity,
+    };
+  } catch (error) {
+    console.warn('Web3.bio social handles extraction failed:', error);
+    return null;
+  }
+}

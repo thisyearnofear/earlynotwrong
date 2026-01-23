@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   try {
     // First, try to get from leaderboard table
     const result = await sql`
-      SELECT 
+      SELECT
         address,
         chain,
         conviction_score,
@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
         farcaster,
         ens,
         ethos_score,
+        unified_trust_score,
+        unified_trust_tier,
         rank,
         rank_change,
         last_updated_at
@@ -79,6 +81,8 @@ export async function GET(request: NextRequest) {
           farcaster: row.farcaster,
           ens: row.ens,
           ethosScore: row.ethos_score,
+          unifiedTrustScore: row.unified_trust_score,
+          unifiedTrustTier: row.unified_trust_tier,
           rankChange: row.rank_change,
           lastUpdated: row.last_updated_at,
         })),
@@ -98,6 +102,8 @@ export async function GET(request: NextRequest) {
         ens_name as ens,
         farcaster_username as farcaster,
         ethos_score,
+        unified_trust_score,
+        unified_trust_tier,
         analyzed_at as last_updated_at
       FROM conviction_analyses
       WHERE score >= ${filters.minConviction}
@@ -127,6 +133,8 @@ export async function GET(request: NextRequest) {
         ens: row.ens,
         farcaster: row.farcaster,
         ethosScore: row.ethos_score,
+        unifiedTrustScore: row.unified_trust_score,
+        unifiedTrustTier: row.unified_trust_tier,
         rankChange: null,
         lastUpdated: row.last_updated_at,
       })),
@@ -163,11 +171,13 @@ export async function POST(request: NextRequest) {
     await sql`
       INSERT INTO alpha_leaderboard (
         address, chain, conviction_score, patience_tax, win_rate,
-        archetype, total_positions, ens, farcaster, ethos_score, last_updated_at
+        archetype, total_positions, ens, farcaster, ethos_score,
+        unified_trust_score, unified_trust_tier, last_updated_at
       )
       SELECT DISTINCT ON (address, chain)
         address, chain, score, patience_tax, win_rate,
-        archetype, total_positions, ens_name, farcaster_username, ethos_score, analyzed_at
+        archetype, total_positions, ens_name, farcaster_username, ethos_score,
+        unified_trust_score, unified_trust_tier, analyzed_at
       FROM conviction_analyses
       WHERE analyzed_at > NOW() - INTERVAL '90 days'
       ORDER BY address, chain, analyzed_at DESC
@@ -180,6 +190,8 @@ export async function POST(request: NextRequest) {
         ens = EXCLUDED.ens,
         farcaster = EXCLUDED.farcaster,
         ethos_score = EXCLUDED.ethos_score,
+        unified_trust_score = EXCLUDED.unified_trust_score,
+        unified_trust_tier = EXCLUDED.unified_trust_tier,
         last_updated_at = EXCLUDED.last_updated_at
     `;
 

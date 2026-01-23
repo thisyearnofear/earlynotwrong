@@ -12,7 +12,9 @@
 
 import { serverCache } from "@/lib/server-cache";
 import { cachedEthosService } from "./ethos-cache";
+import { trustResolver } from "./trust-resolver";
 import type { EthosScore, EthosProfile, FarcasterIdentity } from "@/lib/ethos";
+import type { UnifiedTrustScore } from "./trust-resolver";
 
 /**
  * Input types that can be resolved
@@ -44,9 +46,20 @@ export interface ResolvedIdentity {
     profileId: string | null;
   } | null;
 
+  // Unified trust score (Phase 2: cross-provider)
+  trust?: UnifiedTrustScore;
+
   // Metadata
   resolvedFrom: "address" | "ens" | "farcaster" | "lens" | "userkey";
   resolvedAt: string;
+  
+  // Observability (optional, for debugging)
+  _meta?: {
+    resolutionPath: string[];
+    ethosSource?: "direct" | "userkey" | "linked-address" | "multi-address-best";
+    linkedAddressesChecked?: number;
+    durationMs?: number;
+  };
 }
 
 /**
@@ -66,6 +79,7 @@ export class IdentityResolverService {
    * Resolve any input to a complete identity
    */
   async resolve(input: string): Promise<ResolvedIdentity | null> {
+    const startTime = Date.now();
     const trimmed = input.trim();
 
     // Solana addresses are case-sensitive. Ethereum are not.
@@ -77,37 +91,63 @@ export class IdentityResolverService {
     // Generate cache key
     const cacheKey = `identity:resolved:${normalizedInput}`;
 
-    // Try cache first
-    const cached = await serverCache.get(
-      cacheKey,
-      async () => {
-        // Determine input type and resolve accordingly
-        if (this.isAddress(normalizedInput)) {
-          return this.resolveFromAddress(normalizedInput);
-        } else if (this.isENS(normalizedInput)) {
-          return this.resolveFromENS(normalizedInput);
-        } else if (this.isFarcasterHandle(normalizedInput)) {
-          return this.resolveFromFarcaster(normalizedInput);
-        } else if (this.isLensHandle(normalizedInput)) {
-          return this.resolveFromLens(normalizedInput);
-        }
+    try {
+      // Try cache first
+      const cached = await serverCache.get(
+        cacheKey,
+        async () => {
+          // Determine input type and resolve accordingly
+          if (this.isAddress(normalizedInput)) {
+            return this.resolveFromAddress(normalizedInput);
+          } else if (this.isENS(normalizedInput)) {
+            return this.resolveFromENS(normalizedInput);
+          } else if (this.isFarcasterHandle(normalizedInput)) {
+            return this.resolveFromFarcaster(normalizedInput);
+          } else if (this.isLensHandle(normalizedInput)) {
+            return this.resolveFromLens(normalizedInput);
+          }
 
-        // Fallback for unresolvable inputs that look like wallets but didn't match formats exactly.
-        // This ensures that wallets without social profiles can still be analyzed.
-        if (
-          normalizedInput.length >= 30 &&
-          !normalizedInput.includes(".") &&
-          !normalizedInput.includes(" ")
-        ) {
-          return this.resolveFromAddress(normalizedInput);
-        }
+          // Fallback for unresolvable inputs that look like wallets but didn't match formats exactly.
+          // This ensures that wallets without social profiles can still be analyzed.
+          if (
+            normalizedInput.length >= 30 &&
+            !normalizedInput.includes(".") &&
+            !normalizedInput.includes(" ")
+          ) {
+            return this.resolveFromAddress(normalizedInput);
+          }
 
-        return null;
-      },
-      IDENTITY_CACHE_TTL.FULL_IDENTITY,
-    );
+          return null;
+        },
+        IDENTITY_CACHE_TTL.FULL_IDENTITY,
+      );
 
-    return cached;
+      // Add observability metadata
+      const durationMs = Date.now() - startTime;
+      
+      if (cached) {
+        // Log successful resolution
+        console.log('[Identity Resolution Success]', {
+          input: normalizedInput.substring(0, 10) + '...',
+          resolvedFrom: cached.resolvedFrom,
+          hasEthos: !!cached.ethos.score,
+          hasFarcaster: !!cached.farcaster,
+          hasENS: !!cached.ens.name,
+          ethosSource: cached._meta?.ethosSource,
+          durationMs,
+        });
+      }
+
+      return cached;
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      console.error('[Identity Resolution Failed]', {
+        input: normalizedInput.substring(0, 10) + '...',
+        error: error instanceof Error ? error.message : 'Unknown',
+        durationMs,
+      });
+      return null;
+    }
   }
 
   /**
@@ -115,6 +155,9 @@ export class IdentityResolverService {
    */
   private async resolveFromAddress(address: string): Promise<ResolvedIdentity> {
     const isEvm = address.startsWith("0x");
+    const resolutionPath: string[] = [];
+    let ethosSource: "direct" | "userkey" | "linked-address" | "multi-address-best" | undefined;
+    let linkedAddressesChecked = 0;
 
     // Parallel fetch all identity services
     const [ensData, farcasterData, ethosData] = await Promise.allSettled([
@@ -127,21 +170,123 @@ export class IdentityResolverService {
         : Promise.resolve({ score: null, profile: null, attestations: [] }),
     ]);
 
+    if (isEvm && ensData.status === "fulfilled" && ensData.value.name) {
+      resolutionPath.push('ens-found');
+    }
+    
+    if (farcasterData.status === "fulfilled" && farcasterData.value) {
+      resolutionPath.push('farcaster-found');
+    }
+
+    let finalEthosData = ethosData.status === "fulfilled" 
+      ? { score: ethosData.value.score, profile: ethosData.value.profile }
+      : { score: null, profile: null };
+
+    if (finalEthosData.score) {
+      resolutionPath.push('ethos-direct');
+      ethosSource = 'direct';
+    }
+
+    // Get Farcaster identity for multi-address aggregation
+    const farcasterIdentity = farcasterData.status === "fulfilled" ? farcasterData.value : null;
+
+    // Multi-address Ethos aggregation: Check all verified addresses
+    if (farcasterIdentity?.verifiedAddresses) {
+      const allVerifiedAddresses = [
+        ...(farcasterIdentity.verifiedAddresses.ethAddresses || []),
+        // Note: Solana addresses can't have Ethos directly, so we skip them for now
+      ].filter(addr => addr.toLowerCase() !== address.toLowerCase());
+
+      linkedAddressesChecked = allVerifiedAddresses.length;
+
+      if (allVerifiedAddresses.length > 0) {
+        resolutionPath.push(`checking-${allVerifiedAddresses.length}-linked-addresses`);
+        
+        // Fetch Ethos data for all linked addresses in parallel
+        const linkedEthosResults = await Promise.allSettled(
+          allVerifiedAddresses.map(addr => cachedEthosService.getWalletEthosData(addr))
+        );
+
+        // Aggregate all Ethos data (primary + linked addresses)
+        const allEthosData = [
+          finalEthosData,
+          ...linkedEthosResults
+            .filter(result => result.status === "fulfilled")
+            .map(result => ({
+              score: result.value.score,
+              profile: result.value.profile,
+            }))
+        ];
+
+        const originalScore = finalEthosData.score?.score || 0;
+        // Select best Ethos score across all addresses
+        finalEthosData = this.selectBestEthosData(allEthosData);
+        
+        if (finalEthosData.score && finalEthosData.score.score > originalScore) {
+          resolutionPath.push('ethos-multi-address-best');
+          ethosSource = 'multi-address-best';
+        }
+      }
+    }
+
+    // For Solana addresses without Ethos data, try Twitter → Ethos UserKey bridge
+    let twitterHandle: string | undefined;
+    if (!isEvm && !finalEthosData.score) {
+      resolutionPath.push('solana-address');
+      const socialHandles = await this.lookupSocialHandles(address);
+      twitterHandle = socialHandles?.twitter;
+      
+      if (socialHandles?.twitter) {
+        resolutionPath.push(`twitter-found:${socialHandles.twitter}`);
+        const userKey = `service:x.com:username:${socialHandles.twitter}`;
+        const [scoreByUserKey, profileByUserKey] = await Promise.allSettled([
+          cachedEthosService.getScoreByUserKey(userKey),
+          cachedEthosService.getProfileByUserKey(userKey),
+        ]);
+
+        const scoreFromUserKey = scoreByUserKey.status === "fulfilled" ? scoreByUserKey.value : null;
+        const profileFromUserKey = profileByUserKey.status === "fulfilled" ? profileByUserKey.value : null;
+
+        // Use UserKey data if better than current best
+        const currentScore = finalEthosData.score?.score ?? 0;
+        const newScore = scoreFromUserKey?.score ?? 0;
+        
+        if (newScore > 0 && newScore > currentScore) {
+          finalEthosData = {
+            score: scoreFromUserKey,
+            profile: profileFromUserKey,
+          };
+          resolutionPath.push('ethos-via-userkey');
+          ethosSource = 'userkey';
+        }
+      } else {
+        resolutionPath.push('no-twitter-handle');
+      }
+    }
+
+    // Get unified trust score (Ethos + FairScale for Solana)
+    const unifiedTrust = await trustResolver.resolve(address, twitterHandle);
+    if (unifiedTrust.score > 0) {
+      resolutionPath.push(`trust-resolved:${unifiedTrust.primaryProvider}`);
+    }
+
     return {
       address,
       ens:
         ensData.status === "fulfilled"
           ? ensData.value
           : { name: null, avatar: null },
-      farcaster:
-        farcasterData.status === "fulfilled" ? farcasterData.value : null,
-      ethos:
-        ethosData.status === "fulfilled"
-          ? { score: ethosData.value.score, profile: ethosData.value.profile }
-          : { score: null, profile: null },
+      farcaster: farcasterIdentity,
+      ethos: finalEthosData,
       lens: null, // TODO: Add Lens integration if needed
+      trust: unifiedTrust,
       resolvedFrom: "address",
       resolvedAt: new Date().toISOString(),
+      _meta: {
+        resolutionPath,
+        ethosSource,
+        linkedAddressesChecked,
+      },
     };
   }
 
@@ -316,6 +461,39 @@ export class IdentityResolverService {
       console.warn("Farcaster lookup failed:", error);
       return null;
     }
+  }
+
+  private async lookupSocialHandles(
+    address: string,
+  ): Promise<{ twitter?: string; farcaster?: string; github?: string; lens?: string } | null> {
+    try {
+      const { getSocialHandles } = await import("@/lib/web3bio");
+      return await getSocialHandles(address);
+    } catch (error) {
+      console.warn("Social handles lookup failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Select best Ethos data from multiple sources
+   * Prioritizes highest score and most complete profile
+   */
+  private selectBestEthosData(
+    datasets: Array<{ score: EthosScore | null; profile: EthosProfile | null }>
+  ): { score: EthosScore | null; profile: EthosProfile | null } {
+    const validDatasets = datasets.filter(d => d.score !== null);
+    
+    if (validDatasets.length === 0) {
+      return { score: null, profile: null };
+    }
+
+    // Sort by score (highest first)
+    const sorted = validDatasets.sort((a, b) => 
+      (b.score?.score || 0) - (a.score?.score || 0)
+    );
+
+    return sorted[0];
   }
 
   // Input type detection

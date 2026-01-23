@@ -27,10 +27,12 @@ CREATE TABLE IF NOT EXISTS conviction_analyses (
   ens_name VARCHAR(255),
   farcaster_username VARCHAR(100),
   ethos_score INTEGER,
-  
+  unified_trust_score INTEGER,
+  unified_trust_tier VARCHAR(20),
+
   -- Date for unique constraint (computed on insert)
   analyzed_date DATE DEFAULT CURRENT_DATE,
-  
+
   -- For tracking unique analyses per day
   UNIQUE(address, chain, time_horizon, analyzed_date)
 );
@@ -109,16 +111,18 @@ CREATE TABLE IF NOT EXISTS alpha_leaderboard (
   farcaster VARCHAR(100),
   ens VARCHAR(255),
   ethos_score INTEGER,
-  
+  unified_trust_score INTEGER,
+  unified_trust_tier VARCHAR(20),
+
   -- Ranking
   rank INTEGER,
   previous_rank INTEGER,
   rank_change INTEGER GENERATED ALWAYS AS (COALESCE(previous_rank, rank) - rank) STORED,
-  
+
   -- Timestamps
   first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   last_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  
+
   UNIQUE(address, chain)
 );
 

@@ -29,6 +29,8 @@ export interface StoredAnalysis {
   ensName: string | null;
   farcasterUsername: string | null;
   ethosScore: number | null;
+  unifiedTrustScore: number | null;
+  unifiedTrustTier: string | null;
 }
 
 export interface WatchlistTrader {
@@ -76,6 +78,8 @@ export async function saveAnalysis(
     ensName?: string;
     farcasterUsername?: string;
     ethosScore?: number;
+    unifiedTrustScore?: number;
+    unifiedTrustTier?: string;
   }
 ): Promise<StoredAnalysis | null> {
   try {
@@ -84,7 +88,8 @@ export async function saveAnalysis(
         address, chain, score, patience_tax, upside_capture,
         early_exits, conviction_wins, percentile, archetype,
         total_positions, avg_holding_period, win_rate, time_horizon,
-        ens_name, farcaster_username, ethos_score
+        ens_name, farcaster_username, ethos_score,
+        unified_trust_score, unified_trust_tier
       ) VALUES (
         ${address.toLowerCase()},
         ${chain},
@@ -101,7 +106,9 @@ export async function saveAnalysis(
         ${timeHorizon},
         ${identity?.ensName || null},
         ${identity?.farcasterUsername || null},
-        ${identity?.ethosScore || null}
+        ${identity?.ethosScore || null},
+        ${identity?.unifiedTrustScore || null},
+        ${identity?.unifiedTrustTier || null}
       )
       ON CONFLICT (address, chain, time_horizon, analyzed_date)
       DO UPDATE SET
@@ -115,6 +122,8 @@ export async function saveAnalysis(
         total_positions = EXCLUDED.total_positions,
         avg_holding_period = EXCLUDED.avg_holding_period,
         win_rate = EXCLUDED.win_rate,
+        unified_trust_score = EXCLUDED.unified_trust_score,
+        unified_trust_tier = EXCLUDED.unified_trust_tier,
         analyzed_at = CURRENT_TIMESTAMP
       RETURNING *
     `;
@@ -394,6 +403,8 @@ function mapAnalysisRow(row: Record<string, unknown>): StoredAnalysis {
     ensName: row.ens_name as string | null,
     farcasterUsername: row.farcaster_username as string | null,
     ethosScore: row.ethos_score ? Number(row.ethos_score) : null,
+    unifiedTrustScore: row.unified_trust_score ? Number(row.unified_trust_score) : null,
+    unifiedTrustTier: row.unified_trust_tier as string | null,
   };
 }
 

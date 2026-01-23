@@ -185,6 +185,30 @@ export function useConviction() {
           } else {
             addLog(`> ETHOS_SCORE: UNKNOWN`);
           }
+
+          // Step 2.5: Fetch unified trust score (includes FairScale for Solana)
+          setAnalysisStep("Computing unified trust...");
+          addLog(`> FETCHING UNIFIED TRUST SCORE...`);
+
+          try {
+            const { trustResolver } = await import("@/lib/services/trust-resolver");
+            const unifiedTrust = await trustResolver.resolve(activeAddress!);
+
+            useAppStore.getState().setUnifiedTrustScore(unifiedTrust);
+
+            if (unifiedTrust.score > 0) {
+              addLog(`> UNIFIED_TRUST_SCORE: ${unifiedTrust.score}/100 (${unifiedTrust.tier})`);
+              if (unifiedTrust.primaryProvider !== 'ethos') {
+                addLog(`> PROVIDER: ${unifiedTrust.primaryProvider.toUpperCase()}`);
+              }
+            } else {
+              addLog(`> UNIFIED_TRUST: NO SCORE AVAILABLE`);
+            }
+          } catch (trustError) {
+            console.error("Trust score fetch failed", trustError);
+            addLog(`> TRUST_SCORE_ERROR: ${(trustError as Error).message}`);
+            useAppStore.getState().setUnifiedTrustScore(null);
+          }
         } catch (error) {
           console.error("Ethos fetch failed", error);
           addLog(`> ETHOS_CONNECTION_ERROR`);
@@ -309,12 +333,15 @@ export function useConviction() {
             parameters,
           );
 
+          // Save to Postgres with trust scores
+          const currentTrustScore = useAppStore.getState().unifiedTrustScore;
           saveConvictionAnalysis(
             activeAddress,
             chain,
             batchResult.metrics,
             parameters.timeHorizon,
             !!addressOrShowcaseId,
+            currentTrustScore
           );
         } catch (error) {
           console.error("Transaction analysis failed:", error);

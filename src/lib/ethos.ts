@@ -229,6 +229,22 @@ export class EthosClient {
   }
 
   /**
+   * Get user profile by UserKey (e.g., service:x.com:username:vitalik)
+   * Enables social identity → Ethos profile resolution
+   */
+  async getProfileByUserKey(userKey: string): Promise<EthosProfile | null> {
+    try {
+      const response = await this.fetch<EthosProfile>(
+        `/user/by/userkey/${encodeURIComponent(userKey)}`,
+      );
+      return response;
+    } catch (error) {
+      console.warn("Ethos profile fetch by userkey failed:", error);
+      return null;
+    }
+  }
+
+  /**
    * Resolve Farcaster identity for a wallet address or FID
    */
   async resolveFarcasterIdentity(
