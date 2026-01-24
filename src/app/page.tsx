@@ -64,6 +64,8 @@ import { PersonalRadar } from "@/components/ui/personal-radar";
 import { LeaderboardPanel } from "@/components/ui/leaderboard-panel";
 import { UnifiedTrustCard } from "@/components/ui/unified-trust-card";
 import { FairScaleCard } from "@/components/ui/fairscale-card";
+import { CapabilitiesGrid } from "@/components/ui/capabilities-grid";
+import { PublicClusterSignals } from "@/components/ui/public-cluster-signals";
 
 export default function Home() {
   const {
@@ -543,6 +545,26 @@ export default function Home() {
                       <PersonalRadar onAnalyze={analyzeWallet} />
                     </div>
                   </div>
+
+                  {/* Capabilities Grid - Show what the platform can do */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="w-full max-w-3xl mt-8"
+                  >
+                    <CapabilitiesGrid />
+                  </motion.div>
+
+                  {/* Public Cluster Signals - Social proof */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="w-full max-w-md mt-6"
+                  >
+                    <PublicClusterSignals limit={3} />
+                  </motion.div>
                 </div>
               </motion.div>
             )}

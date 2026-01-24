@@ -108,6 +108,13 @@ export function Navbar() {
 
           <div className="hidden lg:flex items-center gap-1">
             <Link
+              href="/features"
+              className="px-3 py-1.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Features
+            </Link>
+            <Link
               href="/leaderboard"
               className="px-3 py-1.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2"
             >
