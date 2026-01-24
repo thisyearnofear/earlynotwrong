@@ -296,15 +296,27 @@ function PositionCard({
                     </>
                   )}
                 </div>
-                <a
-                  href={explorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-signal hover:text-signal/80 transition-colors"
-                >
-                  View on Explorer
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={`https://dexscreener.com/search?q=${position.tokenAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground transition-colors"
+                    title="View token on DexScreener"
+                  >
+                    <Users className="w-3 h-3" />
+                    Market Data
+                  </a>
+                  <a
+                    href={explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-signal hover:text-signal/80 transition-colors"
+                  >
+                    View on Explorer
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
               </div>
             </div>
           </motion.div>

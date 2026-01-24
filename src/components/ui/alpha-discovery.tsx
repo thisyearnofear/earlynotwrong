@@ -18,6 +18,7 @@ import {
   Target,
 } from "lucide-react";
 import { WatchlistButton } from "@/components/ui/watchlist-button";
+import { useConviction } from "@/hooks/use-conviction";
 
 interface AlphaWallet {
   address: string;
@@ -60,6 +61,7 @@ export function AlphaDiscovery({
   });
 
   const [viewMode, setViewMode] = useState<"discovery" | "community">("discovery");
+  const { analyzeWallet } = useConviction();
 
   const fetchAlphaWallets = React.useCallback(async () => {
     setLoading(true);
@@ -245,7 +247,8 @@ export function AlphaDiscovery({
               wallets.map((wallet) => (
                 <div
                   key={`${wallet.address}_${wallet.chain}`}
-                  className="flex items-center justify-between p-3 rounded-lg bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors group"
+                  className="flex items-center justify-between p-3 rounded-lg bg-surface/30 border border-border/50 hover:bg-surface/50 transition-colors group cursor-pointer"
+                  onClick={() => analyzeWallet(wallet.address)}
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     {wallet.farcasterIdentity?.pfpUrl && (
@@ -318,18 +321,20 @@ export function AlphaDiscovery({
                       size="sm"
                     />
 
-                    <WatchlistButton
-                      wallet={{
-                        address: wallet.address,
-                        chain: wallet.chain,
-                        convictionScore: wallet.convictionScore,
-                        ethosScore: wallet.ethosScore,
-                        archetype: wallet.archetype,
-                        farcasterUsername: wallet.farcasterIdentity?.username,
-                        displayName: wallet.farcasterIdentity?.displayName
-                      }}
-                      variant="icon"
-                    />
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <WatchlistButton
+                        wallet={{
+                          address: wallet.address,
+                          chain: wallet.chain,
+                          convictionScore: wallet.convictionScore,
+                          ethosScore: wallet.ethosScore,
+                          archetype: wallet.archetype,
+                          farcasterUsername: wallet.farcasterIdentity?.username,
+                          displayName: wallet.farcasterIdentity?.displayName
+                        }}
+                        variant="icon"
+                      />
+                    </div>
                   </div>
                 </div>
               ))

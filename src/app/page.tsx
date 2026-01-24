@@ -654,7 +654,7 @@ export default function Home() {
                 }}
                 className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-6 relative z-10"
               >
-                {/* Back to Home Button */}
+                {/* Navigation Breadcrumb */}
                 <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 20 },
@@ -662,13 +662,34 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-12"
                 >
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-foreground-muted hover:text-foreground mb-4"
-                    onClick={() => reset()}
-                  >
-                    ← Back to Home
-                  </Button>
+                  <div className="flex items-center justify-between mb-4">
+                    <Button
+                      variant="ghost"
+                      className="text-foreground-muted hover:text-foreground"
+                      onClick={() => reset()}
+                    >
+                      ← Back to Home
+                    </Button>
+                    
+                    {targetAddress && (
+                      <div className="flex items-center gap-2 text-sm">
+                        {farcasterIdentity?.username && (
+                          <span className="text-foreground">@{farcasterIdentity.username}</span>
+                        )}
+                        <span className="font-mono text-foreground-muted">
+                          {targetAddress.slice(0, 6)}...{targetAddress.slice(-4)}
+                        </span>
+                        {analysisChain && (
+                          <span className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded uppercase font-mono",
+                            analysisChain === "solana" ? "bg-purple-500/10 text-purple-400" : "bg-blue-500/10 text-blue-400"
+                          )}>
+                            {analysisChain}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
 
                 {/* Score Card */}
