@@ -108,6 +108,11 @@ interface AppState {
   toast: ToastState;
   showToast: (message: string, type?: "success" | "error" | "info") => void;
   hideToast: () => void;
+
+  // Daily Analysis Counter
+  dailyAnalysisCount: number;
+  dailyAnalysisResetDate: string | null;
+  incrementDailyAnalysis: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -278,4 +283,52 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   hideToast: () =>
     set((state) => ({ toast: { ...state.toast, isVisible: false } })),
+
+  // Daily Analysis Counter
+  dailyAnalysisCount: (() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('enw_daily_analysis');
+        if (stored) {
+          const { count, date } = JSON.parse(stored);
+          const today = new Date().toISOString().split('T')[0];
+          if (date === today) {
+            return count;
+          }
+        }
+      } catch {}
+    }
+    return 0;
+  })(),
+  dailyAnalysisResetDate: (() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('enw_daily_analysis');
+        if (stored) {
+          const { date } = JSON.parse(stored);
+          const today = new Date().toISOString().split('T')[0];
+          if (date === today) {
+            return date;
+          }
+        }
+      } catch {}
+    }
+    return null;
+  })(),
+  incrementDailyAnalysis: () => {
+    const today = new Date().toISOString().split('T')[0];
+    set((state) => {
+      const isNewDay = state.dailyAnalysisResetDate !== today;
+      const newCount = isNewDay ? 1 : state.dailyAnalysisCount + 1;
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('enw_daily_analysis', JSON.stringify({ count: newCount, date: today }));
+      }
+
+      return {
+        dailyAnalysisCount: newCount,
+        dailyAnalysisResetDate: today,
+      };
+    });
+  },
 }));

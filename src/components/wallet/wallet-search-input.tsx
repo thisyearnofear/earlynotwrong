@@ -12,9 +12,43 @@
  */
 
 import * as React from "react";
-import { useState } from "react";
-import { Search, Loader2, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Search, Loader2, X, CheckCircle2, AlertCircle, Plus } from "lucide-react";
 import { useWalletIdentity } from "@/hooks/use-wallet-analysis";
+
+function getInputType(input: string): { type: 'evm' | 'solana' | 'ens' | 'farcaster' | 'unknown', valid: boolean, hint?: string } {
+  const trimmed = input.trim();
+  if (!trimmed) return { type: 'unknown', valid: false };
+  
+  // ENS
+  if (trimmed.endsWith('.eth')) {
+    return { type: 'ens', valid: trimmed.length > 4, hint: 'ENS name' };
+  }
+  
+  // Farcaster
+  if (trimmed.startsWith('@')) {
+    return { type: 'farcaster', valid: trimmed.length > 1, hint: 'Farcaster handle' };
+  }
+  
+  // EVM address
+  if (trimmed.startsWith('0x')) {
+    const valid = /^0x[a-fA-F0-9]{40}$/.test(trimmed);
+    return { type: 'evm', valid, hint: valid ? 'Base address' : 'Invalid EVM address (needs 40 hex chars)' };
+  }
+  
+  // Solana address (Base58, 32-44 chars)
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) {
+    return { type: 'solana', valid: true, hint: 'Solana address' };
+  }
+  
+  // Could be a username without @
+  if (/^[a-zA-Z][a-zA-Z0-9_]{0,15}$/.test(trimmed)) {
+    return { type: 'farcaster', valid: true, hint: 'Searching as username...' };
+  }
+  
+  return { type: 'unknown', valid: false, hint: 'Enter an address, ENS name, or @handle' };
+}
+import { usePersonalWatchlist } from "@/hooks/use-personal-watchlist";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,10 +69,14 @@ export function WalletSearchInput({
   showResolvedPreview = true,
 }: WalletSearchInputProps) {
   const [input, setInput] = useState("");
+  const [addedToRadar, setAddedToRadar] = useState(false);
   const { identity, loading, error, resolve, reset } = useWalletIdentity(
     null,
     false,
   );
+  const { addToWatchlist } = usePersonalWatchlist();
+
+  const inputType = useMemo(() => getInputType(input), [input]);
 
   const handleSearch = async () => {
     if (!input.trim()) return;
@@ -61,6 +99,19 @@ export function WalletSearchInput({
       onWalletSelected(identity);
       // Optionally clear after selection
       // handleClear();
+    }
+  };
+
+  const handleAddToRadar = async () => {
+    if (identity) {
+      const chain = identity.address.startsWith("0x") ? "base" : "solana";
+      await addToWatchlist({
+        address: identity.address,
+        chain,
+        name: identity.ens.name || identity.farcaster?.displayName,
+      });
+      setAddedToRadar(true);
+      setTimeout(() => setAddedToRadar(false), 2000);
     }
   };
 
@@ -103,6 +154,17 @@ export function WalletSearchInput({
           </button>
         )}
       </div>
+
+      {/* Input Type Validation Hint */}
+      {input && (
+        <div className={cn(
+          "text-xs mt-1 flex items-center gap-1",
+          inputType.valid ? "text-patience" : "text-amber-500"
+        )}>
+          {inputType.valid ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+          {inputType.hint}
+        </div>
+      )}
 
       {/* Search Button */}
       {input && !identity && (
@@ -224,10 +286,26 @@ export function WalletSearchInput({
             )}
           </div>
 
-          {/* Analyze Button */}
-          <Button onClick={handleSelect} className="w-full" variant="default">
-            Analyze Wallet
-          </Button>
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <Button onClick={handleSelect} className="flex-1" variant="default">
+              Analyze Wallet
+            </Button>
+            <Button
+              onClick={handleAddToRadar}
+              variant="outline"
+              disabled={addedToRadar}
+            >
+              {addedToRadar ? (
+                "Added ✓"
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add to Radar
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       )}
     </div>

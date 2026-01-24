@@ -13,6 +13,7 @@ import {
   getEthosReviewURL,
   getReviewTextForClipboard,
 } from "@/lib/ethos-reviews";
+import { getFeatureAccess } from "@/lib/ethos-gates";
 import {
   Card,
   CardContent,
@@ -92,9 +93,15 @@ export default function Home() {
     reset,
     errorState,
     clearError,
+    dailyAnalysisCount,
   } = useAppStore();
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+
+  const dailyLimit = useMemo(
+    () => getFeatureAccess(ethosScore?.score ?? 0).dailyAnalysisLimit,
+    [ethosScore?.score]
+  );
 
   // Content state for dynamic reordering
   const [hasAlphaData, setHasAlphaData] = useState(true);
@@ -487,6 +494,12 @@ export default function Home() {
                       <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest text-center">
                         Analyze any public profile
                       </p>
+                      <div className="flex items-center justify-center gap-2 text-[9px] font-mono text-foreground-muted">
+                        <span>Today: {dailyAnalysisCount}/{dailyLimit === Infinity ? '∞' : dailyLimit} scans</span>
+                        {dailyLimit !== Infinity && dailyAnalysisCount >= dailyLimit && (
+                          <span className="text-amber-500">(Limit reached)</span>
+                        )}
+                      </div>
                       <WalletSearchInput
                         onWalletSelected={async (
                           identity: ResolvedIdentity,
@@ -1189,8 +1202,8 @@ export default function Home() {
                   </motion.div>
                 )}
 
-                {/* Historical Tracking Panel - Hide for showcase mode */}
-                {!isShowcaseMode && (
+                {/* Historical Tracking Panel */}
+                {(
                   <motion.div
                     variants={{
                       hidden: { opacity: 0, y: 20 },
@@ -1227,8 +1240,8 @@ export default function Home() {
                 </motion.div>
 
                 {/* Locked Features Message for users below Ethos 1000 */}
-                {!isShowcaseMode &&
-                  isConnected &&
+                {isConnected &&
+                  !isShowcaseMode &&
                   (ethosScore?.score ?? 0) < 1000 && (
                     <motion.div
                       variants={{

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { usePersonalWatchlist } from "@/hooks/use-personal-watchlist";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, TrendingUp, Radar, ExternalLink, Clock, AlertCircle, RefreshCw } from "lucide-react";
@@ -73,10 +74,19 @@ export function PersonalRadar({ onAnalyze }: PersonalRadarProps) {
                     {entry.chain}
                   </span>
                   {stale && (
-                    <span className="text-[10px] flex items-center gap-1 text-amber-500/80 bg-amber-500/10 px-1 rounded">
-                      <AlertCircle className="w-2.5 h-2.5" />
-                      Stale
-                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-[10px] flex items-center gap-1 text-amber-500/80 bg-amber-500/10 px-1 rounded cursor-help">
+                            <AlertCircle className="w-2.5 h-2.5" />
+                            Stale
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Analysis is over 7 days old. Click refresh to update.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-1.5">

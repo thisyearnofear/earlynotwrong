@@ -42,6 +42,7 @@ export function useConviction() {
     parameters,
     setError,
     clearError,
+    incrementDailyAnalysis,
   } = useAppStore();
 
   const analyzeWallet = useCallback(
@@ -60,11 +61,21 @@ export function useConviction() {
           chain = targetShowcase.chain;
           toggleShowcaseMode(true);
         } else {
-          // If not a showcase ID, assume it's a direct address
-          activeAddress = addressOrShowcaseId;
-          // Simple heuristic: 0x prefix = EVM (Base), otherwise assume Solana
-          chain = addressOrShowcaseId.startsWith("0x") ? "base" : "solana";
-          toggleShowcaseMode(false);
+          // Check if it matches a showcase wallet by address
+          const showcaseByAddress = SHOWCASE_WALLETS.find(
+            (w) => w.address.toLowerCase() === addressOrShowcaseId.toLowerCase(),
+          );
+          if (showcaseByAddress) {
+            activeAddress = showcaseByAddress.address;
+            chain = showcaseByAddress.chain;
+            toggleShowcaseMode(true);
+          } else {
+            // If not a showcase ID or address, treat as a direct address
+            activeAddress = addressOrShowcaseId;
+            // Simple heuristic: 0x prefix = EVM (Base), otherwise assume Solana
+            chain = addressOrShowcaseId.startsWith("0x") ? "base" : "solana";
+            toggleShowcaseMode(false);
+          }
         }
       } else {
         if (isEvmConnected && evmAddress) {
@@ -88,6 +99,7 @@ export function useConviction() {
         clearExpiredCache(); // Clean up expired cache entries
         setTargetAddress(activeAddress);
         startAnalysis();
+        incrementDailyAnalysis(); // Track daily usage
 
         // Step 1: Identity Resolution
         const shortAddr = `${activeAddress!.slice(0, 6)}...${activeAddress!.slice(-4)}`;
@@ -256,15 +268,19 @@ export function useConviction() {
             addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
             addLog(`> TIP: LOWER MIN_TRADE_VALUE OR EXTEND TIME_HORIZON`);
 
+            const chainDetails =
+              chain === "solana"
+                ? `This Solana wallet has no token swaps in the last ${parameters.timeHorizon} days above $${parameters.minTradeValue}.`
+                : `This Base wallet has no token transfers in the last ${parameters.timeHorizon} days above $${parameters.minTradeValue}.`;
+
             setError({
               errorType: "data",
-              errorMessage: "No qualifying transactions found",
-              errorDetails:
-                "This wallet has no transaction history matching your current filters.",
+              errorMessage: "No trading activity detected",
+              errorDetails: chainDetails,
               canRetry: true,
               canUseCached: hasCachedAnalysis(activeAddress, chain),
               recoveryAction:
-                "Try lowering the 'Min. Trade Value' in settings or extended the 'Time Horizon' to find more history.",
+                "Adjust filters in Settings: try a longer time horizon (e.g., 180 days) or lower minimum trade value (e.g., $10).",
             });
 
             finishAnalysis();
@@ -404,6 +420,7 @@ export function useConviction() {
       parameters,
       setError,
       clearError,
+      incrementDailyAnalysis,
     ],
   );
 
