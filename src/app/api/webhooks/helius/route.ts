@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pushToList, getList } from "@/lib/kv-cache";
 import { findTraderByWallet } from "@/lib/watchlist";
+import { fromHeliusTransaction, processTradeEvent } from "@/lib/alerts";
+import { trustResolver } from "@/lib/services/trust-resolver";
+import { enqueueClusterNotifications } from "@/lib/notifications";
 
 const WEBHOOK_AUTH_HEADER = process.env.HELIUS_WEBHOOK_AUTH;
 const ALERTS_KEY = "solana:realtime:alerts";
@@ -146,17 +149,50 @@ export async function POST(request: NextRequest) {
     const solanaAddresses = getWatchlistAddresses("solana");
 
     let processed = 0;
+    let clustersDetected = 0;
+
     for (const tx of transactions) {
       const alert = parseHeliusTransaction(tx, solanaAddresses);
       if (alert) {
         await pushToList(ALERTS_KEY, alert, 100);
         processed++;
+
+        // Convert to TradeEvent and check for cluster formation
+        const tradeEvent = fromHeliusTransaction(
+          tx as HeliusEnhancedTransaction,
+          alert.walletAddress,
+          alert.traderId
+        );
+
+        if (tradeEvent) {
+          // Resolve trust score for cluster eligibility
+          const trust = await trustResolver.resolve(
+            tradeEvent.walletAddress,
+            findTraderByWallet(tradeEvent.walletAddress)?.socials?.twitter
+          );
+          tradeEvent.unifiedTrustScore = trust.score;
+          tradeEvent.unifiedTrustTier = trust.tier;
+
+          // Check for cluster signal
+          const clusterSignal = await processTradeEvent(tradeEvent);
+          if (clusterSignal) {
+            // Store cluster signal and queue notifications
+            await pushToList("cluster:signals", clusterSignal, 100);
+            const queued = await enqueueClusterNotifications(clusterSignal);
+            clustersDetected++;
+            console.log(
+              `🔔 Cluster detected: ${clusterSignal.tokenSymbol || clusterSignal.tokenAddress} ` +
+              `(${clusterSignal.clusterSize} traders, ${queued} notifications queued)`
+            );
+          }
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
       processed,
+      clustersDetected,
       total: transactions.length,
     });
   } catch (error) {

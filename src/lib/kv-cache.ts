@@ -106,6 +106,21 @@ export async function getList<T>(
 }
 
 /**
+ * Remove an item from a list
+ */
+export async function removeFromList<T>(
+  key: string,
+  value: T,
+  count: number = 1
+): Promise<void> {
+  try {
+    await kv.lrem(key, count, value);
+  } catch (error) {
+    console.warn(`KV list remove error for ${key}:`, error);
+  }
+}
+
+/**
  * Check if KV is available (for fallback to in-memory)
  */
 export async function isKVAvailable(): Promise<boolean> {

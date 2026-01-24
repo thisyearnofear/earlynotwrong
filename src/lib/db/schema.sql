@@ -162,3 +162,78 @@ CREATE TABLE IF NOT EXISTS personal_watchlists (
 );
 
 CREATE INDEX IF NOT EXISTS idx_personal_watchlist_user ON personal_watchlists(user_address);
+
+-- =============================================================================
+-- Notification System (Phase 3: Social Signals)
+-- =============================================================================
+
+-- Table: Notification Subscriptions
+CREATE TABLE IF NOT EXISTS notification_subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_address VARCHAR(64) NOT NULL,
+  
+  -- Channels
+  email VARCHAR(255),
+  telegram_chat_id VARCHAR(100),
+  
+  -- Preferences
+  channels VARCHAR(20)[] DEFAULT ARRAY['in_app']::VARCHAR[], -- in_app, email, telegram
+  min_trust_score INTEGER DEFAULT 65, -- Minimum trust score to trigger alerts
+  min_cluster_size INTEGER DEFAULT 3, -- Minimum traders in cluster
+  
+  -- Filters (empty = all)
+  chain_filter VARCHAR(10)[], -- e.g., ['solana', 'base'] or empty for all
+  token_filter VARCHAR(64)[], -- Specific token addresses to watch
+  
+  -- Rate limiting
+  max_alerts_per_hour INTEGER DEFAULT 10,
+  
+  -- Status
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  
+  UNIQUE(user_address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_subs_active ON notification_subscriptions(is_active);
+
+-- Table: Notification Deliveries (for idempotency and audit)
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id SERIAL PRIMARY KEY,
+  user_address VARCHAR(64) NOT NULL,
+  alert_id VARCHAR(255) NOT NULL, -- cluster:solana:tokenaddr:timestamp
+  channel VARCHAR(20) NOT NULL, -- email, telegram, in_app
+  
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'rate_limited')),
+  error_message TEXT,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  sent_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Prevent duplicate deliveries
+  UNIQUE(user_address, alert_id, channel)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_user ON notification_deliveries(user_address);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status ON notification_deliveries(status);
+
+-- Table: Cluster Signals (persistent record for analytics)
+CREATE TABLE IF NOT EXISTS cluster_signals (
+  id SERIAL PRIMARY KEY,
+  signal_id VARCHAR(255) NOT NULL UNIQUE, -- cluster:chain:token:bucket
+  chain VARCHAR(10) NOT NULL CHECK (chain IN ('solana', 'base')),
+  token_address VARCHAR(64) NOT NULL,
+  token_symbol VARCHAR(50),
+  
+  cluster_size INTEGER NOT NULL,
+  avg_trust_score INTEGER NOT NULL,
+  unique_traders JSONB NOT NULL, -- Array of {walletAddress, traderId?, trustScore}
+  
+  window_minutes INTEGER NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_cluster_signals_chain ON cluster_signals(chain);
+CREATE INDEX IF NOT EXISTS idx_cluster_signals_token ON cluster_signals(token_address);
+CREATE INDEX IF NOT EXISTS idx_cluster_signals_created ON cluster_signals(created_at DESC);

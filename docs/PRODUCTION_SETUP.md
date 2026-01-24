@@ -25,6 +25,14 @@ The **Early, Not Wrong** conviction analyzer is now a fully production-ready pla
 - **Shareable Receipts**: Generate social media-ready conviction receipts
 - **Historical Tracking**: View progression of conviction scores over time
 
+### 6. Cluster Detection & Notifications (Phase 3B)
+- **Cluster Signals**: Detect when 3+ high-trust traders enter the same token
+- **Multi-Chain**: Works on both Solana (Helius webhooks) and Base (Alchemy polling)
+- **Email Alerts**: Resend-powered HTML emails with trader details
+- **Telegram Push**: Real-time bot notifications
+- **User Preferences**: Configurable thresholds, channels, and filters
+- **Rate Limiting**: Spam protection with per-user hourly limits
+
 ### 4. Advanced Conviction Metrics
 - **Comprehensive Scoring**: 25% win rate + 35% upside capture + 25% patience + 15% holding period
 - **Archetype Detection**: Iron Pillar, Diamond Hand, Profit Phantom, Exit Voyager
@@ -48,6 +56,11 @@ NEXT_PUBLIC_COINGECKO_API_KEY=your_coingecko_key_here
 # Ethos Network Integration
 NEXT_PUBLIC_ETHOS_API_URL=https://api.ethos.network/api/v2
 NEXT_PUBLIC_ETHOS_CLIENT_ID=early-not-wrong
+
+# Notification System (Phase 3B)
+RESEND_API_KEY=re_xxxxx                    # Transactional emails
+TELEGRAM_BOT_TOKEN=123456:ABC-xyz          # Telegram bot alerts
+CRON_SECRET=your-random-secret             # Cron endpoint auth
 ```
 
 ## 🚀 API Key Setup Guide
@@ -75,6 +88,18 @@ NEXT_PUBLIC_ETHOS_CLIENT_ID=early-not-wrong
 - Sign up for free tier (10,000 requests/month)
 - Generate demo API key
 - **Enables**: Enhanced Base price history (fallback: DexScreener)
+
+### 5. Resend (Email Notifications) - **Optional**
+- Visit: https://resend.com
+- Sign up for free tier (100 emails/day)
+- Generate API key
+- **Enables**: Email alerts for cluster signals
+
+### 6. Telegram Bot (Push Notifications) - **Optional**
+- Message @BotFather on Telegram
+- Create new bot with `/newbot` command
+- Save the bot token
+- **Enables**: Real-time Telegram push notifications
 
 ## 📊 Production Capabilities
 

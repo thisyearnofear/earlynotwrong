@@ -176,7 +176,35 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 ---
 
-## Recent Updates: Phase 3 - Advanced Reputation Perks & Real-Time Intelligence
+## Recent Updates: Phase 3B - Cluster Detection & Social Signals
+
+### 🆕 Cluster Signal Detection
+- **Multi-Trader Confluence:** Real-time detection when 3+ high-trust traders (score ≥65) enter the same token within a 15-minute window
+- **Cross-Chain Coverage:** Cluster detection active on both Solana (Helius webhooks) and Base (Alchemy polling)
+- **Weighted Signals:** Clusters weighted by average trust score of participating traders
+- **Cooldown Protection:** 30-minute cooldown per token to prevent signal spam
+
+### 🆕 Email & Telegram Notifications
+- **Email Alerts:** Resend-powered transactional emails with rich HTML formatting
+- **Telegram Bot:** Real-time push notifications via Telegram bot integration
+- **In-App Alerts:** Cluster signals displayed alongside trade alerts in the Conviction Alerts panel
+- **Rate Limiting:** Per-user rate limits (configurable, default 10/hour) to prevent notification fatigue
+
+### 🆕 Notification Preferences
+- **Channel Selection:** Choose in-app, email, Telegram, or any combination
+- **Threshold Tuning:** Configure minimum trust score (default 65) and cluster size (default 3)
+- **Chain Filtering:** Subscribe to Solana-only, Base-only, or all chains
+- **Self-Serve UI:** Integrated settings panel in Conviction Alerts component
+
+### 🆕 Architecture Improvements
+- **Watchlist Consolidation:** Migrated from hardcoded constant to Postgres-backed service (DRY)
+- **TradeEvent Normalization:** Canonical event model shared across Helius and Alchemy ingestion
+- **Modular Alerts System:** `src/lib/alerts/` with types, cluster-detector, and converters
+- **Queue-Based Delivery:** Async notification processing via Vercel Cron
+
+---
+
+## Recent Updates: Phase 3A - Advanced Reputation Perks & Real-Time Intelligence
 
 ### 🆕 Comprehensive Reputation Tier System
 - **4-Tier Perk Structure**: Premium (100+), Whale (500+), Alpha (1000+), Elite (2000+)

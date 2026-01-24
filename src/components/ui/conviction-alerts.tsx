@@ -18,7 +18,17 @@ import {
   Volume2,
   VolumeX,
   Loader2,
+  Users,
+  Settings2,
 } from "lucide-react";
+import { NotificationSettings } from "@/components/ui/notification-settings";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface ApiAlert {
   id: string;
@@ -49,6 +59,23 @@ interface ApiAlert {
   txHash: string;
 }
 
+interface ClusterSignal {
+  id: string;
+  kind: "cluster";
+  chain: "solana" | "base";
+  tokenAddress: string;
+  tokenSymbol?: string;
+  windowMinutes: number;
+  uniqueTraders: Array<{
+    walletAddress: string;
+    traderId?: string;
+    trustScore?: number;
+  }>;
+  clusterSize: number;
+  avgTrustScore: number;
+  createdAtMs: number;
+}
+
 interface ConvictionAlertsProps {
   className?: string;
   onDataLoaded?: (hasData: boolean) => void;
@@ -59,11 +86,13 @@ export function ConvictionAlerts({
   onDataLoaded,
 }: ConvictionAlertsProps) {
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
+  const [clusters, setClusters] = useState<ClusterSignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [filter, setFilter] = useState<"all" | "high" | "critical">("all");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -77,9 +106,10 @@ export function ConvictionAlerts({
       }
       const data = await response.json();
       if (data.success) {
-        setAlerts(data.alerts);
+        setAlerts(data.alerts || []);
+        setClusters(data.clusters || []);
         setLastRefresh(new Date());
-        onDataLoaded?.(data.alerts.length > 0);
+        onDataLoaded?.((data.alerts || []).length > 0 || (data.clusters || []).length > 0);
       } else {
         throw new Error(data.error || "Unknown error");
       }
@@ -193,6 +223,19 @@ export function ConvictionAlerts({
                 <VolumeX className="w-3 h-3" />
               )}
             </Button>
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-xs" title="Alert settings">
+                  <Settings2 className="w-3 h-3" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-zinc-900 border-zinc-700">
+                <DialogHeader>
+                  <DialogTitle className="font-mono text-sm">Cluster Alert Settings</DialogTitle>
+                </DialogHeader>
+                <NotificationSettings userAddress="DEMO" />
+              </DialogContent>
+            </Dialog>
             <Button
               variant="ghost"
               size="sm"
@@ -243,7 +286,7 @@ export function ConvictionAlerts({
                 Fetching recent transactions from Base
               </div>
             </div>
-          ) : filteredAlerts.length === 0 ? (
+          ) : filteredAlerts.length === 0 && clusters.length === 0 ? (
             <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
               <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
                 No Alerts Detected
@@ -256,6 +299,61 @@ export function ConvictionAlerts({
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Cluster Signals */}
+              {clusters.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    Cluster Signals
+                  </div>
+                  <div className="space-y-2">
+                    {clusters.slice(0, 3).map((cluster) => (
+                      <div
+                        key={cluster.id}
+                        className="p-3 rounded-lg border-l-4 border-l-signal bg-signal/10 border border-signal/30"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-signal" />
+                            <span className="font-mono text-sm font-semibold text-foreground">
+                              {cluster.clusterSize} traders entered {cluster.tokenSymbol || formatAddress(cluster.tokenAddress)}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-xs px-1.5 py-0.5 rounded font-mono",
+                                cluster.chain === "solana"
+                                  ? "bg-purple-500/20 text-purple-300"
+                                  : "bg-blue-500/20 text-blue-300"
+                              )}
+                            >
+                              {cluster.chain.toUpperCase()}
+                            </span>
+                          </div>
+                          <span className="text-xs text-foreground-muted">
+                            Avg Trust: {cluster.avgTrustScore}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {cluster.uniqueTraders.slice(0, 5).map((t, i) => (
+                            <span
+                              key={i}
+                              className="text-xs px-2 py-0.5 bg-surface/50 rounded font-mono text-foreground-muted"
+                            >
+                              {t.traderId || formatAddress(t.walletAddress)}
+                              {t.trustScore && <span className="text-signal ml-1">({t.trustScore})</span>}
+                            </span>
+                          ))}
+                          {cluster.uniqueTraders.length > 5 && (
+                            <span className="text-xs text-foreground-muted">
+                              +{cluster.uniqueTraders.length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {filteredAlerts.map((alert) => (
                 <div
                   key={alert.id}

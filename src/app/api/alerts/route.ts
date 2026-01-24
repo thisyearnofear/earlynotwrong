@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WATCHLIST, findTraderByWallet } from "@/lib/watchlist";
+import { getWatchlist, findTraderByWallet } from "@/lib/watchlist";
 import { APP_CONFIG } from "@/lib/config";
 import { ethosClient } from "@/lib/ethos";
-import { getList, setCached, getCached } from "@/lib/kv-cache";
+import { getList, setCached, pushToList } from "@/lib/kv-cache";
+import { fromAlchemyTransfer, processTradeEvent } from "@/lib/alerts";
+import { trustResolver } from "@/lib/services/trust-resolver";
+import { enqueueClusterNotifications } from "@/lib/notifications";
+import type { ClusterSignal } from "@/lib/alerts/types";
 
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
 const SOLANA_ALERTS_KEY = "solana:realtime:alerts";
@@ -243,6 +247,17 @@ export async function GET(request: NextRequest) {
     const minValue = parseInt(searchParams.get("minValue") || "100");
     const limit = parseInt(searchParams.get("limit") || "20");
     const chain = searchParams.get("chain") as "solana" | "base" | null;
+    const kind = searchParams.get("kind") as "trade" | "cluster" | "all" | null;
+
+    // Fetch cluster signals from KV
+    let clusterSignals: ClusterSignal[] = [];
+    if (kind !== "trade") {
+      try {
+        clusterSignals = await getList<ClusterSignal>("cluster:signals", 0, limit - 1);
+      } catch {
+        // KV not available
+      }
+    }
 
     // Try to get real-time Solana alerts from KV (populated by Helius webhooks)
     let solanaAlerts: ConvictionAlert[] = [];
@@ -289,7 +304,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch Base transactions (with caching)
-    const baseTraders = WATCHLIST.filter((t) => t.chain === "base");
+    const watchlist = await getWatchlist();
+    const baseTraders = watchlist.filter((t) => t.chain === "base");
 
     // Fetch in parallel but with some rate limiting
     const allTransfers: TokenTransfer[] = [];
@@ -334,6 +350,23 @@ export async function GET(request: NextRequest) {
         }
 
         const { type, severity } = classifyAlert(transfer);
+
+        // Process for cluster detection (same as Helius webhook)
+        const tradeEvent = fromAlchemyTransfer(transfer, trader.id);
+        if (tradeEvent) {
+          const trust = await trustResolver.resolve(
+            transfer.walletAddress,
+            trader.socials?.twitter
+          );
+          tradeEvent.unifiedTrustScore = trust.score;
+          tradeEvent.unifiedTrustTier = trust.tier;
+
+          const clusterSignal = await processTradeEvent(tradeEvent);
+          if (clusterSignal) {
+            await pushToList("cluster:signals", clusterSignal, 100);
+            await enqueueClusterNotifications(clusterSignal);
+          }
+        }
 
         return {
           id: `${transfer.hash}-${transfer.tokenAddress}`,
@@ -387,18 +420,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Filter based on kind param
+    let responseAlerts = allAlerts;
+    let responseClusters = clusterSignals;
+
+    if (kind === "trade") {
+      responseClusters = [];
+    } else if (kind === "cluster") {
+      responseAlerts = [];
+    }
+
     return NextResponse.json({
       success: true,
-      alerts: allAlerts,
-      count: allAlerts.length,
+      alerts: responseAlerts,
+      clusters: responseClusters,
+      count: responseAlerts.length + responseClusters.length,
       meta: {
         hoursBack,
         minValue,
-        tradersMonitored: baseTraders.length + WATCHLIST.filter((t) => t.chain === "solana").length,
-        walletsScanned: WATCHLIST.reduce((sum, t) => sum + t.wallets.length, 0),
+        kind: kind || "all",
+        tradersMonitored: baseTraders.length + watchlist.filter((t) => t.chain === "solana").length,
+        walletsScanned: watchlist.reduce((sum, t) => sum + t.wallets.length, 0),
         sources: {
           solanaRealtime: solanaAlerts.length,
           basePolled: baseAlerts.length,
+          clusters: responseClusters.length,
         },
       },
     });

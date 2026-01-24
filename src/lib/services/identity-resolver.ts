@@ -247,11 +247,10 @@ export class IdentityResolverService {
         const scoreFromUserKey = scoreByUserKey.status === "fulfilled" ? scoreByUserKey.value : null;
         const profileFromUserKey = profileByUserKey.status === "fulfilled" ? profileByUserKey.value : null;
 
-        // Use UserKey data if better than current best
-        const currentScore = finalEthosData.score?.score ?? 0;
+        // Use UserKey data if available (we're in the !finalEthosData.score branch, so current is 0)
         const newScore = scoreFromUserKey?.score ?? 0;
         
-        if (newScore > 0 && newScore > currentScore) {
+        if (newScore > 0) {
           finalEthosData = {
             score: scoreFromUserKey,
             profile: profileFromUserKey,
@@ -482,7 +481,9 @@ export class IdentityResolverService {
   private selectBestEthosData(
     datasets: Array<{ score: EthosScore | null; profile: EthosProfile | null }>
   ): { score: EthosScore | null; profile: EthosProfile | null } {
-    const validDatasets = datasets.filter(d => d.score !== null);
+    const validDatasets = datasets.filter(
+      (d): d is { score: EthosScore; profile: EthosProfile | null } => d.score !== null
+    );
     
     if (validDatasets.length === 0) {
       return { score: null, profile: null };
@@ -490,7 +491,7 @@ export class IdentityResolverService {
 
     // Sort by score (highest first)
     const sorted = validDatasets.sort((a, b) => 
-      (b.score?.score || 0) - (a.score?.score || 0)
+      (b.score.score || 0) - (a.score.score || 0)
     );
 
     return sorted[0];
