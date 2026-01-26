@@ -44,6 +44,30 @@ CREATE INDEX IF NOT EXISTS idx_analyses_score ON conviction_analyses(score DESC)
 CREATE INDEX IF NOT EXISTS idx_analyses_percentile ON conviction_analyses(percentile DESC);
 CREATE INDEX IF NOT EXISTS idx_analyses_analyzed_at ON conviction_analyses(analyzed_at DESC);
 
+-- Table: Position snapshots for token-centric queries
+-- Links analyses to the tokens they held (lightweight, query-optimized)
+CREATE TABLE IF NOT EXISTS analysis_positions (
+  id SERIAL PRIMARY KEY,
+  analysis_id INTEGER NOT NULL REFERENCES conviction_analyses(id) ON DELETE CASCADE,
+  wallet_address VARCHAR(64) NOT NULL,
+  chain VARCHAR(10) NOT NULL CHECK (chain IN ('solana', 'base')),
+  token_address VARCHAR(64) NOT NULL,
+  token_symbol VARCHAR(20),
+  
+  -- Key metrics for filtering/display
+  realized_pnl DECIMAL(20,2),
+  holding_days INTEGER,
+  is_early_exit BOOLEAN DEFAULT FALSE,
+  is_profitable BOOLEAN DEFAULT FALSE,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for token-centric queries
+CREATE INDEX IF NOT EXISTS idx_positions_token ON analysis_positions(token_address, chain);
+CREATE INDEX IF NOT EXISTS idx_positions_wallet ON analysis_positions(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_positions_analysis ON analysis_positions(analysis_id);
+
 -- Table: Editable watchlist (includes community nominations)
 CREATE TABLE IF NOT EXISTS watchlist_traders (
   id SERIAL PRIMARY KEY,

@@ -349,15 +349,22 @@ export function useConviction() {
             parameters,
           );
 
-          // Save to Postgres with trust scores
+          // Save to Postgres with trust scores and positions
           const currentTrustScore = useAppStore.getState().unifiedTrustScore;
           saveConvictionAnalysis(
             activeAddress,
             chain,
             batchResult.metrics,
             parameters.timeHorizon,
-            !!addressOrShowcaseId,
-            currentTrustScore
+            !!targetShowcase, // isShowcase - only true for showcase wallets, not for custom addresses
+            currentTrustScore,
+            batchResult.positions.map(p => ({
+              tokenAddress: p.tokenAddress,
+              tokenSymbol: p.tokenSymbol,
+              realizedPnL: p.realizedPnL,
+              holdingPeriodDays: p.holdingPeriodDays,
+              isEarlyExit: p.isEarlyExit,
+            }))
           );
         } catch (error) {
           console.error("Transaction analysis failed:", error);

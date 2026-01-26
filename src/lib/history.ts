@@ -31,6 +31,14 @@ export function getConvictionHistory(): HistoricalAnalysis[] {
   }
 }
 
+export interface PositionForStorage {
+  tokenAddress: string;
+  tokenSymbol?: string;
+  realizedPnL: number;
+  holdingPeriodDays: number;
+  isEarlyExit: boolean;
+}
+
 /**
  * Save analysis to Postgres (fire and forget, non-blocking)
  */
@@ -39,7 +47,8 @@ async function saveToPostgres(
   chain: "solana" | "base",
   metrics: ConvictionMetrics,
   timeHorizon: number,
-  trustScore?: UnifiedTrustScore | null
+  trustScore?: UnifiedTrustScore | null,
+  positions?: PositionForStorage[]
 ): Promise<void> {
   try {
     await fetch("/api/analysis", {
@@ -53,7 +62,14 @@ async function saveToPostgres(
         identity: trustScore ? {
           unifiedTrustScore: trustScore.score,
           unifiedTrustTier: trustScore.tier
-        } : undefined
+        } : undefined,
+        positions: positions?.map(p => ({
+          tokenAddress: p.tokenAddress,
+          tokenSymbol: p.tokenSymbol,
+          realizedPnL: p.realizedPnL,
+          holdingPeriodDays: p.holdingPeriodDays,
+          isEarlyExit: p.isEarlyExit,
+        })),
       }),
     });
   } catch {
@@ -69,7 +85,8 @@ export function saveConvictionAnalysis(
   metrics: ConvictionMetrics,
   timeHorizon: number,
   isShowcase: boolean = false,
-  trustScore?: UnifiedTrustScore | null
+  trustScore?: UnifiedTrustScore | null,
+  positions?: PositionForStorage[]
 ): HistoricalAnalysis {
   const history = getConvictionHistory();
 
@@ -94,7 +111,7 @@ export function saveConvictionAnalysis(
 
   // Also save to Postgres for real cohort data (non-blocking)
   if (!isShowcase) {
-    saveToPostgres(address, chain, metrics, timeHorizon, trustScore);
+    saveToPostgres(address, chain, metrics, timeHorizon, trustScore, positions);
   }
 
   return analysis;

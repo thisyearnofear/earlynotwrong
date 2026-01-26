@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { saveAnalysis, getAnalysesByAddress } from "@/lib/db/postgres";
+import { saveAnalysis, savePositions, getAnalysesByAddress } from "@/lib/db/postgres";
 import { ConvictionMetrics } from "@/lib/market";
 
 /**
@@ -14,7 +14,7 @@ import { ConvictionMetrics } from "@/lib/market";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { address, chain, metrics, timeHorizon, identity } = body as {
+    const { address, chain, metrics, timeHorizon, identity, positions } = body as {
       address: string;
       chain: "solana" | "base";
       metrics: ConvictionMetrics;
@@ -26,6 +26,13 @@ export async function POST(request: NextRequest) {
         unifiedTrustScore?: number;
         unifiedTrustTier?: string;
       };
+      positions?: Array<{
+        tokenAddress: string;
+        tokenSymbol?: string;
+        realizedPnL: number;
+        holdingPeriodDays: number;
+        isEarlyExit: boolean;
+      }>;
     };
 
     if (!address || !chain || !metrics) {
@@ -54,6 +61,13 @@ export async function POST(request: NextRequest) {
         { error: "Failed to save analysis" },
         { status: 500 }
       );
+    }
+
+    // Save positions for token-centric queries (non-blocking)
+    if (positions && positions.length > 0) {
+      savePositions(result.id, address, chain, positions).catch(err => {
+        console.warn("Failed to save positions (non-blocking):", err);
+      });
     }
 
     return NextResponse.json({

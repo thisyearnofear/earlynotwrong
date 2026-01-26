@@ -557,6 +557,154 @@ function mapPersonalWatchlistRow(row: Record<string, unknown>): PersonalWatchlis
 }
 
 // =============================================================================
+// Position Storage (Token-Centric Queries)
+// =============================================================================
+
+export interface PositionSnapshot {
+  walletAddress: string;
+  chain: "solana" | "base";
+  tokenAddress: string;
+  tokenSymbol: string | null;
+  realizedPnl: number | null;
+  holdingDays: number | null;
+  isEarlyExit: boolean;
+  isProfitable: boolean;
+}
+
+/**
+ * Save position snapshots for an analysis (for token-centric queries)
+ */
+export async function savePositions(
+  analysisId: number,
+  walletAddress: string,
+  chain: "solana" | "base",
+  positions: Array<{
+    tokenAddress: string;
+    tokenSymbol?: string;
+    realizedPnL: number;
+    holdingPeriodDays: number;
+    isEarlyExit: boolean;
+  }>
+): Promise<void> {
+  if (positions.length === 0) return;
+  
+  try {
+    // Delete existing positions for this analysis (in case of re-analysis)
+    await sql`DELETE FROM analysis_positions WHERE analysis_id = ${analysisId}`;
+    
+    // Insert new positions (batch insert)
+    for (const pos of positions) {
+      await sql`
+        INSERT INTO analysis_positions (
+          analysis_id, wallet_address, chain, token_address, token_symbol,
+          realized_pnl, holding_days, is_early_exit, is_profitable
+        ) VALUES (
+          ${analysisId},
+          ${walletAddress.toLowerCase()},
+          ${chain},
+          ${pos.tokenAddress.toLowerCase()},
+          ${pos.tokenSymbol || null},
+          ${pos.realizedPnL},
+          ${pos.holdingPeriodDays},
+          ${pos.isEarlyExit},
+          ${pos.realizedPnL > 0}
+        )
+      `;
+    }
+  } catch (error) {
+    console.warn("Failed to save positions:", error);
+  }
+}
+
+/**
+ * Find wallets that held a specific token
+ */
+export async function getWalletsByToken(
+  tokenAddress: string,
+  chain: "solana" | "base",
+  limit: number = 20
+): Promise<Array<{
+  walletAddress: string;
+  tokenSymbol: string | null;
+  realizedPnl: number | null;
+  holdingDays: number | null;
+  isProfitable: boolean;
+  convictionScore: number | null;
+  farcasterUsername: string | null;
+  analyzedAt: Date;
+}>> {
+  try {
+    const result = await sql`
+      SELECT DISTINCT ON (ap.wallet_address)
+        ap.wallet_address,
+        ap.token_symbol,
+        ap.realized_pnl,
+        ap.holding_days,
+        ap.is_profitable,
+        ca.score as conviction_score,
+        ca.farcaster_username,
+        ca.analyzed_at
+      FROM analysis_positions ap
+      JOIN conviction_analyses ca ON ap.analysis_id = ca.id
+      WHERE ap.token_address = ${tokenAddress.toLowerCase()}
+        AND ap.chain = ${chain}
+      ORDER BY ap.wallet_address, ca.analyzed_at DESC
+      LIMIT ${limit}
+    `;
+    
+    return result.rows.map(row => ({
+      walletAddress: row.wallet_address as string,
+      tokenSymbol: row.token_symbol as string | null,
+      realizedPnl: row.realized_pnl ? Number(row.realized_pnl) : null,
+      holdingDays: row.holding_days ? Number(row.holding_days) : null,
+      isProfitable: row.is_profitable as boolean,
+      convictionScore: row.conviction_score ? Number(row.conviction_score) : null,
+      farcasterUsername: row.farcaster_username as string | null,
+      analyzedAt: new Date(row.analyzed_at as string),
+    }));
+  } catch (error) {
+    console.warn("Failed to get wallets by token:", error);
+    return [];
+  }
+}
+
+/**
+ * Check if wallets in a user's radar also hold a token
+ */
+export async function getRadarOverlapForToken(
+  userAddress: string,
+  tokenAddress: string,
+  chain: "solana" | "base"
+): Promise<Array<{
+  walletAddress: string;
+  name: string | null;
+  isProfitable: boolean;
+}>> {
+  try {
+    const result = await sql`
+      SELECT 
+        pw.watched_address as wallet_address,
+        pw.name,
+        ap.is_profitable
+      FROM personal_watchlists pw
+      JOIN analysis_positions ap ON ap.wallet_address = pw.watched_address AND ap.chain = pw.chain
+      WHERE pw.user_address = ${userAddress.toLowerCase()}
+        AND ap.token_address = ${tokenAddress.toLowerCase()}
+        AND ap.chain = ${chain}
+    `;
+    
+    return result.rows.map(row => ({
+      walletAddress: row.wallet_address as string,
+      name: row.name as string | null,
+      isProfitable: row.is_profitable as boolean,
+    }));
+  } catch (error) {
+    console.warn("Failed to get radar overlap:", error);
+    return [];
+  }
+}
+
+// =============================================================================
 // Health Check
 // =============================================================================
 

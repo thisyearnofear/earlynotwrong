@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { PositionAnalysis } from "@/lib/api-client";
@@ -11,8 +11,19 @@ import {
   AlertTriangle,
   ExternalLink,
   Users,
+  Loader2,
 } from "lucide-react";
 import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
+import { useConviction } from "@/hooks/use-conviction";
+
+interface TokenHolder {
+  walletAddress: string;
+  tokenSymbol: string | null;
+  realizedPnl: number | null;
+  isProfitable: boolean;
+  convictionScore: number | null;
+  farcasterUsername: string | null;
+}
 
 interface PositionExplorerProps {
   positions: PositionAnalysis[];
@@ -36,6 +47,27 @@ function PositionCard({
   const isProfitable = position.realizedPnL > 0;
   const hasCounterfactual =
     position.counterfactual && position.counterfactual.missedGainDollars > 0;
+
+  const [holders, setHolders] = useState<TokenHolder[]>([]);
+  const [holdersLoading, setHoldersLoading] = useState(false);
+  const [holdersLoaded, setHoldersLoaded] = useState(false);
+  
+  const { analyzeWallet } = useConviction();
+
+  const loadHolders = useCallback(async () => {
+    if (holdersLoaded || holdersLoading) return;
+    setHoldersLoading(true);
+    try {
+      const res = await fetch(`/api/tokens/holders?token=${position.tokenAddress}&chain=${chain}&limit=5`);
+      const data = await res.json();
+      setHolders(data.holders || []);
+      setHoldersLoaded(true);
+    } catch {
+      setHolders([]);
+    } finally {
+      setHoldersLoading(false);
+    }
+  }, [position.tokenAddress, chain, holdersLoaded, holdersLoading]);
 
   const explorerUrl =
     chain === "solana"
@@ -297,6 +329,14 @@ function PositionCard({
                   )}
                 </div>
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); loadHolders(); }}
+                    className="flex items-center gap-1 text-xs text-foreground-muted hover:text-patience transition-colors"
+                    title="See other wallets that held this token"
+                  >
+                    {holdersLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Users className="w-3 h-3" />}
+                    Who Holds This?
+                  </button>
                   <a
                     href={`https://dexscreener.com/search?q=${position.tokenAddress}`}
                     target="_blank"
@@ -304,7 +344,6 @@ function PositionCard({
                     className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground transition-colors"
                     title="View token on DexScreener"
                   >
-                    <Users className="w-3 h-3" />
                     Market Data
                   </a>
                   <a
@@ -313,11 +352,54 @@ function PositionCard({
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 text-xs text-signal hover:text-signal/80 transition-colors"
                   >
-                    View on Explorer
+                    Explorer
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               </div>
+
+              {/* Other Holders Section */}
+              {holdersLoaded && (
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  {holders.length === 0 ? (
+                    <div className="text-[10px] text-foreground-muted text-center py-2">
+                      No other analyzed wallets hold this token yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+                        Other Holders ({holders.length})
+                      </div>
+                      {holders.map((holder) => (
+                        <button
+                          key={holder.walletAddress}
+                          onClick={(e) => { e.stopPropagation(); analyzeWallet(holder.walletAddress); }}
+                          className="w-full flex items-center justify-between p-2 rounded bg-surface/30 hover:bg-surface/50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-foreground">
+                              {holder.farcasterUsername 
+                                ? `@${holder.farcasterUsername}` 
+                                : `${holder.walletAddress.slice(0,6)}...${holder.walletAddress.slice(-4)}`}
+                            </span>
+                            {holder.convictionScore && (
+                              <span className="text-[10px] px-1 rounded bg-signal/10 text-signal">
+                                CI: {holder.convictionScore}
+                              </span>
+                            )}
+                          </div>
+                          <span className={cn(
+                            "text-[10px] font-mono",
+                            holder.isProfitable ? "text-patience" : "text-impatience"
+                          )}>
+                            {holder.isProfitable ? "Profit" : "Loss"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
