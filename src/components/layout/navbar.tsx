@@ -5,7 +5,7 @@ import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Search, Shield, Users, Zap, Crown, TrendingUp } from "lucide-react";
+import { Sun, Moon, Search, Shield, Users, Zap, Crown, TrendingUp, Menu, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ import {
 } from "@/lib/ethos-gates";
 import { cn } from "@/lib/utils";
 import { ReputationPerks } from "@/components/ui/reputation-perks";
+import { AnimatePresence, motion } from "framer-motion";
 
 const TierIcon = ({
   icon,
@@ -50,6 +51,7 @@ export function Navbar() {
   const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode } = useAppStore();
   const { analyzeWallet } = useConviction();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
 
   const currentScore = isShowcaseMode ? 9999 : (ethosScore?.score || 0);
@@ -91,154 +93,273 @@ export function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-md h-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="font-bold text-lg tracking-tight text-foreground hover:text-white transition-colors flex items-center gap-1"
-            >
-              EARLY<span className="text-foreground-muted">,</span> NOT WRONG
-            </Link>
-            <span className="hidden md:inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-mono font-medium text-foreground-dim bg-surface border border-border rounded-full uppercase tracking-wider">
-              Beta
-            </span>
+    <>
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-md h-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+          <div className="flex items-center gap-4 lg:gap-6">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link
+                href="/"
+                className="font-bold text-base sm:text-lg tracking-tight text-foreground hover:text-white transition-colors flex items-center gap-1"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <span className="hidden sm:inline">EARLY</span>
+                <span className="sm:hidden">ENW</span>
+                <span className="text-foreground-muted hidden sm:inline">,</span>
+                <span className="hidden sm:inline"> NOT WRONG</span>
+              </Link>
+              <span className="hidden md:inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-mono font-medium text-foreground-dim bg-surface border border-border rounded-full uppercase tracking-wider">
+                Beta
+              </span>
+            </div>
+
+            <div className="hidden lg:flex items-center gap-1">
+              <Link
+                href="/features"
+                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Features
+              </Link>
+              <Link
+                href="/leaderboard"
+                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                Leaderboard
+              </Link>
+              <Link
+                href="/discovery"
+                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Alpha
+              </Link>
+            </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-1">
-            <Link
-              href="/features"
-              className="px-3 py-1.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2"
-            >
-              <Shield className="w-3.5 h-3.5" />
-              Features
-            </Link>
-            <Link
-              href="/leaderboard"
-              className="px-3 py-1.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2"
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              Leaderboard
-            </Link>
-            <Link
-              href="/discovery"
-              className="px-3 py-1.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              Alpha
-            </Link>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {/* Showcase Mode Toggle (Demo Mode) */}
-          <div className="hidden md:flex items-center gap-2 pr-2 border-r border-border">
-            <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-tighter">Demo</span>
-            <button
-              onClick={() => toggleShowcaseMode()}
-              className={cn(
-                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-                isShowcaseMode ? "bg-signal" : "bg-surface"
-              )}
-            >
-              <span
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Showcase Mode Toggle (Demo Mode) */}
+            <div className="hidden md:flex items-center gap-2 pr-2 border-r border-border">
+              <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-tighter">Demo</span>
+              <button
+                onClick={() => toggleShowcaseMode()}
                 className={cn(
-                  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform",
-                  isShowcaseMode ? "translate-x-4" : "translate-x-0"
+                  "relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+                  isShowcaseMode ? "bg-signal" : "bg-surface"
                 )}
-              />
-            </button>
-          </div>
-
-          {/* Ethos Status Badge */}
-          {(currentScore > 0 || isShowcaseMode) && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <div
+              >
+                <span
                   className={cn(
-                    "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-mono cursor-pointer hover:opacity-80 transition-opacity",
-                    tierInfo.bgColor,
-                    tierInfo.borderColor,
+                    "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform",
+                    isShowcaseMode ? "translate-x-5" : "translate-x-0.5"
                   )}
-                  title={`Ethos ${currentScore} • ${tierInfo.name}${nextUnlocks ? ` • ${nextUnlocks.pointsAway} to ${nextUnlocks.nextTier}` : ""}`}
+                />
+              </button>
+            </div>
+
+            {/* Ethos Status Badge - Desktop */}
+            {(currentScore > 0 || isShowcaseMode) && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    className={cn(
+                      "hidden md:flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-mono cursor-pointer hover:opacity-80 transition-opacity min-h-[44px]",
+                      tierInfo.bgColor,
+                      tierInfo.borderColor,
+                    )}
+                    title={`Ethos ${currentScore} • ${tierInfo.name}${nextUnlocks ? ` • ${nextUnlocks.pointsAway} to ${nextUnlocks.nextTier}` : ""}`}
+                  >
+                    <TierIcon icon={tierInfo.icon} className={tierInfo.color} />
+                    <span className={tierInfo.color}>{currentScore}</span>
+                    <span className="text-foreground-muted">•</span>
+                    <span className="text-foreground-dim uppercase">
+                      {tierInfo.name}
+                    </span>
+                    {nextUnlocks && (
+                      <>
+                        <span className="text-foreground-muted">→</span>
+                        <span className="text-foreground-muted">
+                          {nextUnlocks.requiredScore}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Your Ethos Status</DialogTitle>
+                  </DialogHeader>
+                  <div className="py-2">
+                    <ReputationPerks />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {/* Mobile Ethos Badge - Compact */}
+            {(currentScore > 0 || isShowcaseMode) && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    className={cn(
+                      "flex md:hidden items-center justify-center w-10 h-10 rounded-full border text-xs font-mono cursor-pointer hover:opacity-80 transition-opacity",
+                      tierInfo.bgColor,
+                      tierInfo.borderColor,
+                    )}
+                  >
+                    <TierIcon icon={tierInfo.icon} className={cn(tierInfo.color, "w-4 h-4")} />
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Your Ethos Status</DialogTitle>
+                  </DialogHeader>
+                  <div className="py-2">
+                    <ReputationPerks />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {currentScore === 0 && !isShowcaseMode && (
+              <div className="hidden md:flex items-center gap-2 text-xs font-mono text-foreground-muted mr-2">
+                <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
+                SYSTEM ONLINE
+              </div>
+            )}
+
+            <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 text-foreground-muted hover:text-foreground"
                 >
-                  <TierIcon icon={tierInfo.icon} className={tierInfo.color} />
-                  <span className={tierInfo.color}>{currentScore}</span>
-                  <span className="text-foreground-muted">•</span>
-                  <span className="text-foreground-dim uppercase">
-                    {tierInfo.name}
-                  </span>
-                  {nextUnlocks && (
-                    <>
-                      <span className="text-foreground-muted">→</span>
-                      <span className="text-foreground-muted">
-                        {nextUnlocks.requiredScore}
-                      </span>
-                    </>
-                  )}
-                </div>
+                  <Search className="w-5 h-5" />
+                </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+              <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Your Ethos Status</DialogTitle>
+                  <DialogTitle>Analyze Any Wallet</DialogTitle>
+                  <DialogDescription>
+                    Enter an address, ENS, or Farcaster handle to inspect
+                    conviction.
+                  </DialogDescription>
                 </DialogHeader>
-                <div className="py-2">
-                  <ReputationPerks />
+                <div className="py-4">
+                  <WalletSearchInput
+                    onWalletSelected={handleWalletSelected}
+                    className="max-w-none"
+                  />
                 </div>
               </DialogContent>
             </Dialog>
-          )}
 
-          {currentScore === 0 && !isShowcaseMode && (
-            <div className="hidden md:flex items-center gap-2 text-xs font-mono text-foreground-muted mr-2">
-              <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
-              SYSTEM ONLINE
-            </div>
-          )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-foreground-muted hover:text-foreground"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? (
+                <Sun className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              )}
+            </Button>
 
-          <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-foreground-muted hover:text-foreground"
-              >
-                <Search className="w-4 h-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Analyze Any Wallet</DialogTitle>
-                <DialogDescription>
-                  Enter an address, ENS, or Farcaster handle to inspect
-                  conviction.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <WalletSearchInput
-                  onWalletSelected={handleWalletSelected}
-                  className="max-w-none"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
+            <WalletConnect className="h-10 px-3 hidden sm:flex" />
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-foreground-muted hover:text-foreground"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-          </Button>
-          <WalletConnect className="h-8 px-3" />
+            {/* Mobile Menu Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-foreground-muted hover:text-foreground lg:hidden"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? (
+                <X className="w-5 h-5" />
+              ) : (
+                <Menu className="w-5 h-5" />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      {/* Mobile Menu Overlay */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-b border-border lg:hidden"
+          >
+            <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
+              {/* Mobile Navigation Links */}
+              <Link
+                href="/features"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
+              >
+                <Shield className="w-5 h-5" />
+                Features
+              </Link>
+              <Link
+                href="/leaderboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
+              >
+                <TrendingUp className="w-5 h-5" />
+                Leaderboard
+              </Link>
+              <Link
+                href="/discovery"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
+              >
+                <Zap className="w-5 h-5" />
+                Alpha Discovery
+              </Link>
+
+              {/* Mobile Demo Toggle */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-surface/30 min-h-[48px]">
+                <span className="text-sm font-mono text-foreground-muted">Demo Mode</span>
+                <button
+                  onClick={() => toggleShowcaseMode()}
+                  className={cn(
+                    "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                    isShowcaseMode ? "bg-signal" : "bg-surface"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform",
+                      isShowcaseMode ? "translate-x-6" : "translate-x-0.5"
+                    )}
+                  />
+                </button>
+              </div>
+
+              {/* Mobile Wallet Connect */}
+              <div className="px-4 py-3 sm:hidden">
+                <WalletConnect className="w-full h-12 justify-center" />
+              </div>
+
+              {/* Mobile Status */}
+              {currentScore === 0 && !isShowcaseMode && (
+                <div className="flex items-center gap-2 px-4 py-3 text-sm font-mono text-foreground-muted">
+                  <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
+                  SYSTEM ONLINE
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

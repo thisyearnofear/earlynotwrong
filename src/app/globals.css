@@ -84,6 +84,8 @@ body {
     transition:
         background-color 0.5s ease,
         color 0.5s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 /* Custom Utilities for Aesthetic */
@@ -122,5 +124,29 @@ body {
     .no-scrollbar {
         -ms-overflow-style: none;
         scrollbar-width: none;
+    }
+
+    /* Touch-friendly tap targets */
+    .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Safe area padding for notched devices */
+    .safe-area-inset {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* Prevent text selection on interactive elements */
+    .no-select {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    /* Smooth momentum scrolling on iOS */
+    .momentum-scroll {
+        -webkit-overflow-scrolling: touch;
     }
 }
