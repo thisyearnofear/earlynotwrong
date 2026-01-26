@@ -1,4 +1,28 @@
 {
+  "miniapp": {
+    "version": "1",
+    "name": "Early, Not Wrong",
+    "homeUrl": "https://earlynotwrong.vercel.app",
+    "iconUrl": "https://earlynotwrong.vercel.app/icon-1024.png",
+    "splashImageUrl": "https://earlynotwrong.vercel.app/splash-200.png",
+    "splashBackgroundColor": "#050505",
+    "webhookUrl": "https://earlynotwrong.vercel.app/api/farcaster/webhook",
+    "subtitle": "On-chain conviction analysis",
+    "description": "Analyze trading behavior to distinguish bad timing from bad thesis. Get your conviction score.",
+    "primaryCategory": "finance",
+    "tags": [
+      "trading",
+      "defi",
+      "analytics",
+      "onchain",
+      "conviction"
+    ],
+    "heroImageUrl": "https://earlynotwrong.vercel.app/api/og",
+    "tagline": "Being early",
+    "ogTitle": "Early, Not Wrong",
+    "ogDescription": "On-chain behavioral analysis to prove conviction",
+    "ogImageUrl": "https://earlynotwrong.vercel.app/api/og"
+  },
   "accountAssociation": {
     "header": "eyJmaWQiOjUyNTQsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHg4QjAzQTJDMzY1YzI2MUFlQmU2ODQyMjREQkI2Qzk1OTJhQkNkRkIyIn0",
     "payload": "eyJkb21haW4iOiJlYXJseW5vdHdyb25nLnZlcmNlbC5hcHAifQ",
