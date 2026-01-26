@@ -278,7 +278,7 @@ export class IdentityResolverService {
     }
 
     // Get unified trust score (Ethos + FairScale for Solana)
-    const unifiedTrust = await trustResolver.resolve(address, twitterHandle);
+    const unifiedTrust = await trustResolver.resolve(address, twitterHandle, foundSolanaAddress || undefined);
     if (unifiedTrust.score > 0) {
       resolutionPath.push(`trust-resolved:${unifiedTrust.primaryProvider}`);
     }

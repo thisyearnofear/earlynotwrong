@@ -71,6 +71,7 @@ import { UnifiedTrustCard } from "@/components/ui/unified-trust-card";
 import { FairScaleCard } from "@/components/ui/fairscale-card";
 import { CapabilitiesGrid } from "@/components/ui/capabilities-grid";
 import { PublicClusterSignals } from "@/components/ui/public-cluster-signals";
+import { AnalysisFilters } from "@/components/ui/analysis-filters";
 
 export default function Home() {
   const {
@@ -597,6 +598,11 @@ export default function Home() {
                           👆 Enter any wallet address, ENS name, or Farcaster handle to analyze their trading conviction
                         </p>
                       )}
+                    </div>
+
+                    {/* Advanced Filters */}
+                    <div className="w-full max-w-md">
+                      <AnalysisFilters />
                     </div>
 
                     <div className="flex flex-col items-center gap-3">

@@ -7,6 +7,7 @@ import { fromAlchemyTransfer, processTradeEvent } from "@/lib/alerts";
 import { trustResolver } from "@/lib/services/trust-resolver";
 import { enqueueClusterNotifications } from "@/lib/notifications";
 import type { ClusterSignal } from "@/lib/alerts/types";
+import { sql } from "@vercel/postgres";
 
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
 const SOLANA_ALERTS_KEY = "solana:realtime:alerts";

@@ -21,7 +21,7 @@ import { APP_CONFIG } from '@/lib/config';
 export interface UnifiedTrustScore {
   // Primary normalized score (0-100)
   score: number;
-  
+
   // Provider-specific data
   providers: {
     ethos?: {
@@ -39,11 +39,11 @@ export interface UnifiedTrustScore {
       features?: any;                // Detailed feature breakdown
     };
   };
-  
+
   // Unified metadata
   tier: 'unknown' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
   credibilityLevel: 'unknown' | 'low' | 'medium' | 'high' | 'elite';
-  
+
   // Feature access (normalized across providers)
   features: {
     canAccessPremium: boolean;
@@ -51,7 +51,7 @@ export interface UnifiedTrustScore {
     canAccessAlphaSignals: boolean;
     canAccessEliteInsights: boolean;
   };
-  
+
   // Metadata
   primaryProvider: 'ethos' | 'fairscale' | 'none';
   resolvedAt: string;
@@ -64,12 +64,12 @@ export class TrustResolverService {
   /**
    * Resolve trust score for any address
    */
-  async resolve(address: string, twitter?: string): Promise<UnifiedTrustScore> {
+  async resolve(address: string, twitter?: string, knownSolanaAddress?: string): Promise<UnifiedTrustScore> {
     const isSolana = this.isSolanaAddress(address);
-    
+
     // ENHANCEMENT: Try to bridge via Farcaster first to find linked addresses
     let linkedEthAddress: string | null = null;
-    let linkedSolAddress: string | null = null;
+    let linkedSolAddress: string | null = knownSolanaAddress || null;
     let farcasterUsername: string | null = null;
 
     try {
@@ -77,8 +77,10 @@ export class TrustResolverService {
       const fcIdentity = await ethosClient.resolveFarcasterIdentity(address);
       if (fcIdentity) {
         farcasterUsername = fcIdentity.username;
-        linkedEthAddress = fcIdentity.verifiedAddresses.ethAddresses[0] || null;
-        linkedSolAddress = fcIdentity.verifiedAddresses.solAddresses[0] || null;
+        linkedEthAddress = fcIdentity.verifiedAddresses?.ethAddresses?.[0] || null;
+        if (!linkedSolAddress) {
+          linkedSolAddress = fcIdentity.verifiedAddresses?.solAddresses?.[0] || null;
+        }
       }
     } catch (e) {
       console.warn("Farcaster bridge resolution failed:", e);
@@ -107,9 +109,9 @@ export class TrustResolverService {
     // Try Ethos via linked EVM address OR Twitter UserKey
     let ethosScore = null;
     let ethosProfile = null;
-    
+
     const ethAddressToQuery = linkedEthAddress || null;
-    
+
     if (ethAddressToQuery) {
       [ethosScore, ethosProfile] = await Promise.all([
         cachedEthosService.getWalletEthosData(ethAddressToQuery).then(d => d.score),
@@ -136,7 +138,7 @@ export class TrustResolverService {
   private async resolveEthereum(address: string, linkedSolAddress?: string | null): Promise<UnifiedTrustScore> {
     // Ethos is primary for Ethereum
     const ethosData = await cachedEthosService.getWalletEthosData(address);
-    
+
     // ENHANCEMENT: Also check FairScale if we have a linked Solana address
     let fairscaleScore = null;
     if (linkedSolAddress) {
@@ -168,9 +170,9 @@ export class TrustResolverService {
 
     // Select primary score (prefer higher score)
     const primaryScore = Math.max(ethosNormalized, fairscaleNormalized);
-    const primaryProvider = 
+    const primaryProvider =
       ethosNormalized > fairscaleNormalized ? 'ethos' :
-      fairscaleNormalized > 0 ? 'fairscale' : 'none';
+        fairscaleNormalized > 0 ? 'fairscale' : 'none';
 
     // Determine unified tier and credibility
     const { tier, credibilityLevel } = this.determineTierAndCredibility(primaryScore);
@@ -219,7 +221,7 @@ export class TrustResolverService {
    */
   private getEthosTier(score: number): string {
     const thresholds = APP_CONFIG.reputation.ethosScoreThresholds;
-    
+
     if (score >= thresholds.elite) return 'elite';
     if (score >= thresholds.high) return 'high';
     if (score >= thresholds.medium) return 'medium';

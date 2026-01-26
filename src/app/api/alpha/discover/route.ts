@@ -72,7 +72,7 @@ function getArchetype(ethosScore: number, convictionScore?: number): string {
     if (convictionScore >= 80) return "Diamond Hand";
     if (convictionScore >= 60) return "Profit Phantom";
   }
-  
+
   if (ethosScore >= 1800) return "High Ethos";
   if (ethosScore >= 1000) return "Verified Trader";
   return "Newcomer";
@@ -197,21 +197,43 @@ export async function GET(request: NextRequest) {
     // ENHANCEMENT: Fetch high-scoring wallets from general conviction_analyses (Dynamic Discovery Pool)
     // Only include those NOT in the watchlist to avoid duplicates
     const watchlistAddresses = watchlistTraders.flatMap(t => t.wallets.map(w => w.toLowerCase()));
-    
+
     let dynamicDiscoveryWallets: AlphaWallet[] = [];
     try {
-      const dynamicResult = await sql`
-        SELECT DISTINCT ON (address, chain)
-          address, chain, score, total_positions, patience_tax, win_rate, archetype, analyzed_at,
-          farcaster_username, ens_name, ethos_score, scouted_by, scout_ethos_score
-        FROM conviction_analyses
-        WHERE score >= 80
-          AND analyzed_at > NOW() - INTERVAL '7 days'
-          AND NOT (address = ANY(${watchlistAddresses}))
-          AND (${chain}::text IS NULL OR chain = ${chain})
-        ORDER BY address, chain, analyzed_at DESC
-        LIMIT 20
-      `;
+      let dynamicResult;
+
+      if (watchlistAddresses.length > 0) {
+        // Use NOT IN when we have addresses to exclude
+        // For arrays, we need to use a different approach with Vercel Postgres
+        const addressList = watchlistAddresses.map(addr => `'${addr}'`).join(',');
+        const queryText = `
+          SELECT DISTINCT ON (address, chain)
+            address, chain, score, total_positions, patience_tax, win_rate, archetype, analyzed_at,
+            farcaster_username, ens_name, ethos_score, scouted_by, scout_ethos_score
+          FROM conviction_analyses
+          WHERE score >= 80
+            AND analyzed_at > NOW() - INTERVAL '7 days'
+            AND address NOT IN (${addressList})
+            AND ($1::text IS NULL OR chain = $1)
+          ORDER BY address, chain, analyzed_at DESC
+          LIMIT 20
+        `;
+
+        dynamicResult = await sql.query(queryText, [chain]);
+      } else {
+        // No addresses to exclude
+        dynamicResult = await sql`
+          SELECT DISTINCT ON (address, chain)
+            address, chain, score, total_positions, patience_tax, win_rate, archetype, analyzed_at,
+            farcaster_username, ens_name, ethos_score, scouted_by, scout_ethos_score
+          FROM conviction_analyses
+          WHERE score >= 80
+            AND analyzed_at > NOW() - INTERVAL '7 days'
+            AND (${chain}::text IS NULL OR chain = ${chain})
+          ORDER BY address, chain, analyzed_at DESC
+          LIMIT 20
+        `;
+      }
 
       dynamicDiscoveryWallets = dynamicResult.rows.map(row => ({
         address: row.address,
