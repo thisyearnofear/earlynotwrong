@@ -40,7 +40,7 @@ const FAIRSCALE_TIER_BG = {
 export function FairScaleCard({ trust, className }: FairScaleCardProps) {
   const hasFairScaleData = trust?.providers.fairscale;
   const fairScaleData = trust?.providers.fairscale;
-  
+
   if (!hasFairScaleData) {
     return (
       <Card className={cn("glass-panel border-border/50 bg-surface/40 h-full", className)}>
@@ -53,24 +53,48 @@ export function FairScaleCard({ trust, className }: FairScaleCardProps) {
           </div>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col justify-center">
-          <div className="text-center py-10 relative">
+          <div className="text-center py-10 relative px-4">
             <div className="absolute inset-0 bg-signal/5 blur-3xl rounded-full -z-10" />
             <div className="mx-auto bg-surface/40 rounded-2xl p-4 w-16 h-16 flex items-center justify-center mb-4 border border-border/50 shadow-inner group-hover:scale-110 transition-transform">
               <TrendingUp className="w-8 h-8 text-foreground-muted/50" />
             </div>
             <div className="space-y-2">
               <p className="text-base font-semibold text-foreground tracking-tight">
-                No FairScale Signal
+                {trust?.solanaAddress ? "Solana Wallet Found" : "No FairScale Signal"}
               </p>
-              <p className="text-xs text-foreground-muted leading-relaxed max-w-[200px] mx-auto">
-                Solana-native trust scoring requires a verified FairScale profile.
-              </p>
+
+              {trust?.solanaAddress ? (
+                <div className="space-y-3">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface/50 border border-border/50 mx-auto">
+                    <span className="font-mono text-xs text-signal">
+                      {trust.solanaAddress.slice(0, 4)}...{trust.solanaAddress.slice(-4)}
+                    </span>
+                    <a
+                      href={`https://solscan.io/account/${trust.solanaAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-foreground-muted hover:text-foreground transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <p className="text-[10px] text-foreground-muted max-w-[200px] mx-auto">
+                    Wallet identified but lacks FairScale history.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-foreground-muted leading-relaxed max-w-[200px] mx-auto">
+                  Solana-native trust scoring requires a verified FairScale profile.
+                </p>
+              )}
             </div>
-            <div className="mt-8 flex justify-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-border" />
-              <div className="w-1.5 h-1.5 rounded-full bg-border/50" />
-              <div className="w-1.5 h-1.5 rounded-full bg-border/20" />
-            </div>
+            {!trust?.solanaAddress && (
+              <div className="mt-8 flex justify-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-border" />
+                <div className="w-1.5 h-1.5 rounded-full bg-border/50" />
+                <div className="w-1.5 h-1.5 rounded-full bg-border/20" />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

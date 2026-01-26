@@ -55,6 +55,7 @@ export interface UnifiedTrustScore {
   // Metadata
   primaryProvider: 'ethos' | 'fairscale' | 'none';
   resolvedAt: string;
+  solanaAddress?: string; // Explicitly included for UI visibility
 }
 
 /**
@@ -129,6 +130,7 @@ export class TrustResolverService {
       ethos: ethosScore ? { score: ethosScore, profile: ethosProfile } : undefined,
       fairscale: fairscaleScore || undefined,
       address,
+      solanaAddress: address, // This IS the Solana address
     });
   }
 
@@ -136,21 +138,26 @@ export class TrustResolverService {
    * Resolve trust for Ethereum address
    */
   private async resolveEthereum(address: string, linkedSolAddress?: string | null): Promise<UnifiedTrustScore> {
+    console.log(`[TrustResolver] Resolving Ethereum trust for ${address} with linkedSolAddress: ${linkedSolAddress}`);
+
     // Ethos is primary for Ethereum
     const ethosData = await cachedEthosService.getWalletEthosData(address);
 
     // ENHANCEMENT: Also check FairScale if we have a linked Solana address
     let fairscaleScore = null;
     if (linkedSolAddress) {
+      console.log(`[TrustResolver] Checking FairScale for linked address: ${linkedSolAddress}`);
       fairscaleScore = cachedFairScaleService.isConfigured()
         ? await cachedFairScaleService.getScore(linkedSolAddress)
         : null;
+      console.log(`[TrustResolver] FairScale result:`, fairscaleScore ? 'Score Found' : (cachedFairScaleService.isConfigured() ? 'No Score' : 'Service Not Configured'));
     }
 
     return this.normalize({
       ethos: ethosData.score ? { score: ethosData.score, profile: ethosData.profile } : undefined,
       fairscale: fairscaleScore || undefined,
       address,
+      solanaAddress: linkedSolAddress || undefined,
     });
   }
 
@@ -161,8 +168,9 @@ export class TrustResolverService {
     ethos?: { score: EthosScore; profile: EthosProfile | null };
     fairscale?: FairScaleScore;
     address: string;
+    solanaAddress?: string;
   }): UnifiedTrustScore {
-    const { ethos, fairscale } = data;
+    const { ethos, fairscale, solanaAddress } = data;
 
     // Normalize scores to 0-100
     const ethosNormalized = ethos ? this.normalizeEthosScore(ethos.score.score) : 0;
@@ -203,6 +211,7 @@ export class TrustResolverService {
       features,
       primaryProvider,
       resolvedAt: new Date().toISOString(),
+      solanaAddress,
     };
   }
 

@@ -23,6 +23,7 @@ interface TokenTransaction {
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
 const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+const ZERION_API_KEY = process.env.ZERION_API_KEY;
 
 // Base/stablecoin tokens used for trading pairs
 const KNOWN_BASE_TOKENS = [
@@ -359,15 +360,43 @@ async function getLatestBlock(): Promise<number> {
   }
 }
 
+// Helper for batching
+function chunk<T>(array: T[], size: number): T[][] {
+  const chunked: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunked.push(array.slice(i, i + size));
+  }
+  return chunked;
+}
+
 async function fetchBaseTransactions(
   address: string,
   timeHorizonDays: number,
   minTradeValue: number,
 ): Promise<TokenTransaction[]> {
+  // Try Zerion first (Unified + Best Pricing)
+  if (ZERION_API_KEY) {
+    try {
+      console.log(`[Base Transactions] Attempting Zerion API fetch for ${address}...`);
+      const zTransactions = await fetchBaseViaZerion(address, timeHorizonDays, minTradeValue);
+      if (zTransactions.length > 0) {
+        console.log(`[Base Transactions] Zerion returned ${zTransactions.length} transactions`);
+        return zTransactions;
+      }
+    } catch (e) {
+      console.warn("Zerion fetch failed, falling back to Alchemy/RPC stack:", e);
+    }
+  }
+
+  console.log(`[Base Transactions] Starting fetch for ${address} (${timeHorizonDays}d, >$${minTradeValue})`);
   const cutoffTime = Date.now() - timeHorizonDays * 24 * 60 * 60 * 1000;
+
+  // Get block range
   const latestBlock = await getLatestBlock();
   const cutoffBlock = await getBlockByTimestamp(cutoffTime, latestBlock);
   const fromBlockHex = `0x${cutoffBlock.toString(16)}`;
+
+  console.log(`[Base Transactions] Scanning blocks ${cutoffBlock} to ${latestBlock}`);
 
   // Fetch both outgoing (sells) and incoming (buys) transfers in parallel
   const [outgoingResponse, incomingResponse] = await Promise.all([
@@ -386,7 +415,7 @@ async function fetchBaseTransactions(
             category: ["erc20", "external"],
             withMetadata: true,
             excludeZeroValue: true,
-            maxCount: "0x1f4", // 500
+            maxCount: "0x3e8", // 1000 - increased limit
           },
         ],
       }),
@@ -407,7 +436,7 @@ async function fetchBaseTransactions(
             category: ["erc20", "external"],
             withMetadata: true,
             excludeZeroValue: true,
-            maxCount: "0x1f4", // 500
+            maxCount: "0x3e8", // 1000
           },
         ],
       }),
@@ -415,11 +444,8 @@ async function fetchBaseTransactions(
     }),
   ]);
 
-  if (!outgoingResponse.ok) {
-    throw new Error(`Alchemy API error (outgoing): ${outgoingResponse.status}`);
-  }
-  if (!incomingResponse.ok) {
-    throw new Error(`Alchemy API error (incoming): ${incomingResponse.status}`);
+  if (!outgoingResponse.ok || !incomingResponse.ok) {
+    throw new Error(`Alchemy API error: ${outgoingResponse.status} / ${incomingResponse.status}`);
   }
 
   const [outgoingData, incomingData] = await Promise.all([
@@ -427,24 +453,94 @@ async function fetchBaseTransactions(
     incomingResponse.json(),
   ]);
 
+  const rawTransfers = [
+    ...(outgoingData.result?.transfers || []),
+    ...(incomingData.result?.transfers || [])
+  ];
+
+  console.log(`[Base Transactions] Fetched ${rawTransfers.length} raw transfers`);
+
+  // 1. Identify tokens needing price data (missing alchemy metadata)
+  const tokensToFetch = new Set<string>();
+  const priceCache = new Map<string, number>();
+
+  // Pre-fill known stablecoins
+  const KNOWN_TOKENS = {
+    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 1.0, // USDC
+    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': 1.0, // DAI
+    '0x4200000000000000000000000000000000000006': 0, // WETH - handle via DexScreener to get real price
+  };
+
+  Object.entries(KNOWN_TOKENS).forEach(([addr, price]) => {
+    if (price > 0) priceCache.set(addr.toLowerCase(), price);
+  });
+
+  rawTransfers.forEach(t => {
+    if (t.category === 'external') return; // ETH transfers handled separately or skipped
+    const tokenAddr = t.rawContract?.address?.toLowerCase();
+    if (!tokenAddr) return;
+
+    // Use Alchemy value if valid and sufficient
+    const metaValue = parseFloat(t.metadata?.value || "0");
+    if (metaValue > 0) return; // We have value
+
+    if (!priceCache.has(tokenAddr)) {
+      tokensToFetch.add(tokenAddr);
+    }
+  });
+
+  // 2. Batch fetch prices from DexScreener
+  const uniqueTokens = Array.from(tokensToFetch);
+  console.log(`[Base Transactions] Need prices for ${uniqueTokens.length} tokens`);
+
+  // DexScreener allows multiple tokens per call (30 max recommended)
+  const tokenChunks = chunk(uniqueTokens, 30);
+
+  await Promise.all(tokenChunks.map(async (batch) => {
+    try {
+      const response = await fetch(
+        `https://api.dexscreener.com/latest/dex/tokens/${batch.join(',')}`
+      );
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (!data.pairs) return;
+
+      // Create a map of best pair per token
+      const bestPairs = new Map<string, any>();
+
+      data.pairs.forEach((pair: any) => {
+        const baseToken = pair.baseToken.address.toLowerCase();
+        // Prefer USD pairs or high liquidity
+        if (!bestPairs.has(baseToken) || parseFloat(pair.liquidity?.usd || "0") > parseFloat(bestPairs.get(baseToken)?.liquidity?.usd || "0")) {
+          bestPairs.set(baseToken, pair);
+        }
+      });
+
+      bestPairs.forEach((pair, tokenAddr) => {
+        const price = parseFloat(pair.priceUsd || "0");
+        if (price > 0) {
+          priceCache.set(tokenAddr, price);
+        }
+      });
+    } catch (e) {
+      console.warn("Batch price fetch failed", e);
+    }
+  }));
+
+  console.log(`[Base Transactions] Price cache populated with ${priceCache.size} entries`);
+
+  // 3. Process transactions
   const transactions: TokenTransaction[] = [];
   const seenHashes = new Set<string>();
 
-  // Process outgoing transfers (sells)
-  for (const transfer of outgoingData.result?.transfers || []) {
+  // Process all transfers
+  for (const transfer of rawTransfers) {
     if (seenHashes.has(transfer.hash)) continue;
     seenHashes.add(transfer.hash);
-    const txInfo = await parseBaseTransfer(transfer, minTradeValue, address);
-    if (txInfo) {
-      transactions.push(txInfo);
-    }
-  }
 
-  // Process incoming transfers (buys)
-  for (const transfer of incomingData.result?.transfers || []) {
-    if (seenHashes.has(transfer.hash)) continue;
-    seenHashes.add(transfer.hash);
-    const txInfo = await parseBaseTransfer(transfer, minTradeValue, address);
+    // Parse with price cache
+    const txInfo = await parseBaseTransfer(transfer, minTradeValue, address, priceCache);
     if (txInfo) {
       transactions.push(txInfo);
     }
@@ -636,6 +732,23 @@ async function parseSolanaSwap(
 const basePriceCache = new Map<string, { price: number; timestamp: number }>();
 const PRICE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// GeckoTerminal fallback
+async function getGeckoTerminalPrice(address: string): Promise<number> {
+  try {
+    const response = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/base/tokens/${address}`,
+      { next: { revalidate: 3600 } }
+    );
+
+    if (!response.ok) return 0;
+
+    const data = await response.json();
+    return parseFloat(data.data?.attributes?.price_usd || "0");
+  } catch (error) {
+    return 0;
+  }
+}
+
 async function getBaseTokenPrice(tokenAddress: string): Promise<number> {
   // Check cache first
   const cached = basePriceCache.get(tokenAddress);
@@ -644,22 +757,32 @@ async function getBaseTokenPrice(tokenAddress: string): Promise<number> {
   }
 
   try {
+    // Primary: DexScreener
     const response = await fetch(
       `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
     );
 
-    if (!response.ok) {
-      basePriceCache.set(tokenAddress, { price: 0, timestamp: Date.now() });
-      return 0;
+    if (response.ok) {
+      const data = await response.json();
+      const pair = data.pairs?.[0];
+      const price = parseFloat(pair?.priceUsd || "0");
+      if (price > 0) {
+        basePriceCache.set(tokenAddress, { price, timestamp: Date.now() });
+        return price;
+      }
     }
 
-    const data = await response.json();
-    const pair = data.pairs?.[0];
-    const price = parseFloat(pair?.priceUsd || "0");
+    // Fallback: GeckoTerminal
+    console.log(`[Price Fallback] Trying GeckoTerminal for ${tokenAddress}`);
+    const geckoPrice = await getGeckoTerminalPrice(tokenAddress);
+    if (geckoPrice > 0) {
+      basePriceCache.set(tokenAddress, { price: geckoPrice, timestamp: Date.now() });
+      return geckoPrice;
+    }
 
-    // Cache the result
-    basePriceCache.set(tokenAddress, { price, timestamp: Date.now() });
-    return price;
+    // No price found
+    basePriceCache.set(tokenAddress, { price: 0, timestamp: Date.now() });
+    return 0;
   } catch (error) {
     console.warn(
       `Failed to fetch price for Base token ${tokenAddress}:`,
@@ -687,6 +810,7 @@ async function parseBaseTransfer(
   },
   minTradeValue: number,
   userAddress: string,
+  priceMap?: Map<string, number>,
 ): Promise<TokenTransaction | null> {
   try {
     // Skip if the token being transferred IS the user's address (e.g., ENS-style tokens)
@@ -714,8 +838,13 @@ async function parseBaseTransfer(
     if (valueUsd > 0 && amount > 0) {
       priceUsd = valueUsd / amount;
     } else {
-      // Legitimate alternative: fetch real-time price if metadata is missing
-      priceUsd = await getBaseTokenPrice(tokenAddress);
+      // Check price map first
+      if (priceMap && tokenAddress && priceMap.has(tokenAddress)) {
+        priceUsd = priceMap.get(tokenAddress) || 0;
+      } else {
+        // Legitimate alternative: fetch real-time price if metadata is missing and not in cache
+        priceUsd = await getBaseTokenPrice(tokenAddress);
+      }
       valueUsd = priceUsd * amount;
     }
 
@@ -748,4 +877,86 @@ async function getBlockByTimestamp(
   const daysDiff = (now - timestamp) / (24 * 60 * 60 * 1000);
   // Base is ~2s blocks, so 0.5 blocks/sec
   return Math.max(0, currentBlock - Math.floor(daysDiff * 24 * 60 * 60 * 0.5));
+}
+
+async function fetchBaseViaZerion(
+  address: string,
+  days: number,
+  minVal: number
+): Promise<TokenTransaction[]> {
+  if (!ZERION_API_KEY) return [];
+
+  const auth = Buffer.from(ZERION_API_KEY + ':').toString('base64');
+  const cutoff = Date.now() - (days * 86400 * 1000);
+  const txs: TokenTransaction[] = [];
+
+  let url = `https://api.zerion.io/v1/wallets/${address}/transactions/?filter[chain_ids]=base&currency=usd&page[size]=100`;
+  let pageCount = 0;
+  const MAX_PAGES = 10; // Capped to prevent exhausting daily quota (300 req/day)
+
+  while (url && pageCount < MAX_PAGES) {
+    pageCount++;
+    const res = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+    if (!res.ok) throw new Error(`Zerion API error: ${res.statusText}`);
+
+    const data = await res.json();
+    const items = data.data || [];
+
+    if (items.length === 0) break;
+
+    let reachedCutoff = false;
+
+    for (const item of items) {
+      const attrs = item.attributes;
+      const time = new Date(attrs.mined_at).getTime();
+
+      if (time < cutoff) {
+        reachedCutoff = true;
+        break;
+      }
+
+      for (const transfer of (attrs.transfers || [])) {
+        // Only confirmed transactions
+        if (transfer.status !== 'confirmed') continue;
+
+        // Filter junk/spam with no value if minVal > 0
+        const val = transfer.value || 0;
+        if (val < minVal) continue;
+
+        // Skip non-fungible transfers for now (NFTs) unless they have value?
+        // Zerion puts NFTs in fungible_info too sometimes, simpler to check symbol
+        const info = transfer.fungible_info;
+        if (!info) continue;
+
+        const symbol = info.symbol || 'UNK';
+        const impl = info.implementations?.find((i: any) => i.chain_id === 'base');
+        const tokenAddr = impl?.address || attrs.hash; // Fallback if no addr
+
+        const qty = parseFloat(transfer.quantity.float || "0");
+        const price = transfer.price || (qty > 0 ? val / qty : 0);
+
+        txs.push({
+          hash: attrs.hash,
+          timestamp: time,
+          tokenAddress: tokenAddr,
+          tokenSymbol: symbol,
+          type: transfer.direction === 'in' ? 'buy' : 'sell', // in = receive (buy), out = send (sell)
+          amount: qty,
+          priceUsd: price,
+          valueUsd: val,
+          blockNumber: attrs.block_number,
+        });
+      }
+    }
+
+    if (reachedCutoff) break;
+
+    if (data.links?.next) {
+      url = data.links.next;
+    } else {
+      url = "";
+    }
+  }
+
+  return txs.sort((a, b) => a.timestamp - b.timestamp);
 }

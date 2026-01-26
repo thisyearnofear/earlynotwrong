@@ -85,7 +85,7 @@ interface AppState {
   showAttestationDialog: (show: boolean) => void;
 
   // Comparison State
-  comparisonWallets: { address: string; [key: string]: unknown }[];
+  comparisonWallets: { address: string;[key: string]: unknown }[];
   addToComparison: (wallet: {
     address: string;
     [key: string]: unknown;
@@ -296,7 +296,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             return count;
           }
         }
-      } catch {}
+      } catch { }
     }
     return 0;
   })(),
@@ -311,7 +311,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             return date;
           }
         }
-      } catch {}
+      } catch { }
     }
     return null;
   })(),
