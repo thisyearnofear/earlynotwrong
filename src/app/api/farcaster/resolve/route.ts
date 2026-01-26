@@ -17,6 +17,10 @@ interface Profile {
     following?: number | null;
     [key: string]: unknown;
   };
+  verifiedAddresses?: {
+    ethAddresses: string[];
+    solAddresses: string[];
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -61,6 +65,10 @@ export async function POST(request: NextRequest) {
                   follower: user.follower_count,
                   following: user.following_count,
                 },
+                verifiedAddresses: {
+                  ethAddresses: user.verified_addresses.eth_addresses,
+                  solAddresses: user.verified_addresses.sol_addresses,
+                },
               },
             ];
           }
@@ -99,6 +107,10 @@ export async function POST(request: NextRequest) {
                   uid: user.fid,
                   follower: user.follower_count,
                   following: user.following_count,
+                },
+                verifiedAddresses: {
+                  ethAddresses: user.verified_addresses.eth_addresses,
+                  solAddresses: user.verified_addresses.sol_addresses,
                 },
               },
             ];
@@ -184,6 +196,7 @@ export async function POST(request: NextRequest) {
         avatar: p.avatar,
         description: p.description,
       })),
+      verifiedAddresses: farcasterProfile?.verifiedAddresses,
     };
 
     return NextResponse.json({ identity });

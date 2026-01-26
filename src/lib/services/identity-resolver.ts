@@ -46,13 +46,16 @@ export interface ResolvedIdentity {
     profileId: string | null;
   } | null;
 
+  // Connected wallets
+  solanaAddress?: string | null;
+
   // Unified trust score (Phase 2: cross-provider)
   trust?: UnifiedTrustScore;
 
   // Metadata
   resolvedFrom: "address" | "ens" | "farcaster" | "lens" | "userkey";
   resolvedAt: string;
-  
+
   // Observability (optional, for debugging)
   _meta?: {
     resolutionPath: string[];
@@ -124,7 +127,7 @@ export class IdentityResolverService {
 
       // Add observability metadata
       const durationMs = Date.now() - startTime;
-      
+
       if (cached) {
         // Log successful resolution
         console.log('[Identity Resolution Success]', {
@@ -173,12 +176,12 @@ export class IdentityResolverService {
     if (isEvm && ensData.status === "fulfilled" && ensData.value.name) {
       resolutionPath.push('ens-found');
     }
-    
+
     if (farcasterData.status === "fulfilled" && farcasterData.value) {
       resolutionPath.push('farcaster-found');
     }
 
-    let finalEthosData = ethosData.status === "fulfilled" 
+    let finalEthosData = ethosData.status === "fulfilled"
       ? { score: ethosData.value.score, profile: ethosData.value.profile }
       : { score: null, profile: null };
 
@@ -201,7 +204,7 @@ export class IdentityResolverService {
 
       if (allVerifiedAddresses.length > 0) {
         resolutionPath.push(`checking-${allVerifiedAddresses.length}-linked-addresses`);
-        
+
         // Fetch Ethos data for all linked addresses in parallel
         const linkedEthosResults = await Promise.allSettled(
           allVerifiedAddresses.map(addr => cachedEthosService.getWalletEthosData(addr))
@@ -221,7 +224,7 @@ export class IdentityResolverService {
         const originalScore = finalEthosData.score?.score || 0;
         // Select best Ethos score across all addresses
         finalEthosData = this.selectBestEthosData(allEthosData);
-        
+
         if (finalEthosData.score && finalEthosData.score.score > originalScore) {
           resolutionPath.push('ethos-multi-address-best');
           ethosSource = 'multi-address-best';
@@ -230,36 +233,47 @@ export class IdentityResolverService {
     }
 
     // For Solana addresses without Ethos data, try Twitter → Ethos UserKey bridge
+    // Always try to find linked social handles and wallets via Web3.bio
+    // This addresses the issue where we have an EVM address but miss the linked Solana wallet
     let twitterHandle: string | undefined;
-    if (!isEvm && !finalEthosData.score) {
-      resolutionPath.push('solana-address');
-      const socialHandles = await this.lookupSocialHandles(address);
-      twitterHandle = socialHandles?.twitter;
-      
-      if (socialHandles?.twitter) {
-        resolutionPath.push(`twitter-found:${socialHandles.twitter}`);
-        const userKey = `service:x.com:username:${socialHandles.twitter}`;
-        const [scoreByUserKey, profileByUserKey] = await Promise.allSettled([
-          cachedEthosService.getScoreByUserKey(userKey),
-          cachedEthosService.getProfileByUserKey(userKey),
-        ]);
+    let foundSolanaAddress: string | null = null;
 
-        const scoreFromUserKey = scoreByUserKey.status === "fulfilled" ? scoreByUserKey.value : null;
-        const profileFromUserKey = profileByUserKey.status === "fulfilled" ? profileByUserKey.value : null;
+    // Check Web3.bio for cross-chain identity connections
+    const socialHandles = await this.lookupSocialHandles(address);
+    if (socialHandles) {
+      twitterHandle = socialHandles.twitter;
+      if (socialHandles.solana) {
+        foundSolanaAddress = socialHandles.solana;
+        resolutionPath.push(`solana-linked:${foundSolanaAddress.slice(0, 8)}`);
+      }
+    }
 
-        // Use UserKey data if available (we're in the !finalEthosData.score branch, so current is 0)
-        const newScore = scoreFromUserKey?.score ?? 0;
-        
-        if (newScore > 0) {
-          finalEthosData = {
-            score: scoreFromUserKey,
-            profile: profileFromUserKey,
-          };
-          resolutionPath.push('ethos-via-userkey');
-          ethosSource = 'userkey';
-        }
-      } else {
-        resolutionPath.push('no-twitter-handle');
+    // Also check Farcaster profile for verified Solana addresses (direct from Neynar)
+    if (!foundSolanaAddress && farcasterIdentity?.verifiedAddresses?.solAddresses?.length) {
+      foundSolanaAddress = farcasterIdentity.verifiedAddresses.solAddresses[0];
+      resolutionPath.push(`solana-farcaster:${foundSolanaAddress.slice(0, 8)}`);
+    }
+
+    // For addresses without Ethos data (e.g. Solana-only), try Twitter → Ethos UserKey bridge
+    if (!finalEthosData.score && twitterHandle) {
+      resolutionPath.push(`twitter-found:${twitterHandle}`);
+      const userKey = `service:x.com:username:${twitterHandle}`;
+
+      const [scoreByUserKey, profileByUserKey] = await Promise.allSettled([
+        cachedEthosService.getScoreByUserKey(userKey),
+        cachedEthosService.getProfileByUserKey(userKey),
+      ]);
+
+      const scoreFromUserKey = scoreByUserKey.status === "fulfilled" ? scoreByUserKey.value : null;
+      const profileFromUserKey = profileByUserKey.status === "fulfilled" ? profileByUserKey.value : null;
+
+      if (scoreFromUserKey?.score && scoreFromUserKey.score > 0) {
+        finalEthosData = {
+          score: scoreFromUserKey,
+          profile: profileFromUserKey,
+        };
+        resolutionPath.push('ethos-via-userkey');
+        ethosSource = 'userkey';
       }
     }
 
@@ -278,6 +292,7 @@ export class IdentityResolverService {
       farcaster: farcasterIdentity,
       ethos: finalEthosData,
       lens: null, // TODO: Add Lens integration if needed
+      solanaAddress: foundSolanaAddress,
       trust: unifiedTrust,
       resolvedFrom: "address",
       resolvedAt: new Date().toISOString(),
@@ -464,7 +479,7 @@ export class IdentityResolverService {
 
   private async lookupSocialHandles(
     address: string,
-  ): Promise<{ twitter?: string; farcaster?: string; github?: string; lens?: string } | null> {
+  ): Promise<{ twitter?: string; farcaster?: string; github?: string; lens?: string; solana?: string } | null> {
     try {
       const { getSocialHandles } = await import("@/lib/web3bio");
       return await getSocialHandles(address);
@@ -484,13 +499,13 @@ export class IdentityResolverService {
     const validDatasets = datasets.filter(
       (d): d is { score: EthosScore; profile: EthosProfile | null } => d.score !== null
     );
-    
+
     if (validDatasets.length === 0) {
       return { score: null, profile: null };
     }
 
     // Sort by score (highest first)
-    const sorted = validDatasets.sort((a, b) => 
+    const sorted = validDatasets.sort((a, b) =>
       (b.score.score || 0) - (a.score.score || 0)
     );
 

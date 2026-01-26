@@ -34,6 +34,8 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
+  Copy,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
@@ -158,6 +160,15 @@ export default function Home() {
     }
     prevHasScanned.current = hasScanned;
   }, [hasScanned, convictionMetrics]);
+
+  const [isCopied, setIsCopied] = useState(false);
+  const handleCopyAddress = useCallback(() => {
+    if (targetAddress) {
+      navigator.clipboard.writeText(targetAddress);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  }, [targetAddress]);
 
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['positions']));
 
@@ -725,15 +736,26 @@ export default function Home() {
                     >
                       ← Back to Home
                     </Button>
-                    
+
                     {targetAddress && (
                       <div className="flex items-center gap-2 text-sm flex-wrap">
                         {farcasterIdentity?.username && (
                           <span className="text-foreground">@{farcasterIdentity.username}</span>
                         )}
-                        <span className="font-mono text-foreground-muted">
-                          {targetAddress.slice(0, 6)}...{targetAddress.slice(-4)}
-                        </span>
+                        <button
+                          onClick={handleCopyAddress}
+                          className="flex items-center gap-1.5 group hover:bg-surface p-1 -ml-1 rounded transition-colors"
+                          title="Copy address"
+                        >
+                          <span className="font-mono text-foreground-muted group-hover:text-foreground transition-colors">
+                            {targetAddress.slice(0, 6)}...{targetAddress.slice(-4)}
+                          </span>
+                          {isCopied ? (
+                            <Check className="w-3 h-3 text-patience" />
+                          ) : (
+                            <Copy className="w-3 h-3 text-foreground-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
                         {analysisChain && (
                           <span className={cn(
                             "text-[10px] px-1.5 py-0.5 rounded uppercase font-mono",
@@ -1304,8 +1326,8 @@ export default function Home() {
                     className="col-span-1 md:col-span-6 lg:col-span-4"
                   >
                     <Card id="history" className="glass-panel border-border/50 bg-surface/40">
-                      <CardHeader 
-                        className="cursor-pointer" 
+                      <CardHeader
+                        className="cursor-pointer"
                         onClick={() => toggleSection('history')}
                       >
                         <div className="flex items-center justify-between">
@@ -1341,8 +1363,8 @@ export default function Home() {
                   className="col-span-1 md:col-span-6 lg:col-span-12"
                 >
                   <Card id="reputation" className="glass-panel border-border/50 bg-surface/40">
-                    <CardHeader 
-                      className="cursor-pointer" 
+                    <CardHeader
+                      className="cursor-pointer"
                       onClick={() => toggleSection('reputation')}
                     >
                       <div className="flex items-center justify-between">

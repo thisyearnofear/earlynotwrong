@@ -464,7 +464,7 @@ async function getSolPrice(): Promise<number> {
     const data = await response.json();
     return parseFloat(
       data.data?.So11111111111111111111111111111111111111112?.price ||
-        APP_CONFIG.fallbacks.solPrice.toString(),
+      APP_CONFIG.fallbacks.solPrice.toString(),
     );
   } catch (error) {
     console.warn("Failed to fetch live SOL price, using fallback:", error);
@@ -632,22 +632,44 @@ async function parseSolanaSwap(
   }
 }
 
+// Module-level price cache (cleared per request via weak references or timeout)
+const basePriceCache = new Map<string, { price: number; timestamp: number }>();
+const PRICE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 async function getBaseTokenPrice(tokenAddress: string): Promise<number> {
+  // Check cache first
+  const cached = basePriceCache.get(tokenAddress);
+  if (cached && Date.now() - cached.timestamp < PRICE_CACHE_TTL) {
+    return cached.price;
+  }
+
   try {
     const response = await fetch(
       `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
     );
+
+    if (!response.ok) {
+      basePriceCache.set(tokenAddress, { price: 0, timestamp: Date.now() });
+      return 0;
+    }
+
     const data = await response.json();
     const pair = data.pairs?.[0];
-    return parseFloat(pair?.priceUsd || "0");
+    const price = parseFloat(pair?.priceUsd || "0");
+
+    // Cache the result
+    basePriceCache.set(tokenAddress, { price, timestamp: Date.now() });
+    return price;
   } catch (error) {
     console.warn(
       `Failed to fetch price for Base token ${tokenAddress}:`,
-      error,
+      error instanceof Error ? error.message : 'Unknown',
     );
+    basePriceCache.set(tokenAddress, { price: 0, timestamp: Date.now() });
     return 0;
   }
 }
+
 
 async function parseBaseTransfer(
   transfer: {

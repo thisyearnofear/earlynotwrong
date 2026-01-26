@@ -65,34 +65,34 @@ export async function resolveUniversalIdentity(
 ): Promise<UniversalIdentity | null> {
   try {
     const response = await fetch(`${WEB3BIO_API}/profile/${identity}`);
-    
+
     if (!response.ok) {
       console.warn('Web3.bio lookup failed:', response.status);
       return null;
     }
 
     const profiles: Web3BioProfile[] = await response.json();
-    
+
     if (!profiles || profiles.length === 0) {
       return null;
     }
 
     // Extract all unique addresses
     const allAddresses = [...new Set(profiles.map(p => p.address))];
-    
+
     // Extract key identities for Ethos lookup
     const twitterHandle = profiles
       .find(p => p.links?.twitter)
       ?.links?.twitter?.handle;
-    
+
     const farcasterUsername = profiles
       .find(p => p.platform === 'farcaster')
       ?.identity;
-    
+
     const ensName = profiles
       .find(p => p.platform === 'ens')
       ?.identity;
-    
+
     const basename = profiles
       .find(p => p.platform === 'basenames')
       ?.identity;
@@ -120,7 +120,7 @@ export async function findEthosProfileViaWeb3Bio(
   identity: string
 ): Promise<string | null> {
   const universalId = await resolveUniversalIdentity(identity);
-  
+
   if (!universalId) {
     return null;
   }
@@ -175,7 +175,7 @@ export async function findLinkedEvmAddresses(
   solanaAddress: string
 ): Promise<string[]> {
   const universalId = await resolveUniversalIdentity(solanaAddress);
-  
+
   if (!universalId) {
     return [];
   }
@@ -199,7 +199,7 @@ export async function getSocialContext(
   farcasterHandle?: string;
 } | null> {
   const universalId = await resolveUniversalIdentity(address);
-  
+
   if (!universalId) {
     return null;
   }
@@ -236,22 +236,25 @@ export async function getSocialHandles(address: string): Promise<{
   farcaster?: string;
   github?: string;
   lens?: string;
+  solana?: string;
 } | null> {
   try {
     const universalId = await resolveUniversalIdentity(address);
-    
+
     if (!universalId) {
       return null;
     }
 
     const githubProfile = universalId.profiles.find(p => p.links?.github);
     const lensProfile = universalId.profiles.find(p => p.platform === 'lens');
+    const solanaProfile = universalId.profiles.find(p => p.platform === 'solana');
 
     return {
       twitter: universalId.twitterHandle,
       farcaster: universalId.farcasterUsername,
       github: githubProfile?.links?.github?.handle,
       lens: lensProfile?.identity,
+      solana: solanaProfile?.address,
     };
   } catch (error) {
     console.warn('Web3.bio social handles extraction failed:', error);
