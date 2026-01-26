@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { useConviction } from "@/hooks/use-conviction";
@@ -32,6 +32,8 @@ import {
   Share2,
   Lock,
   MessageSquare,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
@@ -145,6 +147,28 @@ export default function Home() {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
   const [hasEverScanned, setHasEverScanned] = useState(true);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const prevHasScanned = useRef(false);
+
+  useEffect(() => {
+    if (hasScanned && !prevHasScanned.current && convictionMetrics) {
+      setShowSuccessMessage(true);
+      const timer = setTimeout(() => setShowSuccessMessage(false), 4000);
+      return () => clearTimeout(timer);
+    }
+    prevHasScanned.current = hasScanned;
+  }, [hasScanned, convictionMetrics]);
+
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['positions']));
+
+  const toggleSection = (id: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Check localStorage for first-time user indicator
   useEffect(() => {
@@ -708,6 +732,19 @@ export default function Home() {
                             {analysisChain}
                           </span>
                         )}
+                        <AnimatePresence>
+                          {showSuccessMessage && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-patience/20 border border-patience/30 text-patience text-sm"
+                            >
+                              <span>✓</span>
+                              <span className="font-mono">Analysis Complete</span>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     )}
                   </div>
@@ -781,13 +818,16 @@ export default function Home() {
                               />
 
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="sm"
-                                className="font-mono text-[10px] text-signal hover:bg-signal/10 h-7"
+                                className={cn(
+                                  "font-mono text-[10px] border-signal/50 text-signal hover:bg-signal/10 h-7",
+                                  !hasEverScanned && "animate-pulse"
+                                )}
                                 onClick={() => setShareDialogOpen(true)}
                               >
                                 <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                                SHARE
+                                SHARE RESULTS
                               </Button>
                             </div>
                           </div>
@@ -1253,24 +1293,36 @@ export default function Home() {
                     }}
                     className="col-span-1 md:col-span-6 lg:col-span-4"
                   >
-                    <Card className="glass-panel border-border/50 bg-surface/40">
-                      <CardHeader>
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          Historical Tracking
-                        </CardTitle>
+                    <Card id="history" className="glass-panel border-border/50 bg-surface/40">
+                      <CardHeader 
+                        className="cursor-pointer" 
+                        onClick={() => toggleSection('history')}
+                      >
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            Historical Tracking
+                          </CardTitle>
+                          {expandedSections.has('history') ? (
+                            <ChevronUp className="w-4 h-4 text-foreground-muted" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-foreground-muted" />
+                          )}
+                        </div>
                         <CardDescription>
                           Your conviction score evolution over time
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <HistoryPanel currentAddress={activeAddress} />
-                      </CardContent>
+                      {expandedSections.has('history') && (
+                        <CardContent>
+                          <HistoryPanel currentAddress={activeAddress} />
+                        </CardContent>
+                      )}
                     </Card>
                   </motion.div>
                 )}
 
-                {/* Reputation Perks Panel - Always show for progression visibility */}
+                {/* Reputation Perks Panel - Collapsible */}
                 <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 20 },
@@ -1278,7 +1330,30 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-12"
                 >
-                  <ReputationPerks />
+                  <Card id="reputation" className="glass-panel border-border/50 bg-surface/40">
+                    <CardHeader 
+                      className="cursor-pointer" 
+                      onClick={() => toggleSection('reputation')}
+                    >
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4" />
+                          Reputation Perks
+                        </CardTitle>
+                        {expandedSections.has('reputation') ? (
+                          <ChevronUp className="w-4 h-4 text-foreground-muted" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-foreground-muted" />
+                        )}
+                      </div>
+                      <CardDescription>
+                        Your progression roadmap and unlocked features
+                      </CardDescription>
+                    </CardHeader>
+                    {expandedSections.has('reputation') && (
+                      <ReputationPerks className="border-0 bg-transparent" />
+                    )}
+                  </Card>
                 </motion.div>
 
                 {/* Locked Features Message for users below Ethos 1000 */}
