@@ -19,21 +19,21 @@ export async function GET() {
       primaryCategory: "finance",
       tags: ["trading", "defi", "analytics", "onchain", "conviction"],
       heroImageUrl: `${APP_URL}/api/og`,
+      imageUrl: `${APP_URL}/api/og`,
+      buttonTitle: "Analyze Conviction",
       tagline: "Being early feels like being wrong",
       ogTitle: "Early, Not Wrong",
       ogDescription: "On-chain behavioral analysis to prove conviction",
       ogImageUrl: `${APP_URL}/api/og`,
     },
+    accountAssociation: {
+      header:
+        "eyJmaWQiOjUyNTQsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHg4QjAzQTJDMzY1YzI2MUFlQmU2ODQyMjREQkI2Qzk1OTJhQkNkRkIyIn0",
+      payload: "eyJkb21haW4iOiJlYXJseW5vdHdyb25nLnZlcmNlbC5hcHAifQ",
+      signature:
+        "0x776403de0b26432bf02f8045ac70e0fe13e572b760fbc4e909d06839c542660ed1eff3fca5d49e56f7c636b74f745cc3499555099bcd3e8ade2c96a5a622f81c31b",
+    },
   };
-
-  // Only include accountAssociation if all values are configured
-  const header = process.env.FARCASTER_HEADER;
-  const payload = process.env.FARCASTER_PAYLOAD;
-  const signature = process.env.FARCASTER_SIGNATURE;
-
-  if (header && payload && signature) {
-    manifest.accountAssociation = { header, payload, signature };
-  }
 
   return NextResponse.json(manifest, {
     headers: {

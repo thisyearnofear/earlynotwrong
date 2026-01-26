@@ -290,6 +290,111 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 ---
 
+## Farcaster Integration
+
+### Frame Specification Compliance
+This project implements the [Farcaster Frames Specification](https://docs.farcaster.xyz/developers/frames/spec) for seamless social integration.
+
+### Authentication Flow
+- Sign In with Farcaster (SIWF) via AuthKit
+- Neynar API integration for Farcaster identity resolution
+- Secure wallet-to-Farcaster linking
+- Cross-chain identity verification
+
+### Frame Endpoints
+```
+GET /api/frame/home - Main landing frame
+GET /api/frame/analysis/[wallet] - Individual analysis frame
+GET /api/frame/leaderboard - Conviction leaderboard frame
+POST /api/frame/action - Frame action handler
+```
+
+### Neynar Integration
+- Farcaster username and profile picture resolution
+- Verified address linking across chains
+- Social context for behavioral analysis
+- Rate-limited API calls with caching
+
+### Development
+Test frames locally using:
+```bash
+npm run dev:frame-debugger
+```
+
+Validate frames using the [Warpcast Frame Validator](https://warpcast.com/~/developers/frames)
+
+## API Documentation
+
+### Core Endpoints
+```
+GET /api/user/profile - User profile and reputation
+GET /api/trades/history - Historical trade analysis
+GET /api/conviction/score - Conviction index calculation
+GET /api/alerts/recent - Recent conviction alerts
+```
+
+### Authentication
+All API calls require:
+- Valid Farcaster signature
+- Connected wallet address
+- Ethos credibility verification
+
+### Rate Limits
+- 100 requests/minute per user
+- 1000 requests/hour per IP
+- Burst limit of 10 requests/second
+
+## Self-Hosted Deployment
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 14+
+- Redis 6+
+- Docker (optional)
+
+### Environment Variables
+```bash
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/earlynotwrong"
+
+# API Keys
+ETHOS_API_KEY="your_ethos_key"
+NEYNAR_API_KEY="your_neynar_key" 
+ALCHEMY_API_KEY="your_alchemy_key"
+HELIUS_API_KEY="your_helius_key"
+
+# Farcaster
+FARCASTER_DEVELOPER_ID="your_developer_fid"
+FARCASTER_SIGNER_UUID="your_signer_uuid"
+
+# Security
+JWT_SECRET="your_jwt_secret"
+ENCRYPTION_KEY="your_encryption_key"
+```
+
+### Deployment Steps
+1. Clone repository
+2. Set environment variables
+3. Run database migrations
+4. Start services
+5. Configure reverse proxy (nginx/Caddy)
+
+### Monitoring
+- Health checks at `/api/health`
+- Metrics endpoint at `/api/metrics`
+- Error tracking via Sentry
+- Performance monitoring with Datadog
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- Development setup
+- Coding standards
+- Testing requirements
+- Pull request process
+- Farcaster integration specifics
+
 ## License
 
 MIT
