@@ -14,7 +14,7 @@ import { ConvictionMetrics } from "@/lib/market";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { address, chain, metrics, timeHorizon, identity, positions } = body as {
+    const { address, chain, metrics, timeHorizon, identity, positions, requester } = body as {
       address: string;
       chain: "solana" | "base";
       metrics: ConvictionMetrics;
@@ -33,6 +33,10 @@ export async function POST(request: NextRequest) {
         holdingPeriodDays: number;
         isEarlyExit: boolean;
       }>;
+      requester?: {
+        address: string;
+        ethosScore: number;
+      };
     };
 
     if (!address || !chain || !metrics) {
@@ -52,8 +56,13 @@ export async function POST(request: NextRequest) {
         farcasterUsername: identity.farcasterUsername,
         ethosScore: identity.ethosScore,
         unifiedTrustScore: identity.unifiedTrustScore,
-        unifiedTrustTier: identity.unifiedTrustTier
-      } : undefined
+        unifiedTrustTier: identity.unifiedTrustTier,
+        scoutedBy: requester?.address,
+        scoutEthosScore: requester?.ethosScore
+      } : {
+        scoutedBy: requester?.address,
+        scoutEthosScore: requester?.ethosScore
+      }
     );
 
     if (!result) {

@@ -772,7 +772,7 @@ export default function Home() {
                     <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
                       {isShowcaseMode && (
                         <span className="mr-3 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-signal/10 text-signal border border-signal/20">
-                          SIMULATION MODE
+                          SHOWCASE MODE
                         </span>
                       )}
                       <Activity className="w-6 h-6 text-signal inline-block" />
@@ -1427,28 +1427,26 @@ export default function Home() {
                     </motion.div>
                   )}
 
-                {/* Advanced Features - Gated for connected wallets with Ethos > 1000 */}
-                {!isShowcaseMode &&
-                  isConnected &&
-                  (ethosScore?.score ?? 0) >= 1000 && (
-                    <>
-                      {advancedPanels.map((panel) => (
-                        <motion.div
-                          key={panel.id}
-                          variants={{
-                            hidden: { opacity: 0, y: 20 },
-                            visible: { opacity: 1, y: 0 },
-                          }}
-                          className={cn(
-                            panel.className,
-                            !panel.hasData && "opacity-60",
-                          )}
-                        >
-                          {panel.component}
-                        </motion.div>
-                      ))}
-                    </>
-                  )}
+                {/* Advanced Features - Gated for connected wallets with Ethos > 1000 or in Demo Mode */}
+                {(isShowcaseMode || (isConnected && (ethosScore?.score ?? 0) >= 1000)) && (
+                  <>
+                    {advancedPanels.map((panel) => (
+                      <motion.div
+                        key={panel.id}
+                        variants={{
+                          hidden: { opacity: 0, y: 20 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        className={cn(
+                          panel.className,
+                          !panel.hasData && "opacity-60",
+                        )}
+                      >
+                        {panel.component}
+                      </motion.div>
+                    ))}
+                  </>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

@@ -52,17 +52,25 @@ export function FairScaleCard({ trust, className }: FairScaleCardProps) {
             <TrendingUp className="w-5 h-5 text-signal" />
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <div className="mx-auto bg-surface/20 rounded-full p-3 w-12 h-12 flex items-center justify-center mb-3">
-              <TrendingUp className="w-6 h-6 text-foreground-muted" />
+        <CardContent className="flex-1 flex flex-col justify-center">
+          <div className="text-center py-10 relative">
+            <div className="absolute inset-0 bg-signal/5 blur-3xl rounded-full -z-10" />
+            <div className="mx-auto bg-surface/40 rounded-2xl p-4 w-16 h-16 flex items-center justify-center mb-4 border border-border/50 shadow-inner group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-8 h-8 text-foreground-muted/50" />
             </div>
-            <p className="text-sm text-foreground-muted">
-              No FairScale data available
-            </p>
-            <p className="text-xs text-foreground-muted/60 mt-1">
-              Connect a Solana wallet to see trust metrics
-            </p>
+            <div className="space-y-2">
+              <p className="text-base font-semibold text-foreground tracking-tight">
+                No FairScale Signal
+              </p>
+              <p className="text-xs text-foreground-muted leading-relaxed max-w-[200px] mx-auto">
+                Solana-native trust scoring requires a verified FairScale profile.
+              </p>
+            </div>
+            <div className="mt-8 flex justify-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-border" />
+              <div className="w-1.5 h-1.5 rounded-full bg-border/50" />
+              <div className="w-1.5 h-1.5 rounded-full bg-border/20" />
+            </div>
           </div>
         </CardContent>
       </Card>

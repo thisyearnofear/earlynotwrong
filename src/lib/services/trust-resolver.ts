@@ -67,10 +67,27 @@ export class TrustResolverService {
   async resolve(address: string, twitter?: string): Promise<UnifiedTrustScore> {
     const isSolana = this.isSolanaAddress(address);
     
+    // ENHANCEMENT: Try to bridge via Farcaster first to find linked addresses
+    let linkedEthAddress: string | null = null;
+    let linkedSolAddress: string | null = null;
+    let farcasterUsername: string | null = null;
+
+    try {
+      const { ethosClient } = await import('@/lib/ethos');
+      const fcIdentity = await ethosClient.resolveFarcasterIdentity(address);
+      if (fcIdentity) {
+        farcasterUsername = fcIdentity.username;
+        linkedEthAddress = fcIdentity.verifiedAddresses.ethAddresses[0] || null;
+        linkedSolAddress = fcIdentity.verifiedAddresses.solAddresses[0] || null;
+      }
+    } catch (e) {
+      console.warn("Farcaster bridge resolution failed:", e);
+    }
+
     if (isSolana) {
-      return this.resolveSolana(address, twitter);
+      return this.resolveSolana(address, twitter || farcasterUsername || undefined, linkedEthAddress);
     } else {
-      return this.resolveEthereum(address);
+      return this.resolveEthereum(address, linkedSolAddress);
     }
   }
 
@@ -80,17 +97,25 @@ export class TrustResolverService {
   private async resolveSolana(
     address: string,
     twitter?: string,
+    linkedEthAddress?: string | null
   ): Promise<UnifiedTrustScore> {
     // Try FairScale (native Solana)
     const fairscaleScore = cachedFairScaleService.isConfigured()
       ? await cachedFairScaleService.getScore(address, twitter)
       : null;
 
-    // Try Ethos via Twitter UserKey (from Phase 1)
+    // Try Ethos via linked EVM address OR Twitter UserKey
     let ethosScore = null;
     let ethosProfile = null;
     
-    if (twitter) {
+    const ethAddressToQuery = linkedEthAddress || null;
+    
+    if (ethAddressToQuery) {
+      [ethosScore, ethosProfile] = await Promise.all([
+        cachedEthosService.getWalletEthosData(ethAddressToQuery).then(d => d.score),
+        cachedEthosService.getWalletEthosData(ethAddressToQuery).then(d => d.profile),
+      ]);
+    } else if (twitter) {
       const userKey = `service:x.com:username:${twitter}`;
       [ethosScore, ethosProfile] = await Promise.all([
         cachedEthosService.getScoreByUserKey(userKey),
@@ -108,12 +133,21 @@ export class TrustResolverService {
   /**
    * Resolve trust for Ethereum address
    */
-  private async resolveEthereum(address: string): Promise<UnifiedTrustScore> {
+  private async resolveEthereum(address: string, linkedSolAddress?: string | null): Promise<UnifiedTrustScore> {
     // Ethos is primary for Ethereum
     const ethosData = await cachedEthosService.getWalletEthosData(address);
+    
+    // ENHANCEMENT: Also check FairScale if we have a linked Solana address
+    let fairscaleScore = null;
+    if (linkedSolAddress) {
+      fairscaleScore = cachedFairScaleService.isConfigured()
+        ? await cachedFairScaleService.getScore(linkedSolAddress)
+        : null;
+    }
 
     return this.normalize({
       ethos: ethosData.score ? { score: ethosData.score, profile: ethosData.profile } : undefined,
+      fairscale: fairscaleScore || undefined,
       address,
     });
   }

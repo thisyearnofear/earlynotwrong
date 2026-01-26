@@ -114,12 +114,19 @@ export function LeaderboardPanel({ className }: { className?: string }) {
                                     ))
                                 ) : entries.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-8 text-center">
-                                            <div className="text-xs font-mono uppercase tracking-tighter text-foreground-muted opacity-60 mb-2">
-                                                Leaderboard Empty
-                                            </div>
-                                            <div className="text-[10px] text-foreground-muted opacity-50">
-                                                Analyzed wallets with conviction scores appear here. Start by analyzing any wallet.
+                                        <td colSpan={6} className="px-4 py-16">
+                                            <div className="flex flex-col items-center text-center space-y-4">
+                                                <div className="mx-auto bg-surface/40 rounded-2xl p-4 w-16 h-16 flex items-center justify-center border border-border/50 shadow-inner">
+                                                    <Trophy className="w-8 h-8 text-foreground-muted/50" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-foreground">
+                                                        Leaderboard Empty
+                                                    </h3>
+                                                    <p className="text-xs text-foreground-muted leading-relaxed max-w-[240px] mx-auto">
+                                                        Analyzed wallets with conviction scores appear here. Start by analyzing any wallet to populate the rankings.
+                                                    </p>
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>

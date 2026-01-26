@@ -199,12 +199,18 @@ export function TokenHeatmap({ className, onDataLoaded }: TokenHeatmapProps) {
               ))}
             </div>
           ) : sortedTokens.length === 0 ? (
-            <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
-              <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
-                No Tokens Detected
+            <div className="text-center py-12 px-6 bg-surface/20 rounded-xl border border-dashed border-border/30 relative overflow-hidden group">
+              <div className="absolute inset-0 bg-signal/5 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="mx-auto bg-surface/40 rounded-2xl p-4 w-16 h-16 flex items-center justify-center mb-4 border border-border/50 shadow-inner">
+                <Flame className="w-8 h-8 text-foreground-muted/50" />
               </div>
-              <div className="text-[10px] opacity-40">
-                Try adjusting the chain filter or check back later
+              <div className="space-y-2 relative z-10">
+                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-foreground">
+                  No Tokens Detected
+                </h3>
+                <p className="text-xs text-foreground-muted leading-relaxed max-w-[240px] mx-auto">
+                  High-conviction token signals will appear here as the network is scanned. Try adjusting your filters.
+                </p>
               </div>
             </div>
           ) : (

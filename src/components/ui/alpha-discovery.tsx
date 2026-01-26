@@ -42,6 +42,10 @@ interface AlphaWallet {
     ethos: number;
   };
   endorsements?: number;
+  scout?: {
+    address: string;
+    ethos: number;
+  };
 }
 
 interface AlphaDiscoveryProps {
@@ -236,12 +240,18 @@ export function AlphaDiscovery({
                 ))}
               </div>
             ) : wallets.length === 0 ? (
-              <div className="text-center py-6 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
-                <div className="text-xs font-mono uppercase tracking-tighter opacity-60 mb-2">
-                  No Alpha Detected
+              <div className="text-center py-12 px-6 bg-surface/20 rounded-xl border border-dashed border-border/30 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-signal/5 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="mx-auto bg-surface/40 rounded-2xl p-4 w-16 h-16 flex items-center justify-center mb-4 border border-border/50 shadow-inner">
+                  <Target className="w-8 h-8 text-foreground-muted/50" />
                 </div>
-                <div className="text-[10px] opacity-50 max-w-[200px] mx-auto">
-                  Alpha wallets appear here when traders with high Ethos scores are analyzed. Analyze wallets to populate this feed.
+                <div className="space-y-2 relative z-10">
+                  <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-foreground">
+                    No Alpha Detected
+                  </h3>
+                  <p className="text-xs text-foreground-muted leading-relaxed max-w-[240px] mx-auto">
+                    Alpha signals appear here when high-trust traders are analyzed. Start a deep scan to populate this feed.
+                  </p>
                 </div>
               </div>
             ) : (
@@ -285,18 +295,18 @@ export function AlphaDiscovery({
                       </div>
 
                       <div className="flex items-center gap-4 text-xs text-foreground-muted">
-                        <span>CI: {wallet.convictionScore}</span>
+                        <span>CI: {wallet.convictionScore ?? "---"}</span>
                         <span>Ethos: {wallet.ethosScore}</span>
-                        <span>{formatTimeAgo(wallet.lastAnalyzed)}</span>
+                        <span>{wallet.lastAnalyzed ? formatTimeAgo(wallet.lastAnalyzed) : "Pending Scan"}</span>
                       </div>
 
-                      {wallet.nominator && (
+                      {(wallet.scout || wallet.nominator) && (
                         <div className="mt-2 flex items-center gap-2">
                           <div className="flex items-center gap-1.5 text-[10px] text-foreground-muted bg-surface/50 w-fit px-1.5 py-0.5 rounded border border-border/30">
                             <Users className="w-3 h-3 text-signal" />
-                            <span>Nominated by</span>
-                            <span className="font-mono text-foreground">{formatAddress(wallet.nominator.address)}</span>
-                            <span className="text-signal">({wallet.nominator.ethos})</span>
+                            <span>{wallet.scout ? "Scouted by" : "Nominated by"}</span>
+                            <span className="font-mono text-foreground">{formatAddress(wallet.scout?.address || wallet.nominator!.address)}</span>
+                            <span className="text-signal">({wallet.scout?.ethos || wallet.nominator!.ethos})</span>
                           </div>
                           {wallet.endorsements !== undefined && wallet.endorsements > 0 && (
                             <div className="flex items-center gap-1 text-[10px] text-patience bg-patience/10 px-1.5 py-0.5 rounded border border-patience/20">

@@ -305,17 +305,51 @@ export async function GET(request: NextRequest) {
 
     // Fetch Base transactions (with caching)
     const watchlist = await getWatchlist();
-    const baseTraders = watchlist.filter((t) => t.chain === "base");
+    
+    // ENHANCEMENT: Also include top traders from the leaderboard for broader monitoring
+    let topTraders: any[] = [];
+    try {
+      const topTradersResult = await sql`
+        SELECT address, chain, farcaster as farcaster_username, ens as ens_name, ethos_score
+        FROM alpha_leaderboard
+        WHERE conviction_score >= 90
+        ORDER BY conviction_score DESC
+        LIMIT 20
+      `;
+      topTraders = topTradersResult.rows.map(r => ({
+        id: `leaderboard-${r.address}`,
+        name: r.ens_name || r.farcaster_username || r.address.slice(0, 8),
+        wallets: [r.address],
+        chain: r.chain,
+        socials: {
+          farcaster: r.farcaster_username,
+          ens: r.ens_name
+        }
+      }));
+    } catch (err) {
+      console.warn("Failed to fetch top traders for alerts:", err);
+    }
+
+    // Combine curated watchlist with top leaderboard traders
+    const monitoringPool = [...watchlist];
+    // Add unique top traders from leaderboard
+    topTraders.forEach(tt => {
+      if (!monitoringPool.some(t => t.wallets.some(w => w.toLowerCase() === tt.wallets[0].toLowerCase()))) {
+        monitoringPool.push(tt);
+      }
+    });
+
+    const baseTraders = monitoringPool.filter((t) => t.chain === "base");
 
     // Fetch in parallel but with some rate limiting
     const allTransfers: TokenTransfer[] = [];
     const ethosScoreCache = new Map<string, number | null>();
 
-    // Process traders in batches of 2 to avoid rate limits
-    for (let i = 0; i < baseTraders.length; i += 2) {
-      const batch = baseTraders.slice(i, i + 2);
+    // Process traders in batches of 3 to improve performance while respecting rate limits
+    for (let i = 0; i < baseTraders.length; i += 3) {
+      const batch = baseTraders.slice(i, i + 3);
       const batchPromises = batch.flatMap((trader) =>
-        trader.wallets.slice(0, 3).map((wallet) =>
+        trader.wallets.slice(0, 2).map((wallet) =>
           fetchRecentTransfersForWallet(wallet, hoursBack)
         )
       );
@@ -332,7 +366,11 @@ export async function GET(request: NextRequest) {
     // Convert to alerts
     const alertsRaw = await Promise.all(
       significantTransfers.map(async (transfer) => {
-        const trader = findTraderByWallet(transfer.walletAddress);
+        // Find trader in our monitoring pool
+        const trader = monitoringPool.find(t => 
+          t.wallets.some(w => w.toLowerCase() === transfer.walletAddress.toLowerCase())
+        );
+        
         if (!trader) return null;
 
         // Get Ethos score (cached)

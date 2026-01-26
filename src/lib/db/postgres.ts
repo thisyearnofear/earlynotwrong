@@ -80,6 +80,8 @@ export async function saveAnalysis(
     ethosScore?: number;
     unifiedTrustScore?: number;
     unifiedTrustTier?: string;
+    scoutedBy?: string;
+    scoutEthosScore?: number;
   }
 ): Promise<StoredAnalysis | null> {
   try {
@@ -89,7 +91,8 @@ export async function saveAnalysis(
         early_exits, conviction_wins, percentile, archetype,
         total_positions, avg_holding_period, win_rate, time_horizon,
         ens_name, farcaster_username, ethos_score,
-        unified_trust_score, unified_trust_tier
+        unified_trust_score, unified_trust_tier,
+        scouted_by, scout_ethos_score
       ) VALUES (
         ${address.toLowerCase()},
         ${chain},
@@ -108,7 +111,9 @@ export async function saveAnalysis(
         ${identity?.farcasterUsername || null},
         ${identity?.ethosScore || null},
         ${identity?.unifiedTrustScore || null},
-        ${identity?.unifiedTrustTier || null}
+        ${identity?.unifiedTrustTier || null},
+        ${identity?.scoutedBy || null},
+        ${identity?.scoutEthosScore || null}
       )
       ON CONFLICT (address, chain, time_horizon, analyzed_date)
       DO UPDATE SET
@@ -124,6 +129,8 @@ export async function saveAnalysis(
         win_rate = EXCLUDED.win_rate,
         unified_trust_score = EXCLUDED.unified_trust_score,
         unified_trust_tier = EXCLUDED.unified_trust_tier,
+        scouted_by = COALESCE(conviction_analyses.scouted_by, EXCLUDED.scouted_by),
+        scout_ethos_score = COALESCE(conviction_analyses.scout_ethos_score, EXCLUDED.scout_ethos_score),
         analyzed_at = CURRENT_TIMESTAMP
       RETURNING *
     `;

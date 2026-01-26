@@ -351,6 +351,9 @@ export function useConviction() {
 
           // Save to Postgres with trust scores and positions
           const currentTrustScore = useAppStore.getState().unifiedTrustScore;
+          const userAddress = isEvmConnected ? evmAddress : (isSolanaConnected ? solanaAddress : undefined);
+          const userEthos = useAppStore.getState().ethosScore?.score || 0;
+
           saveConvictionAnalysis(
             activeAddress,
             chain,
@@ -364,7 +367,8 @@ export function useConviction() {
               realizedPnL: p.realizedPnL,
               holdingPeriodDays: p.holdingPeriodDays,
               isEarlyExit: p.isEarlyExit,
-            }))
+            })),
+            userAddress ? { address: userAddress, ethosScore: userEthos } : undefined
           );
         } catch (error) {
           console.error("Transaction analysis failed:", error);

@@ -48,7 +48,8 @@ async function saveToPostgres(
   metrics: ConvictionMetrics,
   timeHorizon: number,
   trustScore?: UnifiedTrustScore | null,
-  positions?: PositionForStorage[]
+  positions?: PositionForStorage[],
+  scout?: { address: string; ethosScore: number }
 ): Promise<void> {
   try {
     await fetch("/api/analysis", {
@@ -70,6 +71,7 @@ async function saveToPostgres(
           holdingPeriodDays: p.holdingPeriodDays,
           isEarlyExit: p.isEarlyExit,
         })),
+        requester: scout
       }),
     });
   } catch {
@@ -86,7 +88,8 @@ export function saveConvictionAnalysis(
   timeHorizon: number,
   isShowcase: boolean = false,
   trustScore?: UnifiedTrustScore | null,
-  positions?: PositionForStorage[]
+  positions?: PositionForStorage[],
+  scout?: { address: string; ethosScore: number }
 ): HistoricalAnalysis {
   const history = getConvictionHistory();
 
@@ -111,7 +114,7 @@ export function saveConvictionAnalysis(
 
   // Also save to Postgres for real cohort data (non-blocking)
   if (!isShowcase) {
-    saveToPostgres(address, chain, metrics, timeHorizon, trustScore, positions);
+    saveToPostgres(address, chain, metrics, timeHorizon, trustScore, positions, scout);
   }
 
   return analysis;

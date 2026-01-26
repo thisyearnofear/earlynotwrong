@@ -286,14 +286,18 @@ export function ConvictionAlerts({
               ))}
             </div>
           ) : filteredAlerts.length === 0 && clusters.length === 0 ? (
-            <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
-              <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
-                No Alerts Detected
+            <div className="text-center py-12 px-6 bg-surface/20 rounded-xl border border-dashed border-border/30 relative overflow-hidden group">
+              <div className="absolute inset-0 bg-signal/5 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="mx-auto bg-surface/40 rounded-2xl p-4 w-16 h-16 flex items-center justify-center mb-4 border border-border/50 shadow-inner">
+                <Bell className="w-8 h-8 text-foreground-muted/50" />
               </div>
-              <div className="text-[10px] opacity-40">
-                {filter !== "all"
-                  ? "Try adjusting the filter to see more alerts"
-                  : "Watchlist traders haven't made significant moves"}
+              <div className="space-y-2 relative z-10">
+                <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-foreground">
+                  No Alerts Detected
+                </h3>
+                <p className="text-xs text-foreground-muted leading-relaxed max-w-[240px] mx-auto">
+                  Watchlist movements will trigger alerts here. {filter !== "all" ? "Try adjusting your filters to see more activity." : "Currently monitoring for high-conviction signals."}
+                </p>
               </div>
             </div>
           ) : (

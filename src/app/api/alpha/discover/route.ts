@@ -3,22 +3,27 @@ import { WATCHLIST, WatchlistTrader } from "@/lib/watchlist";
 import { ethosClient } from "@/lib/ethos";
 import { APP_CONFIG } from "@/lib/config";
 import { gates, getFeatureAccess } from "@/lib/ethos-gates";
+import { sql } from "@vercel/postgres";
 
 interface AlphaWallet {
   address: string;
   chain: "solana" | "base";
-  convictionScore: number;
+  convictionScore: number | null;
   ethosScore: number;
-  totalPositions: number;
-  patienceTax: number;
-  upsideCapture: number;
+  totalPositions: number | null;
+  patienceTax: number | null;
+  upsideCapture: number | null;
   archetype: string;
   alphaRating: "Unknown" | "Low" | "Medium" | "High" | "Elite";
-  lastAnalyzed: number;
+  lastAnalyzed: number | null;
   farcasterIdentity?: {
     username: string;
     displayName?: string;
     pfpUrl?: string;
+  };
+  scout?: {
+    address: string;
+    ethos: number;
   };
 }
 
@@ -61,11 +66,16 @@ function getAlphaRating(
   return "Unknown";
 }
 
-function getArchetype(ethosScore: number): string {
-  if (ethosScore >= 1800) return "Iron Pillar";
-  if (ethosScore >= 1400) return "Diamond Hand";
-  if (ethosScore >= 1000) return "Profit Phantom";
-  return "Exit Voyager";
+function getArchetype(ethosScore: number, convictionScore?: number): string {
+  if (convictionScore) {
+    if (convictionScore >= 90) return "Iron Pillar";
+    if (convictionScore >= 80) return "Diamond Hand";
+    if (convictionScore >= 60) return "Profit Phantom";
+  }
+  
+  if (ethosScore >= 1800) return "High Ethos";
+  if (ethosScore >= 1000) return "Verified Trader";
+  return "Newcomer";
 }
 
 async function buildAlphaWallet(
@@ -78,17 +88,53 @@ async function buildAlphaWallet(
     return null;
   }
 
+  // Attempt to fetch real conviction analysis from DB
+  try {
+    const result = await sql`
+      SELECT score, total_positions, patience_tax, win_rate, archetype, analyzed_at
+      FROM conviction_analyses
+      WHERE address = ${primaryWallet.toLowerCase()}
+      ORDER BY analyzed_at DESC
+      LIMIT 1
+    `;
+
+    if (result.rows.length > 0) {
+      const row = result.rows[0];
+      return {
+        address: primaryWallet,
+        chain: trader.chain,
+        convictionScore: row.score,
+        ethosScore,
+        totalPositions: row.total_positions,
+        patienceTax: row.patience_tax,
+        upsideCapture: row.win_rate, // Use win_rate as proxy for upside capture if field is missing
+        archetype: row.archetype || getArchetype(ethosScore, row.score),
+        alphaRating: getAlphaRating(ethosScore),
+        lastAnalyzed: new Date(row.analyzed_at).getTime(),
+        farcasterIdentity: trader.socials?.farcaster
+          ? {
+            username: trader.socials.farcaster,
+            displayName: trader.name,
+          }
+          : undefined,
+      };
+    }
+  } catch (dbError) {
+    console.warn("DB fetch failed for alpha wallet, returning basic info:", dbError);
+  }
+
+  // Return basic info without simulated metrics if no analysis exists
   return {
     address: primaryWallet,
     chain: trader.chain,
-    convictionScore: Math.min(95, 70 + ethosScore / 100),
+    convictionScore: null,
     ethosScore,
-    totalPositions: Math.floor(Math.random() * 15) + 5,
-    patienceTax: Math.floor(Math.random() * 2000) + 500,
-    upsideCapture: Math.min(95, 65 + ethosScore / 100),
+    totalPositions: null,
+    patienceTax: null,
+    upsideCapture: null,
     archetype: getArchetype(ethosScore),
     alphaRating: getAlphaRating(ethosScore),
-    lastAnalyzed: Date.now() - Math.floor(Math.random() * 3600000),
+    lastAnalyzed: null,
     farcasterIdentity: trader.socials?.farcaster
       ? {
         username: trader.socials.farcaster,
@@ -141,24 +187,69 @@ export async function GET(request: NextRequest) {
     const effectiveMinConviction = canFilter ? minConvictionScore : 0;
 
     // Filter watchlist by chain if specified
-    const targetTraders = chain
-      ? WATCHLIST.filter((t) => t.chain === chain)
-      : WATCHLIST;
+    const { getWatchlist } = await import("@/lib/watchlist");
+    const watchlistTraders = await getWatchlist(chain || undefined);
 
-    // Fetch Ethos scores and build alpha wallets in parallel
-    const walletPromises = targetTraders.map(buildAlphaWallet);
-    const walletsRaw = await Promise.all(walletPromises);
+    // Fetch Ethos scores and build alpha wallets for watchlist in parallel
+    const watchlistPromises = watchlistTraders.map(buildAlphaWallet);
+    const watchlistWalletsRaw = await Promise.all(watchlistPromises);
+
+    // ENHANCEMENT: Fetch high-scoring wallets from general conviction_analyses (Dynamic Discovery Pool)
+    // Only include those NOT in the watchlist to avoid duplicates
+    const watchlistAddresses = watchlistTraders.flatMap(t => t.wallets.map(w => w.toLowerCase()));
+    
+    let dynamicDiscoveryWallets: AlphaWallet[] = [];
+    try {
+      const dynamicResult = await sql`
+        SELECT DISTINCT ON (address, chain)
+          address, chain, score, total_positions, patience_tax, win_rate, archetype, analyzed_at,
+          farcaster_username, ens_name, ethos_score, scouted_by, scout_ethos_score
+        FROM conviction_analyses
+        WHERE score >= 80
+          AND analyzed_at > NOW() - INTERVAL '7 days'
+          AND NOT (address = ANY(${watchlistAddresses}))
+          AND (${chain}::text IS NULL OR chain = ${chain})
+        ORDER BY address, chain, analyzed_at DESC
+        LIMIT 20
+      `;
+
+      dynamicDiscoveryWallets = dynamicResult.rows.map(row => ({
+        address: row.address,
+        chain: row.chain,
+        convictionScore: row.score,
+        ethosScore: row.ethos_score || 0,
+        totalPositions: row.total_positions,
+        patienceTax: row.patience_tax,
+        upsideCapture: row.win_rate,
+        archetype: row.archetype || getArchetype(row.ethos_score || 0, row.score),
+        alphaRating: getAlphaRating(row.ethos_score || 0),
+        lastAnalyzed: new Date(row.analyzed_at).getTime(),
+        farcasterIdentity: row.farcaster_username ? {
+          username: row.farcaster_username,
+          displayName: row.ens_name || row.farcaster_username,
+        } : undefined,
+        scout: row.scouted_by ? {
+          address: row.scouted_by,
+          ethos: row.scout_ethos_score || 0
+        } : undefined
+      }));
+    } catch (err) {
+      console.warn("Failed to fetch dynamic discovery wallets:", err);
+    }
+
+    // Combine both sources
+    const allWalletsRaw = [...watchlistWalletsRaw, ...dynamicDiscoveryWallets];
 
     // Filter and sort (using effective filters based on requester's tier)
-    const filteredWallets = walletsRaw
+    const filteredWallets = allWalletsRaw
       .filter((w): w is AlphaWallet => w !== null)
       .filter((wallet) => {
         if (wallet.ethosScore < effectiveMinEthos) return false;
-        if (wallet.convictionScore < effectiveMinConviction) return false;
+        if ((wallet.convictionScore || 0) < effectiveMinConviction) return false;
         return true;
       });
 
-    // Sort by weighted alpha score
+    // Sort by weighted alpha score + scout reputation
     filteredWallets.sort((a, b) => {
       const getMultiplier = (ethosScore: number) => {
         const { reputation } = APP_CONFIG;
@@ -169,8 +260,11 @@ export async function GET(request: NextRequest) {
         return 1.0;
       };
 
-      const aWeighted = a.convictionScore * getMultiplier(a.ethosScore);
-      const bWeighted = b.convictionScore * getMultiplier(b.ethosScore);
+      const aScoutBonus = (a.scout?.ethos || 0) / 1000;
+      const bScoutBonus = (b.scout?.ethos || 0) / 1000;
+
+      const aWeighted = ((a.convictionScore || 0) + aScoutBonus) * getMultiplier(a.ethosScore);
+      const bWeighted = ((b.convictionScore || 0) + bScoutBonus) * getMultiplier(b.ethosScore);
 
       return bWeighted - aWeighted;
     });
