@@ -112,6 +112,17 @@ export function LeaderboardPanel({ className }: { className?: string }) {
                                             <td colSpan={5} className="px-4 py-4 h-12 bg-surface/5"></td>
                                         </tr>
                                     ))
+                                ) : entries.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-4 py-8 text-center">
+                                            <div className="text-xs font-mono uppercase tracking-tighter text-foreground-muted opacity-60 mb-2">
+                                                Leaderboard Empty
+                                            </div>
+                                            <div className="text-[10px] text-foreground-muted opacity-50">
+                                                Analyzed wallets with conviction scores appear here. Start by analyzing any wallet.
+                                            </div>
+                                        </td>
+                                    </tr>
                                 ) : (
                                     entries.map((entry) => (
                                         <tr

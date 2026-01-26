@@ -235,12 +235,12 @@ export function AlphaDiscovery({
                 </div>
               </div>
             ) : wallets.length === 0 ? (
-              <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
-                <div className="text-xs font-mono uppercase tracking-tighter opacity-50 mb-1">
+              <div className="text-center py-6 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
+                <div className="text-xs font-mono uppercase tracking-tighter opacity-60 mb-2">
                   No Alpha Detected
                 </div>
-                <div className="text-[10px] opacity-40">
-                  Try adjusting filters or check back later
+                <div className="text-[10px] opacity-50 max-w-[200px] mx-auto">
+                  Alpha wallets appear here when traders with high Ethos scores are analyzed. Analyze wallets to populate this feed.
                 </div>
               </div>
             ) : (

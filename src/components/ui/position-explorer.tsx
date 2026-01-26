@@ -334,6 +334,7 @@ export function PositionExplorer({
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<"pnl" | "patienceTax" | "date">("pnl");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [filter, setFilter] = useState<'all' | 'profitable' | 'early-exit' | 'diamond-hands'>('all');
 
   const sortedPositions = [...positions].sort((a, b) => {
     let comparison = 0;
@@ -349,6 +350,15 @@ export function PositionExplorer({
         break;
     }
     return sortOrder === "desc" ? -comparison : comparison;
+  });
+
+  const filteredPositions = sortedPositions.filter(p => {
+    switch (filter) {
+      case 'profitable': return p.realizedPnL > 0;
+      case 'early-exit': return p.isEarlyExit;
+      case 'diamond-hands': return p.maxMissedGain > 100 && p.holdingPeriodDays > 30;
+      default: return true;
+    }
   });
 
   const totalPnL = positions.reduce((sum, p) => sum + p.realizedPnL, 0);
@@ -449,12 +459,51 @@ export function PositionExplorer({
           >
             Date {sortBy === "date" && (sortOrder === "desc" ? "↓" : "↑")}
           </button>
+          <div className="h-4 border-l border-border mx-2" />
+          <span className="text-foreground-muted">Filter:</span>
+          <button
+            onClick={() => setFilter('all')}
+            className={cn(
+              "px-2 py-1 rounded transition-colors",
+              filter === 'all' ? "bg-signal/20 text-signal" : "text-foreground-muted hover:text-foreground"
+            )}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter('profitable')}
+            className={cn(
+              "px-2 py-1 rounded transition-colors",
+              filter === 'profitable' ? "bg-patience/20 text-patience" : "text-foreground-muted hover:text-foreground"
+            )}
+          >
+            Profitable
+          </button>
+          <button
+            onClick={() => setFilter('early-exit')}
+            className={cn(
+              "px-2 py-1 rounded transition-colors",
+              filter === 'early-exit' ? "bg-impatience/20 text-impatience" : "text-foreground-muted hover:text-foreground"
+            )}
+          >
+            Early Exit
+          </button>
+          <button
+            onClick={() => setFilter('diamond-hands')}
+            className={cn(
+              "px-2 py-1 rounded transition-colors",
+              filter === 'diamond-hands' ? "bg-patience/20 text-patience" : "text-foreground-muted hover:text-foreground"
+            )}
+          >
+            💎 Hands
+          </button>
+          <span className="text-foreground-muted ml-2">({filteredPositions.length})</span>
         </div>
       </div>
 
       {/* Position Cards List */}
       <div className="space-y-2">
-        {sortedPositions.map((position, index) => (
+        {filteredPositions.map((position, index) => (
           <PositionCard
             key={position.tokenAddress}
             position={position}

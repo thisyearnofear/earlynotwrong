@@ -144,6 +144,22 @@ export default function Home() {
   );
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
+  const [hasEverScanned, setHasEverScanned] = useState(true);
+
+  // Check localStorage for first-time user indicator
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setHasEverScanned(localStorage.getItem('enw_has_scanned') === 'true');
+    }
+  }, []);
+
+  // Set localStorage after first successful scan
+  useEffect(() => {
+    if (hasScanned && typeof window !== 'undefined') {
+      localStorage.setItem('enw_has_scanned', 'true');
+      setHasEverScanned(true);
+    }
+  }, [hasScanned]);
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("en-US", {
@@ -500,42 +516,47 @@ export default function Home() {
                           <span className="text-amber-500">(Limit reached)</span>
                         )}
                       </div>
-                      <WalletSearchInput
-                        onWalletSelected={async (
-                          identity: ResolvedIdentity,
-                        ) => {
-                          console.log("Analyzing wallet:", identity);
+                      <div className={cn(
+                        "rounded-lg",
+                        !hasEverScanned && "ring-2 ring-signal/50 ring-offset-2 ring-offset-background animate-pulse"
+                      )}>
+                        <WalletSearchInput
+                          onWalletSelected={async (
+                            identity: ResolvedIdentity,
+                          ) => {
+                            console.log("Analyzing wallet:", identity);
 
-                          // Update store with resolved identity data
-                          const { setEthosData, setFarcasterIdentity } =
-                            useAppStore.getState();
+                            // Update store with resolved identity data
+                            const { setEthosData, setFarcasterIdentity } =
+                              useAppStore.getState();
 
-                          // Update Ethos data (score and profile together)
-                          setEthosData(
-                            identity.ethos?.score || null,
-                            identity.ethos?.profile || null,
-                          );
+                            // Update Ethos data (score and profile together)
+                            setEthosData(
+                              identity.ethos?.score || null,
+                              identity.ethos?.profile || null,
+                            );
 
-                          // Update Farcaster identity if available
-                          if (identity.farcaster) {
-                            setFarcasterIdentity(identity.farcaster);
-                          }
+                            // Update Farcaster identity if available
+                            if (identity.farcaster) {
+                              setFarcasterIdentity(identity.farcaster);
+                            }
 
-                          // Trigger conviction analysis
-                          await analyzeWallet(identity.address);
+                            // Trigger conviction analysis
+                            await analyzeWallet(identity.address);
 
-                          // Scroll to results after analysis starts
-                          setTimeout(() => {
-                            const resultsSection =
-                              document.getElementById("conviction-results");
-                            resultsSection?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            });
-                          }, 500);
-                        }}
-                        className="max-w-none"
-                      />
+                            // Scroll to results after analysis starts
+                            setTimeout(() => {
+                              const resultsSection =
+                                document.getElementById("conviction-results");
+                              resultsSection?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start",
+                              });
+                            }, 500);
+                          }}
+                          className="max-w-none"
+                        />
+                      </div>
                     </div>
 
                     <div className="flex flex-col items-center gap-3">
