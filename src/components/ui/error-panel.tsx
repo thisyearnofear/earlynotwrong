@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, RefreshCw, Database, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,25 @@ export function ErrorPanel({
   onDismiss,
   className,
 }: ErrorPanelProps) {
+  const [autoRetryCountdown, setAutoRetryCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (errorType === 'network' && canRetry && onRetry) {
+      setAutoRetryCountdown(30);
+      const interval = setInterval(() => {
+        setAutoRetryCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            onRetry();
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [errorType, canRetry, onRetry]);
+
   const getErrorIcon = () => {
     switch (errorType) {
       case "network":
@@ -96,8 +116,7 @@ export function ErrorPanel({
               <Button
                 onClick={onRetry}
                 variant="default"
-                size="sm"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 animate-pulse"
               >
                 <RefreshCw className="w-4 h-4" />
                 Retry Analysis
@@ -126,6 +145,13 @@ export function ErrorPanel({
               </Button>
             )}
           </div>
+
+          {/* Retry Countdown Hint */}
+          {canRetry && autoRetryCountdown !== null && (
+            <p className="text-[10px] text-foreground-muted mt-2 font-mono">
+              Auto-retry in {autoRetryCountdown}s or click above to retry now
+            </p>
+          )}
 
           {/* Tips */}
           <div className="pt-2 border-t border-border/50">

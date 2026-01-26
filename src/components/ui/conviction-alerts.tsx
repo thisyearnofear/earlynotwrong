@@ -21,6 +21,7 @@ import {
   Users,
   Settings2,
 } from "lucide-react";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { NotificationSettings } from "@/components/ui/notification-settings";
 import {
   Dialog,
@@ -279,12 +280,10 @@ export function ConvictionAlerts({
               </Button>
             </div>
           ) : loading && alerts.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">
-              <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin" />
-              <div className="text-sm">Scanning watchlist wallets...</div>
-              <div className="text-xs mt-1">
-                Fetching recent transactions from Base
-              </div>
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <SkeletonCard key={i} className="rounded-lg border border-border/30" />
+              ))}
             </div>
           ) : filteredAlerts.length === 0 && clusters.length === 0 ? (
             <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">

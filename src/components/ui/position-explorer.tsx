@@ -506,7 +506,7 @@ export function PositionExplorer({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs font-mono">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
           <span className="text-foreground-muted">Sort:</span>
           <button
             onClick={() => toggleSort("pnl")}
@@ -541,7 +541,7 @@ export function PositionExplorer({
           >
             Date {sortBy === "date" && (sortOrder === "desc" ? "↓" : "↑")}
           </button>
-          <div className="h-4 border-l border-border mx-2" />
+          <div className="hidden sm:block h-4 border-l border-border mx-2" />
           <span className="text-foreground-muted">Filter:</span>
           <button
             onClick={() => setFilter('all')}
@@ -585,6 +585,11 @@ export function PositionExplorer({
 
       {/* Position Cards List */}
       <div className="space-y-2">
+        {filteredPositions.length > 0 && (
+          <p className="text-[10px] text-foreground-muted mb-3">
+            Click any position to see detailed entry/exit timing and counterfactual analysis.
+          </p>
+        )}
         {filteredPositions.map((position, index) => (
           <PositionCard
             key={position.tokenAddress}

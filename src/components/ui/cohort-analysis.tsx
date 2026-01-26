@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Search,
 } from "lucide-react";
+import { SkeletonRow } from "@/components/ui/skeleton";
 
 interface TraderBenchmark {
   id: string;
@@ -156,9 +157,10 @@ export function CohortAnalysis({
               </Button>
             </div>
           ) : loading && !benchmark ? (
-            <div className="text-center py-8 text-foreground-muted">
-              <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin" />
-              <div className="text-sm">Loading benchmark data...</div>
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonRow key={i} className="rounded-lg border border-border/30" />
+              ))}
             </div>
           ) : benchmark && benchmark.traderCount === 0 ? (
             <div className="text-center py-4 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">

@@ -63,10 +63,10 @@ export function PersonalRadar({ onAnalyze }: PersonalRadarProps) {
           return (
             <div
               key={`${entry.chain}:${entry.address}`}
-              className="flex items-center justify-between p-2 rounded bg-surface/30 border border-border/30 group hover:bg-surface/50 transition-colors"
+              className="flex items-center justify-between p-2 rounded bg-surface/30 border border-border/30 group hover:bg-surface/50 transition-colors overflow-hidden"
             >
-              <div className="flex flex-col min-w-0 flex-1 mr-3">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col min-w-0 flex-1 mr-3 overflow-hidden">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs font-medium truncate">
                     {entry.name || `${entry.address.slice(0, 6)}...`}
                   </span>

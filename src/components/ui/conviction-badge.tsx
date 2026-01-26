@@ -102,6 +102,7 @@ export function ConvictionBadge({
       initial={{ opacity: 0, scale: 0.95, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
+      title={config.description}
       className={cn(
         "inline-flex flex-col rounded-xl border backdrop-blur-md transition-all duration-500",
         config.bg,

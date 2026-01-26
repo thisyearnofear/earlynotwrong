@@ -581,9 +581,19 @@ export default function Home() {
                           className="max-w-none"
                         />
                       </div>
+                      {!hasEverScanned && (
+                        <p className="text-[10px] text-center text-foreground-muted mt-2 animate-pulse">
+                          👆 Enter any wallet address, ENS name, or Farcaster handle to analyze their trading conviction
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex flex-col items-center gap-3">
+                      {!hasEverScanned && (
+                        <p className="text-[9px] text-foreground-muted text-center">
+                          Or try one of these examples:
+                        </p>
+                      )}
                       <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest">
                         Quick start showcase
                       </p>
@@ -707,7 +717,7 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-12"
                 >
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
                     <Button
                       variant="ghost"
                       className="text-foreground-muted hover:text-foreground"
@@ -717,7 +727,7 @@ export default function Home() {
                     </Button>
                     
                     {targetAddress && (
-                      <div className="flex items-center gap-2 text-sm">
+                      <div className="flex items-center gap-2 text-sm flex-wrap">
                         {farcasterIdentity?.username && (
                           <span className="text-foreground">@{farcasterIdentity.username}</span>
                         )}
@@ -835,7 +845,7 @@ export default function Home() {
                         <CardContent className="flex flex-col xl:flex-row items-center xl:items-end justify-between gap-8 pt-4">
                           <div className="flex flex-col md:flex-row items-center md:items-end gap-6 md:gap-10">
                             <div className="space-y-2">
-                              <div className="text-7xl md:text-8xl lg:text-9xl font-bold text-foreground tracking-tighter text-glow">
+                              <div className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-bold text-foreground tracking-tighter text-glow">
                                 {convictionMetrics.score}
                               </div>
                               <div className="flex items-center gap-2 text-patience font-mono text-sm">

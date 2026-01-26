@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { WatchlistButton } from "@/components/ui/watchlist-button";
 import { useConviction } from "@/hooks/use-conviction";
+import { SkeletonRow } from "@/components/ui/skeleton";
 
 interface AlphaWallet {
   address: string;
@@ -229,10 +230,10 @@ export function AlphaDiscovery({
         >
           <div className="space-y-3">
             {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="text-sm text-foreground-muted font-mono">
-                  SCANNING ALPHA WALLETS...
-                </div>
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <SkeletonRow key={i} className="rounded-lg border border-border/30" />
+                ))}
               </div>
             ) : wallets.length === 0 ? (
               <div className="text-center py-6 text-foreground-muted bg-surface/20 rounded-lg border border-dashed border-border/30">
