@@ -15,9 +15,33 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://earlynotwrong.com";
+
 export const metadata: Metadata = {
   title: "Early, Not Wrong",
   description: "An agentic on-chain behavioral analysis app",
+  openGraph: {
+    title: "Early, Not Wrong",
+    description: "On-chain behavioral analysis to prove conviction",
+    images: [`${APP_URL}/api/og`],
+  },
+  other: {
+    // Farcaster Mini App embed meta tag (fc:miniapp for new apps)
+    "fc:miniapp": JSON.stringify({
+      version: "1",
+      imageUrl: `${APP_URL}/api/og`,
+      button: {
+        title: "Analyze Conviction",
+        action: {
+          type: "launch_frame",
+          name: "Early, Not Wrong",
+          url: APP_URL,
+          splashImageUrl: `${APP_URL}/splash-200.png`,
+          splashBackgroundColor: "#050505",
+        },
+      },
+    }),
+  },
 };
 
 export const viewport: Viewport = {
