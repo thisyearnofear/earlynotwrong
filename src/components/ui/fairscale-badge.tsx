@@ -147,10 +147,12 @@ export function FairScaleBadgeGrid({
   badges,
   className,
   maxVisible = 6,
+  size = "sm",
 }: {
   badges: FairScaleBadgeType[];
   className?: string;
   maxVisible?: number;
+  size?: "sm" | "md" | "lg";
 }) {
   const visibleBadges = badges.slice(0, maxVisible);
   const hiddenCount = Math.max(0, badges.length - maxVisible);
@@ -164,13 +166,16 @@ export function FairScaleBadgeGrid({
   }
 
   return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
+    <div className={cn("flex flex-wrap gap-1.5", className)}>
       {visibleBadges.map((badge) => (
-        <FairScaleBadge key={badge.id} badge={badge} size="sm" />
+        <FairScaleBadge key={badge.id} badge={badge} size={size} />
       ))}
       {hiddenCount > 0 && (
-        <div className="inline-flex items-center px-3 py-2 rounded-lg border border-border/50 bg-surface/20 text-xs font-mono text-foreground-muted">
-          +{hiddenCount} more
+        <div className={cn(
+          "inline-flex items-center rounded-lg border border-border/50 bg-surface/20 font-mono text-foreground-muted",
+          size === "sm" ? "px-2 py-1 text-[10px]" : size === "md" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
+        )}>
+          +{hiddenCount}
         </div>
       )}
     </div>

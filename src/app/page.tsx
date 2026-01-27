@@ -1436,19 +1436,35 @@ export default function Home() {
                                 )}
                               </p>
                             </div>
-                            <Button
-                              variant="outline"
-                              className="border-signal/50 text-signal hover:bg-signal/10"
-                              onClick={() =>
-                                window.open(
-                                  "https://ethos.network",
-                                  "_blank",
-                                  "noopener,noreferrer",
-                                )
-                              }
-                            >
-                              Build Reputation on Ethos →
-                            </Button>
+                            <div className="flex flex-wrap gap-2 justify-center">
+                              <Button
+                                variant="outline"
+                                className="border-signal/50 text-signal hover:bg-signal/10"
+                                onClick={() =>
+                                  window.open(
+                                    "https://ethos.network",
+                                    "_blank",
+                                    "noopener,noreferrer",
+                                  )
+                                }
+                              >
+                                Ethos
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="border-signal/50 text-signal hover:bg-signal/10"
+                                onClick={() =>
+                                  window.open(
+                                    "https://fairscale.xyz",
+                                    "_blank",
+                                    "noopener,noreferrer",
+                                  )
+                                }
+                              >
+                                FairScale
+                              </Button>
+                            </div>
+                            <p className="text-xs text-foreground-muted mt-2">Build reputation on either platform</p>
                           </div>
                         </CardContent>
                       </Card>

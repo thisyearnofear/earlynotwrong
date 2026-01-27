@@ -3,11 +3,12 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { TrendingUp, Award, Target, Coins, ExternalLink, Info } from "lucide-react";
+import { TrendingUp, ExternalLink, Info, Clock, Shield, Zap, Activity } from "lucide-react";
 import { motion } from "framer-motion";
 import type { UnifiedTrustScore } from "@/lib/services/trust-resolver";
 import { FairScaleBadgeGrid } from "./fairscale-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+import type { FairScaleFeatures } from "@/lib/fairscale";
 
 interface FairScaleCardProps {
   trust: UnifiedTrustScore | null;
@@ -158,57 +159,116 @@ export function FairScaleCard({ trust, className }: FairScaleCardProps) {
           </div>
         </motion.div>
 
-        {/* Score Breakdown */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 rounded-lg bg-surface/20 border border-border/50">
-            <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-1">
-              Wallet Score
+        {/* Conviction Metrics - surfacing FairScale features that align with ENW thesis */}
+        {fairScaleData.features && (
+          <div className="space-y-2">
+            <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+              Conviction Metrics
             </div>
-            <div className="text-lg font-bold text-foreground">
+            <div className="grid grid-cols-2 gap-2">
+              <ConvictionMetric
+                icon={<Clock className="w-3 h-3" />}
+                label="Hold Time"
+                value={`${(fairScaleData.features as FairScaleFeatures).median_hold_days?.toFixed(0) || 0}d`}
+                tooltip="Median days held per position"
+              />
+              <ConvictionMetric
+                icon={<Shield className="w-3 h-3" />}
+                label="Conviction"
+                value={`${((fairScaleData.features as FairScaleFeatures).conviction_ratio * 100)?.toFixed(0) || 0}%`}
+                tooltip="Ratio of positions held with conviction"
+              />
+              <ConvictionMetric
+                icon={<Zap className="w-3 h-3" />}
+                label="No Dumps"
+                value={`${((fairScaleData.features as FairScaleFeatures).no_instant_dumps * 100)?.toFixed(0) || 0}%`}
+                tooltip="Percentage avoiding instant dumps"
+              />
+              <ConvictionMetric
+                icon={<Activity className="w-3 h-3" />}
+                label="Age"
+                value={`${(fairScaleData.features as FairScaleFeatures).wallet_age_days?.toFixed(0) || 0}d`}
+                tooltip="Wallet age in days"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Score Breakdown - condensed */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2 rounded-lg bg-surface/20 border border-border/50">
+            <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+              Wallet
+            </div>
+            <div className="text-sm font-bold text-foreground">
               {fairScaleData.walletScore.toFixed(1)}
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-surface/20 border border-border/50">
-            <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-1">
-              Social Score
+          <div className="p-2 rounded-lg bg-surface/20 border border-border/50">
+            <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+              Social
             </div>
-            <div className="text-lg font-bold text-foreground">
+            <div className="text-sm font-bold text-foreground">
               {fairScaleData.socialScore.toFixed(1)}
             </div>
           </div>
         </div>
 
-        {/* Badges Section */}
+        {/* Badges Section - condensed */}
         {fairScaleData.badges.length > 0 && (
-          <div className="pt-2">
-            <div className="text-xs font-mono text-foreground-muted uppercase tracking-wider mb-2 flex items-center gap-2">
-              Achievements
-              <Tooltip>
-                <TooltipTrigger>
-                  <Info className="w-2.5 h-2.5 text-foreground-muted hover:text-foreground transition-colors" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="text-xs">
-                    Badges earned based on on-chain behavior and trading patterns.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
+          <div>
+            <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider mb-1.5">
+              Badges ({fairScaleData.badges.length})
             </div>
-            <FairScaleBadgeGrid badges={fairScaleData.badges} maxVisible={4} />
+            <FairScaleBadgeGrid badges={fairScaleData.badges} maxVisible={3} />
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex flex-col gap-2 pt-2">
-          <button
-            onClick={() => window.open('https://fairscale.xyz', '_blank')}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-border hover:bg-surface text-xs font-mono text-foreground transition-colors"
-          >
-            <ExternalLink className="w-3 h-3" />
-            VIEW FAIRSCALE PROFILE
-          </button>
-        </div>
+        {/* CTA */}
+        <button
+          onClick={() => window.open('https://fairscale.xyz', '_blank')}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border border-border hover:bg-surface text-[10px] font-mono text-foreground-muted hover:text-foreground transition-colors"
+        >
+          <ExternalLink className="w-2.5 h-2.5" />
+          BUILD REPUTATION
+        </button>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * ConvictionMetric - compact metric display for FairScale features
+ */
+function ConvictionMetric({
+  icon,
+  label,
+  value,
+  tooltip,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-1.5 p-1.5 rounded bg-surface/30 border border-border/30 cursor-help">
+          <span className="text-signal">{icon}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] font-mono text-foreground-muted uppercase truncate">
+              {label}
+            </div>
+            <div className="text-xs font-bold text-foreground">
+              {value}
+            </div>
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }

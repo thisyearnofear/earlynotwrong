@@ -146,14 +146,23 @@ export function EthosGatedContent({
         )}
 
         {/* CTA */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-2"
-          onClick={() => window.open("https://ethos.network", "_blank")}
-        >
-          Build Reputation on Ethos
-        </Button>
+        <div className="flex flex-wrap gap-2 mt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open("https://ethos.network", "_blank")}
+          >
+            Ethos
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open("https://fairscale.xyz", "_blank")}
+          >
+            FairScale
+          </Button>
+        </div>
+        <p className="text-[10px] text-foreground-muted mt-1">Build reputation on either platform</p>
       </div>
     </div>
   );

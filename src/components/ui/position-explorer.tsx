@@ -101,108 +101,115 @@ function PositionCard({
     >
       <button
         onClick={onToggle}
-        className="w-full p-4 flex items-center justify-between text-left"
+        className="w-full p-3 sm:p-4 text-left"
       >
-        <div className="flex items-center gap-4">
-          {position.metadata?.logoUri ? (
-            <img
-              src={position.metadata.logoUri}
-              alt={position.tokenSymbol || "Token"}
-              className="w-10 h-10 rounded-full bg-surface"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-surface-hover flex items-center justify-center text-xs font-mono text-foreground-muted">
-              {position.tokenSymbol?.slice(0, 3) || "???"}
-            </div>
-          )}
+        {/* Mobile: Stack vertically, Desktop: Side by side */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+          {/* Left: Token info */}
+          <div className="flex items-start sm:items-center gap-3">
+            {position.metadata?.logoUri ? (
+              <img
+                src={position.metadata.logoUri}
+                alt={position.tokenSymbol || "Token"}
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-surface shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-surface-hover flex items-center justify-center text-[10px] sm:text-xs font-mono text-foreground-muted shrink-0">
+                {position.tokenSymbol?.slice(0, 3) || "???"}
+              </div>
+            )}
 
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-foreground">
-                {position.metadata?.name || position.tokenSymbol || "Unknown"}
-              </span>
-              <span className="text-xs font-mono text-foreground-muted">
-                {position.tokenSymbol}
-              </span>
-              {/* Badges: Early Exit, Panic Sold, Diamond Hands, Re-Entry, Conviction Win */}
-              {position.isEarlyExit && (
-                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-impatience/20 text-impatience rounded">
-                  EARLY EXIT
+            <div className="min-w-0 flex-1">
+              {/* Token name and symbol */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-semibold text-foreground text-sm sm:text-base truncate max-w-[120px] sm:max-w-none">
+                  {position.metadata?.name || position.tokenSymbol || "Unknown"}
                 </span>
-              )}
-              {/* Panic Sold: exited within 7 days */}
-              {position.exitDetails && position.holdingPeriodDays < 7 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-amber-200/20 text-amber-400 rounded">
-                  PANIC SOLD
+                <span className="text-[10px] sm:text-xs font-mono text-foreground-muted">
+                  {position.tokenSymbol}
                 </span>
-              )}
-              {/* Diamond Hands: held through large post-exit move potential */}
-              {position.maxMissedGain > 100 && position.holdingPeriodDays > 30 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-patience/20 text-patience rounded">
-                  DIAMOND HANDS
+              </div>
+              
+              {/* Badges row - scrollable on mobile */}
+              <div className="flex items-center gap-1 mt-1 overflow-x-auto pb-0.5">
+                {position.isEarlyExit && (
+                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-impatience/20 text-impatience rounded whitespace-nowrap shrink-0">
+                    EARLY
+                  </span>
+                )}
+                {position.exitDetails && position.holdingPeriodDays < 7 && (
+                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-amber-200/20 text-amber-400 rounded whitespace-nowrap shrink-0">
+                    PANIC
+                  </span>
+                )}
+                {position.maxMissedGain > 100 && position.holdingPeriodDays > 30 && (
+                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-patience/20 text-patience rounded whitespace-nowrap shrink-0">
+                    💎
+                  </span>
+                )}
+                {position.hasReEntry && (
+                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-signal/20 text-signal rounded whitespace-nowrap shrink-0">
+                    RE-ENTRY
+                  </span>
+                )}
+                {position.realizedPnL > position.entryDetails.totalValue * 0.5 && (
+                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-emerald-200/20 text-emerald-400 rounded whitespace-nowrap shrink-0">
+                    WIN
+                  </span>
+                )}
+              </div>
+              
+              {/* Holding period and entry */}
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs text-foreground-muted mt-1">
+                <span className="flex items-center gap-0.5">
+                  <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                  {position.holdingPeriodDays}d
                 </span>
-              )}
-              {/* Re-Entry: multiple entry phases */}
-              {position.hasReEntry && (
-                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-signal/20 text-signal rounded">
-                  RE-ENTRY
+                <span className="hidden sm:inline">
+                  Entry: {formatCurrency(position.entryDetails.avgPrice)}
                 </span>
-              )}
-              {/* Conviction Win: 50%+ gain vs cost basis */}
-              {position.realizedPnL > position.entryDetails.totalValue * 0.5 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-emerald-200/20 text-emerald-400 rounded">
-                  CONVICTION WIN
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-foreground-muted mt-1">
-              <span>
-                <Clock className="w-3 h-3 inline mr-1" />
-                {position.holdingPeriodDays}d held
-              </span>
-              <span>
-                Entry: {formatCurrency(position.entryDetails.avgPrice)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="text-right">
-            <div
-              className={cn(
-                "font-mono font-semibold",
-                isProfitable ? "text-patience" : "text-impatience"
-              )}
-            >
-              {formatCurrency(position.realizedPnL)}
-            </div>
-            <div
-              className={cn(
-                "text-xs font-mono",
-                isProfitable ? "text-patience/70" : "text-impatience/70"
-              )}
-            >
-              {formatPercent(position.realizedPnLPercent)}
+              </div>
             </div>
           </div>
 
-          {hasCounterfactual && (
-            <div className="text-right border-l border-border pl-4">
-              <div className="text-xs text-foreground-muted uppercase tracking-wider">
-                Missed
+          {/* Right: P&L info */}
+          <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-6 pl-11 sm:pl-0">
+            <div className="text-left sm:text-right">
+              <div
+                className={cn(
+                  "font-mono font-semibold text-sm sm:text-base",
+                  isProfitable ? "text-patience" : "text-impatience"
+                )}
+              >
+                {formatCurrency(position.realizedPnL)}
               </div>
-              <div className="font-mono text-impatience">
-                {formatCurrency(position.counterfactual!.missedGainDollars)}
+              <div
+                className={cn(
+                  "text-[10px] sm:text-xs font-mono",
+                  isProfitable ? "text-patience/70" : "text-impatience/70"
+                )}
+              >
+                {formatPercent(position.realizedPnLPercent)}
               </div>
             </div>
-          )}
 
-          {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-foreground-muted" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-foreground-muted" />
-          )}
+            {hasCounterfactual && (
+              <div className="text-right border-l border-border pl-3">
+                <div className="text-[10px] sm:text-xs text-foreground-muted uppercase tracking-wider">
+                  Missed
+                </div>
+                <div className="font-mono text-impatience text-sm sm:text-base">
+                  {formatCurrency(position.counterfactual!.missedGainDollars)}
+                </div>
+              </div>
+            )}
+
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-foreground-muted shrink-0" />
+            ) : (
+              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-foreground-muted shrink-0" />
+            )}
+          </div>
         </div>
       </button>
 
@@ -478,40 +485,42 @@ export function PositionExplorer({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {/* Existing Summary Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-6 text-sm">
-          <div>
-            <span className="text-foreground-muted">Total P&L: </span>
-            <span
-              className={cn(
-                "font-mono font-semibold",
-                totalPnL >= 0 ? "text-patience" : "text-impatience"
-              )}
-            >
-              {formatCurrency(totalPnL)}
-            </span>
-          </div>
-          <div>
-            <span className="text-foreground-muted">Patience Tax: </span>
-            <span className="font-mono font-semibold text-impatience">
-              {formatCurrency(totalPatienceTax)}
-            </span>
-          </div>
-          <div>
-            <span className="text-foreground-muted">Early Exits: </span>
-            <span className="font-mono font-semibold text-foreground">
-              {earlyExitCount}/{positions.length}
-            </span>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 text-xs sm:text-sm">
+        <div className="text-center sm:text-left">
+          <div className="text-foreground-muted text-[10px] sm:text-xs uppercase tracking-wider">P&L</div>
+          <div
+            className={cn(
+              "font-mono font-semibold truncate",
+              totalPnL >= 0 ? "text-patience" : "text-impatience"
+            )}
+          >
+            {formatCurrency(totalPnL)}
           </div>
         </div>
+        <div className="text-center sm:text-left">
+          <div className="text-foreground-muted text-[10px] sm:text-xs uppercase tracking-wider">Tax</div>
+          <div className="font-mono font-semibold text-impatience truncate">
+            {formatCurrency(totalPatienceTax)}
+          </div>
+        </div>
+        <div className="text-center sm:text-left">
+          <div className="text-foreground-muted text-[10px] sm:text-xs uppercase tracking-wider">Early</div>
+          <div className="font-mono font-semibold text-foreground">
+            {earlyExitCount}/{positions.length}
+          </div>
+        </div>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-          <span className="text-foreground-muted">Sort:</span>
+      {/* Sort & Filter Controls */}
+      <div className="space-y-2">
+        {/* Sort Row */}
+        <div className="flex items-center gap-1 text-[10px] sm:text-xs font-mono overflow-x-auto pb-1">
+          <span className="text-foreground-muted shrink-0">Sort:</span>
           <button
             onClick={() => toggleSort("pnl")}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               sortBy === "pnl"
                 ? "bg-signal/20 text-signal"
                 : "text-foreground-muted hover:text-foreground"
@@ -522,7 +531,7 @@ export function PositionExplorer({
           <button
             onClick={() => toggleSort("patienceTax")}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               sortBy === "patienceTax"
                 ? "bg-signal/20 text-signal"
                 : "text-foreground-muted hover:text-foreground"
@@ -533,7 +542,7 @@ export function PositionExplorer({
           <button
             onClick={() => toggleSort("date")}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               sortBy === "date"
                 ? "bg-signal/20 text-signal"
                 : "text-foreground-muted hover:text-foreground"
@@ -541,12 +550,15 @@ export function PositionExplorer({
           >
             Date {sortBy === "date" && (sortOrder === "desc" ? "↓" : "↑")}
           </button>
-          <div className="hidden sm:block h-4 border-l border-border mx-2" />
-          <span className="text-foreground-muted">Filter:</span>
+        </div>
+        
+        {/* Filter Row */}
+        <div className="flex items-center gap-1 text-[10px] sm:text-xs font-mono overflow-x-auto pb-1">
+          <span className="text-foreground-muted shrink-0">Filter:</span>
           <button
             onClick={() => setFilter('all')}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               filter === 'all' ? "bg-signal/20 text-signal" : "text-foreground-muted hover:text-foreground"
             )}
           >
@@ -555,7 +567,7 @@ export function PositionExplorer({
           <button
             onClick={() => setFilter('profitable')}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               filter === 'profitable' ? "bg-patience/20 text-patience" : "text-foreground-muted hover:text-foreground"
             )}
           >
@@ -564,7 +576,7 @@ export function PositionExplorer({
           <button
             onClick={() => setFilter('early-exit')}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               filter === 'early-exit' ? "bg-impatience/20 text-impatience" : "text-foreground-muted hover:text-foreground"
             )}
           >
@@ -573,13 +585,13 @@ export function PositionExplorer({
           <button
             onClick={() => setFilter('diamond-hands')}
             className={cn(
-              "px-2 py-1 rounded transition-colors",
+              "px-2 py-1 rounded transition-colors whitespace-nowrap",
               filter === 'diamond-hands' ? "bg-patience/20 text-patience" : "text-foreground-muted hover:text-foreground"
             )}
           >
-            💎 Hands
+            💎
           </button>
-          <span className="text-foreground-muted ml-2">({filteredPositions.length})</span>
+          <span className="text-foreground-muted shrink-0">({filteredPositions.length})</span>
         </div>
       </div>
 
