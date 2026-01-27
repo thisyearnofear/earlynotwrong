@@ -8,6 +8,7 @@ const ENSDATA_BASE_URL = "https://ensdata.net";
 interface Profile {
   platform: string;
   identity: string;
+  address?: string;
   displayName: string;
   avatar: string | null;
   description: string | null;
@@ -25,16 +26,61 @@ interface Profile {
 
 export async function POST(request: NextRequest) {
   try {
-    const { address, fid } = await request.json();
+    const { address, fid, username } = await request.json();
 
-    if (!address && !fid) {
+    if (!address && !fid && !username) {
       return NextResponse.json(
-        { error: "Address or FID is required" },
+        { error: "Address, FID, or Username is required" },
         { status: 400 },
       );
     }
 
     let profiles: Profile[] = [];
+
+    // Priority 0: If Username provided, fetch from Neynar
+    if (username && NEYNAR_API_KEY) {
+      try {
+        const neynarResponse = await fetch(
+          `${NEYNAR_BASE_URL}/farcaster/user/by_username?username=${username}`,
+          {
+            headers: {
+              "x-api-key": NEYNAR_API_KEY,
+              Accept: "application/json",
+            },
+          },
+        );
+
+        if (neynarResponse.ok) {
+          const neynarData = await neynarResponse.json();
+          // endpoint returns { user: ... }
+          const user = neynarData.user;
+          if (user) {
+            profiles = [
+              {
+                platform: "farcaster",
+                identity: user.username,
+                displayName: user.display_name,
+                avatar: user.pfp_url,
+                description: user.profile?.bio?.text,
+                social: {
+                  uid: user.fid,
+                  follower: user.follower_count,
+                  following: user.following_count,
+                },
+                verifiedAddresses: {
+                  ethAddresses: user.verified_addresses.eth_addresses,
+                  solAddresses: user.verified_addresses.sol_addresses,
+                },
+              },
+            ];
+          }
+        }
+      } catch (neynarError) {
+        console.warn("Neynar Username lookup failed:", neynarError);
+      }
+    }
+
+
 
     // Priority 1: If FID is provided, fetch directly from Neynar
     if (fid && NEYNAR_API_KEY) {
@@ -122,13 +168,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Priority 3: Fallback to Web3.bio universal resolver
-    if (profiles.length === 0 && address) {
+    if (profiles.length === 0 && (address || username)) {
       try {
+        const query = address || username;
+        // If it's a username without extension, append .farcaster for safer resolution if needed, 
+        // but web3.bio often handles plain handles. Let's try direct first.
+        // If passing username '0xen', web3.bio might treat it as various things.
+
         const web3BioResponse = await fetch(
-          `${WEB3_BIO_BASE_URL}/ns/${address}`,
+          `${WEB3_BIO_BASE_URL}/ns/${query}`,
           {
             headers: {
               Accept: "application/json",
+              ...(process.env.WEB3BIO_API_KEY ? { 'x-api-key': process.env.WEB3BIO_API_KEY } : {})
             },
           },
         );
@@ -196,7 +248,14 @@ export async function POST(request: NextRequest) {
         avatar: p.avatar,
         description: p.description,
       })),
-      verifiedAddresses: farcasterProfile?.verifiedAddresses,
+      verifiedAddresses: farcasterProfile?.verifiedAddresses || {
+        ethAddresses: profiles
+          .filter((p) => p.address?.startsWith("0x"))
+          .map((p) => p.address as string),
+        solAddresses: profiles
+          .filter((p) => p.platform === "solana" && p.address)
+          .map((p) => p.address as string),
+      },
     };
 
     return NextResponse.json({ identity });

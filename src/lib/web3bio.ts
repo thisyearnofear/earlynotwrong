@@ -64,7 +64,11 @@ export async function resolveUniversalIdentity(
   identity: string
 ): Promise<UniversalIdentity | null> {
   try {
-    const response = await fetch(`${WEB3BIO_API}/profile/${identity}`);
+    const response = await fetch(`${WEB3BIO_API}/profile/${identity}`, {
+      headers: {
+        ...(process.env.WEB3BIO_API_KEY ? { 'x-api-key': process.env.WEB3BIO_API_KEY } : {})
+      }
+    });
 
     if (!response.ok) {
       console.warn('Web3.bio lookup failed:', response.status);
