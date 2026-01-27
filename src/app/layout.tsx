@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://earlynotwrong.vercel.app";
+const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://earlynotwrong.vercel.app";
+const APP_URL = rawAppUrl.startsWith("http") ? rawAppUrl.replace(/\/$/, "") : `https://${rawAppUrl.replace(/\/$/, "")}`;
 
 export const metadata: Metadata = {
   title: "Early, Not Wrong",
