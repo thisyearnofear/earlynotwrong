@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://earlynotwrong.com";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://earlynotwrong.vercel.app";
 
 export const metadata: Metadata = {
   title: "Early, Not Wrong",
@@ -57,9 +57,9 @@ export const metadata: Metadata = {
     creator: "@earlynotwrong",
   },
   other: {
-    // Farcaster Mini App embed meta tag (fc:miniapp for new apps)
-    "fc:miniapp": JSON.stringify({
-      version: "1",
+    // Farcaster Mini App embed meta tag
+    "fc:frame": JSON.stringify({
+      version: "next",
       imageUrl: `${APP_URL}/api/og`,
       button: {
         title: "Analyze Conviction",
