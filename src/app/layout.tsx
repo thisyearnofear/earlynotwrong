@@ -42,7 +42,7 @@ export const metadata: Metadata = {
       {
         url: `${APP_URL}/api/og`,
         width: 1200,
-        height: 630,
+        height: 800,
         alt: "Early, Not Wrong - On-chain Conviction Analysis",
       },
     ],
@@ -58,8 +58,8 @@ export const metadata: Metadata = {
   },
   other: {
     // Farcaster Mini App embed meta tag
-    "fc:frame": JSON.stringify({
-      version: "next",
+    "fc:miniapp": JSON.stringify({
+      version: "1",
       imageUrl: `${APP_URL}/api/og`,
       button: {
         title: "Analyze Conviction",
