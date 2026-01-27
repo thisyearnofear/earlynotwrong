@@ -61,7 +61,7 @@ export const metadata: Metadata = {
     // Farcaster Mini App embed meta tag
     "fc:miniapp": JSON.stringify({
       version: "1",
-      imageUrl: `${APP_URL}/api/og`,
+      imageUrl: `${APP_URL}/embed-image.png`,
       button: {
         title: "Analyze Conviction",
         action: {
