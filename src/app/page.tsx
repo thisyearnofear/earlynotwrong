@@ -72,6 +72,7 @@ import { FairScaleCard } from "@/components/ui/fairscale-card";
 import { CapabilitiesGrid } from "@/components/ui/capabilities-grid";
 import { PublicClusterSignals } from "@/components/ui/public-cluster-signals";
 import { AnalysisFilters } from "@/components/ui/analysis-filters";
+import { ScanProgress } from "@/components/ui/scan-progress";
 
 export default function Home() {
   const {
@@ -667,8 +668,9 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.3 }}
-                className="w-full max-w-2xl mx-auto"
+                className="w-full max-w-2xl mx-auto space-y-4"
               >
+                <ScanProgress />
                 <Terminal logs={logs} className="min-h-100" />
               </motion.div>
             )}

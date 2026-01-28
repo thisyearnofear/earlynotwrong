@@ -43,6 +43,7 @@ export function useConviction() {
     setError,
     clearError,
     incrementDailyAnalysis,
+    setScanProgress,
   } = useAppStore();
 
   const analyzeWallet = useCallback(
@@ -238,6 +239,47 @@ export function useConviction() {
         await new Promise((resolve) => setTimeout(resolve, 600));
         addLog(`> ACCESSING ${chain.toUpperCase()} TRANSACTION HISTORY...`);
 
+        // Start progress simulation for transaction fetching
+        setScanProgress({
+          phase: 'fetching',
+          percent: 25,
+          detail: 'Connecting to blockchain data providers...',
+          itemsProcessed: 0,
+          totalItems: 0,
+        });
+
+        // Add intermediate terminal logs to show activity during long operations
+        const terminalLogs = [
+          { delay: 1000, message: `> QUERYING ${chain.toUpperCase()} INDEX NODES...` },
+          { delay: 2000, message: `> PARSING SWAP EVENTS FROM ${parameters.timeHorizon}D HISTORY...` },
+          { delay: 3500, message: '> FILTERING BY MINIMUM TRADE VALUE...' },
+          { delay: 5000, message: '> RESOLVING TOKEN METADATA...' },
+          { delay: 6500, message: '> VALIDATING TRANSACTION SIGNATURES...' },
+        ];
+
+        const logTimeouts = terminalLogs.map(({ delay, message }) =>
+          setTimeout(() => addLog(message), delay)
+        );
+
+        // Simulate incremental progress during the API call
+        const progressInterval = setInterval(() => {
+          const currentProgress = useAppStore.getState().scanProgress;
+          if (currentProgress.phase === 'fetching' && currentProgress.percent < 60) {
+            const messages = [
+              'Querying transaction index...',
+              'Retrieving historical data...',
+              'Parsing swap events...',
+              'Filtering by time horizon...',
+              'Validating transaction data...',
+            ];
+            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+            setScanProgress({
+              percent: Math.min(currentProgress.percent + Math.random() * 8, 60),
+              detail: randomMessage,
+            });
+          }
+        }, 800);
+
         try {
           const effectiveMinTradeValue = targetShowcase
             ? Math.min(parameters.minTradeValue, 1)
@@ -253,6 +295,7 @@ export function useConviction() {
             { maxRetries: 2, initialDelay: 2000 },
           );
 
+          clearInterval(progressInterval);
           addLog(`> FOUND ${txResult.count} QUALIFYING TRANSACTIONS`);
 
           // Log and store data quality if available
@@ -263,6 +306,15 @@ export function useConviction() {
             );
             setDataQuality(txResult.quality);
           }
+
+          // Update progress for processing phase
+          setScanProgress({
+            phase: 'processing',
+            percent: 65,
+            detail: `Processing ${txResult.count} transactions...`,
+            itemsProcessed: 0,
+            totalItems: txResult.count,
+          });
 
           if (txResult.count === 0) {
             addLog(`> WARNING: INSUFFICIENT TX HISTORY DETECTED`);
@@ -296,6 +348,15 @@ export function useConviction() {
           );
           addLog(`> IDENTIFIED ${positions.length} TRADING POSITIONS`);
 
+          // Update progress for analyzing phase
+          setScanProgress({
+            phase: 'analyzing',
+            percent: 75,
+            detail: `Analyzing ${positions.length} trading positions...`,
+            itemsProcessed: 0,
+            totalItems: positions.length,
+          });
+
           await new Promise((resolve) => setTimeout(resolve, 600));
           setAnalysisStep("Analyzing conviction...");
           addLog(`> ANALYZING POST-EXIT PERFORMANCE...`);
@@ -321,6 +382,15 @@ export function useConviction() {
             { maxRetries: 2, initialDelay: 2000 },
           );
 
+          // Update progress near completion
+          setScanProgress({
+            phase: 'analyzing',
+            percent: 90,
+            detail: 'Calculating final metrics...',
+            itemsProcessed: positions.length,
+            totalItems: positions.length,
+          });
+
           await new Promise((resolve) => setTimeout(resolve, 400));
           setAnalysisStep("Calculating metrics...");
           addLog(`> CALCULATING CONVICTION SCORE...`);
@@ -329,6 +399,15 @@ export function useConviction() {
           addLog(`> CONVICTION_SCORE: ${batchResult.metrics.score}`);
           addLog(`> PATIENCE_TAX: $${batchResult.metrics.patienceTax}`);
           addLog(`> ANALYSIS COMPLETE.`);
+
+          // Final progress update
+          setScanProgress({
+            phase: 'complete',
+            percent: 100,
+            detail: 'Analysis complete',
+            itemsProcessed: positions.length,
+            totalItems: positions.length,
+          });
 
           setConvictionMetrics(batchResult.metrics);
           setPositionAnalyses(batchResult.positions, chain);
@@ -371,6 +450,8 @@ export function useConviction() {
             userAddress ? { address: userAddress, ethosScore: userEthos } : undefined
           );
         } catch (error) {
+          clearInterval(progressInterval);
+          logTimeouts.forEach(clearTimeout);
           console.error("Transaction analysis failed:", error);
 
           const classified = classifyError(error);
@@ -432,6 +513,7 @@ export function useConviction() {
       setError,
       clearError,
       incrementDailyAnalysis,
+      setScanProgress,
     ],
   );
 

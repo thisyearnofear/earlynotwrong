@@ -35,13 +35,23 @@ interface ToastState {
   isVisible: boolean;
 }
 
+interface ScanProgress {
+  phase: 'idle' | 'connecting' | 'fetching' | 'processing' | 'analyzing' | 'complete';
+  percent: number;
+  detail: string;
+  itemsProcessed: number;
+  totalItems: number;
+}
+
 interface AppState {
   // Analysis Workflow
   isAnalyzing: boolean;
   analysisStep: string;
   logs: string[];
+  scanProgress: ScanProgress;
   setAnalysisStep: (step: string) => void;
   addLog: (log: string) => void;
+  setScanProgress: (progress: Partial<ScanProgress>) => void;
   startAnalysis: () => void;
   finishAnalysis: () => void;
 
@@ -120,13 +130,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAnalyzing: false,
   analysisStep: "",
   logs: [],
+  scanProgress: {
+    phase: 'idle',
+    percent: 0,
+    detail: '',
+    itemsProcessed: 0,
+    totalItems: 0,
+  },
   setAnalysisStep: (step) => set({ analysisStep: step }),
   addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
+  setScanProgress: (progress) =>
+    set((state) => ({
+      scanProgress: { ...state.scanProgress, ...progress },
+    })),
   startAnalysis: () =>
     set({
       isAnalyzing: true,
       analysisStep: "Initializing scan...",
       logs: ["> INITIALIZING CONVICTION PROTOCOL_"],
+      scanProgress: {
+        phase: 'connecting',
+        percent: 5,
+        detail: 'Establishing secure connection...',
+        itemsProcessed: 0,
+        totalItems: 0,
+      },
       errorState: {
         hasError: false,
         errorType: null,
@@ -135,7 +163,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         canUseCached: false,
       },
     }),
-  finishAnalysis: () => set({ isAnalyzing: false, analysisStep: "" }),
+  finishAnalysis: () => set({
+    isAnalyzing: false,
+    analysisStep: "",
+    scanProgress: {
+      phase: 'complete',
+      percent: 100,
+      detail: 'Analysis complete',
+      itemsProcessed: 0,
+      totalItems: 0,
+    },
+  }),
 
   // Error Handling
   errorState: {
@@ -246,6 +284,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       isAnalyzing: false,
       analysisStep: "",
       logs: [],
+      scanProgress: {
+        phase: 'idle',
+        percent: 0,
+        detail: '',
+        itemsProcessed: 0,
+        totalItems: 0,
+      },
       ethosScore: null,
       ethosProfile: null,
       unifiedTrustScore: null,
