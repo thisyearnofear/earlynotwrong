@@ -65,17 +65,23 @@ export interface UnifiedTrustScore {
 export class TrustResolverService {
   /**
    * Resolve trust score for any address
+   * @param address - Primary address to resolve
+   * @param twitter - Known Twitter handle (skips discovery if provided)
+   * @param knownSolanaAddress - Known linked Solana address (skips Memory query if provided)
    */
   async resolve(address: string, twitter?: string, knownSolanaAddress?: string): Promise<UnifiedTrustScore> {
     const isSolana = this.isSolanaAddress(address);
 
     // Cross-chain identity bridging: Memory Protocol → Farcaster → fallback
+    // Skip Memory query if we already have cross-chain data (optimization)
     let linkedEthAddress: string | null = null;
     let linkedSolAddress: string | null = knownSolanaAddress || null;
     let resolvedTwitter: string | null = twitter || null;
 
-    // Strategy 1: Memory Protocol (best cross-chain identity graph)
-    if (memoryClient.isConfigured()) {
+    // Only query Memory if we're missing cross-chain data
+    const needsCrossChainDiscovery = isSolana ? !linkedEthAddress : !linkedSolAddress;
+    
+    if (needsCrossChainDiscovery && memoryClient.isConfigured()) {
       try {
         const memoryIdentity = await memoryClient.resolveCrossChainIdentity(address);
         if (memoryIdentity) {
@@ -98,7 +104,8 @@ export class TrustResolverService {
     }
 
     // Strategy 2: Farcaster fallback for additional linked addresses
-    if (!linkedEthAddress || !linkedSolAddress) {
+    const stillNeedsCrossChain = isSolana ? !linkedEthAddress : !linkedSolAddress;
+    if (stillNeedsCrossChain) {
       try {
         const { ethosClient } = await import('@/lib/ethos');
         const fcIdentity = await ethosClient.resolveFarcasterIdentity(address);

@@ -344,12 +344,22 @@ export class IdentityResolverService {
   }
 
   /**
-   * Resolve from ENS name
+   * Resolve from ENS name or Basename
    */
   private async resolveFromENS(
     ensName: string,
   ): Promise<ResolvedIdentity | null> {
-    const address = await this.resolveENSToAddress(ensName);
+    // Try standard ENS resolution first
+    let address = await this.resolveENSToAddress(ensName);
+
+    // For Basenames (.base.eth) or if ENS fails, try Memory Protocol
+    if (!address && memoryClient.isConfigured()) {
+      const memoryIdentity = await memoryClient.resolveCrossChainIdentity(ensName);
+      if (memoryIdentity && memoryIdentity.ethereumAddresses.length > 0) {
+        address = memoryIdentity.ethereumAddresses[0];
+        console.log(`[Identity] Resolved ${ensName} via Memory Protocol: ${address}`);
+      }
+    }
 
     if (!address) {
       return null;
@@ -373,47 +383,57 @@ export class IdentityResolverService {
   private async resolveFromFarcaster(
     handle: string,
   ): Promise<ResolvedIdentity | null> {
-    // Remove @ if present
     const cleanHandle = handle.startsWith("@") ? handle.slice(1) : handle;
 
-    // Use existing Farcaster API
+    // Strategy 1: Try existing Farcaster API (Neynar)
     try {
-      // Internal server-side fetches must use absolute URLs.
-      const baseUrl =
-        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       const response = await fetch(`${baseUrl}/api/farcaster/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: cleanHandle }),
       });
 
-      if (!response.ok) {
-        return null;
+      if (response.ok) {
+        const data = await response.json();
+        const farcasterIdentity = data.identity;
+
+        if (farcasterIdentity?.verifiedAddresses?.ethAddresses?.[0]) {
+          const address = farcasterIdentity.verifiedAddresses.ethAddresses[0].toLowerCase();
+          const identity = await this.resolveFromAddress(address);
+          return {
+            ...identity,
+            farcaster: farcasterIdentity,
+            resolvedFrom: "farcaster",
+          };
+        }
       }
-
-      const data = await response.json();
-      const farcasterIdentity = data.identity;
-
-      if (
-        !farcasterIdentity ||
-        !farcasterIdentity.verifiedAddresses?.ethAddresses?.[0]
-      ) {
-        return null;
-      }
-
-      const address =
-        farcasterIdentity.verifiedAddresses.ethAddresses[0].toLowerCase();
-      const identity = await this.resolveFromAddress(address);
-
-      return {
-        ...identity,
-        farcaster: farcasterIdentity,
-        resolvedFrom: "farcaster",
-      };
     } catch (error) {
-      console.warn("Farcaster resolution failed:", error);
-      return null;
+      console.warn("Farcaster API resolution failed:", error);
     }
+
+    // Strategy 2: Try Memory Protocol for Farcaster username
+    if (memoryClient.isConfigured()) {
+      try {
+        const memoryIdentity = await memoryClient.getIdentityByFarcaster(cleanHandle);
+        if (memoryIdentity && memoryIdentity.length > 0) {
+          const aggregated = await memoryClient.resolveCrossChainIdentity(cleanHandle);
+          if (aggregated && aggregated.ethereumAddresses.length > 0) {
+            const address = aggregated.ethereumAddresses[0];
+            console.log(`[Identity] Resolved @${cleanHandle} via Memory Protocol: ${address}`);
+            const identity = await this.resolveFromAddress(address);
+            return {
+              ...identity,
+              resolvedFrom: "farcaster",
+            };
+          }
+        }
+      } catch (error) {
+        console.warn("Memory Protocol Farcaster resolution failed:", error);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -565,8 +585,8 @@ export class IdentityResolverService {
   }
 
   private isENS(input: string): boolean {
-    // ENS name (something.eth)
-    return input.endsWith(".eth");
+    // ENS name (something.eth) or Basename (something.base.eth)
+    return input.endsWith(".eth") || input.endsWith(".base.eth");
   }
 
   private isFarcasterHandle(input: string): boolean {
