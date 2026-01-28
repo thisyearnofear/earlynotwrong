@@ -14,6 +14,7 @@ import { cachedFairScaleService } from './fairscale-cache';
 import type { EthosScore, EthosProfile } from '@/lib/ethos';
 import type { FairScaleScore, FairScaleBadge } from '@/lib/fairscale';
 import { APP_CONFIG } from '@/lib/config';
+import { memoryClient } from '@/lib/memory-protocol';
 
 /**
  * Unified trust score - normalized across providers
@@ -68,27 +69,57 @@ export class TrustResolverService {
   async resolve(address: string, twitter?: string, knownSolanaAddress?: string): Promise<UnifiedTrustScore> {
     const isSolana = this.isSolanaAddress(address);
 
-    // ENHANCEMENT: Try to bridge via Farcaster first to find linked addresses
+    // Cross-chain identity bridging: Memory Protocol → Farcaster → fallback
     let linkedEthAddress: string | null = null;
     let linkedSolAddress: string | null = knownSolanaAddress || null;
-    let farcasterUsername: string | null = null;
+    let resolvedTwitter: string | null = twitter || null;
 
-    try {
-      const { ethosClient } = await import('@/lib/ethos');
-      const fcIdentity = await ethosClient.resolveFarcasterIdentity(address);
-      if (fcIdentity) {
-        farcasterUsername = fcIdentity.username;
-        linkedEthAddress = fcIdentity.verifiedAddresses?.ethAddresses?.[0] || null;
-        if (!linkedSolAddress) {
-          linkedSolAddress = fcIdentity.verifiedAddresses?.solAddresses?.[0] || null;
+    // Strategy 1: Memory Protocol (best cross-chain identity graph)
+    if (memoryClient.isConfigured()) {
+      try {
+        const memoryIdentity = await memoryClient.resolveCrossChainIdentity(address);
+        if (memoryIdentity) {
+          if (!linkedEthAddress && memoryIdentity.ethereumAddresses.length > 0) {
+            linkedEthAddress = memoryIdentity.ethereumAddresses[0];
+            console.log(`[TrustResolver] Memory found EVM: ${linkedEthAddress}`);
+          }
+          if (!linkedSolAddress && memoryIdentity.solanaAddresses.length > 0) {
+            linkedSolAddress = memoryIdentity.solanaAddresses[0];
+            console.log(`[TrustResolver] Memory found Solana: ${linkedSolAddress}`);
+          }
+          if (!resolvedTwitter && memoryIdentity.twitter?.username) {
+            resolvedTwitter = memoryIdentity.twitter.username;
+            console.log(`[TrustResolver] Memory found Twitter: ${resolvedTwitter}`);
+          }
         }
+      } catch (e) {
+        console.warn("[TrustResolver] Memory Protocol bridge failed:", e);
       }
-    } catch (e) {
-      console.warn("Farcaster bridge resolution failed:", e);
+    }
+
+    // Strategy 2: Farcaster fallback for additional linked addresses
+    if (!linkedEthAddress || !linkedSolAddress) {
+      try {
+        const { ethosClient } = await import('@/lib/ethos');
+        const fcIdentity = await ethosClient.resolveFarcasterIdentity(address);
+        if (fcIdentity) {
+          if (!resolvedTwitter) {
+            resolvedTwitter = fcIdentity.username;
+          }
+          if (!linkedEthAddress) {
+            linkedEthAddress = fcIdentity.verifiedAddresses?.ethAddresses?.[0] || null;
+          }
+          if (!linkedSolAddress) {
+            linkedSolAddress = fcIdentity.verifiedAddresses?.solAddresses?.[0] || null;
+          }
+        }
+      } catch (e) {
+        console.warn("[TrustResolver] Farcaster bridge resolution failed:", e);
+      }
     }
 
     if (isSolana) {
-      return this.resolveSolana(address, twitter || farcasterUsername || undefined, linkedEthAddress);
+      return this.resolveSolana(address, resolvedTwitter || undefined, linkedEthAddress);
     } else {
       return this.resolveEthereum(address, linkedSolAddress);
     }

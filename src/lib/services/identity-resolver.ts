@@ -15,6 +15,7 @@ import { cachedEthosService } from "./ethos-cache";
 import { trustResolver } from "./trust-resolver";
 import type { EthosScore, EthosProfile, FarcasterIdentity } from "@/lib/ethos";
 import type { UnifiedTrustScore } from "./trust-resolver";
+import { memoryClient, type MemoryCrossChainIdentity } from "@/lib/memory-protocol";
 
 /**
  * Input types that can be resolved
@@ -46,8 +47,13 @@ export interface ResolvedIdentity {
     profileId: string | null;
   } | null;
 
-  // Connected wallets
+  // Connected wallets (cross-chain)
   solanaAddress?: string | null;
+  allEvmAddresses?: string[];
+  allSolanaAddresses?: string[];
+
+  // Memory Protocol identity graph
+  memoryIdentity?: MemoryCrossChainIdentity | null;
 
   // Unified trust score (Phase 2: cross-provider)
   trust?: UnifiedTrustScore;
@@ -232,26 +238,56 @@ export class IdentityResolverService {
       }
     }
 
-    // For Solana addresses without Ethos data, try Twitter → Ethos UserKey bridge
-    // Always try to find linked social handles and wallets via Web3.bio
-    // This addresses the issue where we have an EVM address but miss the linked Solana wallet
+    // Cross-chain identity resolution via Memory Protocol + Web3.bio fallback
     let twitterHandle: string | undefined;
     let foundSolanaAddress: string | null = null;
+    let allEvmAddresses: string[] = [address.toLowerCase()];
+    let allSolanaAddresses: string[] = [];
+    let memoryIdentity: MemoryCrossChainIdentity | null = null;
 
-    // Check Web3.bio for cross-chain identity connections
-    const socialHandles = await this.lookupSocialHandles(address);
-    if (socialHandles) {
-      twitterHandle = socialHandles.twitter;
-      if (socialHandles.solana) {
-        foundSolanaAddress = socialHandles.solana;
-        resolutionPath.push(`solana-linked:${foundSolanaAddress.slice(0, 8)}`);
+    // Strategy 1: Memory Protocol (best for cross-chain identity graph)
+    if (memoryClient.isConfigured()) {
+      memoryIdentity = await memoryClient.resolveCrossChainIdentity(address);
+      if (memoryIdentity) {
+        resolutionPath.push('memory-protocol');
+        
+        // Extract cross-chain addresses
+        if (memoryIdentity.ethereumAddresses.length > 0) {
+          allEvmAddresses = [...new Set([...allEvmAddresses, ...memoryIdentity.ethereumAddresses])];
+        }
+        if (memoryIdentity.solanaAddresses.length > 0) {
+          allSolanaAddresses = memoryIdentity.solanaAddresses;
+          foundSolanaAddress = memoryIdentity.solanaAddresses[0];
+          resolutionPath.push(`memory-solana:${foundSolanaAddress.slice(0, 8)}`);
+        }
+        if (memoryIdentity.twitter?.username) {
+          twitterHandle = memoryIdentity.twitter.username;
+          resolutionPath.push(`memory-twitter:${twitterHandle}`);
+        }
       }
     }
 
-    // Also check Farcaster profile for verified Solana addresses (direct from Neynar)
+    // Strategy 2: Web3.bio fallback for additional social handles
+    if (!twitterHandle || !foundSolanaAddress) {
+      const socialHandles = await this.lookupSocialHandles(address);
+      if (socialHandles) {
+        if (!twitterHandle && socialHandles.twitter) {
+          twitterHandle = socialHandles.twitter;
+          resolutionPath.push(`web3bio-twitter:${twitterHandle}`);
+        }
+        if (!foundSolanaAddress && socialHandles.solana) {
+          foundSolanaAddress = socialHandles.solana;
+          allSolanaAddresses = [...new Set([...allSolanaAddresses, foundSolanaAddress])];
+          resolutionPath.push(`web3bio-solana:${foundSolanaAddress.slice(0, 8)}`);
+        }
+      }
+    }
+
+    // Strategy 3: Farcaster profile for verified Solana addresses
     if (!foundSolanaAddress && farcasterIdentity?.verifiedAddresses?.solAddresses?.length) {
       foundSolanaAddress = farcasterIdentity.verifiedAddresses.solAddresses[0];
-      resolutionPath.push(`solana-farcaster:${foundSolanaAddress.slice(0, 8)}`);
+      allSolanaAddresses = [...new Set([...allSolanaAddresses, ...farcasterIdentity.verifiedAddresses.solAddresses])];
+      resolutionPath.push(`farcaster-solana:${foundSolanaAddress.slice(0, 8)}`);
     }
 
     // For addresses without Ethos data (e.g. Solana-only), try Twitter → Ethos UserKey bridge
@@ -291,8 +327,11 @@ export class IdentityResolverService {
           : { name: null, avatar: null },
       farcaster: farcasterIdentity,
       ethos: finalEthosData,
-      lens: null, // TODO: Add Lens integration if needed
+      lens: memoryIdentity?.lens ? { handle: memoryIdentity.lens, profileId: null } : null,
       solanaAddress: foundSolanaAddress,
+      allEvmAddresses: allEvmAddresses.length > 1 ? allEvmAddresses : undefined,
+      allSolanaAddresses: allSolanaAddresses.length > 0 ? allSolanaAddresses : undefined,
+      memoryIdentity,
       trust: unifiedTrust,
       resolvedFrom: "address",
       resolvedAt: new Date().toISOString(),
