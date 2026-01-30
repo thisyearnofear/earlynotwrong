@@ -12,8 +12,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { LogOut, Copy, Check, ChevronRight, Loader2 } from "lucide-react";
+import { LogOut, Copy, Check, ChevronRight, Loader2, Shield, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useConviction } from "@/hooks/use-conviction";
+import { formatSessionExpiry } from "@/lib/privacy-cash";
 
 function shortenAddress(address: string | null | undefined) {
   if (!address) return "";
@@ -24,6 +26,7 @@ export function WalletConnect({ className }: { className?: string }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [isClient, setIsClient] = React.useState(false);
+  const [sessionExpiry, setSessionExpiry] = React.useState<string>('');
 
   // Prevent hydration errors
   React.useEffect(() => {
@@ -50,6 +53,25 @@ export function WalletConnect({ className }: { className?: string }) {
   } = useWallet();
 
   const solanaAddress = publicKey?.toBase58();
+
+  // Privacy Mode
+  const { privacyMode, enablePrivacy, disablePrivacy } = useConviction();
+
+  // Update session expiry timer
+  React.useEffect(() => {
+    if (!privacyMode.session) {
+      setSessionExpiry('');
+      return;
+    }
+
+    const updateExpiry = () => {
+      setSessionExpiry(formatSessionExpiry(privacyMode.session));
+    };
+
+    updateExpiry();
+    const interval = setInterval(updateExpiry, 1000);
+    return () => clearInterval(interval);
+  }, [privacyMode.session]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -252,6 +274,72 @@ export function WalletConnect({ className }: { className?: string }) {
               </div>
             )}
           </div>
+
+          {/* Privacy Mode Section - Only show when Solana connected */}
+          {isSolanaConnected && (
+            <>
+              <div className="h-px bg-border/50 w-full" />
+              
+              <div className="space-y-3">
+                <h4 className="text-xs font-medium text-foreground-muted uppercase tracking-wider font-mono flex items-center gap-2">
+                  <div className="w-1 h-3 bg-emerald-500 rounded-full" />
+                  Privacy Mode
+                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    HACKATHON
+                  </span>
+                </h4>
+
+                <p className="text-xs text-foreground-muted">
+                  Analyze wallets without on-chain correlation. Powered by Privacy Cash.
+                </p>
+
+                {privacyMode.isEnabled ? (
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <Shield className="w-3 h-3" />
+                        Private Session Active
+                      </span>
+                      <span className="font-mono text-sm text-foreground">
+                        Expires in {sessionExpiry}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 hover:bg-impatience/10 hover:text-impatience"
+                      onClick={() => disablePrivacy()}
+                    >
+                      <ShieldOff className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="justify-between w-full font-normal border-emerald-500/30 hover:border-emerald-500/50 hover:bg-emerald-500/5 h-11"
+                    onClick={async () => {
+                      await enablePrivacy();
+                    }}
+                    disabled={privacyMode.isConnecting}
+                  >
+                    <span className="flex items-center gap-2">
+                      {privacyMode.isConnecting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Shield className="w-4 h-4 text-emerald-400" />
+                      )}
+                      {privacyMode.isConnecting ? 'Enabling...' : 'Enable Privacy Mode'}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-foreground-muted" />
+                  </Button>
+                )}
+
+                {privacyMode.error && (
+                  <p className="text-xs text-impatience">{privacyMode.error}</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

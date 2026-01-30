@@ -15,14 +15,17 @@ import { useConviction } from "@/hooks/use-conviction";
 import { useWalletClient } from "wagmi";
 import {
     Shield,
+    ShieldCheck,
     CheckCircle,
     AlertCircle,
     ExternalLink,
     Copy,
     Loader2,
     Share2,
+    Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { PrivateAttestationResponse } from "@/lib/attestation-service";
 
 export function AttestationDialog() {
     const {
@@ -34,12 +37,14 @@ export function AttestationDialog() {
         setUserConsent,
     } = useAppStore();
 
-    const { activeAddress, isShowcaseMode } = useConviction();
+    const { activeAddress, isShowcaseMode, privacyMode } = useConviction();
     const { data: walletClient } = useWalletClient();
     const [eligibilityStatus, setEligibilityStatus] = React.useState<any>(null);
     const [isCheckingEligibility, setIsCheckingEligibility] = React.useState(false);
     const [shareReceipt, setShareReceipt] = React.useState<any>(null);
     const [writeReview, setWriteReview] = React.useState(false);
+    const [usePrivateAttestation, setUsePrivateAttestation] = React.useState(false);
+    const [privateAttestation, setPrivateAttestation] = React.useState<PrivateAttestationResponse | null>(null);
 
     // Check eligibility when dialog opens
     React.useEffect(() => {
@@ -73,6 +78,18 @@ export function AttestationDialog() {
         setAttestationState({ isAttesting: true, attestationError: undefined });
 
         try {
+            // Check if using private attestation mode
+            if (usePrivateAttestation && privacyMode.isEnabled) {
+                const privateResponse = await attestationService.writePrivateAttestation(convictionMetrics);
+                setPrivateAttestation(privateResponse);
+                setAttestationState({
+                    attestationId: privateResponse.attestationHash,
+                    isAttesting: false,
+                });
+                useAppStore.getState().showToast("Private attestation created", "success");
+                return;
+            }
+
             const chain = activeAddress.startsWith('0x') ? 'base' : 'solana';
             const response = await attestationService.writeConvictionAttestation({
                 walletAddress: activeAddress,
@@ -150,6 +167,8 @@ export function AttestationDialog() {
         });
         setShareReceipt(null);
         setEligibilityStatus(null);
+        setPrivateAttestation(null);
+        setUsePrivateAttestation(false);
     };
 
     if (isShowcaseMode) {
@@ -196,8 +215,62 @@ export function AttestationDialog() {
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
-                    {/* Success State */}
-                    {attestationState.attestationId && shareReceipt && (
+                    {/* Private Attestation Success State */}
+                    {privateAttestation && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-center p-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                <div className="text-center space-y-3">
+                                    <ShieldCheck className="w-12 h-12 text-emerald-400 mx-auto" />
+                                    <h3 className="text-lg font-semibold">Private Attestation Created!</h3>
+                                    <p className="text-sm text-foreground-muted">
+                                        Your conviction is encrypted. Only you can selectively disclose it.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="text-foreground-muted uppercase tracking-widest">Attestation Hash</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-emerald-400">{privateAttestation.attestationHash.slice(0, 16)}...</span>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => copyToClipboard(privateAttestation.attestationHash)}
+                                        >
+                                            <Copy className="w-3 h-3" />
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {privateAttestation.disclosureUrl && (
+                                    <div className="p-3 rounded-lg bg-surface/50 border border-border">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Lock className="w-4 h-4 text-emerald-400" />
+                                                <span className="text-sm text-foreground">Selective Disclosure</span>
+                                            </div>
+                                            <Button
+                                                variant="link"
+                                                size="sm"
+                                                className="text-xs text-emerald-400"
+                                                onClick={() => copyToClipboard(privateAttestation.disclosureUrl!)}
+                                            >
+                                                Copy Link
+                                            </Button>
+                                        </div>
+                                        <p className="text-xs text-foreground-muted mt-2">
+                                            Share this link to prove your conviction score without revealing your wallet.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Public Success State */}
+                    {attestationState.attestationId && shareReceipt && !privateAttestation && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-center p-6 rounded-lg bg-patience/10 border border-patience/20">
                                 <div className="text-center space-y-3">
@@ -311,7 +384,7 @@ export function AttestationDialog() {
                                         </label>
                                         
                                         {/* Ethos Review Option */}
-                                        {convictionMetrics && convictionMetrics.score >= 50 && (
+                                        {convictionMetrics && convictionMetrics.score >= 50 && !usePrivateAttestation && (
                                             <label className="flex items-start gap-3 cursor-pointer group">
                                                 <input
                                                     type="checkbox"
@@ -330,6 +403,31 @@ export function AttestationDialog() {
                                                 </div>
                                             </label>
                                         )}
+
+                                        {/* Private Attestation Option - Only show if privacy mode is enabled */}
+                                        {privacyMode.isEnabled && (
+                                            <label className="flex items-start gap-3 cursor-pointer group p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={usePrivateAttestation}
+                                                    onChange={(e) => {
+                                                        setUsePrivateAttestation(e.target.checked);
+                                                        if (e.target.checked) setWriteReview(false);
+                                                    }}
+                                                    className="mt-1 accent-emerald-500"
+                                                    disabled={!attestationState.userConsent}
+                                                />
+                                                <div className="text-sm">
+                                                    <p className="text-foreground group-hover:text-emerald-400 transition-colors flex items-center gap-2">
+                                                        <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                                                        Create private attestation (Privacy Cash)
+                                                    </p>
+                                                    <p className="text-foreground-muted mt-1 text-xs">
+                                                        Your conviction score is encrypted. Share it selectively without revealing your wallet address.
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        )}
                                     </div>
 
                                     {/* Action Buttons */}
@@ -337,12 +435,20 @@ export function AttestationDialog() {
                                         <Button
                                             onClick={handleWriteAttestation}
                                             disabled={!attestationState.userConsent || attestationState.isAttesting}
-                                            className="w-full relative overflow-hidden group h-12"
+                                            className={cn(
+                                                "w-full relative overflow-hidden group h-12",
+                                                usePrivateAttestation && "bg-emerald-600 hover:bg-emerald-700"
+                                            )}
                                         >
                                             {attestationState.isAttesting ? (
                                                 <>
                                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                    SUBMITTING TO BASE EAS...
+                                                    {usePrivateAttestation ? 'CREATING PRIVATE ATTESTATION...' : 'SUBMITTING TO BASE EAS...'}
+                                                </>
+                                            ) : usePrivateAttestation ? (
+                                                <>
+                                                    <Lock className="w-4 h-4 mr-2" />
+                                                    CREATE PRIVATE ATTESTATION
                                                 </>
                                             ) : (
                                                 <>
@@ -354,10 +460,10 @@ export function AttestationDialog() {
                                         
                                         <div className="flex items-center justify-center gap-2 opacity-40">
                                             <span className="text-[9px] font-mono uppercase tracking-widest text-foreground-muted">
-                                                Deployment:
+                                                {usePrivateAttestation ? 'Mode:' : 'Deployment:'}
                                             </span>
                                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-mono text-foreground">
-                                                BASE_MAINNET
+                                                {usePrivateAttestation ? 'PRIVACY_CASH' : 'BASE_MAINNET'}
                                             </div>
                                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-surface/50 text-[9px] font-mono text-foreground">
                                                 EAS_PROTOCOL

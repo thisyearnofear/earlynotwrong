@@ -1,12 +1,14 @@
 /**
  * Attestation Service
  * Handles writing conviction analysis to Ethos Network as permanent, portable reputation.
+ * Supports both public and private (Privacy Cash) attestation modes.
  */
 
 import { ethosClient, ConvictionAttestation, AttestationResponse } from './ethos';
 import { ConvictionMetrics } from './market';
 import { WalletClient } from 'viem';
 import { prepareEthosReview, writeEthosReview, shouldPromptForReview, getEthosReviewURL } from './ethos-reviews';
+import { privacyCashClient } from './privacy-cash';
 
 export interface AttestationRequest {
     walletAddress: string;
@@ -16,6 +18,15 @@ export interface AttestationRequest {
     userConsent: boolean;
     walletClient?: WalletClient;
     writeEthosReview?: boolean; // Optional: write review to Ethos alongside attestation
+    isPrivate?: boolean; // Use Privacy Cash for private attestation
+}
+
+export interface PrivateAttestationResponse {
+    attestationHash: string;
+    proofData: string;
+    expiresAt: number;
+    isPrivate: true;
+    disclosureUrl?: string;
 }
 
 export interface AttestationStatus {
@@ -295,6 +306,99 @@ Being early feels like being wrong. Until it doesn't.`;
                 reason: 'Unable to check previous attestations',
             };
         }
+    }
+
+    /**
+     * Create a private attestation using Privacy Cash
+     * The attestation is encrypted and can be selectively disclosed
+     */
+    async writePrivateAttestation(
+        convictionMetrics: ConvictionMetrics
+    ): Promise<PrivateAttestationResponse> {
+        // Check if privacy session is active
+        if (!privacyCashClient.isSessionValid()) {
+            throw new Error('Privacy mode not enabled. Please enable privacy mode first.');
+        }
+
+        try {
+            const archetype = convictionMetrics.archetype || 'Unknown';
+            
+            // Create private attestation via Privacy Cash
+            const privateAttestation = await privacyCashClient.createPrivateAttestation(
+                convictionMetrics.score,
+                archetype
+            );
+
+            // Generate disclosure URL (can be shared to prove conviction without revealing wallet)
+            const disclosureUrl = this.generateDisclosureUrl(privateAttestation.attestationHash);
+
+            return {
+                attestationHash: privateAttestation.attestationHash,
+                proofData: privateAttestation.proofData,
+                expiresAt: privateAttestation.expiresAt,
+                isPrivate: true,
+                disclosureUrl,
+            };
+        } catch (error) {
+            console.error('Private attestation failed:', error);
+            throw new Error(`Failed to create private attestation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Verify a private attestation proof
+     */
+    async verifyPrivateAttestation(
+        attestationHash: string,
+        proofData: string
+    ): Promise<{
+        isValid: boolean;
+        score?: number;
+        archetype?: string;
+        timestamp?: number;
+    }> {
+        try {
+            // Verify the proof matches the hash
+            const encoder = new TextEncoder();
+            const dataBuffer = encoder.encode(proofData);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            if (computedHash !== attestationHash) {
+                return { isValid: false };
+            }
+
+            // For full verification, we'd need to decrypt the proofData
+            // This requires the encryption key which only the owner has
+            // For public verification, we can only confirm the hash matches
+
+            return {
+                isValid: true,
+                // Score and archetype would be revealed if the user provides their key
+            };
+        } catch (error) {
+            console.error('Attestation verification failed:', error);
+            return { isValid: false };
+        }
+    }
+
+    /**
+     * Generate a shareable disclosure URL for a private attestation
+     */
+    private generateDisclosureUrl(attestationHash: string): string {
+        const baseUrl = typeof window !== 'undefined' 
+            ? window.location.origin 
+            : 'https://early-not-wrong.com';
+        
+        return `${baseUrl}/verify/${attestationHash}`;
+    }
+
+    /**
+     * Check if private attestation is available
+     */
+    canCreatePrivateAttestation(): boolean {
+        return privacyCashClient.isSessionValid();
     }
 }
 

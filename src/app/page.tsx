@@ -82,6 +82,9 @@ export default function Home() {
     isConnected,
     isShowcaseMode,
     activeAddress,
+    privacyMode,
+    enablePrivacy,
+    disablePrivacy,
   } = useConviction();
   const {
     ethosScore,
@@ -605,6 +608,68 @@ export default function Home() {
                     <div className="w-full max-w-md">
                       <AnalysisFilters />
                     </div>
+
+                    {/* Privacy Mode Banner - Only show for Solana users */}
+                    {isConnected && !privacyMode.isEnabled && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full max-w-md"
+                      >
+                        <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <Lock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-foreground">
+                                <span className="text-emerald-400 font-medium">Privacy Mode</span> — Analyze without exposure
+                              </p>
+                              <p className="text-[10px] text-foreground-muted">
+                                Powered by Privacy Cash
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-emerald-400 hover:bg-emerald-500/10 text-xs h-7 px-2"
+                            onClick={() => enablePrivacy()}
+                          >
+                            Enable
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Privacy Mode Active Banner */}
+                    {privacyMode.isEnabled && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full max-w-md"
+                      >
+                        <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-emerald-400 font-medium">
+                                Privacy Mode Active
+                              </p>
+                              <p className="text-[10px] text-foreground-muted">
+                                Your analysis requests are encrypted
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-foreground-muted hover:bg-emerald-500/10 text-xs h-7 px-2"
+                            onClick={() => disablePrivacy()}
+                          >
+                            Disable
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
 
                     <div className="flex flex-col items-center gap-3">
                       {!hasEverScanned && (

@@ -16,6 +16,7 @@ import {
   Target,
   Clock,
   BarChart3,
+  Lock,
 } from "lucide-react";
 
 const FEATURES = [
@@ -107,6 +108,22 @@ const FEATURES = [
       "Shareable conviction receipts",
     ],
   },
+  {
+    id: "privacy-mode",
+    icon: Lock,
+    title: "Privacy Mode",
+    subtitle: "Analyze without exposure",
+    description:
+      "Enable Privacy Cash integration to analyze wallets without on-chain correlation. Your wallet address remains unlinkable to analysis requests, protecting high-conviction traders from front-running and social engineering.",
+    metrics: [
+      "Session-based privacy with 30-minute encrypted sessions",
+      "Signature-derived encryption keys (no third-party custody)",
+      "Private attestations with selective disclosure URLs",
+      "Powered by Privacy Cash — audited ZK protocol on Solana",
+    ],
+    isNew: true,
+    isHackathon: true,
+  },
 ];
 
 export default function FeaturesPage() {
@@ -197,6 +214,11 @@ export default function FeaturesPage() {
                           {feature.isNew && (
                             <span className="px-2 py-0.5 text-[10px] font-mono bg-signal/20 text-signal rounded">
                               NEW
+                            </span>
+                          )}
+                          {feature.isHackathon && (
+                            <span className="px-2 py-0.5 text-[10px] font-mono bg-green-500/20 text-green-400 rounded">
+                              HACKATHON
                             </span>
                           )}
                         </CardTitle>

@@ -204,6 +204,38 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 ---
 
+## Recent Updates: Phase 4 - Privacy Mode (Privacy Hack 2026)
+
+### 🆕 Privacy Cash Integration
+- **Private Sessions**: Sign a message to derive encryption key, enabling 30-minute private analysis sessions
+- **Unlinkable Analysis**: Wallet addresses cannot be correlated to analysis requests
+- **Zero Custody**: Encryption keys derived from user signatures, never stored
+- **Audited Protocol**: Privacy Cash has 14 audits and $210M+ in private volume
+
+### 🆕 Private Attestations
+- **Encrypted Conviction Scores**: Create attestations without revealing wallet address
+- **Selective Disclosure**: Share conviction proofs with specific parties via unique URLs
+- **Hash-Based Verification**: Third parties can verify attestation authenticity without seeing data
+
+### 🆕 UI Enhancements
+- **Privacy Toggle**: Enable/disable in wallet connect dialog
+- **Session Timer**: 30-minute countdown with visual indicator
+- **Green Shield Badge**: Navbar indicator when privacy mode active
+- **Private Attestation Option**: Choose between public (Base EAS) or private (Privacy Cash) attestations
+
+### Technical Implementation
+- **SDK**: `privacycash@1.1.12` npm package
+- **Session Management**: `src/lib/privacy-cash.ts`
+- **Store Integration**: `privacyMode` state in Zustand store
+- **Attestation Service**: `writePrivateAttestation()` and `verifyPrivateAttestation()`
+
+### Hackathon Eligibility
+- **Privacy Cash Bounty**: $15k — SDK integration, private sessions, encrypted attestations
+- **Helius Bounty**: $5k — Already using Helius RPC for Solana data
+- **Open Track**: $18k — "Private behavioral reputation" is a novel use case
+
+---
+
 ## Recent Updates: Phase 3A - Advanced Reputation Perks & Real-Time Intelligence
 
 ### 🆕 Comprehensive Reputation Tier System

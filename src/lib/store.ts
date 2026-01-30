@@ -3,6 +3,14 @@ import { EthosScore, EthosProfile, FarcasterIdentity } from "./ethos";
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis, TransactionResult } from "./api-client";
 import { UnifiedTrustScore } from "./services/trust-resolver";
+import type { PrivacySession } from "./privacy-cash";
+
+interface PrivacyModeState {
+  isEnabled: boolean;
+  session: PrivacySession | null;
+  isConnecting: boolean;
+  error: string | null;
+}
 
 interface AnalysisParams {
   timeHorizon: 30 | 90 | 180 | 365;
@@ -123,6 +131,12 @@ interface AppState {
   dailyAnalysisCount: number;
   dailyAnalysisResetDate: string | null;
   incrementDailyAnalysis: () => void;
+
+  // Privacy Mode (Privacy Cash integration)
+  privacyMode: PrivacyModeState;
+  setPrivacyMode: (state: Partial<PrivacyModeState>) => void;
+  enablePrivacyMode: (session: PrivacySession) => void;
+  disablePrivacyMode: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -376,4 +390,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
   },
+
+  // Privacy Mode Implementation
+  privacyMode: {
+    isEnabled: false,
+    session: null,
+    isConnecting: false,
+    error: null,
+  },
+  setPrivacyMode: (state) =>
+    set((current) => ({
+      privacyMode: { ...current.privacyMode, ...state },
+    })),
+  enablePrivacyMode: (session) =>
+    set({
+      privacyMode: {
+        isEnabled: true,
+        session,
+        isConnecting: false,
+        error: null,
+      },
+    }),
+  disablePrivacyMode: () =>
+    set({
+      privacyMode: {
+        isEnabled: false,
+        session: null,
+        isConnecting: false,
+        error: null,
+      },
+    }),
 }));

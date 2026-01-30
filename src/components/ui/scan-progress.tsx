@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
-import { Loader2, Database, Search, Brain, CheckCircle2, Wifi } from "lucide-react";
 
 interface ScanProgressProps {
   className?: string;
@@ -11,169 +10,85 @@ interface ScanProgressProps {
 
 const phaseConfig = {
   idle: {
-    icon: null,
-    label: "Ready",
+    label: "",
     color: "text-foreground-muted",
-    bgColor: "bg-surface",
   },
   connecting: {
-    icon: Wifi,
-    label: "Connecting",
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/10",
+    label: "CONNECTING",
+    color: "text-signal",
   },
   fetching: {
-    icon: Database,
-    label: "Fetching Data",
-    color: "text-amber-400",
-    bgColor: "bg-amber-500/10",
+    label: "FETCHING",
+    color: "text-signal",
   },
   processing: {
-    icon: Search,
-    label: "Processing",
-    color: "text-purple-400",
-    bgColor: "bg-purple-500/10",
+    label: "PROCESSING",
+    color: "text-signal",
   },
   analyzing: {
-    icon: Brain,
-    label: "Analyzing",
+    label: "ANALYZING",
     color: "text-signal",
-    bgColor: "bg-signal/10",
   },
   complete: {
-    icon: CheckCircle2,
-    label: "Complete",
+    label: "COMPLETE",
     color: "text-patience",
-    bgColor: "bg-patience/10",
   },
 };
 
 export function ScanProgress({ className }: ScanProgressProps) {
   const { scanProgress } = useAppStore();
 
-  const { phase, percent, detail, itemsProcessed, totalItems } = scanProgress;
+  const { phase, percent, detail } = scanProgress;
   const config = phaseConfig[phase];
-  const Icon = config.icon;
 
-  // Don't render if idle and not analyzing
+  // Don't render if idle
   if (phase === "idle") return null;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className={cn(
-        "w-full rounded-lg border border-border bg-surface/80 backdrop-blur-sm overflow-hidden",
+        "w-full font-mono text-xs border border-border rounded-lg overflow-hidden",
         className
       )}
     >
-      {/* Progress Bar */}
-      <div className="relative h-1 w-full bg-surface-hover">
+      {/* Header with phase label */}
+      <div className="flex items-center justify-between px-3 py-2 bg-surface-hover border-b border-border">
+        <div className="flex items-center gap-2">
+          <motion.div
+            animate={{ opacity: [1, 0.5, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+            className={cn("w-2 h-2 rounded-full bg-signal", phase === "complete" && "bg-patience")}
+          />
+          <span className={cn("text-[10px] tracking-widest", config.color)}>
+            {config.label}
+          </span>
+        </div>
+        <span className="text-[10px] text-foreground-muted">
+          {Math.round(percent)}%
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="relative h-1 w-full bg-surface">
         <motion.div
           className={cn(
-            "absolute inset-y-0 left-0 transition-all duration-500",
-            phase === "fetching" && "bg-amber-500",
-            phase === "processing" && "bg-purple-500",
-            phase === "analyzing" && "bg-signal",
+            "absolute inset-y-0 left-0 bg-signal",
             phase === "complete" && "bg-patience"
           )}
           initial={{ width: 0 }}
           animate={{ width: `${percent}%` }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
         />
-        {/* Animated shimmer effect during active phases */}
-        {(phase === "fetching" || phase === "processing" || phase === "analyzing") && (
-          <motion.div
-            className="absolute inset-y-0 w-20 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-            animate={{ x: ["-100%", "400%"] }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-          />
-        )}
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        <div className="flex items-center gap-3">
-          {/* Phase Icon */}
-          <div
-            className={cn(
-              "flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-300",
-              config.bgColor
-            )}
-          >
-            {Icon && (
-              <motion.div
-                animate={
-                  phase !== "complete"
-                    ? { rotate: 360 }
-                    : { scale: [1, 1.2, 1] }
-                }
-                transition={
-                  phase !== "complete"
-                    ? { duration: 2, repeat: Infinity, ease: "linear" }
-                    : { duration: 0.3 }
-                }
-              >
-                <Icon className={cn("w-5 h-5", config.color)} />
-              </motion.div>
-            )}
-          </div>
-
-          {/* Text Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={cn("text-sm font-medium", config.color)}>
-                {config.label}
-              </span>
-              <span className="text-xs text-foreground-muted">
-                {Math.round(percent)}%
-              </span>
-            </div>
-            <p className="text-xs text-foreground-muted truncate">
-              {detail}
-            </p>
-          </div>
-
-          {/* Items Counter (when available) */}
-          {totalItems > 0 && (
-            <div className="text-right">
-              <span className="text-xs font-mono text-foreground-muted">
-                {itemsProcessed}/{totalItems}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Animated dots for active phases */}
-        {(phase === "fetching" || phase === "processing" || phase === "analyzing") && (
-          <div className="flex items-center gap-1 mt-3">
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                className={cn("w-1.5 h-1.5 rounded-full", config.color.replace("text-", "bg-"))}
-                animate={{
-                  scale: [1, 1.5, 1],
-                  opacity: [0.5, 1, 0.5],
-                }}
-                transition={{
-                  duration: 1,
-                  repeat: Infinity,
-                  delay: i * 0.2,
-                }}
-              />
-            ))}
-            <span className="ml-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
-              {phase === "fetching" && "Retrieving blockchain data"}
-              {phase === "processing" && "Parsing transactions"}
-              {phase === "analyzing" && "Computing conviction metrics"}
-            </span>
-          </div>
-        )}
+      {/* Detail text */}
+      <div className="px-3 py-2 bg-surface">
+        <p className="text-[10px] text-foreground-muted truncate">
+          {detail}
+        </p>
       </div>
     </motion.div>
   );
