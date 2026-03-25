@@ -17,11 +17,10 @@ import {
   hasCachedAnalysis,
   clearExpiredCache,
 } from "@/lib/analysis-cache";
-import { privacyCashClient } from "@/lib/privacy-cash";
 
 export function useConviction() {
   const { address: evmAddress, isConnected: isEvmConnected } = useAccount();
-  const { publicKey: solanaPublicKey, connected: isSolanaConnected, signMessage } =
+  const { publicKey: solanaPublicKey, connected: isSolanaConnected } =
     useWallet();
   const solanaAddress = solanaPublicKey?.toBase58();
 
@@ -45,10 +44,6 @@ export function useConviction() {
     clearError,
     incrementDailyAnalysis,
     setScanProgress,
-    privacyMode,
-    setPrivacyMode,
-    enablePrivacyMode,
-    disablePrivacyMode,
   } = useAppStore();
 
   const analyzeWallet = useCallback(
@@ -576,84 +571,12 @@ export function useConviction() {
     ],
   );
 
-  /**
-   * Enable privacy mode for analysis
-   * Creates a Privacy Cash session that unlocks the wallet from analysis requests
-   */
-  const enablePrivacy = useCallback(async () => {
-    if (!isSolanaConnected || !solanaAddress || !signMessage) {
-      setPrivacyMode({ error: 'Solana wallet required for privacy mode' });
-      return false;
-    }
-
-    try {
-      setPrivacyMode({ isConnecting: true, error: null });
-      
-      const session = await privacyCashClient.createPrivateSession(
-        solanaAddress,
-        signMessage
-      );
-      
-      enablePrivacyMode(session);
-      return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to enable privacy mode';
-      setPrivacyMode({ isConnecting: false, error: message });
-      return false;
-    }
-  }, [isSolanaConnected, solanaAddress, signMessage, setPrivacyMode, enablePrivacyMode]);
-
-  /**
-   * Disable privacy mode
-   */
-  const disablePrivacy = useCallback(async () => {
-    await privacyCashClient.endSession();
-    disablePrivacyMode();
-  }, [disablePrivacyMode]);
-
-  /**
-   * Analyze wallet privately (no on-chain correlation)
-   */
-  const analyzeWalletPrivately = useCallback(
-    async (targetWallet: string) => {
-      if (!privacyMode.isEnabled || !privacyMode.session) {
-        setPrivacyMode({ error: 'Privacy mode not enabled' });
-        return;
-      }
-
-      // Submit analysis request through privacy session
-      try {
-        const { analysisToken } = await privacyCashClient.submitPrivateAnalysis(
-          targetWallet,
-          'solana' // Privacy Cash is Solana-only
-        );
-
-        // Add privacy indicator to logs
-        addLog(`> PRIVACY_MODE: ACTIVE`);
-        addLog(`> SESSION: ${privacyMode.session.sessionId.slice(0, 12)}...`);
-        addLog(`> ANALYSIS_TOKEN: ${analysisToken.slice(0, 16)}...`);
-
-        // Run normal analysis with privacy flag
-        await analyzeWallet(targetWallet);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Private analysis failed';
-        setPrivacyMode({ error: message });
-      }
-    },
-    [privacyMode, addLog, analyzeWallet, setPrivacyMode]
-  );
-
   return {
     analyzeWallet,
-    analyzeWalletPrivately,
     loadCachedAnalysis,
     isAnalyzing,
     isConnected: isEvmConnected || isSolanaConnected,
     activeAddress: isEvmConnected ? evmAddress : solanaAddress,
     isShowcaseMode,
-    // Privacy mode
-    privacyMode,
-    enablePrivacy,
-    disablePrivacy,
   };
 }

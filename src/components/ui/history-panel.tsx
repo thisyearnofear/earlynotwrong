@@ -18,7 +18,6 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScoreEvolutionChart } from "@/components/ui/score-evolution-chart";
 
 interface HistoryPanelProps {
   currentAddress?: string;
@@ -110,7 +109,7 @@ export function HistoryPanel({ currentAddress, className }: HistoryPanelProps) {
               Score Evolution
             </h4>
           </div>
-          <ScoreEvolutionChart address={currentAddress} />
+          <div className="text-xs text-foreground-muted text-center py-4">Score history not available</div>
         </motion.div>
       )}
 

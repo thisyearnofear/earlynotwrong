@@ -13,7 +13,6 @@ import {
   Users,
   Loader2,
 } from "lucide-react";
-import { EthosGatedContent } from "@/components/ui/ethos-gated-content";
 import { useConviction } from "@/hooks/use-conviction";
 
 interface TokenHolder {
@@ -615,20 +614,12 @@ export function PositionExplorer({
         ))}
       </div>
 
-      {/* Ethos Gated Cohort Analysis */}
+      {/* Cohort Analysis */}
       <div className="pt-8">
-        <EthosGatedContent
-            minScore={500}
-            title="Whale Cohort Analysis"
-            description="Unlock comparative insights to see how your conviction stacks up against top-performing whales."
-        >
             <div className="rounded-lg border border-ethos/20 bg-ethos/5 p-6">
                 <div className="flex items-center gap-2 mb-6">
                     <Users className="w-5 h-5 text-ethos" />
                     <h3 className="font-semibold text-foreground">Whale Cohort Benchmarks</h3>
-                    <span className="px-2 py-0.5 rounded-full bg-ethos/20 text-ethos text-[10px] font-mono border border-ethos/30">
-                        VERIFIED BY ETHOS
-                    </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

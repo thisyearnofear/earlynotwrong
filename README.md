@@ -207,27 +207,37 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 ## Recent Updates: Phase 4 - Privacy Mode (Privacy Hack 2026)
 
 ### 🆕 Privacy Cash Integration
-- **Private Sessions**: Sign a message to derive encryption key, enabling 30-minute private analysis sessions
+- **Private Sessions**: Sign a message to derive encryption key, enabling configurable private analysis sessions (basic: 30 min, extended: 24 hours, custom: user-defined)
 - **Unlinkable Analysis**: Wallet addresses cannot be correlated to analysis requests
 - **Zero Custody**: Encryption keys derived from user signatures, never stored
 - **Audited Protocol**: Privacy Cash has 14 audits and $210M+ in private volume
+
+### 🆕 Enhanced Privacy Features
+- **Privacy Tiers**: Basic (30 min), Extended (24 hours), and Custom (user-defined) session durations
+- **Privacy Preferences**: Configurable options to hide specific metrics, enable private peer comparison, and allow anonymous reputation building
+- **Private Peer Comparison**: Compare your conviction metrics against others without revealing your identity
+- **Privacy-Enhanced Reputation**: Build reputation by contributing to aggregate metrics without revealing your wallet address
 
 ### 🆕 Private Attestations
 - **Encrypted Conviction Scores**: Create attestations without revealing wallet address
 - **Selective Disclosure**: Share conviction proofs with specific parties via unique URLs
 - **Hash-Based Verification**: Third parties can verify attestation authenticity without seeing data
+- **Anonymous Reputation Building**: Contribute to aggregate reputation metrics without revealing identity
 
 ### 🆕 UI Enhancements
-- **Privacy Toggle**: Enable/disable in wallet connect dialog
-- **Session Timer**: 30-minute countdown with visual indicator
+- **Privacy Toggle**: Enable/disable in wallet connect dialog with tier selection
+- **Session Timer**: Countdown with visual indicator and tier display
+- **Privacy Preferences Panel**: Configure privacy settings (hide metrics, peer comparison, reputation building)
 - **Green Shield Badge**: Navbar indicator when privacy mode active
 - **Private Attestation Option**: Choose between public (Base EAS) or private (Privacy Cash) attestations
+- **Anonymous Reputation Builder**: Option to contribute to aggregate metrics without revealing identity
 
 ### Technical Implementation
 - **SDK**: `privacycash@1.1.12` npm package
 - **Session Management**: `src/lib/privacy-cash.ts`
-- **Store Integration**: `privacyMode` state in Zustand store
-- **Attestation Service**: `writePrivateAttestation()` and `verifyPrivateAttestation()`
+- **Store Integration**: Enhanced `privacyMode` state in Zustand store with tier and preference settings
+- **Attestation Service**: `writePrivateAttestation()`, `verifyPrivateAttestation()`, and `buildPrivacyEnhancedReputation()`
+- **Hook Integration**: `useConviction` hook with `comparePeersPrivately()` and `updatePrivacyPreferences()`
 
 ### Hackathon Eligibility
 - **Privacy Cash Bounty**: $15k — SDK integration, private sessions, encrypted attestations

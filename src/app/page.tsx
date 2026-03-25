@@ -9,10 +9,6 @@ import { cn } from "@/lib/utils";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
 import { Terminal } from "@/components/ui/terminal";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
-import {
-  getEthosReviewURL,
-  getReviewTextForClipboard,
-} from "@/lib/ethos-reviews";
 import { getFeatureAccess } from "@/lib/ethos-gates";
 import {
   Card,
@@ -41,19 +37,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
 import { ScoreBreakdownDialog } from "@/components/ui/score-breakdown";
 import { ethosClient } from "@/lib/ethos";
-import { AttestationDialog } from "@/components/ui/attestation-dialog";
 import { PositionExplorer } from "@/components/ui/position-explorer";
 import { ShareDialog } from "@/components/ui/share-dialog";
 import { HistoryPanel } from "@/components/ui/history-panel";
 import { ErrorPanel } from "@/components/ui/error-panel";
-import { AlphaDiscovery } from "@/components/ui/alpha-discovery";
-import { TokenHeatmap } from "@/components/ui/token-heatmap";
-import { ReputationPerks } from "@/components/ui/reputation-perks";
-import { ConvictionAlerts } from "@/components/ui/conviction-alerts";
-import { CohortAnalysis } from "@/components/ui/cohort-analysis";
-import { BehavioralInsights } from "@/components/ui/behavioral-insights";
 import { DataQualityBadge } from "@/components/ui/data-quality-badge";
-import { SocialProofBadge } from "@/components/ui/social-proof-badge";
 import {
   Dialog,
   DialogContent,
@@ -64,13 +52,6 @@ import {
 } from "@/components/ui/dialog";
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
-import { WatchlistButton } from "@/components/ui/watchlist-button";
-import { PersonalRadar } from "@/components/ui/personal-radar";
-import { LeaderboardPanel } from "@/components/ui/leaderboard-panel";
-import { UnifiedTrustCard } from "@/components/ui/unified-trust-card";
-import { FairScaleCard } from "@/components/ui/fairscale-card";
-import { CapabilitiesGrid } from "@/components/ui/capabilities-grid";
-import { PublicClusterSignals } from "@/components/ui/public-cluster-signals";
 import { AnalysisFilters } from "@/components/ui/analysis-filters";
 import { ScanProgress } from "@/components/ui/scan-progress";
 
@@ -82,9 +63,6 @@ export default function Home() {
     isConnected,
     isShowcaseMode,
     activeAddress,
-    privacyMode,
-    enablePrivacy,
-    disablePrivacy,
   } = useConviction();
   const {
     ethosScore,
@@ -112,45 +90,6 @@ export default function Home() {
     [ethosScore?.score]
   );
 
-  // Content state for dynamic reordering
-  const [hasAlphaData, setHasAlphaData] = useState(true);
-  const [hasHeatmapData, setHasHeatmapData] = useState(true);
-  const [hasAlertsData, setHasAlertsData] = useState(true);
-  const [hasCohortData, setHasCohortData] = useState(true);
-  const [isOrderFrozen, setIsOrderFrozen] = useState(false);
-  const [frozenOrder, setFrozenOrder] = useState<string[] | null>(null);
-
-  // Load frozen order from session storage on mount
-  useEffect(() => {
-    const stored = sessionStorage.getItem("enw-panel-order");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setFrozenOrder(parsed);
-        setIsOrderFrozen(true);
-      } catch (e) {
-        console.error("Failed to parse stored panel order", e);
-      }
-    }
-  }, []);
-
-  // Memoize callbacks to prevent infinite re-renders in children
-  const handleAlphaData = useCallback(
-    (has: boolean) => setHasAlphaData(has),
-    [],
-  );
-  const handleHeatmapData = useCallback(
-    (has: boolean) => setHasHeatmapData(has),
-    [],
-  );
-  const handleAlertsData = useCallback(
-    (has: boolean) => setHasAlertsData(has),
-    [],
-  );
-  const handleCohortData = useCallback(
-    (has: boolean) => setHasCohortData(has),
-    [],
-  );
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
   const [hasEverScanned, setHasEverScanned] = useState(true);
@@ -207,96 +146,6 @@ export default function Home() {
       currency: "USD",
       maximumFractionDigits: 0,
     }).format(val);
-
-  // Define advanced panels for dynamic reordering based on content availability
-  const advancedPanels = useMemo(() => {
-    const panels = [
-      {
-        id: "alpha",
-        hasData: hasAlphaData,
-        component: (
-          <AlphaDiscovery key="alpha" onDataLoaded={handleAlphaData} />
-        ),
-        className: "col-span-1 md:col-span-6 lg:col-span-8",
-      },
-      {
-        id: "heatmap",
-        hasData: hasHeatmapData,
-        component: (
-          <TokenHeatmap key="heatmap" onDataLoaded={handleHeatmapData} />
-        ),
-        className: "col-span-1 md:col-span-6 lg:col-span-4",
-      },
-      {
-        id: "alerts",
-        hasData: hasAlertsData,
-        component: (
-          <ConvictionAlerts key="alerts" onDataLoaded={handleAlertsData} />
-        ),
-        className: "col-span-1 md:col-span-6 lg:col-span-6",
-      },
-      {
-        id: "cohort",
-        hasData: hasCohortData,
-        component: (
-          <CohortAnalysis
-            key="cohort"
-            onDataLoaded={handleCohortData}
-            onAnalyze={analyzeWallet}
-          />
-        ),
-        className: "col-span-1 md:col-span-6 lg:col-span-6",
-      },
-      {
-        id: "leaderboard",
-        hasData: true,
-        component: (
-          <LeaderboardPanel key="leaderboard" />
-        ),
-        className: "col-span-1 md:col-span-6 lg:col-span-12",
-      }
-    ];
-
-    // If order is frozen, use the frozen order
-    if (isOrderFrozen && frozenOrder) {
-      return [...panels].sort((a, b) => {
-        return frozenOrder.indexOf(a.id) - frozenOrder.indexOf(b.id);
-      });
-    }
-
-    // Otherwise sort by data availability
-    return panels.sort((a, b) => {
-      // Show panels with data first
-      if (a.hasData && !b.hasData) return -1;
-      if (!a.hasData && b.hasData) return 1;
-      return 0;
-    });
-  }, [
-    hasAlphaData,
-    hasHeatmapData,
-    hasAlertsData,
-    hasCohortData,
-    handleAlphaData,
-    handleHeatmapData,
-    handleAlertsData,
-    handleCohortData,
-    isOrderFrozen,
-    frozenOrder,
-  ]);
-
-  // Freeze the panel order after initial load to prevent twitching during the session
-  useEffect(() => {
-    if (isOrderFrozen) return;
-
-    const timer = setTimeout(() => {
-      const order = advancedPanels.map((p) => p.id);
-      setFrozenOrder(order);
-      setIsOrderFrozen(true);
-      sessionStorage.setItem("enw-panel-order", JSON.stringify(order));
-    }, 4000); // 4 seconds allows most data to resolve before freezing layout
-
-    return () => clearTimeout(timer);
-  }, [advancedPanels, isOrderFrozen]);
 
   return (
     <div
@@ -609,68 +458,6 @@ export default function Home() {
                       <AnalysisFilters />
                     </div>
 
-                    {/* Privacy Mode Banner - Only show for Solana users */}
-                    {isConnected && !privacyMode.isEnabled && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="w-full max-w-md"
-                      >
-                        <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <Lock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                            <div>
-                              <p className="text-xs text-foreground">
-                                <span className="text-emerald-400 font-medium">Privacy Mode</span> — Analyze without exposure
-                              </p>
-                              <p className="text-[10px] text-foreground-muted">
-                                Powered by Privacy Cash
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-emerald-400 hover:bg-emerald-500/10 text-xs h-7 px-2"
-                            onClick={() => enablePrivacy()}
-                          >
-                            Enable
-                          </Button>
-                        </div>
-                      </motion.div>
-                    )}
-
-                    {/* Privacy Mode Active Banner */}
-                    {privacyMode.isEnabled && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="w-full max-w-md"
-                      >
-                        <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                            <div>
-                              <p className="text-xs text-emerald-400 font-medium">
-                                Privacy Mode Active
-                              </p>
-                              <p className="text-[10px] text-foreground-muted">
-                                Your analysis requests are encrypted
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-foreground-muted hover:bg-emerald-500/10 text-xs h-7 px-2"
-                            onClick={() => disablePrivacy()}
-                          >
-                            Disable
-                          </Button>
-                        </div>
-                      </motion.div>
-                    )}
-
                     <div className="flex flex-col items-center gap-3">
                       {!hasEverScanned && (
                         <p className="text-[9px] text-foreground-muted text-center">
@@ -693,34 +480,13 @@ export default function Home() {
                           </Button>
                         ))}
                       </div>
-                      <PersonalRadar onAnalyze={analyzeWallet} />
                     </div>
                   </div>
-
-                  {/* Capabilities Grid - Show what the platform can do */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="w-full max-w-3xl mt-8"
-                  >
-                    <CapabilitiesGrid />
-                  </motion.div>
-
-                  {/* Public Cluster Signals - Social proof */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="w-full max-w-md mt-6"
-                  >
-                    <PublicClusterSignals limit={3} />
-                  </motion.div>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.section>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.section>
 
         {/* Dynamic Content Area */}
         <div className="flex-1 relative w-full max-w-6xl mx-auto">
@@ -910,18 +676,6 @@ export default function Home() {
                                 Details
                               </Button>
 
-                              <WatchlistButton
-                                wallet={{
-                                  address: activeAddress || "",
-                                  chain: analysisChain || "solana",
-                                  convictionScore: convictionMetrics.score,
-                                  ethosScore: ethosScore?.score,
-                                  archetype: convictionMetrics.archetype,
-                                  farcasterUsername: farcasterIdentity?.username,
-                                  displayName: farcasterIdentity?.displayName
-                                }}
-                              />
-
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1085,26 +839,29 @@ export default function Home() {
                               @{farcasterIdentity.username}
                             </div>
                             <div className="flex gap-1.5 mt-2">
-                              <SocialProofBadge
-                                type="vouches"
-                                count={ethosProfile?.stats?.vouch?.received?.count ?? 0}
-                              />
-                              <SocialProofBadge
-                                type="reviews"
-                                count={
-                                  (ethosProfile?.stats?.review?.received?.positive ?? 0) +
+                              <span className="text-xs text-foreground-muted">
+                                {ethosProfile?.stats?.vouch?.received?.count ?? 0} vouches
+                              </span>
+                              <span className="text-xs text-foreground-muted">
+                                {((ethosProfile?.stats?.review?.received?.positive ?? 0) +
                                   (ethosProfile?.stats?.review?.received?.neutral ?? 0) +
-                                  (ethosProfile?.stats?.review?.received?.negative ?? 0)
-                                }
-                              />
+                                  (ethosProfile?.stats?.review?.received?.negative ?? 0))} reviews
+                              </span>
                             </div>
                           </div>
                         </div>
                       )}
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="h-[300px]">
-                        <UnifiedTrustCard trust={unifiedTrustScore} />
+                      <div className="h-[300px] flex items-center justify-center">
+                        {unifiedTrustScore ? (
+                          <div className="text-center">
+                            <div className="text-4xl font-bold text-signal">{unifiedTrustScore.score}</div>
+                            <div className="text-xs text-foreground-muted font-mono uppercase mt-1">{unifiedTrustScore.tier}</div>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-foreground-muted">No trust data available</div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1221,7 +978,7 @@ export default function Home() {
                             !targetAddress
                           }
                           onClick={async () => {
-                            // Try to open Ethos profile - multiple fallback strategies
+                            // Try to open Ethos profile
                             if (ethosProfile) {
                               const profileUrl =
                                 ethosClient.getProfileUrl(ethosProfile);
@@ -1231,29 +988,6 @@ export default function Home() {
                                 "noopener,noreferrer",
                               );
                               return;
-                            }
-
-                            // Try Web3.bio universal resolver as fallback
-                            if (targetAddress) {
-                              try {
-                                const { findEthosProfileViaWeb3Bio } =
-                                  await import("@/lib/web3bio");
-                                const ethosUrl =
-                                  await findEthosProfileViaWeb3Bio(
-                                    targetAddress,
-                                  );
-
-                                if (ethosUrl) {
-                                  window.open(
-                                    ethosUrl,
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  );
-                                  return;
-                                }
-                              } catch (error) {
-                                console.warn("Web3.bio lookup failed:", error);
-                              }
                             }
 
                             // Manual fallbacks
@@ -1276,158 +1010,12 @@ export default function Home() {
                         </Button>
 
                         {/* Write Review Button - only for others and high credibility users */}
-                        {targetAddress &&
-                          targetAddress !== activeAddress &&
-                          (ethosScore?.score || 0) >= 500 && (
-                            <Button
-                              variant="ghost"
-                              className="w-full text-signal hover:bg-signal/10 text-xs font-mono"
-                              onClick={() => {
-                                if (convictionMetrics) {
-                                  // Copy summary to clipboard first to help user write the review
-                                  const reviewText =
-                                    getReviewTextForClipboard(
-                                      convictionMetrics,
-                                    );
-                                  navigator.clipboard.writeText(reviewText);
-                                  useAppStore
-                                    .getState()
-                                    .showToast(
-                                      "Conviction summary copied! Paste it on Ethos.",
-                                      "success",
-                                    );
-
-                                  const url = getEthosReviewURL(
-                                    targetAddress,
-                                    convictionMetrics,
-                                  );
-                                  // Brief delay so they see the toast
-                                  setTimeout(() => {
-                                    window.open(url, "_blank");
-                                  }, 800);
-                                }
-                              }}
-                            >
-                              <MessageSquare className="w-3.5 h-3.5 mr-2" />
-                              VOUCH FOR CONVICTION
-                            </Button>
-                          )}
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
 
-                {/* FairScale Card */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                >
-                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
-                    <CardHeader>
-                      <div className="flex items-center justify-between mb-2">
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                          FairScale
-                        </CardTitle>
-                        <TrendingUp className="w-5 h-5 text-signal" />
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="h-[300px]">
-                        <FairScaleCard trust={unifiedTrustScore} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                {/* Behavioral Insights (Only show if we have data) */}
-                {convictionMetrics && (
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-8"
-                  >
-                    <BehavioralInsights
-                      metrics={convictionMetrics}
-                      positionCount={positionAnalyses.length}
-                      trust={unifiedTrustScore}
-                    />
-                  </motion.div>
-                )}
-
-                {/* Position Explorer - HERO SECTION */}
-                {positionAnalyses.length > 0 && analysisChain && (
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-12"
-                  >
-                    <Card className="glass-panel border-border/50 bg-surface/40">
-                      <CardHeader>
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                          <Activity className="w-4 h-4" />
-                          Position Breakdown
-                        </CardTitle>
-                        <CardDescription>
-                          Drill into individual trades to see entry/exit timing
-                          and counterfactual analysis.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <PositionExplorer
-                          positions={positionAnalyses}
-                          chain={analysisChain}
-                        />
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )}
-
-                {/* Historical Tracking Panel */}
-                {(
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-4"
-                  >
-                    <Card id="history" className="glass-panel border-border/50 bg-surface/40">
-                      <CardHeader
-                        className="cursor-pointer"
-                        onClick={() => toggleSection('history')}
-                      >
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                            <Clock className="w-4 h-4" />
-                            Historical Tracking
-                          </CardTitle>
-                          {expandedSections.has('history') ? (
-                            <ChevronUp className="w-4 h-4 text-foreground-muted" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-foreground-muted" />
-                          )}
-                        </div>
-                        <CardDescription>
-                          Your conviction score evolution over time
-                        </CardDescription>
-                      </CardHeader>
-                      {expandedSections.has('history') && (
-                        <CardContent>
-                          <HistoryPanel currentAddress={activeAddress} />
-                        </CardContent>
-                      )}
-                    </Card>
-                  </motion.div>
-                )}
-
-                {/* Reputation Perks Panel - Collapsible */}
+                {/* Position Explorer */}
                 <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 20 },
@@ -1435,137 +1023,18 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-12"
                 >
-                  <Card id="reputation" className="glass-panel border-border/50 bg-surface/40">
-                    <CardHeader
-                      className="cursor-pointer"
-                      onClick={() => toggleSection('reputation')}
-                    >
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase flex items-center gap-2">
-                          <ShieldCheck className="w-4 h-4" />
-                          Reputation Perks
-                        </CardTitle>
-                        {expandedSections.has('reputation') ? (
-                          <ChevronUp className="w-4 h-4 text-foreground-muted" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-foreground-muted" />
-                        )}
-                      </div>
-                      <CardDescription>
-                        Your progression roadmap and unlocked features
-                      </CardDescription>
-                    </CardHeader>
-                    {expandedSections.has('reputation') && (
-                      <ReputationPerks className="border-0 bg-transparent" />
-                    )}
-                  </Card>
-                </motion.div>
-
-                {/* Locked Features Message for users below Ethos 1000 */}
-                {isConnected &&
-                  !isShowcaseMode &&
-                  (ethosScore?.score ?? 0) < 1000 && (
-                    <motion.div
-                      variants={{
-                        hidden: { opacity: 0, y: 20 },
-                        visible: { opacity: 1, y: 0 },
-                      }}
-                      className="col-span-1 md:col-span-6 lg:col-span-12"
-                    >
-                      <Card
-                        className="glass-panel border-signal/20 bg-surface/40 overflow-hidden"
-                        suppressHydrationWarning
-                      >
-                        <CardContent className="p-8 text-center">
-                          <div className="space-y-4">
-                            <Lock className="w-12 h-12 text-signal mx-auto" />
-                            <div>
-                              <h3 className="text-xl font-bold text-foreground mb-2">
-                                Advanced Features Locked
-                              </h3>
-                              <p className="text-foreground-muted max-w-2xl mx-auto">
-                                Alpha Discovery, Token Heatmap, Conviction
-                                Alerts, and Cohort Analysis require an Ethos
-                                score of 1000+.
-                                {ethosScore?.score ? (
-                                  <span className="block mt-2 text-signal font-mono">
-                                    Your score: {ethosScore.score} / 1000 (
-                                    {Math.round(
-                                      (ethosScore.score / 1000) * 100,
-                                    )}
-                                    % unlocked)
-                                  </span>
-                                ) : (
-                                  <span className="block mt-2 text-signal">
-                                    Connect your wallet to check your Ethos
-                                    score
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2 justify-center">
-                              <Button
-                                variant="outline"
-                                className="border-signal/50 text-signal hover:bg-signal/10"
-                                onClick={() =>
-                                  window.open(
-                                    "https://ethos.network",
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  )
-                                }
-                              >
-                                Ethos
-                              </Button>
-                              <Button
-                                variant="outline"
-                                className="border-signal/50 text-signal hover:bg-signal/10"
-                                onClick={() =>
-                                  window.open(
-                                    "https://fairscale.xyz",
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  )
-                                }
-                              >
-                                FairScale
-                              </Button>
-                            </div>
-                            <p className="text-xs text-foreground-muted mt-2">Build reputation on either platform</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
+                  {positionAnalyses.length > 0 && (
+                    <PositionExplorer
+                      positions={positionAnalyses}
+                      chain={analysisChain || "solana"}
+                    />
                   )}
-
-                {/* Advanced Features - Gated for connected wallets with Ethos > 1000 or in Demo Mode */}
-                {(isShowcaseMode || (isConnected && (ethosScore?.score ?? 0) >= 1000)) && (
-                  <>
-                    {advancedPanels.map((panel) => (
-                      <motion.div
-                        key={panel.id}
-                        variants={{
-                          hidden: { opacity: 0, y: 20 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                        className={cn(
-                          panel.className,
-                          !panel.hasData && "opacity-60",
-                        )}
-                      >
-                        {panel.component}
-                      </motion.div>
-                    ))}
-                  </>
-                )}
+                </motion.div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </main>
-
-      {/* Attestation Dialog */}
-      <AttestationDialog />
 
       {/* Share Dialog */}
       {convictionMetrics && analysisChain && (

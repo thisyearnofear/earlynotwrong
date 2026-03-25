@@ -24,7 +24,6 @@ import {
   getNextTierUnlocks,
 } from "@/lib/ethos-gates";
 import { cn } from "@/lib/utils";
-import { ReputationPerks } from "@/components/ui/reputation-perks";
 import { AnimatePresence, motion } from "framer-motion";
 
 const TierIcon = ({
@@ -191,7 +190,10 @@ export function Navbar() {
                     <DialogTitle>Your Ethos Status</DialogTitle>
                   </DialogHeader>
                   <div className="py-2">
-                    <ReputationPerks />
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-signal">{currentScore}</div>
+                      <div className="text-xs text-foreground-muted font-mono uppercase mt-1">{tier}</div>
+                    </div>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -216,7 +218,10 @@ export function Navbar() {
                     <DialogTitle>Your Ethos Status</DialogTitle>
                   </DialogHeader>
                   <div className="py-2">
-                    <ReputationPerks />
+                    <div className="text-center">
+                      <div className="text-4xl font-bold text-signal">{currentScore}</div>
+                      <div className="text-xs text-foreground-muted font-mono uppercase mt-1">{tier}</div>
+                    </div>
                   </div>
                 </DialogContent>
               </Dialog>

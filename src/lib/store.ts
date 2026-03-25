@@ -10,6 +10,16 @@ interface PrivacyModeState {
   session: PrivacySession | null;
   isConnecting: boolean;
   error: string | null;
+  // Enhanced privacy tiers
+  tier: 'basic' | 'extended' | 'custom';
+  // Configurable session duration
+  sessionDuration: number; // in minutes
+  // Privacy preferences
+  privacyPreferences: {
+    hideSpecificMetrics: boolean;
+    enablePeerComparison: boolean;
+    allowReputationBuilding: boolean;
+  };
 }
 
 interface AnalysisParams {
@@ -137,6 +147,7 @@ interface AppState {
   setPrivacyMode: (state: Partial<PrivacyModeState>) => void;
   enablePrivacyMode: (session: PrivacySession) => void;
   disablePrivacyMode: () => void;
+  updatePrivacyPreferences: (preferences: Partial<PrivacyModeState['privacyPreferences']>) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -397,6 +408,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     session: null,
     isConnecting: false,
     error: null,
+    tier: 'basic',
+    sessionDuration: 30, // 30 minutes for basic tier
+    privacyPreferences: {
+      hideSpecificMetrics: false,
+      enablePeerComparison: false,
+      allowReputationBuilding: true,
+    },
   },
   setPrivacyMode: (state) =>
     set((current) => ({
@@ -409,6 +427,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         session,
         isConnecting: false,
         error: null,
+        tier: 'basic',
+        sessionDuration: 30,
+        privacyPreferences: {
+          hideSpecificMetrics: false,
+          enablePeerComparison: false,
+          allowReputationBuilding: true,
+        },
       },
     }),
   disablePrivacyMode: () =>
@@ -418,6 +443,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         session: null,
         isConnecting: false,
         error: null,
+        tier: 'basic',
+        sessionDuration: 30,
+        privacyPreferences: {
+          hideSpecificMetrics: false,
+          enablePeerComparison: false,
+          allowReputationBuilding: true,
+        },
       },
     }),
+  updatePrivacyPreferences: (preferences) =>
+    set((current) => ({
+      privacyMode: {
+        ...current.privacyMode,
+        privacyPreferences: {
+          ...current.privacyMode.privacyPreferences,
+          ...preferences,
+        },
+      },
+    })),
 }));
