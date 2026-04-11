@@ -238,7 +238,7 @@ export function useAleoConviction() {
   }, [address, executeTransaction]);
 
   const claimPatienceRebate = useCallback(async () => {
-    if (!address || !executeTransaction) {
+    if (!address) {
       throw new Error("Aleo wallet not connected");
     }
 
@@ -249,31 +249,36 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      // For the buildathon demo, we trigger a direct rebate transfer using the live
-      // USDCx stablecoin program (usdcx_stablecoin.aleo).
-      const txOptions: TransactionOptions = {
-        program: APP_CONFIG.chains.aleo.usdcProgramId,
-        function: "transfer_public",
-        inputs: [
-          address,
-          "200000u64" // 0.2 USDCx rebate
-        ],
-        fee: 0.01,
-        privateFee: false
-      };
+      // Proper Rebate Implementation:
+      // We call the server-side API which uses the treasury account to send USDCx.
+      const response = await fetch("/api/aleo/rebate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userAddress: address,
+          amount: 200000 // 0.2 USDCx
+        })
+      });
 
-      const result = await executeTransaction(txOptions);
-      if (result?.transactionId) {
-        showToast("Rebate Claimed! (Processing)", "success");
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to process rebate on server");
       }
-      return result?.transactionId;
-    } catch (error) {
+
+      if (data.transactionId) {
+        setLastTxId(data.transactionId);
+        showToast("Rebate Dispatched by Treasury!", "success");
+      }
+      return data.transactionId;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Rebate failed";
       console.error("Aleo rebate claim failed:", error);
+      showToast(errorMessage, "error");
       throw error;
     } finally {
       setIsMinting(false);
     }
-  }, [address, executeTransaction]);
+  }, [address]);
 
   return {
     mintConvictionRecord,

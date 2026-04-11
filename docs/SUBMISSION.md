@@ -41,7 +41,7 @@ Reputation in trading is a double-edged sword. If your alpha is public, it's fro
 - **Milestone 2**: Developed a non-trivial Leo contract for conviction index records.
 - **Milestone 3**: Integrated Aleo Shield Wallet and implemented a complete "Selective Disclosure" flow.
 - **Milestone 4**: Built a backend Oracle to verify Aleo transaction proofs.
-- **Milestone 5**: Integrated $USDCx and `credits.aleo` payments to satisfy Buildathon Rule #4.
+- **Milestone 5**: Integrated $USDCx and `credits.aleo` payments to satisfy Buildathon Rule #4, including a **Treasury-backed Rebate API**.
 - **Milestone 6**: Launched "Private Strategist" mode for encrypted trade intent commitments on Aleo.
 
 ## 5. Judging Criteria Highlights
