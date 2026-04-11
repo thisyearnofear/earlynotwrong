@@ -58,23 +58,23 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 
 ## Active Development
 
-### Phase 5 - Aleo Privacy Integration (ACTIVE)
+### Phase 5 - Aleo Privacy Integration (COMPLETED)
 - [x] Lean Foundation: Audit and consolidate lib modules
 - [x] Leo Smart Contract: Implement ZK-proof logic for CI metrics
 - [x] Shield Wallet: Frontend integration for private verification
 - [x] Selective Disclosure: Privacy-preserving archetype proofs
 
-### Phase 6 - Social Features (If Demand)
-- [ ] Endorsement Mechanics (scout/recommend traders)
-- [ ] Farcaster Frames for Leaderboard/Alpha
-- [ ] Privacy-preserving Peer Comparison
-- [ ] Anonymous Reputation Building
+### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
+- [ ] Deploy `conviction_index.aleo` to Aleo Mainnet
+- [ ] Integrate $USDCx for premium analytics access
+- [ ] Partner with Aleo-based DeFi protocols for undercollateralized lending
+- [ ] Anonymous Reputation building for anonymous traders
 
-### Phase 7 - Advanced Chain Support (If Demand)
-- [ ] Arbitrum support
-- [ ] Optimism support
+### Phase 7 - Advanced Identity & Cross-Chain Support (FUTURE)
+- [ ] Arbitrum/Optimism support
 - [ ] NFT position tracking
-- [ ] DeFi LP/Lending position analysis
+- [ ] Private Peer Comparison (Privacy-preserving aggregation)
+- [ ] Endorsement Mechanics (ZK-proofs for recommendations)
 
 ## Feature Request Process
 

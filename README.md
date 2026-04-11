@@ -2,7 +2,24 @@
 
 > Being early feels like being wrong. Until it doesn't.
 
-An agentic on-chain behavioral analysis app that helps crypto traders understand whether their biggest losses came from being wrong — or from not staying right long enough.
+**Built for the [Aleo Privacy Buildathon 2026](https://luma.com/aleo-buildathon)** — *Where Privacy Becomes the Default.*
+
+An agentic on-chain behavioral analysis app that helps crypto traders understand whether their biggest losses came from being wrong — or from not staying right long enough. "Early, Not Wrong" uses **Aleo ZK-Proofs** to allow traders to build and prove a portable behavioral reputation without revealing their underlying wallet history.
+
+---
+
+## Aleo Privacy Integration (Buildathon Focus)
+
+### The Privacy Dilemma
+In traditional Web3, building reputation as a "skilled trader" requires exposing your entire wallet history. This creates a trade-off between **Public Identity** (trust but exposure) and **Anonymous Identity** (privacy but lack of credentials).
+
+### The Solution: Selective Disclosure
+"Early, Not Wrong" decouples behavioral verification from wallet identity using Aleo.
+1. **Private Commitment**: Mint your Conviction Metrics as encrypted Aleo records.
+2. **ZK-Proofs**: Generate proofs for specific predicates (e.g., "Score > 80") without revealing the raw data.
+3. **Shield Wallet**: Secure, off-chain management of your behavioral credentials.
+
+[Read our full Privacy Model →](docs/PRIVACY_MODEL.md)
 
 ---
 
