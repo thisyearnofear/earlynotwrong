@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { 
-  Account, 
   AleoNetworkClient, 
   ProgramManager, 
   AleoKeyProvider, 
@@ -8,19 +7,11 @@ import {
   initializeWasm
 } from "@provablehq/sdk/mainnet.js";
 import { APP_CONFIG } from "@/lib/config";
-
-const PRIVATE_KEY = process.env.ALEO_PRIVATE_KEY;
+import { treasury } from "@/lib/aleo/treasury";
 
 export async function POST(req: NextRequest) {
   try {
     const { userAddress, amount } = await req.json();
-
-    if (!PRIVATE_KEY) {
-      return NextResponse.json(
-        { error: "Treasury private key not configured on server" },
-        { status: 500 }
-      );
-    }
 
     if (!userAddress || !amount) {
       return NextResponse.json(
@@ -29,10 +20,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Safety limit check
+    if (!treasury.validateRebateAmount(Number(amount))) {
+      return NextResponse.json(
+        { error: "Rebate amount exceeds safety limits" },
+        { status: 403 }
+      );
+    }
+
     // Initialize WASM for Aleo SDK
     await initializeWasm();
 
-    const account = new Account({ privateKey: PRIVATE_KEY });
+    const account = treasury.getAccount();
     const networkClient = new AleoNetworkClient(APP_CONFIG.chains.aleo.apiUrl);
     const keyProvider = new AleoKeyProvider();
     const recordProvider = new NetworkRecordProvider(account, networkClient);
