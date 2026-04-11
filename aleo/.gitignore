@@ -1,0 +1,4 @@
+build/
+imports/
+outputs/
+*.avm

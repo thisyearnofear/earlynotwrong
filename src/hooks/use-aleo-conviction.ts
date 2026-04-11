@@ -5,7 +5,7 @@ import { useWallet } from "@provablehq/aleo-wallet-adaptor-react";
 import { TransactionOptions } from "@provablehq/aleo-types";
 import { useAppStore } from "@/lib/store";
 
-const CONVICTION_PROGRAM_ID = "conviction_index.aleo";
+const CONVICTION_PROGRAM_ID = "early_not_wrong_v1.aleo";
 
 export function useAleoConviction() {
   const { address, executeTransaction, requestRecords } = useWallet();

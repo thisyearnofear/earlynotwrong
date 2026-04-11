@@ -1,10 +1,9 @@
 {
-  "program": "conviction_index.aleo",
+  "program": "early_not_wrong_v1.aleo",
   "version": "0.1.0",
   "description": "ZK-proofs for selective disclosure of Conviction Index metrics",
-  "development": {
-    "network": "testnet3",
-    "private_key": "APrivateKey1zkp...",
-    "address": "aleo1..."
-  }
+  "license": "MIT",
+  "leo": "4.0.0",
+  "dependencies": null,
+  "dev_dependencies": null
 }
