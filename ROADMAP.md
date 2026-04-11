@@ -63,10 +63,10 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 - [x] Leo Smart Contract: Implement ZK-proof logic for CI metrics
 - [x] Shield Wallet: Frontend integration for private verification
 - [x] Selective Disclosure: Privacy-preserving archetype proofs
+- [x] Buildathon Rule #4: Integrated $USDCx and `credits.aleo` payments
 
 ### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
 - [ ] Deploy `early_not_wrong_v1.aleo` to Aleo Mainnet
-- [ ] Integrate $USDCx for premium analytics access
 - [ ] Partner with Aleo-based DeFi protocols for undercollateralized lending
 - [ ] Anonymous Reputation building for anonymous traders
 

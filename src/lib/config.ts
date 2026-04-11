@@ -90,7 +90,10 @@ export const APP_CONFIG = {
       network: "testnet",
       apiUrl: "https://api.explorer.provable.com/v1",
       explorerUrl: "https://explorer.provable.com",
-      programId: "early_not_wrong_v1.aleo"
+      programId: "early_not_wrong_v1.aleo",
+      creditsProgramId: "credits.aleo",
+      usdcProgramId: "usdc.aleo", // Placeholder for USDCx integration
+      treasuryAddress: "aleo1lsjcz7402z2zxuzznltcx4r37ys39w0gktxr3rmtce2kqqdwr5xq020tl2"
     }
   }
 };

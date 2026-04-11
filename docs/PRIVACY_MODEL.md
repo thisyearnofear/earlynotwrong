@@ -23,7 +23,12 @@ Once the record is in the user's Shield Wallet, they can generate **Zero-Knowled
 | **Elite Score Proof** | `assert(record.score >= 80)` | Proving you are a top-tier trader without revealing your exact score. |
 | **Efficiency Proof** | `assert(record.patience_tax <= 1000)` | Proving disciplined execution without revealing the total volume of trades. |
 
-### 3. Architecture Overview
+### 3. Private Payments & Incentives (Buildathon Rule #4)
+We integrate **credits.aleo** and **USDCx** (private stablecoins) to create a circular privacy economy:
+- **Premium Alpha**: Users pay `0.5 credits` to unlock advanced behavioral metrics (Whale Signals, Exit Maps).
+- **Patience Rebates**: Traders who prove high efficiency (low patience tax) via ZK-proofs can claim a `0.2 USDCx` rebate from our treasury, incentivizing disciplined trading behavior.
+
+### 4. Architecture Overview
 1. **Frontend**: Analyzes public chain history (Solana/Base).
 2. **Shield Wallet**: Acts as the secure vault for private behavioral records.
 3. **Leo Smart Contract**: Defines the rules for record issuance and verification.

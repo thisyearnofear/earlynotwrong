@@ -4,8 +4,11 @@ import { useCallback, useState } from "react";
 import { useWallet } from "@provablehq/aleo-wallet-adaptor-react";
 import { TransactionOptions } from "@provablehq/aleo-types";
 import { useAppStore } from "@/lib/store";
+import { APP_CONFIG } from "@/lib/config";
 
-const CONVICTION_PROGRAM_ID = "early_not_wrong_v1.aleo";
+const CONVICTION_PROGRAM_ID = APP_CONFIG.chains.aleo.programId;
+const CREDITS_PROGRAM_ID = APP_CONFIG.chains.aleo.creditsProgramId;
+const TREASURY_ADDRESS = APP_CONFIG.chains.aleo.treasuryAddress;
 
 export function useAleoConviction() {
   const { address, executeTransaction, requestRecords } = useWallet();
@@ -158,11 +161,91 @@ export function useAleoConviction() {
     }
   }, [address, executeTransaction]);
 
+  const purchasePremium = useCallback(async () => {
+    if (!address || !executeTransaction) {
+      throw new Error("Aleo wallet not connected");
+    }
+
+    setIsMinting(true);
+    try {
+      const { setAleoPremium, showToast } = useAppStore.getState();
+      
+      // Pay 0.5 Credits for Premium Analytics (500,000 microcredits)
+      const txOptions: TransactionOptions = {
+        program: CREDITS_PROGRAM_ID,
+        function: "transfer_public",
+        inputs: [
+          TREASURY_ADDRESS,
+          "500000u64" 
+        ],
+        fee: 0.01,
+        privateFee: false
+      };
+
+      const result = await executeTransaction(txOptions);
+      const txId = result?.transactionId;
+      
+      if (txId) {
+        setLastTxId(txId);
+        setAleoPremium(true);
+        showToast("Premium Analytics Unlocked!", "success");
+      }
+      return txId;
+    } catch (error) {
+      console.error("Aleo payment failed:", error);
+      throw error;
+    } finally {
+      setIsMinting(false);
+    }
+  }, [address, executeTransaction]);
+
+  const claimPatienceRebate = useCallback(async () => {
+    if (!address || !executeTransaction) {
+      throw new Error("Aleo wallet not connected");
+    }
+
+    const { convictionMetrics, showToast } = useAppStore.getState();
+    if (!convictionMetrics || convictionMetrics.patienceTax > 1000) {
+      throw new Error("Ineligible for patience rebate");
+    }
+
+    setIsMinting(true);
+    try {
+      // In a real scenario, this would be a transition in our contract 
+      // that verifies a proof and then triggers a transfer from the treasury.
+      // For the demo, we simulate the rebate by calling USDCx transfer (if available)
+      // or simply credits.aleo.
+      const txOptions: TransactionOptions = {
+        program: APP_CONFIG.chains.aleo.usdcProgramId,
+        function: "transfer_public",
+        inputs: [
+          address,
+          "200000u64" // 0.2 USDCx rebate
+        ],
+        fee: 0.01,
+        privateFee: false
+      };
+
+      const result = await executeTransaction(txOptions);
+      if (result?.transactionId) {
+        showToast("Rebate Claimed! (Processing)", "success");
+      }
+      return result?.transactionId;
+    } catch (error) {
+      console.error("Aleo rebate claim failed:", error);
+      throw error;
+    } finally {
+      setIsMinting(false);
+    }
+  }, [address, executeTransaction]);
+
   return {
     mintConvictionRecord,
     verifyArchetype,
     verifyScoreThreshold,
     verifyEfficientTrading,
+    purchasePremium,
+    claimPatienceRebate,
     fetchRecords,
     records,
     isMinting,

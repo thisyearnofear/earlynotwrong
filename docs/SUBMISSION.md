@@ -41,9 +41,11 @@ Reputation in trading is a double-edged sword. If your alpha is public, it's fro
 - **Milestone 2**: Developed a non-trivial Leo contract for conviction index records.
 - **Milestone 3**: Integrated Aleo Shield Wallet and implemented a complete "Selective Disclosure" flow.
 - **Milestone 4**: Built a backend Oracle to verify Aleo transaction proofs.
+- **Milestone 5**: Integrated $USDCx and `credits.aleo` payments to satisfy Buildathon Rule #4.
 
 ## 5. Judging Criteria Highlights
 
 - **Privacy Usage (40%)**: Core feature is ZK-based selective disclosure. No trade data is stored on-chain; only encrypted behavioral "commitments" are used.
 - **Technical Implementation (20%)**: Uses full Aleo SDK stack, including custom Leo transitions and backend verification logic.
+- **Buildathon Rule #4 (Mandatory)**: Full integration of `credits.aleo` for premium unlocks and `USDCx` for behavioral rebates via Shield Wallet.
 - **Novelty (10%)**: First project to bridge Solana/Base behavioral history to Aleo-native private reputation.

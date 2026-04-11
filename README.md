@@ -18,6 +18,7 @@ In traditional Web3, building reputation as a "skilled trader" requires exposing
 1. **Private Commitment**: Mint your Conviction Metrics as encrypted Aleo records.
 2. **ZK-Proofs**: Generate proofs for specific predicates (e.g., "Score > 80") without revealing the raw data.
 3. **Shield Wallet**: Secure, off-chain management of your behavioral credentials.
+4. **Private Payments (USDCx)**: Unlock premium features and claim "Patience Rebates" using Zero-Knowledge stablecoins.
 
 [Read our full Privacy Model →](docs/PRIVACY_MODEL.md)
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAleoConviction } from "@/hooks/use-aleo-conviction";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -11,16 +12,17 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Shield, ShieldCheck, Lock, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { Shield, ShieldCheck, Lock, Loader2, CheckCircle2, ExternalLink, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AleoProofDialog } from "./aleo-proof-dialog";
 import { APP_CONFIG } from "@/lib/config";
 
 export function AleoConvictionCard() {
-  const { isMinting, lastTxId, mintConvictionRecord, isAleoConnected } = useAleoConviction();
-  const { convictionMetrics } = useAppStore();
+  const { isMinting, lastTxId, mintConvictionRecord, purchasePremium, claimPatienceRebate, isAleoConnected } = useAleoConviction();
+  const { convictionMetrics, isAleoPremium } = useAppStore();
   const [isSuccess, setIsSuccess] = useState(false);
   const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
+  const [isRebateClaimed, setIsRebateClaimed] = useState(false);
 
   if (!convictionMetrics) return null;
 
@@ -28,6 +30,23 @@ export function AleoConvictionCard() {
     try {
       await mintConvictionRecord();
       setIsSuccess(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePurchasePremium = async () => {
+    try {
+      await purchasePremium();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleClaimRebate = async () => {
+    try {
+      await claimPatienceRebate();
+      setIsRebateClaimed(true);
     } catch (err) {
       console.error(err);
     }
@@ -126,6 +145,56 @@ export function AleoConvictionCard() {
             </Button>
           </div>
         )}
+
+        <div className="pt-4 border-t border-border/10 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-mono text-signal/70 uppercase flex items-center gap-1.5">
+              <Zap className="w-3 h-3" />
+              Premium Alpha
+            </div>
+            {isAleoPremium && (
+              <Badge className="bg-signal/20 text-signal border-signal/30 text-[8px] h-4 px-1">
+                UNLOCKED
+              </Badge>
+            )}
+          </div>
+          
+          {!isAleoPremium ? (
+            <Button 
+              variant="ghost" 
+              className="w-full h-8 text-[9px] font-mono border border-signal/20 hover:bg-signal/10 hover:text-signal transition-all"
+              onClick={handlePurchasePremium}
+              disabled={isMinting || !isAleoConnected}
+            >
+              {isMinting ? "PROCESSING..." : "UNLOCK DEEP ALPHA (0.5 CREDITS)"}
+            </Button>
+          ) : (
+            <div className="p-2.5 rounded-lg bg-signal/5 border border-signal/20 space-y-1.5">
+              <div className="flex justify-between items-center text-[9px] font-mono">
+                <span className="text-foreground-muted">PATIENCE REBATE:</span>
+                {!isRebateClaimed ? (
+                  <button 
+                    onClick={handleClaimRebate}
+                    disabled={isMinting || convictionMetrics.patienceTax > 1000}
+                    className="text-patience hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    CLAIM (0.2 USDCx)
+                  </button>
+                ) : (
+                  <span className="text-patience/50 italic">CLAIMED</span>
+                )}
+              </div>
+              <div className="flex justify-between items-center text-[9px] font-mono">
+                <span className="text-foreground-muted">WHALE SIGNALS:</span>
+                <span className="text-signal">ACTIVE</span>
+              </div>
+              <div className="flex justify-between items-center text-[9px] font-mono">
+                <span className="text-foreground-muted">EXIT MAP:</span>
+                <span className="text-signal">SYNCED</span>
+              </div>
+            </div>
+          )}
+        </div>
       </CardContent>
 
       <AleoProofDialog 
