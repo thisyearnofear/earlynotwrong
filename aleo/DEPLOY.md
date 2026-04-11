@@ -1,6 +1,13 @@
 # Deploying to Aleo Testnet
 
-This guide will help you deploy the `conviction_index.aleo` contract to the Aleo Testnet.
+This guide will help you deploy the `early_not_wrong_v1.aleo` contract to the Aleo Testnet.
+
+## Current Deployment Info (Latest)
+
+- **Program ID**: `early_not_wrong_v1.aleo`
+- **Transaction ID**: `at1dp7ctsehz5rpfazvazegj7wzecw8u6f3zx2z7w8h067zr6wp5sqsvlwhk2`
+- **Network**: Testnet (Provable)
+- **Explorer**: [Verify on Provable Explorer](https://explorer.provable.com/transaction/at1dp7ctsehz5rpfazvazegj7wzecw8u6f3zx2z7w8h067zr6wp5sqsvlwhk2)
 
 ## Prerequisites
 
@@ -51,11 +58,19 @@ Upon successful deployment, you will receive a Transaction ID. You can verify it
 
 ## 4. Update Frontend
 
-After deployment, update the `CONVICTION_PROGRAM_ID` in `src/hooks/use-aleo-conviction.ts` if you changed the program name.
+The frontend uses the `CONVICTION_PROGRAM_ID` from `src/hooks/use-aleo-conviction.ts`.
 
 ```typescript
-const CONVICTION_PROGRAM_ID = "conviction_index.aleo";
+const CONVICTION_PROGRAM_ID = "early_not_wrong_v1.aleo";
 ```
+
+## Leo v4 Notes (Current)
+
+The Leo 4.0.0 migration requires:
+-   **`fn` keyword**: All entry points must use `fn` instead of `transition`.
+-   **`@noupgrade constructor()`**: Every program must have a constructor if deployed after Consensus Version 9.
+-   **Tests**: Tests are now `@test fn` and should be in the `tests/` directory or a separate program block.
+-   **Renamed Variables**: Keywords like `record` cannot be used as variable names.
 
 ## Troubleshooting
 
