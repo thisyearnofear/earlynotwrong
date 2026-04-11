@@ -161,6 +161,44 @@ export function useAleoConviction() {
     }
   }, [address, executeTransaction]);
 
+  const commitPrivateThesis = useCallback(async (thesisHash: string, targetPrice: number) => {
+    if (!address || !executeTransaction) {
+      throw new Error("Aleo wallet not connected");
+    }
+
+    setIsMinting(true);
+    try {
+      // Ensure thesisHash is a valid field string (numeric)
+      // If it's a hex string, we might need to convert it or ensure it's decimal
+      const fieldHash = thesisHash.startsWith('0x') ? BigInt(thesisHash).toString() : thesisHash;
+
+      const txOptions: TransactionOptions = {
+        program: CONVICTION_PROGRAM_ID,
+        function: "commit_thesis",
+        inputs: [
+          address,
+          `${fieldHash}field`,
+          `${Math.floor(targetPrice)}u64`,
+          `${Math.floor(Date.now() / 1000)}u64`
+        ],
+        fee: 0.1,
+        privateFee: true
+      };
+
+      const result = await executeTransaction(txOptions);
+      const txId = result?.transactionId;
+      if (txId) {
+        setLastTxId(txId);
+      }
+      return txId;
+    } catch (error) {
+      console.error("Failed to commit private thesis:", error);
+      throw error;
+    } finally {
+      setIsMinting(false);
+    }
+  }, [address, executeTransaction]);
+
   const purchasePremium = useCallback(async () => {
     if (!address || !executeTransaction) {
       throw new Error("Aleo wallet not connected");
@@ -244,6 +282,7 @@ export function useAleoConviction() {
     verifyArchetype,
     verifyScoreThreshold,
     verifyEfficientTrading,
+    commitPrivateThesis,
     purchasePremium,
     claimPatienceRebate,
     fetchRecords,

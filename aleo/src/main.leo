@@ -8,6 +8,14 @@ program early_not_wrong_v1.aleo {
         timestamp: u64,
     }
 
+    // A private record representing a user's committed trade thesis
+    record PrivateThesis {
+        owner: address,
+        thesis_hash: field, // Hash of the thesis description + target token
+        target_price: u64,
+        timestamp: u64,
+    }
+
     // Official Archetypes:
     // 0: DIAMOND_HAND
     // 1: IRON_PILLAR
@@ -16,6 +24,24 @@ program early_not_wrong_v1.aleo {
 
     @noupgrade
     constructor() {}
+
+    /**
+     * Commit a private trade thesis to Aleo.
+     * This hides your trade intent until you decide to reveal it.
+     */
+    fn commit_thesis(
+        public owner: address,
+        public thesis_hash: field,
+        public target_price: u64,
+        public timestamp: u64
+    ) -> PrivateThesis {
+        return PrivateThesis {
+            owner: owner,
+            thesis_hash: thesis_hash,
+            target_price: target_price,
+            timestamp: timestamp,
+        };
+    }
 
     /**
      * Issue a private conviction record to a wallet.

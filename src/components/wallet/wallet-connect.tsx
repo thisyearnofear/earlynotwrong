@@ -51,8 +51,6 @@ export function WalletConnect({ className }: { className?: string }) {
   } = useWallet();
 
   const solanaAddress = publicKey?.toBase58();
-
-  // Aleo Hooks
   const {
     address: aleoAddress,
     wallets: aleoWallets,
@@ -61,6 +59,10 @@ export function WalletConnect({ className }: { className?: string }) {
     connecting: isAleoConnecting,
     disconnect: disconnectAleo,
   } = useAleoWallet();
+
+  const evmAddressShort = shortenAddress(evmAddress);
+  const solanaAddressShort = shortenAddress(solanaAddress);
+  const aleoAddressShort = shortenAddress(aleoAddress);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -95,17 +97,20 @@ export function WalletConnect({ className }: { className?: string }) {
         >
           {hasAnyConnection ? (
             <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-patience animate-pulse shadow-[0_0_8px_var(--patience)]" />
-              {isEvmConnected
-                ? shortenAddress(evmAddress)
-                : isSolanaConnected
-                ? shortenAddress(publicKey?.toBase58())
-                : shortenAddress(aleoAddress)}
+              <span className={cn(
+                "w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_currentColor]",
+                isAleoConnected ? "bg-signal text-signal" : "bg-patience text-patience"
+              )} />
+              {isAleoConnected 
+                ? aleoAddressShort 
+                : isEvmConnected 
+                ? evmAddressShort 
+                : solanaAddressShort}
             </span>
           ) : (
             <span className="flex items-center gap-2">
               {isAnyConnecting && <Loader2 className="w-3 h-3 animate-spin" />}
-              CONNECT WALLET
+              {isAnyConnecting ? "SIGNING IN..." : "SIGN IN / CONNECT"}
             </span>
           )}
         </Button>

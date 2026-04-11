@@ -28,10 +28,16 @@ We integrate **credits.aleo** and **USDCx** (private stablecoins) to create a ci
 - **Premium Alpha**: Users pay `0.5 credits` to unlock advanced behavioral metrics (Whale Signals, Exit Maps).
 - **Patience Rebates**: Traders who prove high efficiency (low patience tax) via ZK-proofs can claim a `0.2 USDCx` rebate from our treasury, incentivizing disciplined trading behavior.
 
-### 4. Architecture Overview
+### 4. Private Intent & Strategy (The "Strategist" Mode)
+To address the "how to trade" paradox on a public-ledger world, we introduce **Private Thesis Commitments**:
+- **Commitment**: Traders hash their trade thesis (e.g., "$ETH target 5k due to EIP-XXXX") and commit it to Aleo as a `PrivateThesis` record.
+- **Privacy**: The thesis is encrypted/hashed; no MEV bot or copy-trader can see your alpha.
+- **Proof**: Later, the trader can reveal the thesis and prove they were "early" without having leaked the info prematurely.
+
+### 5. Architecture Overview
 1. **Frontend**: Analyzes public chain history (Solana/Base).
-2. **Shield Wallet**: Acts as the secure vault for private behavioral records.
-3. **Leo Smart Contract**: Defines the rules for record issuance and verification.
+2. **Shield Wallet**: Acts as the secure vault for private behavioral records and trade intents.
+3. **Leo Smart Contract**: Defines the rules for record issuance, verification, and thesis commitment.
 4. **On-Chain Verification**: Third parties (or our own backend) can verify the `TX_ID` of a proof to confirm the user meets the criteria.
 
 ## Why Aleo?

@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Activity,
   TrendingUp,
+  Shield,
   ShieldCheck,
   Clock,
   AlertTriangle,
@@ -50,6 +51,8 @@ import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { AnalysisFilters } from "@/components/ui/analysis-filters";
 import { ScanProgress } from "@/components/ui/scan-progress";
 import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
+import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
+import { useWallet as useAleoWallet } from "@provablehq/aleo-wallet-adaptor-react";
 
 export default function Home() {
   const {
@@ -78,6 +81,9 @@ export default function Home() {
     clearError,
     dailyAnalysisCount,
   } = useAppStore();
+
+  const { connected: isAleoConnected } = useAleoWallet();
+  const [activeTab, setActiveTab] = useState<"analyzer" | "strategist">("analyzer");
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
@@ -191,7 +197,35 @@ export default function Home() {
                 exit={{ opacity: 0, height: 0 }}
                 className="flex flex-col items-center gap-8 pt-4 w-full"
               >
-                <div className="flex flex-col items-center gap-8 pt-4">
+                {/* Mode Selector */}
+                <div className="inline-flex p-1 rounded-full bg-surface border border-border">
+                  <button
+                    onClick={() => setActiveTab("analyzer")}
+                    className={cn(
+                      "px-6 py-1.5 rounded-full text-xs font-mono transition-all",
+                      activeTab === "analyzer" 
+                        ? "bg-foreground text-background" 
+                        : "text-foreground-muted hover:text-foreground"
+                    )}
+                  >
+                    ANALYZER
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("strategist")}
+                    className={cn(
+                      "px-6 py-1.5 rounded-full text-xs font-mono transition-all flex items-center gap-1.5",
+                      activeTab === "strategist" 
+                        ? "bg-signal text-black" 
+                        : "text-foreground-muted hover:text-foreground"
+                    )}
+                  >
+                    <Shield className="w-3 h-3" />
+                    STRATEGIST
+                  </button>
+                </div>
+
+                {activeTab === "analyzer" ? (
+                  <div className="flex flex-col items-center gap-8 pt-4">
                   <div className="flex flex-col sm:flex-row items-center gap-4">
                     <Dialog>
                       <DialogTrigger asChild>
@@ -471,6 +505,11 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+                ) : (
+                  <div className="w-full max-w-md mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <AleoPrivateThesis />
+                  </div>
+                )}
                 </motion.div>
               )}
             </AnimatePresence>

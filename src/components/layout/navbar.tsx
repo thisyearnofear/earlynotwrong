@@ -5,7 +5,7 @@ import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Search, Shield, Users, Zap, Crown, TrendingUp, Menu, X } from "lucide-react";
+import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Menu, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,7 @@ import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { useConviction } from "@/hooks/use-conviction";
 import { useRouter } from "next/navigation";
+import { useWallet as useAleoWallet } from "@provablehq/aleo-wallet-adaptor-react";
 import {
   getEthosTier,
   getTierInfo,
@@ -48,6 +49,7 @@ const TierIcon = ({
 
 export function Navbar() {
   const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode } = useAppStore();
+  const { connected: isAleoConnected } = useAleoWallet();
   const { analyzeWallet } = useConviction();
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -106,6 +108,15 @@ export function Navbar() {
                 <span className="sm:hidden">ENW</span>
                 <span className="text-foreground-muted hidden sm:inline">,</span>
                 <span className="hidden sm:inline"> NOT WRONG</span>
+                {isAleoConnected && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="ml-1"
+                  >
+                    <ShieldCheck className="w-3 h-3 text-signal" />
+                  </motion.div>
+                )}
               </Link>
               <span className="hidden md:inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-mono font-medium text-foreground-dim bg-surface border border-border rounded-full uppercase tracking-wider">
                 Beta
