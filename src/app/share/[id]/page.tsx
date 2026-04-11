@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { decodeShareData, getOgImageUrl } from "@/lib/share";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { APP_CONFIG } from "@/lib/config";
 
@@ -128,12 +129,12 @@ export default async function SharePage({ params }: SharePageProps) {
         </div>
 
         <div className="text-center">
-          <a
+          <Link
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-signal text-background font-semibold hover:bg-signal/90 transition-colors"
           >
             Analyze Your Wallet
-          </a>
+          </Link>
           <p className="mt-4 text-sm text-foreground-muted">
             Being early feels like being wrong. Until it doesn&apos;t.
           </p>

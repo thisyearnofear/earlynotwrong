@@ -267,7 +267,7 @@ function calculateConvictionMetrics(
       earlyExits: 0,
       convictionWins: 0,
       percentile: 0,
-      archetype: APP_CONFIG.archetypes.EXIT_VOYAGER.label as any,
+      archetype: APP_CONFIG.archetypes.EXIT_VOYAGER.label as ConvictionMetrics["archetype"],
       totalPositions: 0,
       avgHoldingPeriod: 0,
       winRate: 0,
@@ -276,16 +276,14 @@ function calculateConvictionMetrics(
 
   let totalPatienceTax = 0;
   let totalRealized = 0;
-  let totalInvested = 0;
   let earlyExits = 0;
   let convictionWins = 0;
   let totalHoldingDays = 0;
   let winningPositions = 0;
-  let positionSizes: number[] = [];
-  let holdingPeriods: number[] = [];
+  const positionSizes: number[] = [];
+  const holdingPeriods: number[] = [];
 
   // Behavioral metrics for conviction analysis
-  let reEntryCount = 0;
   let panicSells = 0;
   let diamondHands = 0;
 
@@ -293,7 +291,6 @@ function calculateConvictionMetrics(
     const position = positions[i];
     const analysis = analyses[i];
 
-    totalInvested += position.totalInvested;
     totalRealized += position.totalRealized;
     totalPatienceTax += analysis.patienceTax;
     totalHoldingDays += analysis.holdingPeriodDays;
@@ -329,7 +326,6 @@ function calculateConvictionMetrics(
       for (let j = 1; j < position.entries.length; j++) {
         const gap = (position.entries[j].timestamp - position.entries[j - 1].timestamp) / (24 * 60 * 60 * 1000);
         if (gap > 1) {
-          reEntryCount++;
           break;
         }
       }
@@ -404,7 +400,7 @@ function calculateConvictionMetrics(
     earlyExits,
     convictionWins,
     percentile,
-    archetype: getArchetype(finalScore, totalPatienceTax) as any,
+    archetype: getArchetype(finalScore, totalPatienceTax) as ConvictionMetrics["archetype"],
     totalPositions: positions.length,
     avgHoldingPeriod: Math.round(avgHoldingPeriod),
     winRate: Math.round(winRate),
@@ -414,20 +410,20 @@ function calculateConvictionMetrics(
 function getArchetype(
   score: number,
   patienceTax: number
-): string {
+): ConvictionMetrics["archetype"] {
   const { archetypes } = APP_CONFIG;
 
   if (score >= archetypes.IRON_PILLAR.minScore! && patienceTax <= archetypes.IRON_PILLAR.maxPatienceTax!) {
-    return archetypes.IRON_PILLAR.label;
+    return archetypes.IRON_PILLAR.label as ConvictionMetrics["archetype"];
   }
 
   if (score >= archetypes.PROFIT_PHANTOM.minScore! && patienceTax >= archetypes.PROFIT_PHANTOM.minPatienceTax!) {
-    return archetypes.PROFIT_PHANTOM.label;
+    return archetypes.PROFIT_PHANTOM.label as ConvictionMetrics["archetype"];
   }
 
   if (score <= archetypes.EXIT_VOYAGER.maxScore!) {
-    return archetypes.EXIT_VOYAGER.label;
+    return archetypes.EXIT_VOYAGER.label as ConvictionMetrics["archetype"];
   }
 
-  return archetypes.DIAMOND_HAND.label;
+  return archetypes.DIAMOND_HAND.label as ConvictionMetrics["archetype"];
 }

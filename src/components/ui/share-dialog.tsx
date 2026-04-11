@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -46,16 +46,19 @@ export function ShareDialog({
       ? window.location.origin
       : APP_CONFIG.baseUrl;
 
-  const shareData: ShareData = {
-    id: Math.random().toString(36).substring(2, 10),
+  const [shareId] = useState(() => Math.random().toString(36).substring(2, 10));
+  const [timestamp] = useState(() => Date.now());
+
+  const shareData: ShareData = useMemo(() => ({
+    id: shareId,
     score: metrics.score,
     archetype: metrics.archetype || "Diamond Hand",
     percentile: metrics.percentile,
     patienceTax: metrics.patienceTax,
     upsideCapture: metrics.upsideCapture,
     chain,
-    timestamp: Date.now(),
-  };
+    timestamp: timestamp,
+  }), [metrics, chain, shareId, timestamp]);
 
   const shareUrl = getShareUrl(shareData, baseUrl);
   const ogImageUrl = getOgImageUrl(shareData, baseUrl);

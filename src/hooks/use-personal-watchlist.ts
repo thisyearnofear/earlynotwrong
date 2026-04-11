@@ -73,7 +73,15 @@ export function usePersonalWatchlist() {
 
         if (data.watchlist) {
           // Map DB response to UI format
-          const dbList: PersonalWatchlistEntry[] = data.watchlist.map((item: any) => ({
+          const dbList: PersonalWatchlistEntry[] = data.watchlist.map((item: {
+            watchedAddress: string;
+            chain: "solana" | "base";
+            name?: string;
+            latestScore?: number;
+            latestArchetype?: string;
+            createdAt: string;
+            latestAnalyzedAt?: string;
+          }) => ({
             address: item.watchedAddress,
             chain: item.chain,
             name: item.name,
@@ -139,7 +147,7 @@ export function usePersonalWatchlist() {
         // Revert optimistic update? For now, we'll leave it in UI state but it won't persist on refresh.
       }
     }
-  }, [userAddress, loadFromLocalStorage, saveToLocalStorage]);
+  }, [userAddress, loadFromLocalStorage, saveToLocalStorage, showToast]);
 
   const removeFromWatchlist = useCallback(async (address: string, chain: "solana" | "base") => {
     // 1. Optimistic Update
@@ -163,7 +171,7 @@ export function usePersonalWatchlist() {
 
       }
     }
-  }, [userAddress, loadFromLocalStorage, saveToLocalStorage]);
+  }, [userAddress, loadFromLocalStorage, saveToLocalStorage, showToast]);
 
   const isWatched = useCallback(
     (address: string, chain: "solana" | "base") => {

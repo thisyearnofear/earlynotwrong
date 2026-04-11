@@ -15,82 +15,29 @@ export const APP_CONFIG = {
     holdingPeriod: 0.15,
   },
 
-  // Reputation Weighting
+  // Reputation Thresholds
   reputation: {
     ethosScoreThresholds: {
-      elite: 2000,    // Exemplary (1.5x)
-      high: 1700,     // Reputable (1.35x)
-      medium: 1400,   // Known (1.15x)
-      low: 1000,      // Entry (1.05x)
+      elite: 2000,    // Exemplary
+      high: 1700,     // Reputable
+      medium: 1400,   // Known
+      low: 1000,      // Entry
       unknown: 0
     },
     featureGating: {
-      premiumAccess: 1000,     // Entry: Basic analytics
-      whaleAnalysis: 1400,     // Known: Alpha discovery + heatmap
-      alphaSignals: 1700,      // Reputable: Real-time alerts
-      eliteInsights: 2000,     // Exemplary: Advanced audit
+      premiumAccess: 1000,
+      whaleAnalysis: 1400,
+      alphaSignals: 1700,
+      eliteInsights: 2000,
     },
-    // Community watchlist contribution tiers
     communityTiers: {
       viewer: 0,
-      nominator: 1000,    // Entry level nomination
-      contributor: 1200,  // Neutral
-      curator: 1400,      // Known
-      moderator: 1700,    // Reputable
-      admin: 2000,        // Exemplary
-    },
-    perks: {
-      // Ethos 100+: Premium Access
-      premium: {
-        refreshRate: 300000,     // 5 min refresh
-        historyDepth: 90,        // 90 days
-        exportData: false,
-        prioritySupport: false,
-      },
-      // Ethos 500+: Whale Analysis  
-      whale: {
-        refreshRate: 180000,     // 3 min refresh
-        historyDepth: 180,       // 180 days
-        exportData: true,
-        prioritySupport: false,
-        cohortComparison: true,
-        advancedFilters: true,
-      },
-      // Ethos 1000+: Alpha Signals
-      alpha: {
-        refreshRate: 60000,      // 1 min refresh
-        historyDepth: 365,       // 1 year
-        exportData: true,
-        prioritySupport: true,
-        cohortComparison: true,
-        advancedFilters: true,
-        realTimeAlerts: true,
-        whaleTracking: true,
-      },
-      // Ethos 2000+: Elite Insights
-      elite: {
-        refreshRate: 30000,      // 30 sec refresh
-        historyDepth: 730,       // 2 years
-        exportData: true,
-        prioritySupport: true,
-        cohortComparison: true,
-        advancedFilters: true,
-        realTimeAlerts: true,
-        whaleTracking: true,
-        earlyAccess: true,
-        customDashboard: true,
-        apiAccess: true,
-      }
+      nominator: 1000,
+      contributor: 1200,
+      curator: 1400,
+      moderator: 1700,
+      admin: 2000,
     }
-  },
-
-  // Alpha Discovery
-  alphaDiscovery: {
-    highConvictionThreshold: 80,
-    ironPillarThreshold: 90,
-    minPositionsForRanking: 3,
-    leaderboardSize: 50,
-    alertCooldownHours: 24,
   },
 
   // Archetype Thresholds
@@ -138,6 +85,12 @@ export const APP_CONFIG = {
     solana: {
       name: "Solana",
       rpcUrl: `https://api.mainnet-beta.solana.com`,
+    },
+    aleo: {
+      network: "mainnet",
+      apiUrl: "https://api.provable.com/v2",
+      explorerUrl: "https://explorer.provable.com",
+      programId: "conviction_index.aleo"
     }
   }
 };

@@ -96,38 +96,22 @@ export class CachedEthosService {
   }
 
   /**
-   * Get conviction attestations with caching
-   */
-  async getConvictionAttestations(address: string) {
-    const key = EthosCacheKeys.attestations(address);
-
-    return serverCache.get(
-      key,
-      () => ethosClient.getConvictionAttestations(address),
-      ETHOS_CACHE_TTL.REVIEWS
-    );
-  }
-
-  /**
    * Get comprehensive Ethos data for a wallet (parallel fetch with caching)
    * This is the main method for wallet analysis
    */
   async getWalletEthosData(address: string): Promise<{
     score: EthosScore | null;
     profile: EthosProfile | null;
-    attestations: Awaited<ReturnType<typeof ethosClient.getConvictionAttestations>>;
   }> {
     // Parallel fetch with individual caching
-    const [score, profile, attestations] = await Promise.all([
+    const [score, profile] = await Promise.all([
       this.getScoreByAddress(address),
       this.getProfileByAddress(address),
-      this.getConvictionAttestations(address),
     ]);
 
     return {
       score,
       profile,
-      attestations,
     };
   }
 
@@ -147,28 +131,10 @@ export class CachedEthosService {
   }
 
   /**
-   * Calculate reputation perks (no caching needed - pure calculation)
-   */
-  getReputationPerks(ethosScore: number | null) {
-    return ethosClient.getReputationPerks(ethosScore);
-  }
-
-  /**
    * Calculate reputation weighting (no caching needed - pure calculation)
    */
   calculateReputationWeighting(baseScore: number, ethosScore: number | null) {
     return ethosClient.calculateReputationWeighting(baseScore, ethosScore);
-  }
-
-  /**
-   * Classify wallet for alpha discovery (no caching needed - pure calculation)
-   */
-  classifyWalletForAlpha(
-    convictionScore: number,
-    ethosScore: number | null,
-    totalPositions: number
-  ) {
-    return ethosClient.classifyWalletForAlpha(convictionScore, ethosScore, totalPositions);
   }
 
   /**

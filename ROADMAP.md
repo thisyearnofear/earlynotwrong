@@ -58,11 +58,11 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 
 ## Active Development
 
-### Phase 5 - Enhanced Conviction Analysis
-- [ ] Scenario Analysis ("What if I held?" tool)
-- [ ] Regime Detection (market volatility context)
-- [ ] Position Sizing Consistency scoring
-- [ ] Re-entry Pattern detection improvements
+### Phase 5 - Aleo Privacy Integration (ACTIVE)
+- [x] Lean Foundation: Audit and consolidate lib modules
+- [x] Leo Smart Contract: Implement ZK-proof logic for CI metrics
+- [x] Shield Wallet: Frontend integration for private verification
+- [x] Selective Disclosure: Privacy-preserving archetype proofs
 
 ### Phase 6 - Social Features (If Demand)
 - [ ] Endorsement Mechanics (scout/recommend traders)

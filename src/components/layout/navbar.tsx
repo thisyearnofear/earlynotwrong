@@ -47,7 +47,7 @@ const TierIcon = ({
 };
 
 export function Navbar() {
-  const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode, privacyMode } = useAppStore();
+  const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode } = useAppStore();
   const { analyzeWallet } = useConviction();
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -273,14 +273,6 @@ export function Navbar() {
                 <Moon className="w-5 h-5" />
               )}
             </Button>
-
-            {/* Privacy Mode Indicator */}
-            {privacyMode.isEnabled && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <Shield className="w-3 h-3" />
-                <span className="text-[10px] font-mono uppercase tracking-wider">Private</span>
-              </div>
-            )}
 
             <WalletConnect className="h-10 px-3 hidden sm:flex" />
 

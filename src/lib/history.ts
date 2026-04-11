@@ -79,7 +79,7 @@ async function saveToPostgres(
   }
 }
 
-import { UnifiedTrustScore } from "./services/trust-resolver";
+import { UnifiedTrustScore } from "./ethos";
 
 export function saveConvictionAnalysis(
   address: string,

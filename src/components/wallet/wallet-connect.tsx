@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet as useAleoWallet } from "@provablehq/aleo-wallet-adaptor-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { LogOut, Copy, Check, ChevronRight, Loader2 } from "lucide-react";
+import { LogOut, Copy, Check, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function shortenAddress(address: string | null | undefined) {
@@ -51,14 +52,24 @@ export function WalletConnect({ className }: { className?: string }) {
 
   const solanaAddress = publicKey?.toBase58();
 
+  // Aleo Hooks
+  const {
+    address: aleoAddress,
+    wallets: aleoWallets,
+    selectWallet: selectAleoWallet,
+    connected: isAleoConnected,
+    connecting: isAleoConnecting,
+    disconnect: disconnectAleo,
+  } = useAleoWallet();
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const hasAnyConnection = isEvmConnected || isSolanaConnected;
-  const isAnyConnecting = isEvmConnecting || isSolanaConnecting;
+  const hasAnyConnection = isEvmConnected || isSolanaConnected || isAleoConnected;
+  const isAnyConnecting = isEvmConnecting || isSolanaConnecting || isAleoConnecting;
 
   // Render nothing on server to prevent mismatch
   if (!isClient) {
@@ -87,7 +98,9 @@ export function WalletConnect({ className }: { className?: string }) {
               <span className="w-2 h-2 rounded-full bg-patience animate-pulse shadow-[0_0_8px_var(--patience)]" />
               {isEvmConnected
                 ? shortenAddress(evmAddress)
-                : shortenAddress(solanaAddress)}
+                : isSolanaConnected
+                ? shortenAddress(publicKey?.toBase58())
+                : shortenAddress(aleoAddress)}
             </span>
           ) : (
             <span className="flex items-center gap-2">
@@ -178,6 +191,83 @@ export function WalletConnect({ className }: { className?: string }) {
           </div>
 
           <div className="h-px bg-border/50 w-full" />
+
+          {/* Aleo Section */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-medium text-foreground-muted uppercase tracking-wider font-mono flex items-center gap-2">
+              <div className="w-1 h-3 bg-red-500 rounded-full" />
+              Aleo (Privacy)
+            </h4>
+
+            {isAleoConnected ? (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-surface border border-border group hover:border-border-glow transition-colors">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-foreground-muted uppercase tracking-widest">
+                      Connected
+                    </span>
+                    <ShieldCheck className="w-2.5 h-2.5 text-signal" />
+                  </div>
+                  <span className="font-mono text-sm text-foreground">
+                    {shortenAddress(aleoAddress)}
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => copyToClipboard(aleoAddress!)}
+                  >
+                    {copied ? (
+                      <Check className="w-3 h-3 text-patience" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 hover:bg-impatience/10 hover:text-impatience"
+                    onClick={() => disconnectAleo()}
+                  >
+                    <LogOut className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {aleoWallets.map((w) => (
+                  <Button
+                    key={w.adapter.name}
+                    variant="outline"
+                    className="justify-between w-full font-normal border-border/50 hover:border-signal/50 hover:bg-surface-hover h-11"
+                    onClick={() => {
+                      selectAleoWallet(w.adapter.name);
+                      setIsOpen(false);
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {w.adapter.icon && (
+                        <img
+                          src={w.adapter.icon}
+                          alt={w.adapter.name}
+                          className="w-5 h-5 grayscale group-hover:grayscale-0 transition-all"
+                        />
+                      )}
+                      {w.adapter.name}
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-foreground-muted" />
+                  </Button>
+                ))}
+                {aleoWallets.length === 0 && (
+                  <div className="text-xs text-foreground-muted text-center py-2">
+                    No Aleo wallets detected.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Solana Section */}
           <div className="space-y-3">

@@ -8,7 +8,6 @@
  * - App deployed to Vercel (need the production URL)
  */
 
-// @ts-nocheck
 // Run with: npx tsx scripts/setup-helius-webhook.ts
 
 // Load environment variables

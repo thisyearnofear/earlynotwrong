@@ -204,6 +204,24 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 ---
 
+## Recent Updates: Phase 5 - Aleo Privacy Integration (Aleo Buildathon 2026)
+
+### 🆕 Selective Disclosure via Aleo ZK-Proofs
+- **Private CI Records**: Commit your conviction metrics (Score, Archetype, Patience Tax) to Aleo as encrypted records.
+- **Zero-Knowledge Proofs**: Generate proofs for specific predicates (e.g., "Score > 80") without revealing your full wallet history.
+- **Shield Wallet Integration**: Full support for Aleo Shield Wallet for secure, off-chain record management.
+- **Proof Verification API**: Backend Oracle to verify Aleo transaction proofs and validate user claims.
+
+### 🆕 Leo Smart Contract
+- **Selective Disclosure Logic**: Custom Leo contract (`conviction_index.aleo`) implementing privacy-preserving verification transitions.
+- **On-Chain Identity**: Decouple behavioral reputation from public wallet addresses using Aleo's private-by-default architecture.
+
+### 🆕 UI/UX Enhancements
+- **Aleo Conviction Card**: Dedicated interface for minting private records and generating ZK-proofs.
+- **Selective Disclosure Dialog**: User-friendly proof generation flow with real-time status updates and explorer integration.
+
+---
+
 ## Recent Updates: Phase 4 - Privacy Mode (Privacy Hack 2026)
 
 ### 🆕 Privacy Cash Integration

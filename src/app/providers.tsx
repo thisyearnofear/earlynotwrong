@@ -7,10 +7,14 @@ import { base } from 'wagmi/chains';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { WalletModalProvider as SolanaWalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
+import { AleoWalletProvider } from "@provablehq/aleo-wallet-adaptor-react";
+import { ShieldWalletAdapter } from "@provablehq/aleo-wallet-adaptor-shield";
+import { Network } from "@provablehq/aleo-types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { miniApp, type MiniAppState } from "@/lib/farcaster-miniapp";
+import { APP_CONFIG } from "@/lib/config";
 
 // Default styles for Solana wallet adapter
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -104,18 +108,30 @@ export function Providers({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const aleoWallets = useMemo(
+    () => [
+      new ShieldWalletAdapter(),
+    ],
+    []
+  );
+
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <ConnectionProvider endpoint={endpoint}>
           <WalletProvider wallets={wallets} autoConnect>
-            <WalletModalProvider>
-              <TooltipProvider>
-                <MiniAppProvider>
-                  {children}
-                </MiniAppProvider>
-              </TooltipProvider>
-            </WalletModalProvider>
+            <SolanaWalletModalProvider>
+              <AleoWalletProvider 
+                wallets={aleoWallets} 
+                network={APP_CONFIG.chains.aleo.network as Network}
+              >
+                <TooltipProvider>
+                  <MiniAppProvider>
+                    {children}
+                  </MiniAppProvider>
+                </TooltipProvider>
+              </AleoWalletProvider>
+            </SolanaWalletModalProvider>
           </WalletProvider>
         </ConnectionProvider>
       </QueryClientProvider>

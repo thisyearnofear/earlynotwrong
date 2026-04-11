@@ -247,6 +247,26 @@ class ApiClient {
       (p) => p.entries.length > 0 && p.totalInvested > 0
     );
   }
+
+  async verifyAleoProof(transactionId: string): Promise<{
+    verified: boolean;
+    status: string;
+    program?: string;
+    message?: string;
+  }> {
+    const response = await fetch(`/api/aleo/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transactionId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `Verification error: ${response.status}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient();

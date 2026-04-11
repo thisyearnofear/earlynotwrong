@@ -26,10 +26,6 @@ import {
   AlertTriangle,
   Settings,
   Share2,
-  Lock,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
   Copy,
   Check,
 } from "lucide-react";
@@ -39,7 +35,6 @@ import { ScoreBreakdownDialog } from "@/components/ui/score-breakdown";
 import { ethosClient } from "@/lib/ethos";
 import { PositionExplorer } from "@/components/ui/position-explorer";
 import { ShareDialog } from "@/components/ui/share-dialog";
-import { HistoryPanel } from "@/components/ui/history-panel";
 import { ErrorPanel } from "@/components/ui/error-panel";
 import { DataQualityBadge } from "@/components/ui/data-quality-badge";
 import {
@@ -54,6 +49,7 @@ import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { AnalysisFilters } from "@/components/ui/analysis-filters";
 import { ScanProgress } from "@/components/ui/scan-progress";
+import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 
 export default function Home() {
   const {
@@ -92,15 +88,24 @@ export default function Home() {
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
-  const [hasEverScanned, setHasEverScanned] = useState(true);
+  const [hasEverScanned, setHasEverScanned] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('enw_has_scanned') === 'true';
+    }
+    return true;
+  });
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const prevHasScanned = useRef(false);
 
   useEffect(() => {
     if (hasScanned && !prevHasScanned.current && convictionMetrics) {
-      setShowSuccessMessage(true);
-      const timer = setTimeout(() => setShowSuccessMessage(false), 4000);
-      return () => clearTimeout(timer);
+      // Use setTimeout to avoid synchronous setState inside effect which triggers cascading renders
+      const timer = setTimeout(() => setShowSuccessMessage(true), 0);
+      const hideTimer = setTimeout(() => setShowSuccessMessage(false), 4000);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(hideTimer);
+      };
     }
     prevHasScanned.current = hasScanned;
   }, [hasScanned, convictionMetrics]);
@@ -114,29 +119,12 @@ export default function Home() {
     }
   }, [targetAddress]);
 
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['positions']));
-
-  const toggleSection = (id: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  // Check localStorage for first-time user indicator
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setHasEverScanned(localStorage.getItem('enw_has_scanned') === 'true');
-    }
-  }, []);
-
   // Set localStorage after first successful scan
   useEffect(() => {
     if (hasScanned && typeof window !== 'undefined') {
       localStorage.setItem('enw_has_scanned', 'true');
-      setHasEverScanned(true);
+      const timer = setTimeout(() => setHasEverScanned(true), 0);
+      return () => clearTimeout(timer);
     }
   }, [hasScanned]);
 
@@ -1008,11 +996,20 @@ export default function Home() {
                         >
                           VIEW ETHOS PROFILE
                         </Button>
-
-                        {/* Write Review Button - only for others and high credibility users */}
                       </div>
                     </CardContent>
                   </Card>
+                </motion.div>
+
+                {/* Aleo Privacy Card */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                >
+                  <AleoConvictionCard />
                 </motion.div>
 
                 {/* Position Explorer */}

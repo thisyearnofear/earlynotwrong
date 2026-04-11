@@ -204,8 +204,7 @@ export function useConviction() {
           addLog(`> FETCHING UNIFIED TRUST SCORE...`);
 
           try {
-            const { trustResolver } = await import("@/lib/services/trust-resolver");
-            const unifiedTrust = await trustResolver.resolve(activeAddress!);
+            const unifiedTrust = await ethosClient.resolveTrust(activeAddress!);
 
             useAppStore.getState().setUnifiedTrustScore(unifiedTrust);
 

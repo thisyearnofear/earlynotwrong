@@ -53,25 +53,8 @@ export interface FeatureAccess {
   canExportData: boolean;
   canViewFullHistory: boolean;
 
-  // Real-time features
-  alertRefreshSeconds: number;
-  canReceiveAlerts: boolean;
-  maxWatchlistSize: number;
-
-  // Community features
-  communityRole: CommunityRole;
-  canNominate: boolean;
-  canEndorse: boolean;
-  canModerate: boolean;
-
-  // Leaderboard
-  canFilterLeaderboard: boolean;
-  leaderboardResultLimit: number;
-
   // Premium features
-  canAccessCohortData: boolean;
-  canAccessTokenHeatmap: boolean;
-  canAccessAlphaDiscovery: boolean;
+  canAccessAdvancedAnalytics: boolean;
 }
 
 // =============================================================================
@@ -88,23 +71,12 @@ export function getEthosTier(score: number | null): EthosTier {
   return "visitor";
 }
 
-export function getCommunityRole(score: number | null): CommunityRole {
-  const s = score || 0;
-  if (s >= communityTiers.admin) return "admin";
-  if (s >= communityTiers.moderator) return "moderator";
-  if (s >= communityTiers.curator) return "curator";
-  if (s >= communityTiers.contributor) return "contributor";
-  if (s >= communityTiers.nominator) return "nominator";
-  return "viewer";
-}
-
 // =============================================================================
 // Feature Access Matrix
 // =============================================================================
 
 export function getFeatureAccess(score: number | null): FeatureAccess {
   const tier = getEthosTier(score);
-  const role = getCommunityRole(score);
   const s = score || 0;
 
   // Base access for everyone
@@ -114,18 +86,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
     dailyAnalysisLimit: 5,
     canExportData: false,
     canViewFullHistory: false,
-    alertRefreshSeconds: 300,
-    canReceiveAlerts: false,
-    maxWatchlistSize: 5,
-    communityRole: role,
-    canNominate: false,
-    canEndorse: false,
-    canModerate: false,
-    canFilterLeaderboard: false,
-    leaderboardResultLimit: 10,
-    canAccessCohortData: false,
-    canAccessTokenHeatmap: false,
-    canAccessAlphaDiscovery: false,
+    canAccessAdvancedAnalytics: false,
   };
 
   // Tier upgrades
@@ -138,17 +99,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         dailyAnalysisLimit: Infinity,
         canExportData: true,
         canViewFullHistory: true,
-        alertRefreshSeconds: 30,
-        canReceiveAlerts: true,
-        maxWatchlistSize: 100,
-        canNominate: true,
-        canEndorse: true,
-        canModerate: s >= communityTiers.moderator,
-        canFilterLeaderboard: true,
-        leaderboardResultLimit: 100,
-        canAccessCohortData: true,
-        canAccessTokenHeatmap: true,
-        canAccessAlphaDiscovery: true,
+        canAccessAdvancedAnalytics: true,
       };
 
     case "alpha":
@@ -159,17 +110,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         dailyAnalysisLimit: 50,
         canExportData: true,
         canViewFullHistory: true,
-        alertRefreshSeconds: 60,
-        canReceiveAlerts: true,
-        maxWatchlistSize: 50,
-        canNominate: true,
-        canEndorse: s >= communityTiers.contributor,
-        canModerate: s >= communityTiers.moderator,
-        canFilterLeaderboard: true,
-        leaderboardResultLimit: 50,
-        canAccessCohortData: true,
-        canAccessTokenHeatmap: true,
-        canAccessAlphaDiscovery: true,
+        canAccessAdvancedAnalytics: true,
       };
 
     case "whale":
@@ -180,17 +121,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         dailyAnalysisLimit: 20,
         canExportData: true,
         canViewFullHistory: true,
-        alertRefreshSeconds: 180,
-        canReceiveAlerts: false,
-        maxWatchlistSize: 20,
-        canNominate: false,
-        canEndorse: false,
-        canModerate: false,
-        canFilterLeaderboard: true,
-        leaderboardResultLimit: 25,
-        canAccessCohortData: true,
-        canAccessTokenHeatmap: true,
-        canAccessAlphaDiscovery: true,
+        canAccessAdvancedAnalytics: false,
       };
 
     case "premium":
@@ -200,12 +131,7 @@ export function getFeatureAccess(score: number | null): FeatureAccess {
         positionsPerAnalysis: 30,
         dailyAnalysisLimit: 10,
         canExportData: false,
-        alertRefreshSeconds: 300,
-        maxWatchlistSize: 10,
-        leaderboardResultLimit: 15,
-        canAccessCohortData: false,
-        canAccessTokenHeatmap: false,
-        canAccessAlphaDiscovery: false,
+        canAccessAdvancedAnalytics: false,
       };
 
     default:
@@ -259,29 +185,11 @@ export const gates = {
   extendedLookback: (score: number) => score >= 1400,
   fullHistory: (score: number) => score >= 1700,
 
-  // Real-time
-  alerts: (score: number) => score >= 1700,
-  fastRefresh: (score: number) => score >= 2000,
-
   // Data
   export: (score: number) => score >= 1400,
 
-  // Discovery
-  alphaDiscovery: (score: number) => score >= 1400,
-  tokenHeatmap: (score: number) => score >= 1400,
-  cohortData: (score: number) => score >= 1400,
-
-  // Community
-  nominate: (score: number) => score >= 1000,
-  endorse: (score: number) => score >= 1200,
-  curate: (score: number) => score >= 1400,
-  moderate: (score: number) => score >= 1700,
-  admin: (score: number) => score >= 2000,
-
-  // Leaderboard filters
-  filterByEthos: (score: number) => score >= 1400,
-  filterByConviction: (score: number) => score >= 1400,
-  filterByArchetype: (score: number) => score >= 1700,
+  // Analytics
+  advancedAnalytics: (score: number) => score >= 1700,
 };
 
 // =============================================================================
@@ -345,19 +253,9 @@ export function getRateLimits(tier: EthosTier): {
 // =============================================================================
 
 export type FeatureKey =
-  | "alphaDiscovery"
-  | "tokenHeatmap"
-  | "cohortData"
-  | "realTimeAlerts"
   | "dataExport"
   | "extendedHistory"
-  | "advancedFilters"
-  | "whaleTracking"
-  | "communityNominate"
-  | "communityEndorse"
-  | "communityCurate"
-  | "advancedAnalytics"
-  | "communityModerate";
+  | "advancedAnalytics";
 
 export interface FeatureInfo {
   key: FeatureKey;
@@ -372,40 +270,6 @@ export interface FeatureInfo {
  * Canonical feature registry - drives UI, API gates, and messaging
  */
 export const FEATURES: Record<FeatureKey, FeatureInfo> = {
-  alphaDiscovery: {
-    key: "alphaDiscovery",
-    name: "Alpha Discovery",
-    description: "Find high-conviction wallets before they trend",
-    requiredScore: 1400,
-    requiredTier: "whale",
-    valueTeaser:
-      "Discover wallets with 80+ conviction scores and track their moves",
-  },
-  tokenHeatmap: {
-    key: "tokenHeatmap",
-    name: "Token Heatmap",
-    description: "See what top traders are accumulating",
-    requiredScore: 1400,
-    requiredTier: "whale",
-    valueTeaser: "Visualize token conviction across trusted wallets",
-  },
-  cohortData: {
-    key: "cohortData",
-    name: "Cohort Analysis",
-    description: "Compare your conviction against the community",
-    requiredScore: 1400,
-    requiredTier: "whale",
-    valueTeaser: "See where you rank among all analyzed traders",
-  },
-  realTimeAlerts: {
-    key: "realTimeAlerts",
-    name: "Real-time Alerts",
-    description: "Get notified when watchlist traders move",
-    requiredScore: 1700,
-    requiredTier: "alpha",
-    valueTeaser:
-      "60-second refresh on whale movements with instant notifications",
-  },
   dataExport: {
     key: "dataExport",
     name: "Data Export",
@@ -423,46 +287,6 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     requiredTier: "alpha",
     valueTeaser: "365-day lookback for deeper conviction patterns",
   },
-  advancedFilters: {
-    key: "advancedFilters",
-    name: "Advanced Filters",
-    description: "Filter by Ethos score, conviction, and archetype",
-    requiredScore: 1400,
-    requiredTier: "whale",
-    valueTeaser: "Find exactly the traders you want to follow",
-  },
-  whaleTracking: {
-    key: "whaleTracking",
-    name: "Whale Tracking",
-    description: "Monitor high-value wallet movements",
-    requiredScore: 1700,
-    requiredTier: "alpha",
-    valueTeaser: "Track top 50 conviction traders with real-time updates",
-  },
-  communityNominate: {
-    key: "communityNominate",
-    name: "Nominate Traders",
-    description: "Suggest wallets for the community watchlist",
-    requiredScore: 1000,
-    requiredTier: "premium",
-    valueTeaser: "Help curate the community's trusted trader list",
-  },
-  communityEndorse: {
-    key: "communityEndorse",
-    name: "Endorse Nominations",
-    description: "Vote on community watchlist nominations",
-    requiredScore: 1200,
-    requiredTier: "premium",
-    valueTeaser: "Your endorsement helps approve trusted traders faster",
-  },
-  communityCurate: {
-    key: "communityCurate",
-    name: "Curation Rights",
-    description: "Add traders directly without review",
-    requiredScore: 1400,
-    requiredTier: "whale",
-    valueTeaser: "Trust level high enough to bypass the nomination queue",
-  },
   advancedAnalytics: {
     key: "advancedAnalytics",
     name: "Deep Performance Audit",
@@ -470,14 +294,6 @@ export const FEATURES: Record<FeatureKey, FeatureInfo> = {
     requiredScore: 1800,
     requiredTier: "alpha",
     valueTeaser: "Analyze the 'why' behind every win and loss with raw metadata",
-  },
-  communityModerate: {
-    key: "communityModerate",
-    name: "Moderate Watchlist",
-    description: "Remove bad actors from community watchlist",
-    requiredScore: 1700,
-    requiredTier: "alpha",
-    valueTeaser: "Help maintain watchlist quality as a trusted moderator",
   },
 };
 

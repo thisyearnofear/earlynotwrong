@@ -1,26 +1,7 @@
 import { create } from "zustand";
-import { EthosScore, EthosProfile, FarcasterIdentity } from "./ethos";
+import { EthosScore, EthosProfile, FarcasterIdentity, UnifiedTrustScore } from "./ethos";
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis, TransactionResult } from "./api-client";
-import { UnifiedTrustScore } from "./services/trust-resolver";
-import type { PrivacySession } from "./privacy-cash";
-
-interface PrivacyModeState {
-  isEnabled: boolean;
-  session: PrivacySession | null;
-  isConnecting: boolean;
-  error: string | null;
-  // Enhanced privacy tiers
-  tier: 'basic' | 'extended' | 'custom';
-  // Configurable session duration
-  sessionDuration: number; // in minutes
-  // Privacy preferences
-  privacyPreferences: {
-    hideSpecificMetrics: boolean;
-    enablePeerComparison: boolean;
-    allowReputationBuilding: boolean;
-  };
-}
 
 interface AnalysisParams {
   timeHorizon: 30 | 90 | 180 | 365;
@@ -141,13 +122,6 @@ interface AppState {
   dailyAnalysisCount: number;
   dailyAnalysisResetDate: string | null;
   incrementDailyAnalysis: () => void;
-
-  // Privacy Mode (Privacy Cash integration)
-  privacyMode: PrivacyModeState;
-  setPrivacyMode: (state: Partial<PrivacyModeState>) => void;
-  enablePrivacyMode: (session: PrivacySession) => void;
-  disablePrivacyMode: () => void;
-  updatePrivacyPreferences: (preferences: Partial<PrivacyModeState['privacyPreferences']>) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -401,65 +375,4 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
   },
-
-  // Privacy Mode Implementation
-  privacyMode: {
-    isEnabled: false,
-    session: null,
-    isConnecting: false,
-    error: null,
-    tier: 'basic',
-    sessionDuration: 30, // 30 minutes for basic tier
-    privacyPreferences: {
-      hideSpecificMetrics: false,
-      enablePeerComparison: false,
-      allowReputationBuilding: true,
-    },
-  },
-  setPrivacyMode: (state) =>
-    set((current) => ({
-      privacyMode: { ...current.privacyMode, ...state },
-    })),
-  enablePrivacyMode: (session) =>
-    set({
-      privacyMode: {
-        isEnabled: true,
-        session,
-        isConnecting: false,
-        error: null,
-        tier: 'basic',
-        sessionDuration: 30,
-        privacyPreferences: {
-          hideSpecificMetrics: false,
-          enablePeerComparison: false,
-          allowReputationBuilding: true,
-        },
-      },
-    }),
-  disablePrivacyMode: () =>
-    set({
-      privacyMode: {
-        isEnabled: false,
-        session: null,
-        isConnecting: false,
-        error: null,
-        tier: 'basic',
-        sessionDuration: 30,
-        privacyPreferences: {
-          hideSpecificMetrics: false,
-          enablePeerComparison: false,
-          allowReputationBuilding: true,
-        },
-      },
-    }),
-  updatePrivacyPreferences: (preferences) =>
-    set((current) => ({
-      privacyMode: {
-        ...current.privacyMode,
-        privacyPreferences: {
-          ...current.privacyMode.privacyPreferences,
-          ...preferences,
-        },
-      },
-    })),
 }));

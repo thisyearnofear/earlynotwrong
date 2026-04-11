@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { APP_CONFIG } from "@/lib/config";
 import { serverCache, CacheKeys, CacheTTL } from "@/lib/server-cache";
 import { TokenTransaction } from "@/lib/market";

@@ -672,7 +672,6 @@ export function PositionExplorer({
                     </div>
                 </div>
             </div>
-        </EthosGatedContent>
       </div>
     </div>
   );

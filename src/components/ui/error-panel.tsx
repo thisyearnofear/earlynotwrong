@@ -36,7 +36,7 @@ export function ErrorPanel({
 
   useEffect(() => {
     if (errorType === 'network' && canRetry && onRetry) {
-      setAutoRetryCountdown(30);
+      const timer = setTimeout(() => setAutoRetryCountdown(30), 0);
       const interval = setInterval(() => {
         setAutoRetryCountdown(prev => {
           if (prev === null || prev <= 1) {
@@ -47,7 +47,10 @@ export function ErrorPanel({
           return prev - 1;
         });
       }, 1000);
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(timer);
+        clearInterval(interval);
+      };
     }
   }, [errorType, canRetry, onRetry]);
 

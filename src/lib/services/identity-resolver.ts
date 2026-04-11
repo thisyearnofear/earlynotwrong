@@ -12,10 +12,8 @@
 
 import { serverCache } from "@/lib/server-cache";
 import { cachedEthosService } from "./ethos-cache";
-import { trustResolver } from "./trust-resolver";
-import type { EthosScore, EthosProfile, FarcasterIdentity } from "@/lib/ethos";
-import type { UnifiedTrustScore } from "./trust-resolver";
-import { memoryClient, type MemoryCrossChainIdentity } from "@/lib/memory-protocol";
+import { ethosClient } from "@/lib/ethos";
+import type { EthosScore, EthosProfile, FarcasterIdentity, UnifiedTrustScore } from "@/lib/ethos";
 
 /**
  * Input types that can be resolved
@@ -52,10 +50,7 @@ export interface ResolvedIdentity {
   allEvmAddresses?: string[];
   allSolanaAddresses?: string[];
 
-  // Memory Protocol identity graph
-  memoryIdentity?: MemoryCrossChainIdentity | null;
-
-  // Unified trust score (Phase 2: cross-provider)
+  // Unified trust score
   trust?: UnifiedTrustScore;
 
   // Metadata
@@ -238,56 +233,22 @@ export class IdentityResolverService {
       }
     }
 
-    // Cross-chain identity resolution via Memory Protocol + Web3.bio fallback
+    // Cross-chain identity resolution via Farcaster
     let twitterHandle: string | undefined;
     let foundSolanaAddress: string | null = null;
-    let allEvmAddresses: string[] = [address.toLowerCase()];
+    const allEvmAddresses: string[] = [address.toLowerCase()];
     let allSolanaAddresses: string[] = [];
-    let memoryIdentity: MemoryCrossChainIdentity | null = null;
 
-    // Strategy 1: Memory Protocol (best for cross-chain identity graph)
-    if (memoryClient.isConfigured()) {
-      memoryIdentity = await memoryClient.resolveCrossChainIdentity(address);
-      if (memoryIdentity) {
-        resolutionPath.push('memory-protocol');
-        
-        // Extract cross-chain addresses
-        if (memoryIdentity.ethereumAddresses.length > 0) {
-          allEvmAddresses = [...new Set([...allEvmAddresses, ...memoryIdentity.ethereumAddresses])];
-        }
-        if (memoryIdentity.solanaAddresses.length > 0) {
-          allSolanaAddresses = memoryIdentity.solanaAddresses;
-          foundSolanaAddress = memoryIdentity.solanaAddresses[0];
-          resolutionPath.push(`memory-solana:${foundSolanaAddress.slice(0, 8)}`);
-        }
-        if (memoryIdentity.twitter?.username) {
-          twitterHandle = memoryIdentity.twitter.username;
-          resolutionPath.push(`memory-twitter:${twitterHandle}`);
-        }
-      }
-    }
-
-    // Strategy 2: Web3.bio fallback for additional social handles
-    if (!twitterHandle || !foundSolanaAddress) {
-      const socialHandles = await this.lookupSocialHandles(address);
-      if (socialHandles) {
-        if (!twitterHandle && socialHandles.twitter) {
-          twitterHandle = socialHandles.twitter;
-          resolutionPath.push(`web3bio-twitter:${twitterHandle}`);
-        }
-        if (!foundSolanaAddress && socialHandles.solana) {
-          foundSolanaAddress = socialHandles.solana;
-          allSolanaAddresses = [...new Set([...allSolanaAddresses, foundSolanaAddress])];
-          resolutionPath.push(`web3bio-solana:${foundSolanaAddress.slice(0, 8)}`);
-        }
-      }
-    }
-
-    // Strategy 3: Farcaster profile for verified Solana addresses
-    if (!foundSolanaAddress && farcasterIdentity?.verifiedAddresses?.solAddresses?.length) {
+    // Farcaster profile for verified Solana addresses
+    if (farcasterIdentity?.verifiedAddresses?.solAddresses?.length) {
       foundSolanaAddress = farcasterIdentity.verifiedAddresses.solAddresses[0];
       allSolanaAddresses = [...new Set([...allSolanaAddresses, ...farcasterIdentity.verifiedAddresses.solAddresses])];
       resolutionPath.push(`farcaster-solana:${foundSolanaAddress.slice(0, 8)}`);
+    }
+
+    // Use Farcaster username as Twitter handle if available
+    if (farcasterIdentity?.username && !twitterHandle) {
+      twitterHandle = farcasterIdentity.username;
     }
 
     // For addresses without Ethos data (e.g. Solana-only), try Twitter → Ethos UserKey bridge
@@ -313,8 +274,8 @@ export class IdentityResolverService {
       }
     }
 
-    // Get unified trust score (Ethos + FairScale for Solana)
-    const unifiedTrust = await trustResolver.resolve(address, twitterHandle, foundSolanaAddress || undefined);
+    // Get unified trust score
+    const unifiedTrust = await ethosClient.resolveTrust(address);
     if (unifiedTrust.score > 0) {
       resolutionPath.push(`trust-resolved:${unifiedTrust.primaryProvider}`);
     }
@@ -327,11 +288,10 @@ export class IdentityResolverService {
           : { name: null, avatar: null },
       farcaster: farcasterIdentity,
       ethos: finalEthosData,
-      lens: memoryIdentity?.lens ? { handle: memoryIdentity.lens, profileId: null } : null,
+      lens: null,
       solanaAddress: foundSolanaAddress,
       allEvmAddresses: allEvmAddresses.length > 1 ? allEvmAddresses : undefined,
       allSolanaAddresses: allSolanaAddresses.length > 0 ? allSolanaAddresses : undefined,
-      memoryIdentity,
       trust: unifiedTrust,
       resolvedFrom: "address",
       resolvedAt: new Date().toISOString(),
@@ -350,16 +310,7 @@ export class IdentityResolverService {
     ensName: string,
   ): Promise<ResolvedIdentity | null> {
     // Try standard ENS resolution first
-    let address = await this.resolveENSToAddress(ensName);
-
-    // For Basenames (.base.eth) or if ENS fails, try Memory Protocol
-    if (!address && memoryClient.isConfigured()) {
-      const memoryIdentity = await memoryClient.resolveCrossChainIdentity(ensName);
-      if (memoryIdentity && memoryIdentity.ethereumAddresses.length > 0) {
-        address = memoryIdentity.ethereumAddresses[0];
-        console.log(`[Identity] Resolved ${ensName} via Memory Protocol: ${address}`);
-      }
-    }
+    const address = await this.resolveENSToAddress(ensName);
 
     if (!address) {
       return null;
@@ -410,27 +361,6 @@ export class IdentityResolverService {
       }
     } catch (error) {
       console.warn("Farcaster API resolution failed:", error);
-    }
-
-    // Strategy 2: Try Memory Protocol for Farcaster username
-    if (memoryClient.isConfigured()) {
-      try {
-        const memoryIdentity = await memoryClient.getIdentityByFarcaster(cleanHandle);
-        if (memoryIdentity && memoryIdentity.length > 0) {
-          const aggregated = await memoryClient.resolveCrossChainIdentity(cleanHandle);
-          if (aggregated && aggregated.ethereumAddresses.length > 0) {
-            const address = aggregated.ethereumAddresses[0];
-            console.log(`[Identity] Resolved @${cleanHandle} via Memory Protocol: ${address}`);
-            const identity = await this.resolveFromAddress(address);
-            return {
-              ...identity,
-              resolvedFrom: "farcaster",
-            };
-          }
-        }
-      } catch (error) {
-        console.warn("Memory Protocol Farcaster resolution failed:", error);
-      }
     }
 
     return null;
@@ -532,18 +462,6 @@ export class IdentityResolverService {
       return data.identity || null;
     } catch (error) {
       console.warn("Farcaster lookup failed:", error);
-      return null;
-    }
-  }
-
-  private async lookupSocialHandles(
-    address: string,
-  ): Promise<{ twitter?: string; farcaster?: string; github?: string; lens?: string; solana?: string } | null> {
-    try {
-      const { getSocialHandles } = await import("@/lib/web3bio");
-      return await getSocialHandles(address);
-    } catch (error) {
-      console.warn("Social handles lookup failed:", error);
       return null;
     }
   }

@@ -23,7 +23,6 @@ interface TokenTransaction {
 // Token patterns to exclude (LP tokens, NFTs, etc.)
 function shouldExcludeToken(
   symbol: string | null | undefined,
-  address: string,
 ): boolean {
   if (!symbol) return false;
 
@@ -69,7 +68,7 @@ function validateTransactions(transactions: TokenTransaction[]): {
     }
 
     // Exclude suspicious LP tokens
-    if (shouldExcludeToken(tx.tokenSymbol, tx.tokenAddress)) {
+    if (shouldExcludeToken(tx.tokenSymbol)) {
       invalid++;
       continue;
     }

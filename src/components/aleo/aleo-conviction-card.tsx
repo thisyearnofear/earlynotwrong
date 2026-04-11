@@ -1,0 +1,137 @@
+"use client";
+
+import { useState } from "react";
+import { useAleoConviction } from "@/hooks/use-aleo-conviction";
+import { useAppStore } from "@/lib/store";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Shield, ShieldCheck, Lock, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { AleoProofDialog } from "./aleo-proof-dialog";
+import { APP_CONFIG } from "@/lib/config";
+
+export function AleoConvictionCard() {
+  const { isMinting, lastTxId, mintConvictionRecord, isAleoConnected } = useAleoConviction();
+  const { convictionMetrics } = useAppStore();
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
+
+  if (!convictionMetrics) return null;
+
+  const handleMint = async () => {
+    try {
+      await mintConvictionRecord();
+      setIsSuccess(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <Card className="glass-panel border-signal/30 bg-signal/5 flex flex-col justify-between h-full relative overflow-hidden group">
+      <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity">
+        <Shield className="w-12 h-12 text-signal" />
+      </div>
+
+      <CardHeader>
+        <div className="flex items-center justify-between mb-2">
+          <CardTitle className="text-sm font-mono text-signal tracking-wider uppercase flex items-center gap-2">
+            <Lock className="w-3.5 h-3.5" />
+            Private Proofs
+          </CardTitle>
+          {isAleoConnected && (
+            <span className="flex items-center gap-1 text-[10px] font-mono text-patience uppercase">
+              <ShieldCheck className="w-3 h-3" />
+              Shield Protected
+            </span>
+          )}
+        </div>
+        <div className="text-2xl font-bold text-foreground">
+          Zero-Knowledge CI
+        </div>
+        <CardDescription className="text-xs text-foreground-muted">
+          Commit your conviction metrics to Aleo Mainnet. Prove your archetype without revealing your wallet history.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {!isSuccess ? (
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-surface/50 border border-border/50 text-[11px] font-mono text-foreground-muted leading-relaxed">
+              {">"} ENCRYPTING METRICS...<br/>
+              {">"} GENERATING ZK-COMMITMENT...<br/>
+              {">"} READY FOR SELECTIVE DISCLOSURE.
+            </div>
+
+            <Button
+              className="w-full bg-signal hover:bg-signal/80 text-black font-bold tracking-tight h-10"
+              disabled={isMinting || !isAleoConnected}
+              onClick={handleMint}
+            >
+              {isMinting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  MINTING PRIVATE RECORD...
+                </>
+              ) : isAleoConnected ? (
+                <>
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                  MINT PRIVATE CI RECORD
+                </>
+              ) : (
+                "CONNECT SHIELD WALLET"
+              )}
+            </Button>
+            
+            {!isAleoConnected && (
+              <p className="text-[10px] text-center text-foreground-muted italic">
+                Connect Shield Wallet to enable privacy features
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4 py-2">
+            <div className="flex flex-col items-center justify-center gap-2 text-center">
+              <CheckCircle2 className="w-10 h-10 text-patience" />
+              <div className="text-sm font-bold text-foreground">Record Minted Privately</div>
+              <p className="text-[10px] text-foreground-muted max-w-[200px]">
+                Your conviction metrics are now stored as a private Aleo record.
+              </p>
+            </div>
+
+            {lastTxId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-[10px] font-mono text-foreground-muted hover:text-foreground h-8"
+                onClick={() => window.open(`${APP_CONFIG.chains.aleo.explorerUrl}/transaction/${lastTxId}`, "_blank")}
+              >
+                VIEW ON EXPLORER
+                <ExternalLink className="w-3 h-3 ml-1.5" />
+              </Button>
+            )}
+            
+            <Button
+              variant="outline"
+              className="w-full border-patience/30 text-patience hover:bg-patience/10 text-xs h-9"
+              onClick={() => setIsProofDialogOpen(true)}
+            >
+              GENERATE PROOF
+            </Button>
+          </div>
+        )}
+      </CardContent>
+
+      <AleoProofDialog 
+        isOpen={isProofDialogOpen} 
+        onClose={() => setIsProofDialogOpen(false)} 
+      />
+    </Card>
+  );
+}
