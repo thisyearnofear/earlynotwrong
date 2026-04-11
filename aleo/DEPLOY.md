@@ -1,13 +1,13 @@
 # Deploying to Aleo Testnet
 
-This guide will help you deploy the `early_not_wrong_v1.aleo` contract to the Aleo Testnet.
+This guide will help you deploy the `early_not_wrong_v2.aleo` contract to the Aleo Testnet.
 
 ## Current Deployment Info (Latest)
 
-- **Program ID**: `early_not_wrong_v1.aleo`
-- **Transaction ID**: `at1dp7ctsehz5rpfazvazegj7wzecw8u6f3zx2z7w8h067zr6wp5sqsvlwhk2`
+- **Program ID**: `early_not_wrong_v2.aleo`
+- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j`
 - **Network**: Testnet (Provable)
-- **Explorer**: [Verify on Provable Explorer](https://explorer.provable.com/transaction/at1dp7ctsehz5rpfazvazegj7wzecw8u6f3zx2z7w8h067zr6wp5sqsvlwhk2)
+- **Explorer**: [Verify on Provable Explorer](https://explorer.provable.com/transaction/at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j)
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ In `aleo/program.json`, ensure the program name is correct:
 
 ```json
 {
-  "program": "early_not_wrong_v1.aleo",
+  "program": "early_not_wrong_v2.aleo",
   "version": "0.1.0",
   "description": "ZK-proofs for selective disclosure of Conviction Index metrics",
   "license": "MIT",
@@ -58,7 +58,7 @@ Upon successful deployment, you will receive a Transaction ID. You can verify it
 The frontend uses the `CONVICTION_PROGRAM_ID` from `src/hooks/use-aleo-conviction.ts`.
 
 ```typescript
-const CONVICTION_PROGRAM_ID = "early_not_wrong_v1.aleo";
+const CONVICTION_PROGRAM_ID = "early_not_wrong_v2.aleo";
 ```
 
 ## Leo v4 Notes (Current)
@@ -72,4 +72,4 @@ The Leo 4.0.0 migration requires:
 ## Troubleshooting
 
 -   **Insufficient Credits**: Deployment requires fees. If you get a "not enough credits" error, visit the faucet.
--   **Program Name Taken**: If `early_not_wrong_v1.aleo` is already taken, rename it in `program.json` and `main.leo` (e.g., `early_not_wrong_v2.aleo`).
+-   **Program Name Taken**: If `early_not_wrong_v2.aleo` is already taken, rename it in `program.json` and `main.leo` (e.g., `early_not_wrong_v3.aleo`).

@@ -1,4 +1,4 @@
-program early_not_wrong_v1.aleo {
+program early_not_wrong_v2.aleo {
     // A private record representing a user's Conviction Index metrics
     record ConvictionRecord {
         owner: address,

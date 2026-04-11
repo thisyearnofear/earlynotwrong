@@ -66,7 +66,7 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 - [x] Buildathon Rule #4: Integrated $USDCx and `credits.aleo` payments
 
 ### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
-- [ ] Deploy `early_not_wrong_v1.aleo` to Aleo Mainnet
+- [ ] Deploy `early_not_wrong_v2.aleo` to Aleo Mainnet
 - [ ] Partner with Aleo-based DeFi protocols for undercollateralized lending
 - [ ] Anonymous Reputation building for anonymous traders
 

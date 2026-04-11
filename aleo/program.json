@@ -1,5 +1,5 @@
 {
-  "program": "early_not_wrong_v1.aleo",
+  "program": "early_not_wrong_v2.aleo",
   "version": "0.1.0",
   "description": "ZK-proofs for selective disclosure of Conviction Index metrics",
   "license": "MIT",
