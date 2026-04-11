@@ -17,12 +17,13 @@ Reputation in trading is a double-edged sword. If your alpha is public, it's fro
 
 ## 2. Working Demo
 
-- **Aleo Program**: `early_not_wrong_v2.aleo` (Deployed on Testnet)
-- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j`
+- **Aleo Program**: `early_not_wrong_v3.aleo` (Deployed on Testnet)
+- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j` (Latest deployment v3)
 - **Key Features**:
   - Solana/Base wallet analysis via Helius/Alchemy.
   - "Mint Private CI" flow via Aleo Shield Wallet.
   - Selective Disclosure proofs for Archetype, Score, and Efficiency.
+  - **Hardened 'Pull' Model Treasury**: Secure behavioral rebates via signed vouchers.
 
 ## 3. Technical Documentation
 

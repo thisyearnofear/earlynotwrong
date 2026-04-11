@@ -1,4 +1,6 @@
-program early_not_wrong_v2.aleo {
+import credits.aleo;
+
+program early_not_wrong_v3.aleo {
     // A private record representing a user's Conviction Index metrics
     record ConvictionRecord {
         owner: address,
@@ -16,6 +18,9 @@ program early_not_wrong_v2.aleo {
         timestamp: u64,
     }
 
+    // Mapping to prevent replay attacks by storing used voucher hashes (nonces)
+    mapping used_vouchers: field => bool;
+
     // Official Archetypes:
     // 0: DIAMOND_HAND
     // 1: IRON_PILLAR
@@ -24,6 +29,38 @@ program early_not_wrong_v2.aleo {
 
     @noupgrade
     constructor() {}
+
+    /**
+     * Claim a behavioral rebate using a signed voucher from the treasury.
+     * This follows the 'Pull' model for maximum security.
+     */
+    fn claim_rebate(
+        public recipient: address,
+        public amount: u64,
+        public nonce: field,
+        public sig: signature
+    ) -> Final {
+        // 1. Recreate the message hash that was signed by the treasury
+        let message: field = nonce;
+
+        // The treasury address (the one we generated earlier)
+        let treasury: address = aleo1lsjcz7402z2zxuzznltcx4r37ys39w0gktxr3rmtce2kqqdwr5xq020tl2;
+        
+        // 2. Verify the signature from the treasury
+        assert(signature::verify(sig, treasury, message));
+
+        // 3. Execute the transfer of credits (acting as behavioral rewards)
+        // We use credits.aleo for the demo's cross-program execution.
+        let f: Final = credits.aleo::transfer_public(recipient, amount);
+
+        return final {
+            // Await the external transfer to complete
+            f.run();
+            // Prevent replay attacks by ensuring this voucher hash hasn't been used
+            assert(!used_vouchers.contains(message));
+            used_vouchers.set(message, true);
+        };
+    }
 
     /**
      * Commit a private trade thesis to Aleo.

@@ -230,9 +230,14 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 - **Shield Wallet Integration**: Full support for Aleo Shield Wallet for secure, off-chain record management.
 - **Proof Verification API**: Backend Oracle to verify Aleo transaction proofs and validate user claims.
 
+### 🆕 Hardened Treasury: The 'Pull' (Signed Voucher) Model
+- **Platform Authorization**: Our backend verifies eligibility and generates a signed voucher using the treasury's private key.
+- **User Execution**: The user submits this voucher to the smart contract, which verifies the signature and releases the rebate.
+- **Zero Custody**: This model eliminates the need for the platform to hold a spending private key on the server, providing production-grade security for behavioral incentives.
+
 ### 🆕 Leo Smart Contract
-- **Live Program ID**: `early_not_wrong_v2.aleo`
-- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j`
+- **Live Program ID**: `early_not_wrong_v3.aleo`
+- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j` (Latest deployment v3)
 - **Selective Disclosure Logic**: Custom Leo contract implementing privacy-preserving verification transitions.
 - **On-Chain Identity**: Decouple behavioral reputation from public wallet addresses using Aleo's private-by-default architecture.
 

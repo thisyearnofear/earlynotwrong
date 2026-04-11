@@ -1,13 +1,13 @@
-# Deploying to Aleo Testnet
+# Deploying to Aleo Testnet (v3 Hardened)
 
-This guide will help you deploy the `early_not_wrong_v2.aleo` contract to the Aleo Testnet.
+This guide will help you deploy the `early_not_wrong_v3.aleo` contract to the Aleo Testnet. This version implements the **'Pull' (Signed Voucher)** rebate model for enhanced security.
 
 ## Current Deployment Info (Latest)
 
-- **Program ID**: `early_not_wrong_v2.aleo`
-- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j`
+- **Program ID**: `early_not_wrong_v3.aleo`
 - **Network**: Testnet (Provable)
-- **Explorer**: [Verify on Provable Explorer](https://explorer.provable.com/transaction/at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j)
+- **Status**: Ready for Deployment (Requires ~10 Testnet Credits)
+- **Last Deployed Version**: `early_not_wrong_v2.aleo` (`at1m2g48...`)
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ In `aleo/program.json`, ensure the program name is correct:
 
 ```json
 {
-  "program": "early_not_wrong_v2.aleo",
+  "program": "early_not_wrong_v3.aleo",
   "version": "0.1.0",
   "description": "ZK-proofs for selective disclosure of Conviction Index metrics",
   "license": "MIT",

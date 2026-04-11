@@ -1,9 +1,16 @@
 {
-  "program": "early_not_wrong_v2.aleo",
+  "program": "early_not_wrong_v3.aleo",
   "version": "0.1.0",
   "description": "ZK-proofs for selective disclosure of Conviction Index metrics",
   "license": "MIT",
   "leo": "4.0.0",
-  "dependencies": null,
+  "dependencies": [
+    {
+      "name": "credits.aleo",
+      "location": "network",
+      "path": null,
+      "edition": null
+    }
+  ],
   "dev_dependencies": null
 }

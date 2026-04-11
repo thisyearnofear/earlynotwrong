@@ -64,9 +64,10 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 - [x] Shield Wallet: Frontend integration for private verification
 - [x] Selective Disclosure: Privacy-preserving archetype proofs
 - [x] Buildathon Rule #4: Integrated $USDCx and `credits.aleo` payments
+- [x] **Treasury Security**: Implemented 'Pull' model with signed vouchers (v3)
 
 ### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
-- [ ] Deploy `early_not_wrong_v2.aleo` to Aleo Mainnet
+- [ ] Deploy `early_not_wrong_v3.aleo` to Aleo Mainnet
 - [ ] Partner with Aleo-based DeFi protocols for undercollateralized lending
 - [ ] Anonymous Reputation building for anonymous traders
 

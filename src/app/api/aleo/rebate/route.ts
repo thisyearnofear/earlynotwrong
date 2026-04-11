@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { 
-  AleoNetworkClient, 
-  ProgramManager, 
-  AleoKeyProvider, 
-  NetworkRecordProvider,
   initializeWasm
 } from "@provablehq/sdk/mainnet.js";
-import { APP_CONFIG } from "@/lib/config";
 import { treasury } from "@/lib/aleo/treasury";
 
 export async function POST(req: NextRequest) {
@@ -31,36 +26,19 @@ export async function POST(req: NextRequest) {
     // Initialize WASM for Aleo SDK
     await initializeWasm();
 
-    const account = treasury.getAccount();
-    const networkClient = new AleoNetworkClient(APP_CONFIG.chains.aleo.apiUrl);
-    const keyProvider = new AleoKeyProvider();
-    const recordProvider = new NetworkRecordProvider(account, networkClient);
-    
-    const programManager = new ProgramManager(
-      APP_CONFIG.chains.aleo.apiUrl, 
-      keyProvider, 
-      recordProvider
-    );
-    programManager.setAccount(account);
-
-    // Amount should be u64 (number as string)
-    // We assume 6 decimals for USDCx (200,000 = 0.2 USDCx)
-    const rebateAmount = amount.toString() + "u64";
-
-    console.log(`Executing rebate: ${rebateAmount} USDCx to ${userAddress}`);
-
-    const txId = await programManager.execute({
-      programName: APP_CONFIG.chains.aleo.usdcProgramId,
-      functionName: "transfer_public",
-      inputs: [userAddress, rebateAmount],
-      priorityFee: 0.1, // Credits for fee
-      privateFee: false
-    });
+    // Generate signed voucher instead of executing on-chain transfer
+    // This follows the 'Pull' model where the platform authorizes but the user executes.
+    const voucher = await treasury.signVoucher(userAddress, Number(amount));
 
     return NextResponse.json({
       success: true,
-      transactionId: txId,
-      message: `Rebate of ${amount} units sent to ${userAddress}`
+      voucher: {
+        recipient: userAddress,
+        amount: amount.toString(),
+        nonce: voucher.nonce,
+        signature: voucher.signature
+      },
+      message: `Rebate voucher generated. Please submit the claim transaction to Aleo.`
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error during rebate";

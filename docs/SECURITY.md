@@ -1,43 +1,37 @@
-### Security Model & Production Hardening
+# Early, Not Wrong: Security Model
 
-"Early, Not Wrong" takes privacy and security seriously. This document outlines our current security implementation and the recommended steps for transitioning to a production-grade environment.
+To protect user privacy and platform integrity, "Early, Not Wrong" implements a multi-layered security model centered on Aleo's zero-knowledge capabilities and a hardened treasury architecture.
 
----
+## 1. Zero-Knowledge Private Records
+User behavioral metrics (Conviction Index, Score, Archetype) are never stored on a centralized server.
+- **Local Analysis**: Raw transaction data from Solana or Base is processed in the browser.
+- **Shielded Issuance**: Final metrics are "minted" as private Aleo records (`ConvictionRecord`). Once minted, the data only exists in the user's **Shield Wallet**.
+- **No Platform Custody**: The platform has no "admin key" to decrypt or view a user's metrics once they are on-chain.
 
-### 🛡️ Current Security Measures (Buildathon Mode)
+## 2. Hardened Treasury: The 'Pull' (Signed Voucher) Model
+Traditional platforms often use a "Push" model where the server holds a private key to send rewards. This is a high-risk centralization point. "Early, Not Wrong" uses a **'Pull' model** to eliminate this risk.
 
-1.  **Selective Disclosure:** All on-chain behavioral metrics are verified using Zero-Knowledge proofs. We never store raw transaction history or balances on Aleo; only the resulting "Proof of Character" (Archetypes/Conviction Index).
-2.  **Server-Side Secret Management:** Sensitive operations (like stablecoin rebates) are performed on the server-side (`/api/aleo/rebate`). Private keys are **never** exposed to the client-side browser environment.
-3.  **Local Environment Protection:** All sensitive credentials (mnemonic, private keys) are stored in `.env.local`, which is strictly ignored by Git to prevent accidental exposure in the repository history.
-4.  **Treasury Encapsulation:** The `AleoTreasury` service (`src/lib/aleo/treasury.ts`) centralizes all treasury logic, implementing safety limits (max rebate per request) and format validation.
+### How it Works:
+1. **Request**: A user requests a behavioral rebate after proving their efficiency.
+2. **Authorize (Off-Chain)**: Our backend verifies the proof and eligibility. It then generates a **Signed Voucher**—a message containing the `recipient`, `amount`, and a unique `nonce`, signed by the treasury's private key.
+3. **Claim (On-Chain)**: The user receives the voucher and submits it to the `early_not_wrong_v3.aleo` smart contract's `claim_rebate` function.
+4. **Verify & Release**: The smart contract verifies the treasury's signature using `signature::verify`. If valid, it releases the funds from the program's balance to the user.
 
----
+### Replay Protection:
+The smart contract maintains a public `used_vouchers` mapping. Each voucher's unique hash (based on the nonce) is stored upon redemption. Any attempt to "double-claim" a voucher will be rejected by the contract.
 
-### 🚀 Production Hardening Recommendations
+## 3. Deployment & Infrastructure
+- **Server-Side Safety**: The treasury private key is stored in a secure environment variable (`ALEO_PRIVATE_KEY`) and is only used for signing vouchers, never for direct on-chain execution.
+- **Network Resilience**: We use the **Provable Network (Aleo Testnet)** with multiple API endpoints for high availability.
+- **Future Hardening**:
+    - **Cloud KMS**: Transitioning to AWS/GCP KMS to sign vouchers without exposing the private key to the application memory.
+    - **Multi-Sig**: Implementing a 2-of-3 multi-signature governance for large treasury reloads.
 
-For a production deployment with a high-value treasury, we recommend the following enhancements:
-
-#### 1. Hardware Security Modules (HSM) & KMS
-Instead of loading the `ALEO_PRIVATE_KEY` into the application memory, use a Key Management Service (AWS KMS, GCP KMS, or HashiCorp Vault):
-- **Signer Pattern:** Use the Aleo SDK's ability to use a custom `Signer` that delegates the signing operation to an HSM. The private key remains inside the secure hardware and is never accessible to the application code.
-
-#### 2. Multi-Signature Treasury
-Transition the treasury from a single-key account to a multi-signature program on Aleo:
-- Require multiple authorized signers to approve high-value transactions or rebate pool replenishments.
-
-#### 3. Secret Injection via Vault
-Use a dedicated secret manager like **HashiCorp Vault** or **Vercel Secrets** for dynamic secret injection:
-- This provides audit logs for every time a secret is accessed and allows for easy rotation without redeploying code.
-
-#### 4. Rate Limiting & Fraud Detection
-Implement aggressive rate limiting on the `/api/aleo/rebate` endpoint to prevent "drainage" attacks:
-- Use Redis-based rate limiting.
-- Add behavioral checks (e.g., verifying the user's Ethos score has not dropped significantly before sending a rebate).
-
-#### 5. Trusted Execution Environments (TEE)
-Run the Treasury Service inside a TEE (like Intel SGX or AWS Nitro Enclaves) to ensure that the execution logic and the keys are protected from even the host operating system.
+## 4. Privacy-Preserving Strategy
+By hashing trade intents before they are committed to the `PrivateThesis` record, we ensure that:
+- Users have a timestamped proof of their alpha.
+- No third party (including the platform) can see the strategy until the user chooses to reveal it.
+- Competitive advantage is preserved from MEV and copy-trading bots.
 
 ---
-
-### ⚠️ A Note on Environment Variables
-Storing secrets in `process.env` is standard for development but carries risks in production (e.g., exposure via logs or process dumps). Always use a dedicated Secret Management solution for live deployments.
+*Built for the Aleo Privacy Buildathon 2026*
