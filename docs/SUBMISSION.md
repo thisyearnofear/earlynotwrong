@@ -17,8 +17,8 @@ Reputation in trading is a double-edged sword. If your alpha is public, it's fro
 
 ## 2. Working Demo
 
-- **Aleo Program**: `conviction_index.aleo` (Deployed on Testnet3)
-- **Frontend**: [Link to Vercel/Live Demo]
+- **Aleo Program**: `early_not_wrong_v1.aleo` (Deployed on Testnet)
+- **Transaction ID**: `at1dp7ctsehz5rpfazvazegj7wzecw8u6f3zx2z7w8h067zr6wp5sqsvlwhk2`
 - **Key Features**:
   - Solana/Base wallet analysis via Helius/Alchemy.
   - "Mint Private CI" flow via Aleo Shield Wallet.

@@ -18,21 +18,17 @@ This guide will help you deploy the `early_not_wrong_v1.aleo` contract to the Al
 
 ## 1. Configure Program
 
-In `aleo/program.json`, ensure the following fields are correct:
+In `aleo/program.json`, ensure the program name is correct:
 
 ```json
 {
-  "program": "conviction_index.aleo",
+  "program": "early_not_wrong_v1.aleo",
   "version": "0.1.0",
-  "development": {
-    "network": "testnet3",
-    "private_key": "YOUR_PRIVATE_KEY",
-    "address": "YOUR_ALEO_ADDRESS"
-  }
+  "description": "ZK-proofs for selective disclosure of Conviction Index metrics",
+  "license": "MIT",
+  "leo": "4.0.0"
 }
 ```
-
-*Note: Replace `YOUR_PRIVATE_KEY` and `YOUR_ALEO_ADDRESS` with your actual credentials. Be careful not to commit your private key to GitHub.*
 
 ## 2. Build and Test
 
@@ -51,7 +47,8 @@ leo test
 Deploy the program to the Aleo Testnet:
 
 ```bash
-leo deploy --network testnet3
+# Using the CLI with --broadcast and --endpoint
+leo deploy --private-key YOUR_PRIVATE_KEY --network testnet --endpoint https://api.explorer.provable.com/v1 --broadcast
 ```
 
 Upon successful deployment, you will receive a Transaction ID. You can verify it on the [Aleo Explorer](https://explorer.aleo.org).
@@ -75,4 +72,4 @@ The Leo 4.0.0 migration requires:
 ## Troubleshooting
 
 -   **Insufficient Credits**: Deployment requires fees. If you get a "not enough credits" error, visit the faucet.
--   **Program Name Taken**: If `conviction_index.aleo` is already taken, rename it in `program.json` and `main.leo` (e.g., `early_not_wrong_v1.aleo`).
+-   **Program Name Taken**: If `early_not_wrong_v1.aleo` is already taken, rename it in `program.json` and `main.leo` (e.g., `early_not_wrong_v2.aleo`).

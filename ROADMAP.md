@@ -65,7 +65,7 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 - [x] Selective Disclosure: Privacy-preserving archetype proofs
 
 ### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
-- [ ] Deploy `conviction_index.aleo` to Aleo Mainnet
+- [ ] Deploy `early_not_wrong_v1.aleo` to Aleo Mainnet
 - [ ] Integrate $USDCx for premium analytics access
 - [ ] Partner with Aleo-based DeFi protocols for undercollateralized lending
 - [ ] Anonymous Reputation building for anonymous traders

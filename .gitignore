@@ -37,13 +37,17 @@ yarn-error.log*
 # vercel
 .vercel
 
-# typescript
+#typescript
 *.tsbuildinfo
 next-env.d.ts
 
 .junie
+
+# Aleo / Leo
+/aleo/build/
+/aleo/inputs/
+/aleo/outputs/
+/aleo/imports/
+*.avm
 .zencoder
 .zenflow
-
-# Aleo
-aleo/program.json

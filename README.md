@@ -230,7 +230,9 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 - **Proof Verification API**: Backend Oracle to verify Aleo transaction proofs and validate user claims.
 
 ### 🆕 Leo Smart Contract
-- **Selective Disclosure Logic**: Custom Leo contract (`conviction_index.aleo`) implementing privacy-preserving verification transitions.
+- **Live Program ID**: `early_not_wrong_v1.aleo`
+- **Transaction ID**: `at1dp7ctsehz5rpfazvazegj7wzecw8u6f3zx2z7w8h067zr6wp5sqsvlwhk2`
+- **Selective Disclosure Logic**: Custom Leo contract implementing privacy-preserving verification transitions.
 - **On-Chain Identity**: Decouple behavioral reputation from public wallet addresses using Aleo's private-by-default architecture.
 
 ### 🆕 UI/UX Enhancements
