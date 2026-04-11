@@ -92,7 +92,7 @@ export const APP_CONFIG = {
       explorerUrl: "https://explorer.provable.com",
       programId: "early_not_wrong_v2.aleo",
       creditsProgramId: "credits.aleo",
-      usdcProgramId: "usdc.aleo", // Placeholder for USDCx integration
+      usdcProgramId: "usdcx_stablecoin.aleo",
       treasuryAddress: "aleo1lsjcz7402z2zxuzznltcx4r37ys39w0gktxr3rmtce2kqqdwr5xq020tl2"
     }
   }

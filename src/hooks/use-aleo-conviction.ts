@@ -249,10 +249,8 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      // In a real scenario, this would be a transition in our contract 
-      // that verifies a proof and then triggers a transfer from the treasury.
-      // For the demo, we simulate the rebate by calling USDCx transfer (if available)
-      // or simply credits.aleo.
+      // For the buildathon demo, we trigger a direct rebate transfer using the live
+      // USDCx stablecoin program (usdcx_stablecoin.aleo).
       const txOptions: TransactionOptions = {
         program: APP_CONFIG.chains.aleo.usdcProgramId,
         function: "transfer_public",
