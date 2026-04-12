@@ -31,7 +31,7 @@ export async function getTransactionStatus(txId: string): Promise<string> {
 /**
  * Utility to poll for transaction finalization.
  */
-export async function waitForTransaction(txId: string, timeoutMs = 60000): Promise<boolean> {
+export async function waitForTransaction(txId: string, timeoutMs = 300000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const status = await getTransactionStatus(txId);

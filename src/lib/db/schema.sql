@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS alpha_leaderboard (
   
   -- Latest metrics
   conviction_score INTEGER NOT NULL,
-  patience_tax DECIMAL(10,2),
+  patience_tax DECIMAL(20, 2),
   win_rate DECIMAL(5,2),
   archetype VARCHAR(50),
   total_positions INTEGER DEFAULT 0,
