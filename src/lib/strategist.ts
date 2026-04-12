@@ -7,7 +7,7 @@ export const THESIS_TEMPLATES = {
   custom: "",
 };
 
-export const generateThesis = (metrics: ConvictionMetrics, positions: any[] = [], type: keyof typeof THESIS_TEMPLATES) => {
+export const generateThesis = (metrics: ConvictionMetrics, positions: { tokenSymbol: string }[] = [], type: keyof typeof THESIS_TEMPLATES) => {
   const ticker = positions.length > 0 ? positions[0].tokenSymbol : "$ASSET";
   const price = "0.00";
   
