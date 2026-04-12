@@ -73,30 +73,31 @@ export function useAleoConviction() {
       
       const archetypeLabel = convictionMetrics.archetype || "DIAMOND_HAND";
       const archetypeValue = archetypeMap[archetypeLabel] ?? 0;
-try {
-  const txOptions = {
-    program: CONVICTION_PROGRAM_ID,
-    function: "issue_conviction",
-    inputs: [
-      String(address), // receiver
-      `${Math.floor(convictionMetrics.score)}u32`,
-      `${Math.floor(convictionMetrics.patienceTax)}u64`,
-      `${archetypeValue}u8`,
-      `${Math.floor(Date.now() / 1000)}u64`
-    ],
-    fee: 100000, // microcredits
-    privateFee: true,
-    network: APP_CONFIG.chains.aleo.network
-  };
 
-  return await executeWithMonitoring(txOptions);
-} catch (error) {
-      console.error("Failed to mint Aleo conviction record:", error);
-      throw error;
-    } finally {
-      setIsMinting(false);
-    }
-  }, [address, executeTransaction]);
+      try {
+        const txOptions = {
+          program: CONVICTION_PROGRAM_ID,
+          function: "issue_conviction",
+          inputs: [
+            String(address), // receiver
+            `${Math.floor(convictionMetrics.score)}u32`,
+            `${Math.floor(convictionMetrics.patienceTax)}u64`,
+            `${archetypeValue}u8`,
+            `${Math.floor(Date.now() / 1000)}u64`
+          ],
+          fee: 100000, // microcredits
+          privateFee: true,
+          network: APP_CONFIG.chains.aleo.network
+        };
+
+        return await executeWithMonitoring(txOptions);
+      } catch (error) {
+        console.error("Failed to mint Aleo conviction record:", error);
+        throw error;
+      } finally {
+        setIsMinting(false);
+      }
+    }, [address, executeTransaction]);
 
   const verifyArchetype = useCallback(async (record: string | { plaintext: string }, requiredArchetype: number) => {
     if (!address || !executeTransaction) {
