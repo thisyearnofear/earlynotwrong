@@ -17,17 +17,17 @@ export function useAleoConviction() {
 
   const checkBalance = useCallback(async (requiredMicrocredits: number) => {
     if (!requestRecords) return true; // Cannot check, proceed
-    const records = await requestRecords(CREDITS_PROGRAM_ID, true);
+    const records = (await requestRecords(CREDITS_PROGRAM_ID, true)) as { plaintext: string }[];
     // Simple sum of all unspent records in credits.aleo
-    const balance = (records as any[])?.reduce((acc, r) => acc + (r.plaintext.includes("microcredits") ? parseInt(r.plaintext.split("microcredits:")[1]) : 0), 0) || 0;
+    const balance = records?.reduce((acc, r) => acc + (r.plaintext.includes("microcredits") ? parseInt(r.plaintext.split("microcredits:")[1]) : 0), 0) || 0;
     return balance >= requiredMicrocredits;
   }, [requestRecords]);
 
-  const executeWithMonitoring = useCallback(async (txOptions: any) => {
+  const executeWithMonitoring = useCallback(async (txOptions: Record<string, any>) => {
     if (!executeTransaction) throw new Error("Wallet not connected");
     
     // 1. Pre-flight Check: Balance
-    if (!(await checkBalance(txOptions.fee))) {
+    if (!(await checkBalance(txOptions.fee as number))) {
         throw new Error("Insufficient Aleo credits for transaction fee.");
     }
 
@@ -74,30 +74,29 @@ export function useAleoConviction() {
       const archetypeLabel = convictionMetrics.archetype || "DIAMOND_HAND";
       const archetypeValue = archetypeMap[archetypeLabel] ?? 0;
 
-      try {
-        const txOptions = {
-          program: CONVICTION_PROGRAM_ID,
-          function: "issue_conviction",
-          inputs: [
-            String(address), // receiver
-            `${Math.floor(convictionMetrics.score)}u32`,
-            `${Math.floor(convictionMetrics.patienceTax)}u64`,
-            `${archetypeValue}u8`,
-            `${Math.floor(Date.now() / 1000)}u64`
-          ],
-          fee: 100000, // microcredits
-          privateFee: true,
-          network: APP_CONFIG.chains.aleo.network
-        };
+      const txOptions = {
+        program: CONVICTION_PROGRAM_ID,
+        function: "issue_conviction",
+        inputs: [
+          String(address), // receiver
+          `${Math.floor(convictionMetrics.score)}u32`,
+          `${Math.floor(convictionMetrics.patienceTax)}u64`,
+          `${archetypeValue}u8`,
+          `${Math.floor(Date.now() / 1000)}u64`
+        ],
+        fee: 100000, // microcredits
+        privateFee: true,
+        network: APP_CONFIG.chains.aleo.network
+      };
 
-        return await executeWithMonitoring(txOptions);
-      } catch (error) {
-        console.error("Failed to mint Aleo conviction record:", error);
-        throw error;
-      } finally {
-        setIsMinting(false);
-      }
-    }, [address, executeTransaction]);
+      return await executeWithMonitoring(txOptions);
+    } catch (error) {
+      console.error("Failed to mint Aleo conviction record:", error);
+      throw error;
+    } finally {
+      setIsMinting(false);
+    }
+  }, [address, executeWithMonitoring]);
 
   const verifyArchetype = useCallback(async (record: string | { plaintext: string }, requiredArchetype: number) => {
     if (!address || !executeTransaction) {
