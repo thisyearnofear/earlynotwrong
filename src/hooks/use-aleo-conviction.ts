@@ -50,7 +50,11 @@ export function useAleoConviction() {
 
     // 3. Monitor
     const finalized = await waitForTransaction(txId);
-    if (!finalized) throw new Error("Transaction failed to finalize on-chain.");
+    
+    // If it's a shield ID, we treat it as pending (not necessarily an error)
+    if (!finalized && !txId.startsWith("shield_")) {
+        throw new Error("Transaction failed to finalize on-chain.");
+    }
     
     return txId;
   }, [executeTransaction, checkBalance]);

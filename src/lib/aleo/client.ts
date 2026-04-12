@@ -32,6 +32,14 @@ export async function getTransactionStatus(txId: string): Promise<string> {
  * Utility to poll for transaction finalization.
  */
 export async function waitForTransaction(txId: string, timeoutMs = 300000): Promise<boolean> {
+  // If we receive a shield-prefixed ID, we know we cannot query the explorer.
+  // Return 'false' immediately to indicate this ID won't finalize,
+  // prompting the hook to handle this as a 'waiting for user action' state.
+  if (txId.startsWith("shield_")) {
+    console.warn("Received shield_ ID; cannot poll explorer. Returning pending.");
+    return false;
+  }
+
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const status = await getTransactionStatus(txId);
