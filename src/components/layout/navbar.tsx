@@ -63,7 +63,7 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
 
-  const currentScore = isShowcaseMode ? 9999 : (ethosScore?.score || 0);
+  const currentScore = mounted ? (isShowcaseMode ? 9999 : (ethosScore?.score || 0)) : 0;
   const tier = getEthosTier(currentScore);
   const tierInfo = getTierInfo(tier);
   const nextUnlocks = getNextTierUnlocks(currentScore);

@@ -40,6 +40,11 @@ export function useAleoConviction() {
     try {
       // Map archetype to u8
       const archetypeMap: Record<string, number> = {
+        "Diamond Hand": 0,
+        "Iron Pillar": 1,
+        "Profit Phantom": 2,
+        "Exit Voyager": 3,
+        // Fallbacks for uppercase keys
         "DIAMOND_HAND": 0,
         "IRON_PILLAR": 1,
         "PROFIT_PHANTOM": 2,
@@ -49,18 +54,20 @@ export function useAleoConviction() {
       const archetypeLabel = convictionMetrics.archetype || "DIAMOND_HAND";
       const archetypeValue = archetypeMap[archetypeLabel] ?? 0;
 
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CONVICTION_PROGRAM_ID,
         function: "issue_conviction",
         inputs: [
-          address, // receiver
-          `${convictionMetrics.score}u32`,
+          String(address), // receiver
+          `${Math.floor(convictionMetrics.score)}u32`,
           `${Math.floor(convictionMetrics.patienceTax)}u64`,
           `${archetypeValue}u8`,
           `${Math.floor(Date.now() / 1000)}u64`
         ],
         fee: 0.1, // Aleo credits
-        privateFee: true
+        privateFee: true,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);
@@ -84,15 +91,17 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CONVICTION_PROGRAM_ID,
         function: "verify_archetype",
         inputs: [
           typeof record === 'string' ? record : record.plaintext, 
-          `${requiredArchetype}u8`
+          `${Math.floor(requiredArchetype)}u8`
         ],
         fee: 0.05,
-        privateFee: true
+        privateFee: true,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);
@@ -112,15 +121,17 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CONVICTION_PROGRAM_ID,
         function: "verify_score_threshold",
         inputs: [
           typeof record === 'string' ? record : record.plaintext,
-          `${threshold}u32`
+          `${Math.floor(threshold)}u32`
         ],
         fee: 0.05,
-        privateFee: true
+        privateFee: true,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);
@@ -140,7 +151,8 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CONVICTION_PROGRAM_ID,
         function: "verify_efficient_trading",
         inputs: [
@@ -148,7 +160,8 @@ export function useAleoConviction() {
           `${Math.floor(maxPatienceTax)}u64`
         ],
         fee: 0.05,
-        privateFee: true
+        privateFee: true,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);
@@ -172,17 +185,19 @@ export function useAleoConviction() {
       // If it's a hex string, we might need to convert it or ensure it's decimal
       const fieldHash = thesisHash.startsWith('0x') ? BigInt(thesisHash).toString() : thesisHash;
 
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CONVICTION_PROGRAM_ID,
         function: "commit_thesis",
         inputs: [
-          address,
+          String(address),
           `${fieldHash}field`,
           `${Math.floor(targetPrice)}u64`,
           `${Math.floor(Date.now() / 1000)}u64`
         ],
         fee: 0.1,
-        privateFee: true
+        privateFee: true,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);
@@ -209,7 +224,8 @@ export function useAleoConviction() {
       const { setAleoPremium, showToast } = useAppStore.getState();
       
       // Pay 0.5 Credits for Premium Analytics (500,000 microcredits)
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CREDITS_PROGRAM_ID,
         function: "transfer_public",
         inputs: [
@@ -217,7 +233,8 @@ export function useAleoConviction() {
           "500000u64" 
         ],
         fee: 0.01,
-        privateFee: false
+        privateFee: false,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);
@@ -269,17 +286,19 @@ export function useAleoConviction() {
       showToast("Rebate Authorized! Submitting claim transaction...", "info");
 
       // Step 2: Submit claim to smart contract (User Executes)
-      const txOptions: TransactionOptions = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txOptions: any = {
         program: CONVICTION_PROGRAM_ID,
         function: "claim_rebate",
         inputs: [
           voucher.recipient,
-          `${voucher.amount}u64`,
+          `${Math.floor(voucher.amount)}u64`,
           voucher.nonce,
           voucher.signature
         ],
         fee: 0.1,
-        privateFee: false
+        privateFee: false,
+        network: APP_CONFIG.chains.aleo.network
       };
 
       const result = await executeTransaction(txOptions);

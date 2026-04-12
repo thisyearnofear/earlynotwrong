@@ -1,118 +1,92 @@
-# Privacy Mode Demo Script
+# Aleo ZK-Privacy Demo Script: Early, Not Wrong
 
 ## Overview
-This document provides a step-by-step script for demonstrating the Privacy Mode features of the Early, Not Wrong platform. The demo showcases how users can analyze wallet behavior while maintaining privacy and anonymity.
+This document provides a step-by-step script for demonstrating the **Aleo-First Privacy Integration** of the Early, Not Wrong platform. The demo showcases how users can bridge their behavioral data from public chains (Solana/Base) to private, verifiable Zero-Knowledge (ZK) records on Aleo.
 
 ## Demo Objectives
-- Demonstrate Privacy Cash integration
-- Show configurable privacy tiers
-- Highlight private peer comparison
-- Illustrate privacy-enhanced reputation building
-- Explain the selective disclosure feature
+- **Shield Wallet Integration**: Show seamless login via Aleo’s most advanced ZK-wallet.
+- **ZK-Conviction Index (ZK-CI)**: Mint private behavioral metrics as on-chain Aleo records.
+- **Selective Disclosure**: Generate ZK-proofs for specific traits without revealing full wallet data.
+- **Private Strategist Mode**: Commit encrypted trade intents (theses) to the Aleo blockchain.
+- **Hardened Rebate Model**: Demonstrate the "Pull" model (Signed Vouchers) for behavioral rebates.
 
 ## Demo Setup
-1. Ensure you have a Solana wallet connected (Phantom, Backpack, etc.)
-2. Navigate to the main application page
-3. Have a secondary wallet address ready for demonstration purposes
+1.  **Shield Wallet**: Ensure the extension is installed and funded with Aleo Testnet credits.
+2.  **Treasury Account**: Ensure the platform's treasury has credits to cover signed voucher claims.
+3.  **Target Wallet**: Have a Solana/Base wallet with trading history ready for initial analysis.
 
 ## Demo Flow
 
 ### 1. Introduction (30 seconds)
-"Welcome to Early, Not Wrong - a reputation-native platform for understanding trading behavior. Today we'll demonstrate our Privacy Mode, which allows users to analyze wallet behavior without revealing their identity or correlating addresses."
+"Welcome to Early, Not Wrong—the reputation-native platform for the private internet. Today, we'll demonstrate how we use the Aleo blockchain to turn public behavioral data into private, verifiable ZK-reputation. We bridge the gap between transparency and privacy using Leo smart contracts."
 
-### 2. Privacy Mode Activation (1 minute)
-- Click the "Connect Wallet" button
-- Connect your Solana wallet
-- Navigate to the Privacy Mode section in the wallet dialog
-- Show the different privacy tiers: Basic (30 min), Extended (24 hours), Custom
-- Click "Enable Privacy Mode" (select Basic tier)
-- Explain the signature request: "You'll sign a message to derive an encryption key - no funds are moved"
-- Show the green shield indicator appearing in the navbar
-- Point out the session timer counting down
+### 2. ZK-Onboarding & Shield Wallet (1 minute)
+- Click the **"Sign In"** button in the navbar.
+- Select the **Shield Wallet** from the provider list.
+- **Highlight**: "We prioritize the Shield Wallet to ensure our users benefit from the latest improvements in Aleo’s developer and user experience."
+- Show the **"Shield Protected"** badge appearing in the UI once connected.
+- Point out the **Aleo Network Status** (Testnet) indicator.
 
-### 3. Privacy Preferences (45 seconds)
-- Show the privacy preferences panel that appears when privacy mode is active
-- Explain each toggle:
-  - "Hide Specific Metrics" - hides detailed metrics from analysis
-  - "Private Peer Comparison" - enables comparing against peers without revealing identity
-  - "Anonymous Reputation" - allows contributing to aggregate metrics without revealing wallet
-- Demonstrate toggling these preferences on/off
+### 3. Minting Your ZK-CI (1 minute)
+- Perform a wallet scan for a Solana/Base address in the **"Analyzer"** tab.
+- Once results appear, scroll to the **Aleo Conviction Card**.
+- Click **"Mint ZK-CI"**.
+- **Explain**: "We are taking the calculated Conviction Index and committing it to the Aleo blockchain as a private record. This record belongs only to you and is hidden by default from everyone else."
+- Confirm the transaction in the Shield Wallet.
 
-### 4. Private Analysis (1 minute)
-- Enter a wallet address to analyze (use a known address or showcase wallet)
-- Show how the analysis proceeds normally but with privacy indicators
-- Point out the terminal logs showing: "> PRIVACY_MODE: ACTIVE" and "> SESSION: [session_id]"
-- Explain that the target wallet address is not correlated with the analysis request
-- Show the results appear normally but with enhanced privacy
+### 4. Selective Disclosure & Proof Generation (1 minute)
+- Click **"Generate Proof"** on the minted ZK-CI card.
+- Select a specific attribute to disclose (e.g., **"Prove I am a 'Diamond Hand' archetype"**).
+- **Explain**: "This is the 'Gold Standard' of ZK. I am proving I have this specific high-reputation trait without revealing my actual balance, my transaction volume, or even my wallet address."
+- Generate the proof and show the **"Verify Proof Status"** link to the Provable Explorer.
 
-### 5. Private Peer Comparison (45 seconds)
-- If privacy mode and peer comparison are enabled, demonstrate comparing against multiple wallets
-- Explain how this allows users to benchmark against peers without revealing which wallets they're interested in
-- Show how the comparison happens without leaking the user's identity
+### 5. Private Strategist Mode (1 minute)
+- Switch to the **"Strategist"** tab.
+- Enter a trade thesis (e.g., "Accumulating $SOL based on 4H support flip").
+- Click **"Commit Private Thesis"**.
+- **Explain**: "In the Strategist mode, traders can commit their intents to Aleo as encrypted records. This prevents front-running and copy-trading while creating a verifiable trail of their decision-making process."
+- Show the transaction success message.
 
-### 6. Private Attestations (1 minute)
-- Navigate to the attestation dialog (usually accessible after analysis)
-- Show the option to create "Private Attestation (Privacy Cash)" instead of public attestation
-- Explain how this creates an encrypted attestation that can be selectively disclosed
-- Show the "Selective Disclosure URL" that's generated
-- Explain that users can share this link to prove their conviction score without revealing their wallet address
+### 6. Hardened "Pull" Rebate Flow (1 minute)
+- Scroll to the **"Premium Alpha"** section.
+- Click **"Claim Patience Rebate"**.
+- **First Step (Authorize)**: Show the API call to the backend. "The platform verifies your behavioral eligibility and issues a cryptographically signed voucher."
+- **Second Step (Claim)**: Confirm the on-chain claim in the Shield Wallet.
+- **Technical Highlight**: "We use a 'Pull' model. The platform never holds your private keys or executes on your behalf. You use the signed voucher to claim your rebate directly from the `early_not_wrong_v3.aleo` contract."
 
-### 7. Privacy-Enhanced Reputation Building (30 seconds)
-- Show the "Build Anonymous Reputation" button in the attestation dialog
-- Explain how users can contribute to aggregate reputation metrics without revealing their identity
-- Mention how this helps build the overall platform while preserving user privacy
-
-### 8. Session Management (30 seconds)
-- Show how the session timer counts down
-- Explain that after expiration, privacy mode automatically disables
-- Demonstrate manually disabling privacy mode using the shield-off icon
-- Show how the green shield indicator disappears from the navbar
+### 7. Technical Architecture for Judges (30 seconds)
+- Point to the **Leo Smart Contract** structure in the docs.
+- Mention the use of **`signature::verify`** for replay protection and security.
+- Highlight the **Provable SDK** integration for server-side voucher signing.
+- Mention the **USDCx** integration plan for private stablecoin payouts.
 
 ## Key Talking Points
 
-### Technical Innovation
-- Built with Privacy Cash SDK for Solana
-- Zero-knowledge inspired session-based privacy
-- Signature-derived encryption keys (no third-party custody)
-- Configurable session durations for different use cases
+### Why Aleo?
+- **Offchain Execution**: Complex behavioral analysis is verified publicly but computed privately.
+- **Encrypted State**: Reputation data is hidden by default.
+- **Composability**: Our private contracts are ready to interact with DeFi protocols for undercollateralized lending.
 
 ### User Benefits
-- Protects against front-running and social engineering
-- Allows competitive research without revealing interest
-- Enables compliance with privacy policies
-- Preserves trading strategies and position information
+- **Reputation Without Exposure**: Build a high-value profile without being doxxed.
+- **Anti-Frontrunning**: Protect your edge by encrypting your strategy.
+- **Selective Disclosure**: Share only what is necessary for a specific opportunity.
 
-### Use Cases
-- Professional traders conducting research
-- High-value addresses wanting to analyze without attention
-- Funds performing due diligence
-- Compliance departments needing analysis without exposure
+### Real-World Use Cases
+- **Private Alpha Groups**: Join based on verified skill, not just a high balance.
+- **ZK-Undercollateralized Lending**: Prove creditworthiness via your Conviction Index.
+- **Institutional Compliance**: Selective disclosure for auditors without leaking strategies.
 
-## Technical Details for Judges
-
-### Architecture
-- Privacy session management in `src/lib/privacy-cash.ts`
-- Enhanced Zustand store with privacy state in `src/lib/store.ts`
-- Integration with existing analysis workflow in `src/hooks/use-conviction.ts`
-- UI components updated in `src/components/wallet/wallet-connect.tsx` and `src/components/ui/attestation-dialog.tsx`
-
-### Security Features
-- Session-based encryption with time limits
-- Signature-derived keys that never leave the user's device
-- Zero-knowledge inspired approach without requiring full ZK proofs
-- Separation of analysis results from identity correlation
-
-### Privacy Tiers
-- Basic: 30-minute sessions for quick analysis
-- Extended: 24-hour sessions for ongoing research
-- Custom: User-defined durations for specific needs
+## Technical Details (For Judges)
+- **Program ID**: `early_not_wrong_v3.aleo`
+- **Language**: Leo v4.0.0
+- **Privacy Model**: Decoupled Data Layer (Public) and Reputation Layer (Aleo ZK).
+- **Security**: Signed Voucher model eliminates platform spending-key risk.
 
 ## Conclusion
-"Our Privacy Mode represents a significant advancement in blockchain analytics, allowing users to gain valuable insights while maintaining their privacy. This addresses a critical need in the crypto space where transparency can sometimes work against users. The integration with Privacy Cash SDK provides a robust foundation for privacy-preserving analytics."
+"Early, Not Wrong isn't just a demo; it's a production-ready infrastructure for the private internet. By leveraging Aleo, we ensure that in the era of mass data collection, your reputation belongs to you—and only you. Join us in making privacy the default."
 
 ## Demo Tips
-- Practice the demo flow to ensure smooth transitions
-- Have backup wallet addresses ready in case of connectivity issues
-- Emphasize the real-world problems solved by these features
-- Be prepared to explain the technical architecture if asked
-- Highlight the novel use case of privacy-preserving behavioral reputation
+- **Pre-Minted Record**: Have a wallet that already has a minted ZK-CI to save time during the 10-day build cycles.
+- **Explorer Links**: Keep the Provable Explorer open to show the "Accepted" transaction status of the v3 contract.
+- **Emphasize the 'Aha!' Moment**: When generating a proof, explicitly state: "My identity is hidden, my balance is hidden, but my skill is proven."

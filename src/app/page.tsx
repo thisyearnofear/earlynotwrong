@@ -91,12 +91,14 @@ export default function Home() {
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
-  const [hasEverScanned, setHasEverScanned] = useState(() => {
+  const [hasEverScanned, setHasEverScanned] = useState(false);
+  
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('enw_has_scanned') === 'true';
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasEverScanned(localStorage.getItem('enw_has_scanned') === 'true');
     }
-    return true;
-  });
+  }, []);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const prevHasScanned = useRef(false);
 
