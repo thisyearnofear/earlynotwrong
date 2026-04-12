@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useWallet } from "@provablehq/aleo-wallet-adaptor-react";
+import { TransactionOptions } from "@provablehq/aleo-types";
 import { useAppStore } from "@/lib/store";
 import { APP_CONFIG } from "@/lib/config";
 import { waitForTransaction } from "@/lib/aleo/client";
@@ -23,7 +24,7 @@ export function useAleoConviction() {
     return balance >= requiredMicrocredits;
   }, [requestRecords]);
 
-  const executeWithMonitoring = useCallback(async (txOptions: Record<string, any>) => {
+  const executeWithMonitoring = useCallback(async (txOptions: TransactionOptions) => {
     if (!executeTransaction) throw new Error("Wallet not connected");
     
     // 1. Pre-flight Check: Balance
