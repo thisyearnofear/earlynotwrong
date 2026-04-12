@@ -316,8 +316,6 @@ export function useAleoConviction() {
     commitPrivateThesis,
     purchasePremium,
     claimPatienceRebate,
-    fetchRecords,
-    records,
     isMinting,
     lastTxId,
     isAleoConnected: !!address
