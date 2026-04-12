@@ -7,22 +7,35 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Shield, Lock, Send, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Shield, Lock, Send, Loader2, CheckCircle2, AlertCircle, BotMessageSquare } from "lucide-react";
+import { generateThesis, THESIS_TEMPLATES } from "@/lib/thesis-utils";
 
 export function AleoPrivateThesis() {
   const { commitPrivateThesis, isMinting, lastTxId, isAleoConnected } = useAleoConviction();
-  const { setWalletModalOpen } = useAppStore();
+  const { setWalletModalOpen, convictionMetrics } = useAppStore();
   const [thesis, setThesis] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleGenerate = (type: keyof typeof THESIS_TEMPLATES) => {
+    if (!convictionMetrics) return;
+    const generated = generateThesis(convictionMetrics, [], type);
+    setThesis(generated);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +43,6 @@ export function AleoPrivateThesis() {
     
     setError(null);
     try {
-      // Simple hash simulation: in a real app we'd use a proper field hash function
-      // Here we just use a numeric representation of the first few chars for demo
       const hash = BigInt(
         thesis.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
       ).toString();
@@ -57,8 +68,7 @@ export function AleoPrivateThesis() {
           Private Strategist
         </CardTitle>
         <CardDescription className="text-xs text-foreground-muted">
-          Commit your trade thesis to Aleo. Hides your intent from MEV bots and copy-traders. 
-          Only reveal when you are ready to prove you were &quot;early&quot;.
+          Securely commit your trade intent to Aleo to prevent front-running.
         </CardDescription>
       </CardHeader>
 
@@ -87,9 +97,21 @@ export function AleoPrivateThesis() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[10px] font-mono text-foreground-muted uppercase">Trade Thesis (Secret)</label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-mono text-foreground-muted uppercase">Trade Thesis (Secret)</label>
+                <Select onValueChange={(val) => handleGenerate(val as keyof typeof THESIS_TEMPLATES)}>
+                  <SelectTrigger className="w-[100px] h-6 text-[10px] border-border/50">
+                    <SelectValue placeholder="AI Assist" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-black border-border">
+                    <SelectItem value="breakout" className="text-[10px]">Breakout</SelectItem>
+                    <SelectItem value="reversion" className="text-[10px]">Reversion</SelectItem>
+                    <SelectItem value="macro" className="text-[10px]">Macro-Event</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Textarea 
-                placeholder="e.g. Buying $ALE because of V4 mainnet hype..."
+                placeholder="Describe your entry and outlook..."
                 className="bg-surface border-border min-h-[80px] text-xs resize-none"
                 value={thesis}
                 onChange={(e) => setThesis(e.target.value)}
@@ -125,17 +147,17 @@ export function AleoPrivateThesis() {
               {isMinting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  SHIELDING INTENT...
+                  SHIELDING...
                 </>
               ) : isAleoConnected ? (
                 <>
                   <Send className="w-4 h-4 mr-2" />
-                  COMMIT PRIVATE THESIS
+                  COMMIT THESIS
                 </>
               ) : (
                 <>
                   <Shield className="w-4 h-4 mr-2" />
-                  CONNECT SHIELD WALLET
+                  CONNECT SHIELD
                 </>
               )}
             </Button>
