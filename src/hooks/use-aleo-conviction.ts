@@ -18,10 +18,18 @@ export function useAleoConviction() {
 
   const checkBalance = useCallback(async (requiredMicrocredits: number) => {
     if (!requestRecords) return true; // Cannot check, proceed
-    const records = (await requestRecords(CREDITS_PROGRAM_ID, true)) as { plaintext: string }[];
-    // Simple sum of all unspent records in credits.aleo
-    const balance = records?.reduce((acc, r) => acc + (r.plaintext.includes("microcredits") ? parseInt(r.plaintext.split("microcredits:")[1]) : 0), 0) || 0;
-    return balance >= requiredMicrocredits;
+    try {
+      const records = (await requestRecords(CREDITS_PROGRAM_ID, true)) as { plaintext: string }[];
+      // Simple sum of all unspent records in credits.aleo
+      const balance = records?.reduce((acc, r) => acc + (r.plaintext.includes("microcredits") ? parseInt(r.plaintext.split("microcredits:")[1]) : 0), 0) || 0;
+      return balance >= requiredMicrocredits;
+    } catch (error: any) {
+      if (error.message?.includes("Decrypt permission denied")) {
+        console.warn("Aleo decryption permission denied; skipping pre-flight balance check.");
+        return true; // Fallback: allow transaction to proceed and let the wallet handle balance checks
+      }
+      throw error;
+    }
   }, [requestRecords]);
 
   const executeWithMonitoring = useCallback(async (txOptions: TransactionOptions) => {
