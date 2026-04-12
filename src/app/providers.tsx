@@ -6,7 +6,7 @@ import { WagmiProvider, createConfig, http } from 'wagmi';
 import { base } from 'wagmi/chains';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider as SolanaWalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
 import { AleoWalletProvider } from "@provablehq/aleo-wallet-adaptor-react";
@@ -102,16 +102,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   const wallets = useMemo(
     () => [
-      new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
     ],
     []
   );
 
   const aleoWallets = useMemo(
-    () => [
-      new ShieldWalletAdapter(),
-    ],
+    () => typeof window !== "undefined" ? [new ShieldWalletAdapter()] : [],
     []
   );
 
@@ -124,6 +121,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
               <AleoWalletProvider 
                 wallets={aleoWallets} 
                 network={APP_CONFIG.chains.aleo.network as Network}
+                autoConnect
               >
                 <TooltipProvider>
                   <MiniAppProvider>

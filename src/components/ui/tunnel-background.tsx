@@ -289,8 +289,6 @@ export function TunnelBackground() {
         )}
       />
 
-      {/* Overlay Grain/Scanlines */}
-      <div className="absolute inset-0 z-20 opacity-[0.03] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
     </div>
   );
 }

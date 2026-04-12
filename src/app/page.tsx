@@ -23,7 +23,6 @@ import {
   TrendingUp,
   Shield,
   ShieldCheck,
-  Clock,
   AlertTriangle,
   Settings,
   Share2,
@@ -52,7 +51,6 @@ import { AnalysisFilters } from "@/components/ui/analysis-filters";
 import { ScanProgress } from "@/components/ui/scan-progress";
 import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
-import { useWallet as useAleoWallet } from "@provablehq/aleo-wallet-adaptor-react";
 
 export default function Home() {
   const {
@@ -82,7 +80,6 @@ export default function Home() {
     dailyAnalysisCount,
   } = useAppStore();
 
-  const { connected: isAleoConnected } = useAleoWallet();
   const [activeTab, setActiveTab] = useState<"analyzer" | "strategist">("analyzer");
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -108,9 +105,22 @@ export default function Home() {
       // Use setTimeout to avoid synchronous setState inside effect which triggers cascading renders
       const timer = setTimeout(() => setShowSuccessMessage(true), 0);
       const hideTimer = setTimeout(() => setShowSuccessMessage(false), 4000);
+      
+      // Autoscroll to results once scan finishes
+      const scrollTimer = setTimeout(() => {
+        const resultsSection = document.getElementById("conviction-results");
+        if (resultsSection) {
+          resultsSection.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }
+      }, 300); // Wait a bit for the animation and DOM update
+
       return () => {
         clearTimeout(timer);
         clearTimeout(hideTimer);
+        clearTimeout(scrollTimer);
       };
     }
     prevHasScanned.current = hasScanned;
@@ -454,16 +464,6 @@ export default function Home() {
 
                             // Trigger conviction analysis
                             await analyzeWallet(identity.address);
-
-                            // Scroll to results after analysis starts
-                            setTimeout(() => {
-                              const resultsSection =
-                                document.getElementById("conviction-results");
-                              resultsSection?.scrollIntoView({
-                                behavior: "smooth",
-                                block: "start",
-                              });
-                            }, 500);
                           }}
                           className="max-w-none"
                         />

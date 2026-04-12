@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
@@ -49,7 +49,15 @@ const TierIcon = ({
 
 export function Navbar() {
   const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode } = useAppStore();
-  const { connected: isAleoConnected } = useAleoWallet();
+  const { connected: isAleoConnectedRaw } = useAleoWallet();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  const isAleoConnected = mounted ? isAleoConnectedRaw : false;
   const { analyzeWallet } = useConviction();
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -125,21 +133,21 @@ export function Navbar() {
 
             <div className="hidden lg:flex items-center gap-1">
               <Link
-                href="/features"
+                href="#"
                 className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
               >
                 <Shield className="w-3.5 h-3.5" />
                 Features
               </Link>
               <Link
-                href="/leaderboard"
+                href="#"
                 className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
               >
                 <TrendingUp className="w-3.5 h-3.5" />
                 Leaderboard
               </Link>
               <Link
-                href="/discovery"
+                href="#"
                 className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
               >
                 <Zap className="w-3.5 h-3.5" />
@@ -317,7 +325,7 @@ export function Navbar() {
             <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
               {/* Mobile Navigation Links */}
               <Link
-                href="/features"
+                href="#"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
               >
@@ -325,7 +333,7 @@ export function Navbar() {
                 Features
               </Link>
               <Link
-                href="/leaderboard"
+                href="#"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
               >
@@ -333,7 +341,7 @@ export function Navbar() {
                 Leaderboard
               </Link>
               <Link
-                href="/discovery"
+                href="#"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
               >
