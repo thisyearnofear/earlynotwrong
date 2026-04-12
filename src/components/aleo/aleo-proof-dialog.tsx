@@ -110,8 +110,6 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
 
         {step === "select" && (
           <div className="space-y-4 py-4">
-            <div className="text-xs font-mono text-signal/70 uppercase mb-2">Available Records: {records.length}</div>
-            
             <div className="grid gap-3">
               <Button 
                 variant="outline" 
