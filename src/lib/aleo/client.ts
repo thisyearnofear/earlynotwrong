@@ -13,9 +13,13 @@ export interface TransactionStatus {
  * Checks transaction status by polling the explorer API.
  */
 export async function getTransactionStatus(txId: string): Promise<string> {
+  // Shield wallet sometimes returns temporary IDs starting with 'shield_'.
+  // If the ID isn't a 64-char hex, the explorer API will likely return 404.
+  if (txId.startsWith("shield_")) return "pending";
+
   try {
-    // Explorer API pattern: /testnet3/transaction/{txId}
-    const response = await fetch(`${APP_CONFIG.chains.aleo.explorerUrl}/v1/testnet3/transaction/${txId}`);
+    // API pattern: {apiUrl}/v1/{network}/transaction/{txId}
+    const response = await fetch(`${APP_CONFIG.chains.aleo.apiUrl}/testnet3/transaction/${txId}`);
     if (!response.ok) return "pending";
     const data = await response.json();
     return data.status || "pending";
