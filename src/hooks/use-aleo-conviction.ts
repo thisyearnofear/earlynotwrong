@@ -2,9 +2,9 @@
 
 import { useCallback, useState } from "react";
 import { useWallet } from "@provablehq/aleo-wallet-adaptor-react";
-import { TransactionOptions } from "@provablehq/aleo-types";
 import { useAppStore } from "@/lib/store";
 import { APP_CONFIG } from "@/lib/config";
+import { waitForTransaction } from "@/lib/aleo/client";
 
 const CONVICTION_PROGRAM_ID = APP_CONFIG.chains.aleo.programId;
 const CREDITS_PROGRAM_ID = APP_CONFIG.chains.aleo.creditsProgramId;
@@ -14,17 +14,37 @@ export function useAleoConviction() {
   const { address, executeTransaction, requestRecords } = useWallet();
   const [isMinting, setIsMinting] = useState(false);
   const [lastTxId, setLastTxId] = useState<string | null>(null);
-  const [records, setRecords] = useState<(string | { plaintext: string })[]>([]);
 
-  const fetchRecords = useCallback(async () => {
-    if (!address || !requestRecords) return;
-    try {
-      const userRecords = await requestRecords(CONVICTION_PROGRAM_ID, true);
-      setRecords((userRecords as (string | { plaintext: string })[]) || []);
-    } catch (error) {
-      console.error("Failed to fetch Aleo records:", error);
+  const checkBalance = useCallback(async (requiredMicrocredits: number) => {
+    if (!requestRecords) return true; // Cannot check, proceed
+    const records = await requestRecords(CREDITS_PROGRAM_ID, true);
+    // Simple sum of all unspent records in credits.aleo
+    const balance = (records as any[])?.reduce((acc, r) => acc + (r.plaintext.includes("microcredits") ? parseInt(r.plaintext.split("microcredits:")[1]) : 0), 0) || 0;
+    return balance >= requiredMicrocredits;
+  }, [requestRecords]);
+
+  const executeWithMonitoring = useCallback(async (txOptions: any) => {
+    if (!executeTransaction) throw new Error("Wallet not connected");
+    
+    // 1. Pre-flight Check: Balance
+    if (!(await checkBalance(txOptions.fee))) {
+        throw new Error("Insufficient Aleo credits for transaction fee.");
     }
-  }, [address, requestRecords]);
+
+    // 2. Execute
+    const result = await executeTransaction(txOptions);
+    const txId = result?.transactionId;
+    
+    if (!txId) throw new Error("Transaction failed to initiate");
+    
+    setLastTxId(txId);
+
+    // 3. Monitor
+    const finalized = await waitForTransaction(txId);
+    if (!finalized) throw new Error("Transaction failed to finalize on-chain.");
+    
+    return txId;
+  }, [executeTransaction, checkBalance]);
 
   const mintConvictionRecord = useCallback(async () => {
     if (!address || !executeTransaction) {
@@ -53,30 +73,24 @@ export function useAleoConviction() {
       
       const archetypeLabel = convictionMetrics.archetype || "DIAMOND_HAND";
       const archetypeValue = archetypeMap[archetypeLabel] ?? 0;
+try {
+  const txOptions = {
+    program: CONVICTION_PROGRAM_ID,
+    function: "issue_conviction",
+    inputs: [
+      String(address), // receiver
+      `${Math.floor(convictionMetrics.score)}u32`,
+      `${Math.floor(convictionMetrics.patienceTax)}u64`,
+      `${archetypeValue}u8`,
+      `${Math.floor(Date.now() / 1000)}u64`
+    ],
+    fee: 100000, // microcredits
+    privateFee: true,
+    network: APP_CONFIG.chains.aleo.network
+  };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
-        program: CONVICTION_PROGRAM_ID,
-        function: "issue_conviction",
-        inputs: [
-          String(address), // receiver
-          `${Math.floor(convictionMetrics.score)}u32`,
-          `${Math.floor(convictionMetrics.patienceTax)}u64`,
-          `${archetypeValue}u8`,
-          `${Math.floor(Date.now() / 1000)}u64`
-        ],
-        fee: 0.1, // Aleo credits
-        privateFee: true,
-        network: APP_CONFIG.chains.aleo.network
-      };
-
-      const result = await executeTransaction(txOptions);
-      const txId = result?.transactionId;
-      if (txId) {
-        setLastTxId(txId);
-      }
-      return txId;
-    } catch (error) {
+  return await executeWithMonitoring(txOptions);
+} catch (error) {
       console.error("Failed to mint Aleo conviction record:", error);
       throw error;
     } finally {
@@ -91,21 +105,19 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
+      const txOptions = {
         program: CONVICTION_PROGRAM_ID,
         function: "verify_archetype",
         inputs: [
           typeof record === 'string' ? record : record.plaintext, 
           `${Math.floor(requiredArchetype)}u8`
         ],
-        fee: 0.05,
+        fee: 50000,
         privateFee: true,
         network: APP_CONFIG.chains.aleo.network
       };
 
-      const result = await executeTransaction(txOptions);
-      return result?.transactionId;
+      return await executeWithMonitoring(txOptions);
     } catch (error) {
       console.error("Aleo verification failed:", error);
       throw error;
@@ -121,21 +133,19 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
+      const txOptions = {
         program: CONVICTION_PROGRAM_ID,
         function: "verify_score_threshold",
         inputs: [
           typeof record === 'string' ? record : record.plaintext,
           `${Math.floor(threshold)}u32`
         ],
-        fee: 0.05,
+        fee: 50000,
         privateFee: true,
         network: APP_CONFIG.chains.aleo.network
       };
 
-      const result = await executeTransaction(txOptions);
-      return result?.transactionId;
+      return await executeWithMonitoring(txOptions);
     } catch (error) {
       console.error("Aleo score verification failed:", error);
       throw error;
@@ -151,21 +161,19 @@ export function useAleoConviction() {
 
     setIsMinting(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
+      const txOptions = {
         program: CONVICTION_PROGRAM_ID,
         function: "verify_efficient_trading",
         inputs: [
           typeof record === 'string' ? record : record.plaintext,
           `${Math.floor(maxPatienceTax)}u64`
         ],
-        fee: 0.05,
+        fee: 50000,
         privateFee: true,
         network: APP_CONFIG.chains.aleo.network
       };
 
-      const result = await executeTransaction(txOptions);
-      return result?.transactionId;
+      return await executeWithMonitoring(txOptions);
     } catch (error) {
       console.error("Aleo efficiency verification failed:", error);
       throw error;
@@ -182,11 +190,9 @@ export function useAleoConviction() {
     setIsMinting(true);
     try {
       // Ensure thesisHash is a valid field string (numeric)
-      // If it's a hex string, we might need to convert it or ensure it's decimal
       const fieldHash = thesisHash.startsWith('0x') ? BigInt(thesisHash).toString() : thesisHash;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
+      const txOptions = {
         program: CONVICTION_PROGRAM_ID,
         function: "commit_thesis",
         inputs: [
@@ -195,17 +201,12 @@ export function useAleoConviction() {
           `${Math.floor(targetPrice)}u64`,
           `${Math.floor(Date.now() / 1000)}u64`
         ],
-        fee: 0.1,
+        fee: 100000,
         privateFee: true,
         network: APP_CONFIG.chains.aleo.network
       };
 
-      const result = await executeTransaction(txOptions);
-      const txId = result?.transactionId;
-      if (txId) {
-        setLastTxId(txId);
-      }
-      return txId;
+      return await executeWithMonitoring(txOptions);
     } catch (error) {
       console.error("Failed to commit private thesis:", error);
       throw error;
@@ -223,29 +224,22 @@ export function useAleoConviction() {
     try {
       const { setAleoPremium, showToast } = useAppStore.getState();
       
-      // Pay 0.5 Credits for Premium Analytics (500,000 microcredits)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
+      const txOptions = {
         program: CREDITS_PROGRAM_ID,
         function: "transfer_public",
         inputs: [
           TREASURY_ADDRESS,
           "500000u64" 
         ],
-        fee: 0.01,
+        fee: 10000,
         privateFee: false,
         network: APP_CONFIG.chains.aleo.network
       };
 
-      const result = await executeTransaction(txOptions);
-      const txId = result?.transactionId;
-      
-      if (txId) {
-        setLastTxId(txId);
-        setAleoPremium(true);
-        showToast("Premium Analytics Unlocked!", "success");
-      }
-      return txId;
+      await executeWithMonitoring(txOptions);
+      setAleoPremium(true);
+      showToast("Premium Analytics Unlocked!", "success");
+      return true;
     } catch (error) {
       console.error("Aleo payment failed:", error);
       throw error;
@@ -286,8 +280,7 @@ export function useAleoConviction() {
       showToast("Rebate Authorized! Submitting claim transaction...", "info");
 
       // Step 2: Submit claim to smart contract (User Executes)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const txOptions: any = {
+      const txOptions = {
         program: CONVICTION_PROGRAM_ID,
         function: "claim_rebate",
         inputs: [
@@ -296,19 +289,14 @@ export function useAleoConviction() {
           voucher.nonce,
           voucher.signature
         ],
-        fee: 0.1,
+        fee: 100000,
         privateFee: false,
         network: APP_CONFIG.chains.aleo.network
       };
 
-      const result = await executeTransaction(txOptions);
-      const txId = result?.transactionId;
-      
-      if (txId) {
-        setLastTxId(txId);
-        showToast("Rebate Claimed Successfully!", "success");
-      }
-      return txId;
+      await executeWithMonitoring(txOptions);
+      showToast("Rebate Claimed Successfully!", "success");
+      return true;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Rebate failed";
       console.error("Aleo rebate claim failed:", error);

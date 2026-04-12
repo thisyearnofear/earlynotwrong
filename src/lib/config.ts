@@ -87,7 +87,7 @@ export const APP_CONFIG = {
       rpcUrl: `https://api.mainnet-beta.solana.com`,
     },
     aleo: {
-      network: "testnet",
+      network: "testnet3",
       apiUrl: "https://api.explorer.provable.com/v1",
       explorerUrl: "https://explorer.provable.com",
       programId: "early_not_wrong_v3.aleo",

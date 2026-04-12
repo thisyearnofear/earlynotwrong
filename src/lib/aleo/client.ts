@@ -1,0 +1,39 @@
+import { APP_CONFIG } from "@/lib/config";
+
+/**
+ * Aleo Client Utility for Explorer Interaction
+ */
+
+export interface TransactionStatus {
+  status: "pending" | "confirmed" | "failed";
+  error?: string;
+}
+
+/**
+ * Checks transaction status by polling the explorer API.
+ */
+export async function getTransactionStatus(txId: string): Promise<string> {
+  try {
+    // Explorer API pattern: /testnet3/transaction/{txId}
+    const response = await fetch(`${APP_CONFIG.chains.aleo.explorerUrl}/v1/testnet3/transaction/${txId}`);
+    if (!response.ok) return "pending";
+    const data = await response.json();
+    return data.status || "pending";
+  } catch {
+    return "pending";
+  }
+}
+
+/**
+ * Utility to poll for transaction finalization.
+ */
+export async function waitForTransaction(txId: string, timeoutMs = 60000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await getTransactionStatus(txId);
+    if (status === "finalized" || status === "confirmed") return true;
+    if (status === "rejected" || status === "failed") return false;
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // Poll every 3s
+  }
+  return false;
+}
