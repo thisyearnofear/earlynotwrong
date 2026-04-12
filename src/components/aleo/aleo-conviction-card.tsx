@@ -13,7 +13,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Shield, ShieldCheck, Lock, Loader2, CheckCircle2, ExternalLink, Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { AleoProofDialog } from "./aleo-proof-dialog";
 import { APP_CONFIG } from "@/lib/config";
 
@@ -75,7 +74,7 @@ export function AleoConvictionCard() {
           Zero-Knowledge CI
         </div>
         <CardDescription className="text-xs text-foreground-muted">
-          Commit your conviction metrics to Aleo Mainnet. Prove your archetype without revealing your wallet history.
+          Commit your conviction metrics to Aleo Testnet. Prove your archetype without revealing your wallet history.
         </CardDescription>
       </CardHeader>
 
@@ -128,15 +127,29 @@ export function AleoConvictionCard() {
             </div>
 
             {lastTxId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-[10px] font-mono text-foreground-muted hover:text-foreground h-8"
-                onClick={() => window.open(`${APP_CONFIG.chains.aleo.explorerUrl}/transaction/${lastTxId}`, "_blank")}
-              >
-                VIEW ON EXPLORER
-                <ExternalLink className="w-3 h-3 ml-1.5" />
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={lastTxId.startsWith("shield_")}
+                  className="w-full text-[10px] font-mono text-foreground-muted hover:text-foreground h-8 disabled:opacity-50"
+                  onClick={() => window.open(`${APP_CONFIG.chains.aleo.explorerUrl}/transaction/${lastTxId}`, "_blank")}
+                >
+                  {lastTxId.startsWith("shield_") ? (
+                    <>PROPAGATING TRANSACTION...</>
+                  ) : (
+                    <>
+                      VIEW ON EXPLORER
+                      <ExternalLink className="w-3 h-3 ml-1.5" />
+                    </>
+                  )}
+                </Button>
+                {lastTxId.startsWith("shield_") && (
+                  <p className="text-[9px] text-center text-signal italic px-4 leading-tight">
+                    Shield Wallet is assigning a permanent ID. Please check back in a few seconds.
+                  </p>
+                )}
+              </div>
             )}
             
             <Button

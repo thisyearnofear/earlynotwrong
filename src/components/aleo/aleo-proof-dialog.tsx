@@ -198,6 +198,16 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
                   {verificationResult.message || `Status: ${verificationResult.status}. Program: ${verificationResult.program}`}
                 </div>
               </div>
+            ) : lastTxId?.startsWith("shield_") ? (
+              <div className="w-full p-3 rounded-lg bg-signal/10 border border-signal/30 text-signal text-[10px]">
+                <div className="font-bold uppercase flex items-center gap-1.5 mb-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Shield Wallet Processing
+                </div>
+                <div className="opacity-80">
+                  This transaction has a temporary ID and is currently being assigned a permanent on-chain hash. Verification will be available in a few seconds.
+                </div>
+              </div>
             ) : (
               <Button 
                 variant="outline" 
@@ -214,10 +224,17 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
               <Button 
                 variant="outline" 
                 className="flex-1 text-[11px] h-9"
+                disabled={!lastTxId || lastTxId.startsWith("shield_")}
                 onClick={() => window.open(`${APP_CONFIG.chains.aleo.explorerUrl}/transaction/${lastTxId}`, "_blank")}
               >
-                <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                EXPLORER
+                {lastTxId?.startsWith("shield_") ? (
+                  <>PROPAGATING...</>
+                ) : (
+                  <>
+                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                    EXPLORER
+                  </>
+                )}
               </Button>
               <Button 
                 className="flex-1 bg-signal hover:bg-signal/80 text-black font-bold text-[11px] h-9"

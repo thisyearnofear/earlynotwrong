@@ -89,7 +89,7 @@ export const APP_CONFIG = {
     aleo: {
       network: "testnet3",
       apiUrl: "https://api.explorer.provable.com/v1",
-      explorerUrl: "https://explorer.provable.com",
+      explorerUrl: "https://testnet.explorer.provable.com",
       programId: "early_not_wrong_v3.aleo",
       creditsProgramId: "credits.aleo",
       usdcProgramId: "usdcx_stablecoin.aleo",

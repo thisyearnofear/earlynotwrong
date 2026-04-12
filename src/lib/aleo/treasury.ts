@@ -1,4 +1,4 @@
-import { Account, Field } from "@provablehq/sdk/mainnet.js";
+import { Account, Field } from "@provablehq/sdk/testnet.js";
 
 /**
  * Aleo Treasury Service

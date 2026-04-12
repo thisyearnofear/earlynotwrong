@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AleoNetworkClient } from "@provablehq/sdk/mainnet.js";
+import { AleoNetworkClient } from "@provablehq/sdk/testnet.js";
 import { APP_CONFIG } from "@/lib/config";
 
 export async function POST(req: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
         { 
           verified: false, 
           status: "not_found",
-          message: "Transaction not found on Aleo Mainnet yet. It might still be propagating." 
+          message: `Transaction not found on Aleo ${APP_CONFIG.chains.aleo.network === "testnet3" ? "Testnet" : "Mainnet"} yet. It might still be propagating.` 
         },
         { status: 200 }
       );

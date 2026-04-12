@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { 
   initializeWasm
-} from "@provablehq/sdk/mainnet.js";
+} from "@provablehq/sdk/testnet.js";
 import { treasury } from "@/lib/aleo/treasury";
 
 export async function POST(req: NextRequest) {
