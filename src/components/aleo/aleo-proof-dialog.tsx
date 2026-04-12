@@ -23,8 +23,6 @@ interface AleoProofDialogProps {
 
 export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
   const { 
-    records, 
-    fetchRecords, 
     verifyArchetype, 
     verifyScoreThreshold,
     verifyEfficientTrading 
@@ -44,12 +42,11 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
 
   useEffect(() => {
     if (isOpen) {
-      fetchRecords();
       setStep("select");
       setLastTxId(null);
       setVerificationResult(null);
     }
-  }, [isOpen, fetchRecords]);
+  }, [isOpen]);
 
   const handleVerifyOnBackend = async () => {
     if (!lastTxId) return;
@@ -65,15 +62,14 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
   };
 
   const handleGenerateProof = async (type: "archetype" | "score" | "efficiency") => {
-    if (records.length === 0) return;
-    
-    // For the demo, we take the most recent record
-    const record = records[0];
     setProofType(type);
     setStep("proving");
 
     try {
       let txId;
+      // Using a placeholder as record storage was removed
+      const record = ""; 
+      
       if (type === "archetype") {
         const archetypeMap: Record<string, number> = {
           "DIAMOND_HAND": 0,
@@ -121,7 +117,6 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
                 variant="outline" 
                 className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
                 onClick={() => handleGenerateProof("archetype")}
-                disabled={records.length === 0}
               >
                 <div className="text-left">
                   <div className="text-sm font-bold">Prove Archetype</div>
@@ -134,7 +129,7 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
                 variant="outline" 
                 className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
                 onClick={() => handleGenerateProof("score")}
-                disabled={records.length === 0 || (convictionMetrics?.score || 0) < 80}
+                disabled={(convictionMetrics?.score || 0) < 80}
               >
                 <div className="text-left">
                   <div className="text-sm font-bold">Prove Elite Status</div>
@@ -147,7 +142,7 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
                 variant="outline" 
                 className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
                 onClick={() => handleGenerateProof("efficiency")}
-                disabled={records.length === 0 || (convictionMetrics?.patienceTax || 0) > 1000}
+                disabled={(convictionMetrics?.patienceTax || 0) > 1000}
               >
                 <div className="text-left">
                   <div className="text-sm font-bold">Prove Trading Efficiency</div>
@@ -156,12 +151,6 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
                 <Lock className="w-4 h-4 text-signal" />
               </Button>
             </div>
-
-            {records.length === 0 && (
-              <p className="text-[10px] text-center text-patience/80 italic">
-                You need to mint a private record first before you can generate proofs.
-              </p>
-            )}
           </div>
         )}
 
