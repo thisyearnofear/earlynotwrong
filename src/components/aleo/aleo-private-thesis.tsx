@@ -21,20 +21,29 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Shield, Lock, Send, Loader2, CheckCircle2, AlertCircle, BotMessageSquare } from "lucide-react";
-import { generateThesis, THESIS_TEMPLATES } from "@/lib/thesis-utils";
+import { getAIThesisSuggestion } from "@/lib/strategist";
 
 export function AleoPrivateThesis() {
   const { commitPrivateThesis, isMinting, lastTxId, isAleoConnected } = useAleoConviction();
   const { setWalletModalOpen, convictionMetrics } = useAppStore();
   const [thesis, setThesis] = useState("");
+  const [intent, setIntent] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleGenerate = (type: keyof typeof THESIS_TEMPLATES) => {
-    if (!convictionMetrics) return;
-    const generated = generateThesis(convictionMetrics, [], type);
-    setThesis(generated);
+  const handleGenerate = async () => {
+    if (!intent || !convictionMetrics) return;
+    setIsGenerating(true);
+    try {
+      const generated = await getAIThesisSuggestion(intent, convictionMetrics);
+      setThesis(generated);
+    } catch (err) {
+      setError("AI generation failed. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,6 +60,7 @@ export function AleoPrivateThesis() {
       setIsSuccess(true);
       setThesis("");
       setTargetPrice("");
+      setIntent("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to commit thesis");
     }
@@ -99,16 +109,23 @@ export function AleoPrivateThesis() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-[10px] font-mono text-foreground-muted uppercase">Trade Thesis (Secret)</label>
-                <Select onValueChange={(val) => handleGenerate(val as keyof typeof THESIS_TEMPLATES)}>
-                  <SelectTrigger className="w-[100px] h-6 text-[10px] border-border/50">
-                    <SelectValue placeholder="AI Assist" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-black border-border">
-                    <SelectItem value="breakout" className="text-[10px]">Breakout</SelectItem>
-                    <SelectItem value="reversion" className="text-[10px]">Reversion</SelectItem>
-                    <SelectItem value="macro" className="text-[10px]">Macro-Event</SelectItem>
-                  </SelectContent>
-                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Input 
+                  placeholder="What's your strategy? e.g. 'Shorting on trend reversal'"
+                  className="bg-surface border-border h-9 text-xs flex-1"
+                  value={intent}
+                  onChange={(e) => setIntent(e.target.value)}
+                />
+                <Button 
+                  type="button"
+                  variant="outline"
+                  className="h-9 border-signal/30 text-signal"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !intent}
+                >
+                  {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <BotMessageSquare className="w-4 h-4" />}
+                </Button>
               </div>
               <Textarea 
                 placeholder="Describe your entry and outlook..."
