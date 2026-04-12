@@ -157,6 +157,16 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Aleo Network Status */}
+            {isAleoConnected && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-signal/5 border border-signal/20">
+                <div className="w-1.5 h-1.5 rounded-full bg-signal shadow-[0_0_8px_var(--signal)] animate-pulse" />
+                <span className="text-[9px] font-mono text-signal uppercase font-bold tracking-widest">
+                  Aleo Testnet
+                </span>
+              </div>
+            )}
+
             {/* Showcase Mode Toggle (Demo Mode) */}
             <div className="hidden md:flex items-center gap-2 pr-2 border-r border-border">
               <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-tighter">Demo</span>

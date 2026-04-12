@@ -109,8 +109,10 @@ interface AppState {
   // UI State
   isShowcaseMode: boolean;
   isAleoPremium: boolean;
+  isWalletModalOpen: boolean;
   toggleShowcaseMode: (enabled?: boolean) => void;
   setAleoPremium: (enabled: boolean) => void;
+  setWalletModalOpen: (open: boolean) => void;
   theme: "light" | "dark";
   setTheme: (theme: "light" | "dark") => void;
   reset: () => void;
@@ -275,11 +277,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI State
   isShowcaseMode: false,
   isAleoPremium: false,
+  isWalletModalOpen: false,
   toggleShowcaseMode: (enabled) =>
     set((state) => ({
       isShowcaseMode: enabled ?? !state.isShowcaseMode,
     })),
   setAleoPremium: (enabled) => set({ isAleoPremium: enabled }),
+  setWalletModalOpen: (open) => set({ isWalletModalOpen: open }),
   theme: "dark",
   setTheme: (theme) => set({ theme }),
   reset: () =>
@@ -314,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
       isShowcaseMode: false,
       isAleoPremium: false,
+      isWalletModalOpen: false,
       comparisonWallets: [],
     }),
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAleoConviction } from "@/hooks/use-aleo-conviction";
+import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 export function AleoPrivateThesis() {
   const { commitPrivateThesis, isMinting, lastTxId, isAleoConnected } = useAleoConviction();
+  const { setWalletModalOpen } = useAppStore();
   const [thesis, setThesis] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
@@ -115,9 +117,10 @@ export function AleoPrivateThesis() {
             )}
 
             <Button
-              type="submit"
+              type={isAleoConnected ? "submit" : "button"}
               className="w-full bg-signal hover:bg-signal/80 text-black font-bold h-10"
-              disabled={isMinting || !isAleoConnected || !thesis || !targetPrice}
+              disabled={isMinting || (isAleoConnected && (!thesis || !targetPrice))}
+              onClick={isAleoConnected ? undefined : () => setWalletModalOpen(true)}
             >
               {isMinting ? (
                 <>
@@ -130,7 +133,10 @@ export function AleoPrivateThesis() {
                   COMMIT PRIVATE THESIS
                 </>
               ) : (
-                "CONNECT ALEO TO BEGIN"
+                <>
+                  <Shield className="w-4 h-4 mr-2" />
+                  CONNECT SHIELD WALLET
+                </>
               )}
             </Button>
           </form>

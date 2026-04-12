@@ -4,6 +4,7 @@ import * as React from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWallet as useAleoWallet } from "@provablehq/aleo-wallet-adaptor-react";
+import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +23,7 @@ function shortenAddress(address: string | null | undefined) {
 }
 
 export function WalletConnect({ className }: { className?: string }) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const { isWalletModalOpen: isOpen, setWalletModalOpen: setIsOpen } = useAppStore();
   const [copied, setCopied] = React.useState(false);
   const [isClient, setIsClient] = React.useState(false);
 
