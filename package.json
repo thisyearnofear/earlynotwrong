@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "mantle:deploy": "cd mantle && npx hardhat run scripts/deploy.ts --network mantle-sepolia"
+    "mantle:deploy": "cd mantle && npx hardhat run scripts/deploy.cjs --network mantle-sepolia"
   },
   "dependencies": {
     "@farcaster/frame-sdk": "^0.0.64",
