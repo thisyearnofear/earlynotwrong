@@ -77,6 +77,13 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 - [ ] Private Peer Comparison (Privacy-preserving aggregation)
 - [ ] Endorsement Mechanics (ZK-proofs for recommendations)
 
+### Phase 8 - Mantle Agentic Expansion (IN PROGRESS - Phase II Hackathon)
+- [x] **ERC-8004 Identity**: Register ENW as a sovereign agent on Mantle
+- [ ] **Mantle Conviction Registry**: Port ZK-based conviction logic to Mantle Solidity
+- [ ] **RWA Strategy Engine**: Deep support for USDY and mETH behavioral analysis
+- [ ] **A2A Communications**: Implement MCP for agent-to-agent tool sharing
+- [ ] **Validation Registry**: Anchor conviction proofs to Mantle L2
+
 ## Feature Request Process
 
 1. **User Demand**: Collect feedback via Farcaster/Discord

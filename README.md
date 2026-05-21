@@ -222,6 +222,24 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 ---
 
+## Recent Updates: Phase II - Mantle Turing Test Hackathon 2026
+
+### 🆕 Sovereign AI Agent Identity (ERC-8004)
+- **Agent Passport**: ENW is now registered as a sovereign agent on the Mantle Network using the **ERC-8004 Identity Registry**.
+- **Agent Card**: Compliant metadata schema describing ENW's capabilities in wallet analysis, conviction scoring, and on-chain strategy.
+- **On-Chain Reputation**: Every verified conviction and successful "Early, Not Wrong" prediction is recorded in the Mantle **Reputation Registry**, building a decentralized track record of AI performance.
+
+### 🆕 Mantle L2 Conviction Registry
+- **Proof of Analysis**: Behavioral insights and conviction scores are hashed and anchored on Mantle L2, creating a verifiable, immutable history of the agent's logic.
+- **Agentic Economy**: Transitioning ENW from a dashboard to an **Agentic Strategist** that can autonomously suggest yield strategies for Mantle-native assets like **mETH** and **USDY**.
+- **Validation Hooks**: Integration with the Mantle **Validation Registry** to provide ZKML-ready proofs of the agent's analytical integrity.
+
+### 🆕 Mantle Ecosystem Integration
+- **RWA Analysis**: Deep-dive support for Mantle's Real-World Asset (RWA) ecosystem, analyzing conviction levels of large holders in **USDY** and **mETH**.
+- **Agent-to-Agent (A2A)**: Exposing ENW tools via the **Model Context Protocol (MCP)**, allowing other Mantle agents to "hire" ENW for risk assessment and behavioral auditing.
+
+---
+
 ## Recent Updates: Phase 5 - Aleo Privacy Integration (Aleo Buildathon 2026)
 
 ### 🆕 Selective Disclosure via Aleo ZK-Proofs

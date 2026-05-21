@@ -1,0 +1,29 @@
+{
+  "agent_id": "eip155:5000:0x8004...#ENW_AGENT_ID",
+  "name": "Early Not Wrong (ENW) Strategist",
+  "description": "Sovereign AI agent specialized in behavioral conviction analysis and asymmetric risk strategies. ENW analyzes on-chain behavior to distinguish between being 'wrong' and being 'early'.",
+  "capabilities": [
+    "wallet_behavioral_analysis",
+    "conviction_scoring",
+    "asymmetric_risk_assessment",
+    "rwa_yield_optimization",
+    "patience_tax_calculation"
+  ],
+  "evm_address": "0xYourAgentWalletAddress",
+  "endpoints": [
+    {
+      "type": "mcp",
+      "uri": "https://earlynotwrong.com/api/mcp"
+    },
+    {
+      "type": "a2a",
+      "uri": "https://earlynotwrong.com/api/agent/v1"
+    }
+  ],
+  "schemas": [
+    "erc8004/identity/v1",
+    "enw/conviction/v1"
+  ],
+  "version": "1.0.0",
+  "image": "https://earlynotwrong.com/earlynotwrong.webp"
+}
