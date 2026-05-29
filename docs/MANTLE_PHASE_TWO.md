@@ -24,10 +24,15 @@ Secondary fit: AI Trading & Strategy and Agentic Wallets & Economy.
 4. Anchor subject hash, thesis hash, score, and archetype to Mantle Sepolia.
 5. Open the Mantle explorer transaction as proof.
 
+## Deployment
+
+- Mantle Sepolia `MantleConvictionRegistry`: `0x6568418B033F229988bc09c378D16B869829Ab57`
+- Explorer: `https://explorer.sepolia.mantle.xyz/address/0x6568418B033F229988bc09c378D16B869829Ab57`
+- Hardhat verification status: attempted, but Mantle Explorer returned an HTML response from its API instead of JSON. Use manual explorer verification if automated verification remains unavailable.
+
 ## Before Submission
 
-- Deploy `MantleConvictionRegistry` to Mantle Sepolia.
-- Set `NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY`.
+- Verify `MantleConvictionRegistry` on Mantle Explorer manually if automated verification remains unavailable.
 - Replace placeholders in `mantle/agent-card.json`.
 - Publish the agent card to a stable URI.
 - Record a demo with a real Mantle transaction hash.

@@ -50,6 +50,14 @@ Add the deployed address to the app environment:
 NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY=<DEPLOYED_CONTRACT_ADDRESS>
 ```
 
+Current Mantle Sepolia deployment:
+
+```text
+0x6568418B033F229988bc09c378D16B869829Ab57
+```
+
+Automated Hardhat verification currently receives an HTML response from the Mantle Explorer API. If that persists, verify manually in the explorer UI using the Solidity source in `contracts/MantleConvictionRegistry.sol`.
+
 ## ERC-8004 Registration
 
 Once the contract is deployed, use the `agent-card.json` file in this directory to register your agent on the Mantle Identity Registry.
