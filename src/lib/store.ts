@@ -35,11 +35,21 @@ interface ToastState {
 }
 
 interface ScanProgress {
-  phase: 'idle' | 'connecting' | 'fetching' | 'processing' | 'analyzing' | 'complete';
+  phase: 'idle' | 'connecting' | 'fetching' | 'processing' | 'analyzing' | 'anchoring' | 'complete';
   percent: number;
   detail: string;
   itemsProcessed: number;
   totalItems: number;
+}
+
+interface MantleState {
+  isMantleMode: boolean;
+  agentId: string | null;
+  lastAnchoredThesis: string | null;
+  lastAnchorTxHash: string | null;
+  anchorError: string | null;
+  isAnchoring: boolean;
+  anchoredCount: number;
 }
 
 interface AppState {
@@ -53,6 +63,13 @@ interface AppState {
   setScanProgress: (progress: Partial<ScanProgress>) => void;
   startAnalysis: () => void;
   finishAnalysis: () => void;
+
+  // Mantle Integration
+  mantle: MantleState;
+  setMantleState: (state: Partial<MantleState>) => void;
+  anchorToMantle: (thesisHash: string, txHash: string) => void;
+  setMantleAnchoring: (isAnchoring: boolean) => void;
+  setMantleAnchorError: (error: string | null) => void;
 
   // Error Handling
   errorState: ErrorState;
@@ -177,6 +194,62 @@ export const useAppStore = create<AppState>((set, get) => ({
       totalItems: 0,
     },
   }),
+
+  // Mantle Integration Implementation
+  mantle: {
+    isMantleMode: false,
+    agentId: null,
+    lastAnchoredThesis: null,
+    lastAnchorTxHash: null,
+    anchorError: null,
+    isAnchoring: false,
+    anchoredCount: 0,
+  },
+  setMantleState: (state) =>
+    set((current) => ({
+      mantle: { ...current.mantle, ...state },
+    })),
+  setMantleAnchoring: (isAnchoring) =>
+    set((state) => ({
+      mantle: {
+        ...state.mantle,
+        isAnchoring,
+        anchorError: isAnchoring ? null : state.mantle.anchorError,
+      },
+      scanProgress: {
+        phase: isAnchoring ? 'anchoring' : state.scanProgress.phase,
+        percent: isAnchoring ? 90 : state.scanProgress.percent,
+        detail: isAnchoring
+          ? 'Anchoring analysis to Mantle L2 Conviction Registry...'
+          : state.scanProgress.detail,
+        itemsProcessed: 0,
+        totalItems: 0,
+      }
+    })),
+  setMantleAnchorError: (error) =>
+    set((state) => ({
+      mantle: { ...state.mantle, isAnchoring: false, anchorError: error },
+    })),
+  anchorToMantle: (thesisHash, txHash) => {
+    set((state) => ({
+      mantle: {
+        ...state.mantle,
+        isAnchoring: false,
+        lastAnchoredThesis: thesisHash,
+        lastAnchorTxHash: txHash,
+        anchorError: null,
+        anchoredCount: state.mantle.anchoredCount + 1,
+      },
+      scanProgress: {
+        phase: 'complete',
+        percent: 100,
+        detail: 'Verification anchored on Mantle L2',
+        itemsProcessed: 0,
+        totalItems: 0,
+      }
+    }));
+    get().showToast("Analysis anchored to Mantle", "success");
+  },
 
   // Error Handling
   errorState: {

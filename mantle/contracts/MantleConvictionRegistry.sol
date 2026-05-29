@@ -11,7 +11,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract MantleConvictionRegistry is Ownable {
     
     struct ConvictionRecord {
-        address user;
+        bytes32 subjectHash;   // Cross-chain subject identifier, e.g. keccak256("solana:<wallet>")
+        address anchoredBy;    // Agent/operator wallet that anchored the analysis
         bytes32 thesisHash;    // Hashed behavioral analysis/thesis
         uint256 convictionScore; // 0-100
         string archetype;      // e.g., "High Conviction", "Early but Right"
@@ -19,14 +20,15 @@ contract MantleConvictionRegistry is Ownable {
         bool verified;         // Whether this has been validated by a validation registry
     }
 
-    // Mapping from user address to their conviction history
-    mapping(address => ConvictionRecord[]) public userConvictionHistory;
+    // Mapping from cross-chain subject hash to conviction history
+    mapping(bytes32 => ConvictionRecord[]) public subjectConvictionHistory;
     
     // Mapping from thesisHash to its metadata
     mapping(bytes32 => ConvictionRecord) public convictionByThesis;
 
     event ConvictionAnchored(
-        address indexed user,
+        bytes32 indexed subjectHash,
+        address indexed anchoredBy,
         bytes32 indexed thesisHash,
         uint256 convictionScore,
         string archetype
@@ -37,19 +39,20 @@ contract MantleConvictionRegistry is Ownable {
     constructor() Ownable(msg.sender) {}
 
     /**
-     * @dev Anchors a new conviction score for a user.
+     * @dev Anchors a new conviction score for a cross-chain wallet or identity.
      * Only the authorized ENW agent (owner) can call this.
      */
     function anchorConviction(
-        address _user,
+        bytes32 _subjectHash,
         bytes32 _thesisHash,
         uint256 _convictionScore,
         string calldata _archetype
     ) external onlyOwner {
         require(_convictionScore <= 100, "Score must be 0-100");
-        
+
         ConvictionRecord memory newRecord = ConvictionRecord({
-            user: _user,
+            subjectHash: _subjectHash,
+            anchoredBy: msg.sender,
             thesisHash: _thesisHash,
             convictionScore: _convictionScore,
             archetype: _archetype,
@@ -57,10 +60,10 @@ contract MantleConvictionRegistry is Ownable {
             verified: false
         });
 
-        userConvictionHistory[_user].push(newRecord);
+        subjectConvictionHistory[_subjectHash].push(newRecord);
         convictionByThesis[_thesisHash] = newRecord;
 
-        emit ConvictionAnchored(_user, _thesisHash, _convictionScore, _archetype);
+        emit ConvictionAnchored(_subjectHash, msg.sender, _thesisHash, _convictionScore, _archetype);
     }
 
     /**
@@ -71,7 +74,7 @@ contract MantleConvictionRegistry is Ownable {
         convictionByThesis[_thesisHash].verified = true;
         
         // Update in history as well (optimization: would be better with mapping of index)
-        ConvictionRecord[] storage history = userConvictionHistory[convictionByThesis[_thesisHash].user];
+        ConvictionRecord[] storage history = subjectConvictionHistory[convictionByThesis[_thesisHash].subjectHash];
         for (uint i = 0; i < history.length; i++) {
             if (history[i].thesisHash == _thesisHash) {
                 history[i].verified = true;
@@ -85,9 +88,9 @@ contract MantleConvictionRegistry is Ownable {
     /**
      * @dev Returns the latest conviction record for a user.
      */
-    function getLatestConviction(address _user) external view returns (ConvictionRecord memory) {
-        uint256 length = userConvictionHistory[_user].length;
+    function getLatestConviction(bytes32 _subjectHash) external view returns (ConvictionRecord memory) {
+        uint256 length = subjectConvictionHistory[_subjectHash].length;
         require(length > 0, "No records found");
-        return userConvictionHistory[_user][length - 1];
+        return subjectConvictionHistory[_subjectHash][length - 1];
     }
 }

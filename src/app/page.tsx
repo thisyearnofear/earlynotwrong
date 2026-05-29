@@ -30,6 +30,7 @@ import {
   Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { keccak256, toBytes } from "viem";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
 import { ScoreBreakdownDialog } from "@/components/ui/score-breakdown";
 import { ethosClient } from "@/lib/ethos";
@@ -51,6 +52,7 @@ import { AnalysisFilters } from "@/components/ui/analysis-filters";
 import { ScanProgress } from "@/components/ui/scan-progress";
 import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
+import { MantleConvictionCard } from "@/components/mantle/mantle-conviction-card";
 
 export default function Home() {
   const {
@@ -78,6 +80,7 @@ export default function Home() {
     errorState,
     clearError,
     dailyAnalysisCount,
+    mantle,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<"analyzer" | "strategist">("analyzer");
@@ -88,6 +91,31 @@ export default function Home() {
     () => getFeatureAccess(ethosScore?.score ?? 0).dailyAnalysisLimit,
     [ethosScore?.score]
   );
+
+  // Deterministic proof-of-analysis hash for Mantle anchoring.
+  const thesisHash = useMemo(() => {
+    if (!convictionMetrics) return "0x0000000000000000000000000000000000000000000000000000000000000000";
+    return keccak256(toBytes(JSON.stringify({
+      targetAddress,
+      analysisChain,
+      score: Math.round(convictionMetrics.score),
+      archetype: convictionMetrics.archetype ?? "Unclassified",
+      patienceTax: Math.round(convictionMetrics.patienceTax),
+      upsideCapture: Math.round(convictionMetrics.upsideCapture),
+      totalPositions: convictionMetrics.totalPositions,
+      positions: positionAnalyses.slice(0, 10).map((position) => ({
+        tokenAddress: position.tokenAddress,
+        tokenSymbol: position.tokenSymbol ?? position.metadata?.symbol,
+        totalInvested: Math.round(position.entryDetails.totalValue),
+        totalRealized: Math.round(position.exitDetails?.totalValue ?? 0),
+      })),
+    })));
+  }, [analysisChain, convictionMetrics, positionAnalyses, targetAddress]);
+
+  const subjectHash = useMemo(() => {
+    const subject = `${analysisChain ?? "unknown"}:${targetAddress ?? "unknown"}`;
+    return keccak256(toBytes(subject));
+  }, [analysisChain, targetAddress]);
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
@@ -1041,6 +1069,25 @@ export default function Home() {
                     </CardContent>
                   </Card>
                 </motion.div>
+
+                {/* Mantle Agentic Card */}
+                {mantle.isMantleMode && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                  >
+                    <MantleConvictionCard
+                      thesisHash={thesisHash}
+                      subjectHash={subjectHash}
+                      subjectLabel={targetAddress ?? "No wallet selected"}
+                      convictionScore={convictionMetrics?.score ?? 0}
+                      archetype={convictionMetrics?.archetype ?? "Unclassified"}
+                    />
+                  </motion.div>
+                )}
 
                 {/* Aleo Privacy Card */}
                 <motion.div

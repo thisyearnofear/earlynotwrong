@@ -29,6 +29,10 @@ const phaseConfig = {
     label: "ANALYZING",
     color: "text-signal",
   },
+  anchoring: {
+    label: "ANCHORING TO MANTLE",
+    color: "text-[#65b3ae]",
+  },
   complete: {
     label: "COMPLETE",
     color: "text-patience",
@@ -60,7 +64,11 @@ export function ScanProgress({ className }: ScanProgressProps) {
           <motion.div
             animate={{ opacity: [1, 0.5, 1] }}
             transition={{ duration: 1.5, repeat: Infinity }}
-            className={cn("w-2 h-2 rounded-full bg-signal", phase === "complete" && "bg-patience")}
+            className={cn(
+              "w-2 h-2 rounded-full bg-signal",
+              phase === "anchoring" && "bg-[#65b3ae]",
+              phase === "complete" && "bg-patience"
+            )}
           />
           <span className={cn("text-[10px] tracking-widest", config.color)}>
             {config.label}
@@ -76,6 +84,7 @@ export function ScanProgress({ className }: ScanProgressProps) {
         <motion.div
           className={cn(
             "absolute inset-y-0 left-0 bg-signal",
+            phase === "anchoring" && "bg-[#65b3ae]",
             phase === "complete" && "bg-patience"
           )}
           initial={{ width: 0 }}

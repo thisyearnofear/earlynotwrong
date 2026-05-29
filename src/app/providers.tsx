@@ -4,6 +4,7 @@ import React, { useMemo, useEffect, createContext, useContext, useState, useCall
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { base } from 'wagmi/chains';
+import { mantleSepolia } from '@/lib/mantle';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
@@ -40,11 +41,12 @@ const MiniAppContext = createContext<{
 
 export const useMiniApp = () => useContext(MiniAppContext);
 
-// Wagmi Config for Base
+// Wagmi Config for Base analysis wallets and Mantle anchoring.
 const wagmiConfig = createConfig({
-  chains: [base],
+  chains: [base, mantleSepolia],
   transports: {
     [base.id]: http(),
+    [mantleSepolia.id]: http(),
   },
 });
 

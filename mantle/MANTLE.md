@@ -1,6 +1,10 @@
 # Mantle Phase II Deployment Guide
 
-This directory contains the smart contracts and deployment scripts for the **Mantle Turing Test Hackathon 2026**.
+This directory contains the smart contracts and deployment scripts for the **Mantle Turing Test Hackathon 2026** Phase II workstream.
+
+## Architecture Role
+
+Early, Not Wrong uses Solana and Base as behavioral data source chains. Mantle is the settlement layer for AI-agent reputation: the ENW agent anchors a cross-chain subject hash, thesis hash, conviction score, and archetype to the Mantle registry.
 
 ## Prerequisites
 
@@ -14,7 +18,7 @@ This directory contains the smart contracts and deployment scripts for the **Man
     ```
 3.  Set up your environment variables:
     ```bash
-    cp .env.example .env
+    cp env.example .env
     ```
     *Open `.env` and add your private key (with some Mantle Sepolia $MNT).*
 
@@ -23,7 +27,7 @@ This directory contains the smart contracts and deployment scripts for the **Man
 To deploy the **MantleConvictionRegistry** to Mantle Sepolia:
 
 ```bash
-npx hardhat run scripts/deploy.ts --network mantle-sepolia
+npx hardhat run scripts/deploy.cjs --network mantle-sepolia
 ```
 
 Alternatively, from the project root:
@@ -38,6 +42,12 @@ After deployment, verify the contract on the Mantle Explorer:
 
 ```bash
 npx hardhat verify --network mantle-sepolia <DEPLOYED_CONTRACT_ADDRESS>
+```
+
+Add the deployed address to the app environment:
+
+```bash
+NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY=<DEPLOYED_CONTRACT_ADDRESS>
 ```
 
 ## ERC-8004 Registration

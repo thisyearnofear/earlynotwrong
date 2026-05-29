@@ -1,7 +1,7 @@
 {
-  "agent_id": "eip155:5000:0x8004...#ENW_AGENT_ID",
+  "agent_id": "pending-mantle-registration",
   "name": "Early Not Wrong (ENW) Strategist",
-  "description": "Sovereign AI agent specialized in behavioral conviction analysis and asymmetric risk strategies. ENW analyzes on-chain behavior to distinguish between being 'wrong' and being 'early'.",
+  "description": "Sovereign AI agent specialized in behavioral conviction analysis and asymmetric risk strategies. ENW analyzes Solana and Base wallet behavior, then anchors conviction records to Mantle as verifiable agent reputation.",
   "capabilities": [
     "wallet_behavioral_analysis",
     "conviction_scoring",
@@ -9,7 +9,7 @@
     "rwa_yield_optimization",
     "patience_tax_calculation"
   ],
-  "evm_address": "0xYourAgentWalletAddress",
+  "evm_address": "pending-agent-wallet",
   "endpoints": [
     {
       "type": "mcp",
@@ -22,7 +22,8 @@
   ],
   "schemas": [
     "erc8004/identity/v1",
-    "enw/conviction/v1"
+    "enw/cross-chain-conviction/v1",
+    "enw/mantle-proof-of-analysis/v1"
   ],
   "version": "1.0.0",
   "image": "https://earlynotwrong.com/earlynotwrong.webp"

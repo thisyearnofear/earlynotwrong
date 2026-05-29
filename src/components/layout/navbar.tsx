@@ -48,7 +48,7 @@ const TierIcon = ({
 };
 
 export function Navbar() {
-  const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode } = useAppStore();
+  const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode, mantle } = useAppStore();
   const { connected: isAleoConnectedRaw } = useAleoWallet();
   const [mounted, setMounted] = useState(false);
   
@@ -123,6 +123,15 @@ export function Navbar() {
                     className="ml-1"
                   >
                     <ShieldCheck className="w-3 h-3 text-signal" />
+                  </motion.div>
+                )}
+                {mantle.isMantleMode && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="ml-1"
+                  >
+                    <Zap className="w-3 h-3 text-[#65b3ae]" />
                   </motion.div>
                 )}
               </Link>
@@ -373,6 +382,25 @@ export function Navbar() {
                     className={cn(
                       "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform",
                       isShowcaseMode ? "translate-x-6" : "translate-x-0.5"
+                    )}
+                  />
+                </button>
+              </div>
+
+              {/* Mobile Mantle Toggle */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-surface/30 min-h-[48px]">
+                <span className="text-sm font-mono text-[#65b3ae]">Mantle Mode</span>
+                <button
+                  onClick={() => useAppStore.getState().setMantleState({ isMantleMode: !mantle.isMantleMode })}
+                  className={cn(
+                    "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                    mantle.isMantleMode ? "bg-[#65b3ae]" : "bg-surface"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform",
+                      mantle.isMantleMode ? "translate-x-6" : "translate-x-0.5"
                     )}
                   />
                 </button>
