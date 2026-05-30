@@ -53,6 +53,7 @@ import { ScanProgress } from "@/components/ui/scan-progress";
 import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
 import { MantleConvictionCard } from "@/components/mantle/mantle-conviction-card";
+import { MantleStrategyLens } from "@/components/mantle/mantle-strategy-lens";
 
 export default function Home() {
   const {
@@ -1086,6 +1087,19 @@ export default function Home() {
                       convictionScore={convictionMetrics?.score ?? 0}
                       archetype={convictionMetrics?.archetype ?? "Unclassified"}
                     />
+                  </motion.div>
+                )}
+
+                {/* Mantle Strategy Lens */}
+                {mantle.isMantleMode && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                  >
+                    <MantleStrategyLens />
                   </motion.div>
                 )}
 
