@@ -133,17 +133,17 @@ function PositionCard({
               <div className="flex items-center gap-1 mt-1 overflow-x-auto pb-0.5">
                 {position.isEarlyExit && (
                   <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-impatience/20 text-impatience rounded whitespace-nowrap shrink-0">
-                    EARLY
+                    EARLY EXIT
                   </span>
                 )}
                 {position.exitDetails && position.holdingPeriodDays < 7 && (
-                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-amber-200/20 text-amber-400 rounded whitespace-nowrap shrink-0">
-                    PANIC
+                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-red-500/20 text-red-400 rounded whitespace-nowrap shrink-0">
+                    PANIC SELL
                   </span>
                 )}
                 {position.maxMissedGain > 100 && position.holdingPeriodDays > 30 && (
                   <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-patience/20 text-patience rounded whitespace-nowrap shrink-0">
-                    💎
+                    CONVICTION HOLD
                   </span>
                 )}
                 {position.hasReEntry && (

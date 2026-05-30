@@ -14,19 +14,19 @@ const phaseConfig = {
     color: "text-foreground-muted",
   },
   connecting: {
-    label: "CONNECTING",
+    label: "CONNECTING TO BLOCKCHAIN",
     color: "text-signal",
   },
   fetching: {
-    label: "FETCHING",
+    label: "FETCHING TRADE HISTORY",
     color: "text-signal",
   },
   processing: {
-    label: "PROCESSING",
+    label: "PROCESSING POSITIONS",
     color: "text-signal",
   },
   analyzing: {
-    label: "ANALYZING",
+    label: "ANALYZING CONVICTION",
     color: "text-signal",
   },
   anchoring: {
@@ -34,7 +34,7 @@ const phaseConfig = {
     color: "text-[#65b3ae]",
   },
   complete: {
-    label: "COMPLETE",
+    label: "ANALYSIS COMPLETE",
     color: "text-patience",
   },
 };

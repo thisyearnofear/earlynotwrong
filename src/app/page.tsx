@@ -54,6 +54,8 @@ import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
 import { MantleConvictionCard } from "@/components/mantle/mantle-conviction-card";
 import { MantleStrategyLens } from "@/components/mantle/mantle-strategy-lens";
+import { AnimatedScore } from "@/components/ui/animated-score";
+import Link from "next/link";
 
 export default function Home() {
   const {
@@ -210,7 +212,7 @@ export default function Home() {
                 isAnalyzing && "animate-pulse",
               )}
             />
-            {isAnalyzing ? "SYSTEM ANALYZING..." : "CONVICTION ANALYZER V1.0"}
+            {isAnalyzing ? "SYSTEM ANALYZING..." : "CONVICTION ENGINE"}
           </motion.div>
 
           <motion.h1
@@ -272,10 +274,11 @@ export default function Home() {
                       <DialogTrigger asChild>
                         <Button
                           variant="outline"
-                          size="icon"
-                          className="h-12 w-12 rounded-full border-border/50 hover:border-signal/50"
+                          size="sm"
+                          className="h-10 px-4 rounded-full border-border/50 hover:border-signal/50 font-mono text-xs text-foreground-muted gap-2"
                         >
-                          <Settings className="w-5 h-5" />
+                          <Settings className="w-4 h-4" />
+                          Filters
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
@@ -521,23 +524,34 @@ export default function Home() {
                         Quick start showcase
                       </p>
                       <div className="flex flex-wrap justify-center gap-2">
-                        {SHOWCASE_WALLETS.slice(0, 3).map((wallet) => (
-                          <Button
-                            key={wallet.id}
-                            variant="ghost"
-                            size="sm"
-                            className="border border-border/30 hover:border-signal/30 font-mono text-[10px] h-7 px-3"
-                            onClick={() => analyzeWallet(wallet.id)}
-                          >
-                            {wallet.name}
-                          </Button>
-                        ))}
+                        {SHOWCASE_WALLETS.slice(0, 3).map((wallet) => {
+                          const archetypeLabel = wallet.description.match(/The '([^']+)'/)?.[1];
+                          return (
+                            <button
+                              key={wallet.id}
+                              onClick={() => analyzeWallet(wallet.id)}
+                              className="group flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg border border-border/30 hover:border-signal/30 transition-colors"
+                            >
+                              <span className="font-mono text-[10px] text-foreground group-hover:text-foreground transition-colors">
+                                {wallet.name}
+                              </span>
+                              {archetypeLabel && (
+                                <span className="font-mono text-[8px] text-foreground-muted">
+                                  {archetypeLabel}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
                 </div>
                 ) : (
-                  <div className="w-full max-w-md mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="w-full max-w-md mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-3">
+                    <p className="text-[10px] font-mono text-foreground-muted text-center max-w-sm mx-auto">
+                      Commit your trade thesis to Aleo for privacy-preserving proof-of-conviction. Your intent stays hidden until you choose to reveal it.
+                    </p>
                     <AleoPrivateThesis />
                   </div>
                 )}
@@ -617,7 +631,7 @@ export default function Home() {
                 }}
                 className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-6 relative z-10"
               >
-                {/* Navigation Breadcrumb */}
+                {/* Navigation + Summary */}
                 <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 20 },
@@ -625,27 +639,20 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-12"
                 >
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
-                    <Button
-                      variant="ghost"
-                      className="text-foreground-muted hover:text-foreground"
-                      onClick={() => reset()}
-                    >
-                      ← Back to Home
-                    </Button>
-
-                    {targetAddress && (
-                      <div className="flex items-center gap-2 text-sm flex-wrap">
+                  {/* Summary Bar */}
+                  {convictionMetrics && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 p-3 rounded-lg bg-surface/50 border border-border">
+                      <div className="flex items-center gap-3 flex-wrap">
                         {farcasterIdentity?.username && (
-                          <span className="text-foreground">@{farcasterIdentity.username}</span>
+                          <span className="text-sm font-semibold text-foreground">@{farcasterIdentity.username}</span>
                         )}
                         <button
                           onClick={handleCopyAddress}
                           className="flex items-center gap-1.5 group hover:bg-surface p-1 -ml-1 rounded transition-colors"
                           title="Copy address"
                         >
-                          <span className="font-mono text-foreground-muted group-hover:text-foreground transition-colors">
-                            {targetAddress.slice(0, 6)}...{targetAddress.slice(-4)}
+                          <span className="font-mono text-xs text-foreground-muted group-hover:text-foreground transition-colors">
+                            {targetAddress?.slice(0, 6)}...{targetAddress?.slice(-4)}
                           </span>
                           {isCopied ? (
                             <Check className="w-3 h-3 text-patience" />
@@ -661,22 +668,43 @@ export default function Home() {
                             {analysisChain}
                           </span>
                         )}
-                        <AnimatePresence>
-                          {showSuccessMessage && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.9 }}
-                              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-patience/20 border border-patience/30 text-patience text-sm"
-                            >
-                              <span>✓</span>
-                              <span className="font-mono">Analysis Complete</span>
-                            </motion.div>
+                        <span className="text-xs text-foreground-muted">
+                          Score: <span className="font-bold text-foreground">{convictionMetrics.score}</span>
+                          {convictionMetrics.archetype && (
+                            <> · {convictionMetrics.archetype}</>
                           )}
-                        </AnimatePresence>
+                          <> · Top {convictionMetrics.percentile}%</>
+                          <> · {positionAnalyses.length} positions</>
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs font-mono text-foreground-muted hover:text-foreground"
+                          onClick={() => setShareDialogOpen(true)}
+                        >
+                          <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                          Share
+                        </Button>
+                        <Link
+                          href="/leaderboard"
+                          target="_blank"
+                          className="text-xs font-mono text-foreground-muted hover:text-foreground px-3 py-1.5 rounded hover:bg-surface transition-colors"
+                        >
+                          Leaderboard
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs font-mono text-foreground-muted hover:text-foreground"
+                          onClick={() => reset()}
+                        >
+                          Analyze Another →
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
 
                 {/* Score Card */}
@@ -753,7 +781,7 @@ export default function Home() {
                           <div className="flex flex-col md:flex-row items-center md:items-end gap-6 md:gap-10">
                             <div className="space-y-2">
                               <div className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-bold text-foreground tracking-tighter text-glow">
-                                {convictionMetrics.score}
+                                <AnimatedScore value={convictionMetrics.score} />
                               </div>
                               <div className="flex items-center gap-2 text-patience font-mono text-sm">
                                 <TrendingUp className="w-4 h-4" />
@@ -771,40 +799,19 @@ export default function Home() {
                             )}
                           </div>
                           <div className="space-y-4 w-full xl:w-auto min-w-60">
-                            {/* Metrics Bars */}
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
-                                <span>Patience Tax</span>
-                                <span className="text-foreground">
-                                  -$
-                                  {formatCurrency(
-                                    convictionMetrics.patienceTax,
-                                  )}
+                            {/* Metrics */}
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-baseline text-xs font-mono">
+                                <span className="uppercase text-foreground-muted">Patience Tax</span>
+                                <span className="text-lg font-bold text-impatience">
+                                  -${formatCurrency(convictionMetrics.patienceTax)}
                                 </span>
                               </div>
-                              <div className="h-1 w-full bg-surface rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-impatience"
-                                  style={{
-                                    width: `${Math.min((convictionMetrics.patienceTax / 10000) * 100, 100)}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs uppercase text-foreground-muted font-mono">
-                                <span>Upside Capture</span>
-                                <span className="text-foreground">
+                              <div className="flex justify-between items-baseline text-xs font-mono">
+                                <span className="uppercase text-foreground-muted">Upside Capture</span>
+                                <span className="text-lg font-bold text-patience">
                                   {convictionMetrics.upsideCapture}%
                                 </span>
-                              </div>
-                              <div className="h-1 w-full bg-surface rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-patience"
-                                  style={{
-                                    width: `${convictionMetrics.upsideCapture}%`,
-                                  }}
-                                />
                               </div>
                             </div>
                           </div>
@@ -845,86 +852,6 @@ export default function Home() {
                   </Card>
                 </motion.div>
 
-                {/* Unified Trust Card */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                >
-                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
-                    <CardHeader
-                      className={cn(
-                        isConnected &&
-                          targetAddress &&
-                          targetAddress !== activeAddress
-                          ? "pt-8"
-                          : "pt-6",
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                          Unified Trust
-                        </CardTitle>
-                        <ShieldCheck className="w-5 h-5 text-signal" />
-                      </div>
-
-                      {/* Farcaster Identity Display - Hero */}
-                      {farcasterIdentity && (
-                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20 max-h-35 overflow-hidden">
-                          {farcasterIdentity.pfpUrl && (
-                            <a
-                              href={`https://warpcast.com/${farcasterIdentity.username}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                            >
-                              <img
-                                src={farcasterIdentity.pfpUrl}
-                                alt={farcasterIdentity.username}
-                                className="w-12 h-12 rounded-full ring-2 ring-signal/30 hover:ring-signal/50 transition-all"
-                                loading="lazy"
-                              />
-                            </a>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-base font-semibold text-foreground truncate">
-                              {farcasterIdentity.displayName ||
-                                farcasterIdentity.username}
-                            </div>
-                            <div className="text-sm text-foreground-muted truncate">
-                              @{farcasterIdentity.username}
-                            </div>
-                            <div className="flex gap-1.5 mt-2">
-                              <span className="text-xs text-foreground-muted">
-                                {ethosProfile?.stats?.vouch?.received?.count ?? 0} vouches
-                              </span>
-                              <span className="text-xs text-foreground-muted">
-                                {((ethosProfile?.stats?.review?.received?.positive ?? 0) +
-                                  (ethosProfile?.stats?.review?.received?.neutral ?? 0) +
-                                  (ethosProfile?.stats?.review?.received?.negative ?? 0))} reviews
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="h-[300px] flex items-center justify-center">
-                        {unifiedTrustScore ? (
-                          <div className="text-center">
-                            <div className="text-4xl font-bold text-signal">{unifiedTrustScore.score}</div>
-                            <div className="text-xs text-foreground-muted font-mono uppercase mt-1">{unifiedTrustScore.tier}</div>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-foreground-muted">No trust data available</div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
                 {/* Ethos Card */}
                 <motion.div
                   variants={{
@@ -955,9 +882,39 @@ export default function Home() {
                           : "pt-6",
                       )}
                     >
+                      {/* Farcaster Identity Display */}
+                      {farcasterIdentity && (
+                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20 max-h-35 overflow-hidden">
+                          {farcasterIdentity.pfpUrl && (
+                            <a
+                              href={`https://warpcast.com/${farcasterIdentity.username}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                            >
+                              <img
+                                src={farcasterIdentity.pfpUrl}
+                                alt={farcasterIdentity.username}
+                                className="w-10 h-10 rounded-full ring-2 ring-signal/30 hover:ring-signal/50 transition-all"
+                                loading="lazy"
+                              />
+                            </a>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-foreground truncate">
+                              {farcasterIdentity.displayName ||
+                                farcasterIdentity.username}
+                            </div>
+                            <div className="text-xs text-foreground-muted truncate">
+                              @{farcasterIdentity.username}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between mb-2">
                         <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                          Ethos Network
+                          Reputation
                         </CardTitle>
                         <ShieldCheck className="w-5 h-5 text-ethos" />
                       </div>
@@ -972,11 +929,23 @@ export default function Home() {
                       <CardDescription className="text-xs">
                         {ethosScore
                           ? "Verified via Ethos Network"
-                          : "No reputation signal found"}
+                          : farcasterIdentity
+                            ? "Link your wallet to Ethos for reputation scoring"
+                            : "Connect a wallet with Ethos history to unlock cohort comparison"}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="p-4 rounded-lg bg-surface/50 border border-border space-y-3">
+                        {unifiedTrustScore && unifiedTrustScore.score > 0 && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-foreground-muted">
+                              Trust Score
+                            </span>
+                            <span className="font-mono text-signal font-bold">
+                              {unifiedTrustScore.score}/100
+                            </span>
+                          </div>
+                        )}
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-foreground-muted">
                             Credibility
@@ -1030,13 +999,7 @@ export default function Home() {
                         <Button
                           variant="outline"
                           className="w-full border-border hover:bg-surface text-xs font-mono"
-                          disabled={
-                            !ethosProfile?.username &&
-                            !farcasterIdentity?.username &&
-                            !targetAddress
-                          }
-                          onClick={async () => {
-                            // Try to open Ethos profile
+                          onClick={() => {
                             if (ethosProfile) {
                               const profileUrl =
                                 ethosClient.getProfileUrl(ethosProfile);
@@ -1045,11 +1008,7 @@ export default function Home() {
                                 "_blank",
                                 "noopener,noreferrer",
                               );
-                              return;
-                            }
-
-                            // Manual fallbacks
-                            if (farcasterIdentity?.username) {
+                            } else if (farcasterIdentity?.username) {
                               window.open(
                                 `https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`,
                                 "_blank",
@@ -1061,10 +1020,16 @@ export default function Home() {
                                 "_blank",
                                 "noopener,noreferrer",
                               );
+                            } else {
+                              window.open(
+                                "https://app.ethos.network",
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
                             }
                           }}
                         >
-                          VIEW ETHOS PROFILE
+                          {ethosScore ? "VIEW ETHOS PROFILE" : "BUILD REPUTATION ON ETHOS →"}
                         </Button>
                       </div>
                     </CardContent>
