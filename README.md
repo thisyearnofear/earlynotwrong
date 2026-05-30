@@ -14,6 +14,22 @@ An agentic on-chain behavioral analysis app that helps crypto traders understand
 
 ---
 
+## Mantle Phase II Submission
+
+- **Track**: AI Alpha & Data
+- **Registry**: `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
+- **First Anchor Tx**: `0xc2a1283ea23e394bf8a5b54f4329647ca3319235250d28861cdd9b6dd44907c4`
+- **Demo Wallet**: Jesse Dixon showcase wallet on Base, `0x32DA784C5A5813bAB4D52e84840869c273E15E28`
+
+Architecture:
+- **Analyze** Solana/Base wallet behavior to score conviction, patience tax, and upside capture.
+- **Anchor** the AI report on Mantle using cross-chain subject hashes and an owner-managed agent operator allowlist.
+- **Extend** into Mantle-native strategy intelligence for MNT, mETH, and USDY conviction/risk narratives.
+
+Mantle-native asset story: ENW frames **MNT** as ecosystem beta, **mETH** as liquid staking conviction, and **USDY** as RWA yield discipline. The Phase II demo uses these assets as a curated Mantle strategy lens: the agent can compare a wallet's historical patience profile against the behavior expected for each Mantle-native asset class, then anchor that assessment as proof-of-analysis on Mantle.
+
+---
+
 ## Aleo Privacy Integration (Buildathon Focus)
 
 ### The Privacy Dilemma
@@ -241,6 +257,7 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 - **Agentic Economy**: ENW is being extended from a dashboard into an **Agentic Strategist** that can support Mantle-native assets like **mETH**, **USDY**, and **MNT**.
 
 ### Mantle Ecosystem Integration
+- **Mantle-Native Strategy Lens**: Curated Phase II story for **MNT** ecosystem beta, **mETH** liquid staking conviction, and **USDY** RWA yield discipline.
 - **RWA Analysis**: Planned support for Mantle's Real-World Asset ecosystem, including conviction analysis around **USDY** and **mETH** holders.
 - **Agent-to-Agent (A2A)**: Planned MCP/A2A endpoints so other Mantle agents can request ENW risk assessment and behavioral audits.
 

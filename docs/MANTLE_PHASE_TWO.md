@@ -41,6 +41,16 @@ Secondary fit: AI Trading & Strategy and Agentic Wallets & Economy.
 - First anchor transaction: `0xc2a1283ea23e394bf8a5b54f4329647ca3319235250d28861cdd9b6dd44907c4`.
 - Transaction explorer: `https://explorer.sepolia.mantle.xyz/tx/0xc2a1283ea23e394bf8a5b54f4329647ca3319235250d28861cdd9b6dd44907c4`.
 
+## Mantle-Native Asset Story
+
+The Phase II demo includes a curated Mantle strategy lens so ENW is Mantle-native, not only Mantle-settled:
+
+- MNT: ecosystem beta and governance conviction.
+- mETH: liquid staking conviction and drawdown tolerance.
+- USDY: RWA yield discipline and patience under low-volatility carry.
+
+The agent narrative compares a wallet's historical patience profile against these Mantle-native asset classes, then anchors the assessment as proof-of-analysis on Mantle.
+
 ## Before Submission
 
 - Verify `MantleConvictionRegistry` on Mantle Explorer manually if automated verification remains unavailable.
