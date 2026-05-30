@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "mantle:deploy": "cd mantle && npx hardhat run scripts/deploy.cjs --network mantle-sepolia"
+    "mantle:deploy": "cd mantle && npx hardhat run scripts/deploy.cjs --network mantle-sepolia",
+    "grove:publish-agent-card": "node scripts/publish-agent-card-to-grove.mjs"
   },
   "dependencies": {
     "@farcaster/frame-sdk": "^0.0.64",

@@ -52,6 +52,8 @@ The app includes a curated Mantle Strategy Lens so judges can see how the same b
 - Registry: `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
 - Registry explorer: `https://explorer.sepolia.mantle.xyz/address/0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
 - Agent/operator wallet: `0x4F01CB28EfC79bb0fF722b4d2B9cA62E313DC5fd`
+- Agent card URI: `lens://3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf`
+- Agent card gateway: `https://api.grove.storage/3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf`
 - Contract access model: owner-managed operator allowlist. The deployer is authorized in the constructor, and the owner can authorize additional ENW operator wallets with `setOperatorAuthorization`.
 
 ## Demo Evidence
@@ -76,7 +78,7 @@ Manual verification inputs:
 
 ## Roadmap
 
-- Publish `mantle/agent-card.json` to IPFS or a stable app-hosted URL.
+- Register the published Grove agent card URI in the appropriate Mantle/Lens/social metadata surface.
 - Register the agent card URI if Mantle exposes an official agent identity registry flow for the hackathon.
 - Add a recorded demo link.
 - Add live Mantle asset ingestion for MNT, mETH, and USDY instead of the current curated strategy lens.

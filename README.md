@@ -20,6 +20,7 @@ An agentic on-chain behavioral analysis app that helps crypto traders understand
 - **Registry**: `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
 - **First Anchor Tx**: `0xc2a1283ea23e394bf8a5b54f4329647ca3319235250d28861cdd9b6dd44907c4`
 - **Demo Wallet**: Jesse Dixon showcase wallet on Base, `0x32DA784C5A5813bAB4D52e84840869c273E15E28`
+- **Agent Card**: `lens://3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf`
 
 [Full submission copy →](docs/SUBMISSION.md)
 

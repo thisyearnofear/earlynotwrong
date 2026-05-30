@@ -64,8 +64,18 @@ Automated Hardhat verification currently receives an HTML response from the Mant
 
 Once the contract is deployed, use the `agent-card.json` file in this directory to register your agent on the Mantle Identity Registry.
 
-1.  Upload `agent-card.json` to IPFS.
+1.  Upload `agent-card.json` to Grove or IPFS. Grove publishing is available from the project root:
+    ```bash
+    npm run grove:publish-agent-card
+    ```
 2.  Update the `agentURI` in your registration script or call the `registerAgent` function on the Mantle Registry (`0x8004A...`).
+
+Current Grove agent card:
+
+```text
+lens://3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf
+https://api.grove.storage/3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf
+```
 
 ## Contracts
 
