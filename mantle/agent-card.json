@@ -1,5 +1,5 @@
 {
-  "agent_id": "pending-mantle-registration",
+  "agent_id": "eip155:5003:0x4F01CB28EfC79bb0fF722b4d2B9cA62E313DC5fd#enw-strategist-v1",
   "name": "Early Not Wrong (ENW) Strategist",
   "description": "Sovereign AI agent specialized in behavioral conviction analysis and asymmetric risk strategies. ENW analyzes Solana and Base wallet behavior, then anchors conviction records to Mantle as verifiable agent reputation.",
   "capabilities": [
@@ -9,7 +9,12 @@
     "rwa_yield_optimization",
     "patience_tax_calculation"
   ],
-  "evm_address": "pending-agent-wallet",
+  "evm_address": "0x4F01CB28EfC79bb0fF722b4d2B9cA62E313DC5fd",
+  "network": {
+    "chain_id": 5003,
+    "name": "Mantle Sepolia"
+  },
+  "registry_address": "0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121",
   "endpoints": [
     {
       "type": "mcp",

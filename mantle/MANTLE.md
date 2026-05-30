@@ -53,10 +53,12 @@ NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY=<DEPLOYED_CONTRACT_ADDRESS>
 Current Mantle Sepolia deployment:
 
 ```text
-0x6568418B033F229988bc09c378D16B869829Ab57
+0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121
 ```
 
-Automated Hardhat verification currently receives an HTML response from the Mantle Explorer API. If that persists, verify manually in the explorer UI using the Solidity source in `contracts/MantleConvictionRegistry.sol`.
+This version uses an owner-managed operator allowlist. The deployer is authorized in the constructor, and the owner can authorize additional ENW agent/operator wallets with `setOperatorAuthorization`.
+
+Automated Hardhat verification currently receives an HTML response from the Mantle Explorer API. The manual explorer UI was also blocked by Cloudflare in the agent environment. If that persists, verify manually in a normal browser session using the Solidity source in `contracts/MantleConvictionRegistry.sol`.
 
 ## ERC-8004 Registration
 

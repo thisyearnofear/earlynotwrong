@@ -38,6 +38,23 @@ export const MANTLE_CONVICTION_REGISTRY_ABI = [
   },
   {
     type: "function",
+    name: "setOperatorAuthorization",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_operator", type: "address" },
+      { name: "_authorized", type: "bool" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "authorizedOperators",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
     name: "getLatestConviction",
     stateMutability: "view",
     inputs: [{ name: "_subjectHash", type: "bytes32" }],

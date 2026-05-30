@@ -26,6 +26,9 @@ contract MantleConvictionRegistry is Ownable {
     // Mapping from thesisHash to its metadata
     mapping(bytes32 => ConvictionRecord) public convictionByThesis;
 
+    // Wallets authorized to anchor ENW analysis records.
+    mapping(address => bool) public authorizedOperators;
+
     event ConvictionAnchored(
         bytes32 indexed subjectHash,
         address indexed anchoredBy,
@@ -35,19 +38,37 @@ contract MantleConvictionRegistry is Ownable {
     );
 
     event ConvictionVerified(bytes32 indexed thesisHash);
+    event OperatorAuthorizationUpdated(address indexed operator, bool authorized);
 
-    constructor() Ownable(msg.sender) {}
+    constructor() Ownable(msg.sender) {
+        authorizedOperators[msg.sender] = true;
+        emit OperatorAuthorizationUpdated(msg.sender, true);
+    }
+
+    modifier onlyAuthorizedOperator() {
+        require(authorizedOperators[msg.sender], "Not authorized operator");
+        _;
+    }
+
+    /**
+     * @dev Allows the owner to add or remove ENW agent/operator wallets.
+     */
+    function setOperatorAuthorization(address _operator, bool _authorized) external onlyOwner {
+        require(_operator != address(0), "Invalid operator");
+        authorizedOperators[_operator] = _authorized;
+        emit OperatorAuthorizationUpdated(_operator, _authorized);
+    }
 
     /**
      * @dev Anchors a new conviction score for a cross-chain wallet or identity.
-     * Only the authorized ENW agent (owner) can call this.
+     * Only authorized ENW agent/operator wallets can call this.
      */
     function anchorConviction(
         bytes32 _subjectHash,
         bytes32 _thesisHash,
         uint256 _convictionScore,
         string calldata _archetype
-    ) external onlyOwner {
+    ) external onlyAuthorizedOperator {
         require(_convictionScore <= 100, "Score must be 0-100");
 
         ConvictionRecord memory newRecord = ConvictionRecord({
