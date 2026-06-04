@@ -2,9 +2,7 @@
 
 > Being early feels like being wrong. Until it doesn't.
 
-**Built for the [Aleo Privacy Buildathon 2026](https://luma.com/aleo-buildathon)** — *Where Privacy Becomes the Default.*
-
-An agentic on-chain behavioral analysis app that helps crypto traders understand whether their biggest losses came from being wrong — or from not staying right long enough. The app analyzes **Solana** and **Base** wallet behavior, then anchors AI-generated conviction records to **Mantle** as a verifiable agent reputation layer. "Early, Not Wrong" also uses **Aleo ZK-Proofs** to allow traders to build and prove portable behavioral reputation without revealing their underlying wallet history.
+An agentic on-chain behavioral analysis app that helps crypto traders understand whether their biggest losses came from being wrong — or from not staying right long enough. The app analyzes **Solana** and **Base** wallet behavior, then anchors AI-generated conviction records to **Mantle** as a verifiable agent reputation layer. "Early, Not Wrong" uses **Aleo ZK-Proofs** so traders can build and prove portable behavioral reputation without revealing their underlying wallet history.
 
 ## Chain Architecture
 
@@ -26,7 +24,7 @@ An agentic on-chain behavioral analysis app that helps crypto traders understand
 
 ---
 
-## Aleo Privacy Integration (Buildathon Focus)
+## Aleo Privacy Integration
 
 ### The Privacy Dilemma
 In traditional Web3, building reputation as a "skilled trader" requires exposing your entire wallet history. This creates a trade-off between **Public Identity** (trust but exposure) and **Anonymous Identity** (privacy but lack of credentials).
@@ -36,7 +34,7 @@ In traditional Web3, building reputation as a "skilled trader" requires exposing
 1. **Private Commitment**: Mint your Conviction Metrics as encrypted Aleo records.
 2. **ZK-Proofs**: Generate proofs for specific predicates (e.g., "Score > 80") without revealing the raw data.
 3. **Shield Wallet**: Secure, off-chain management of your behavioral credentials.
-4. **Private Payments (USDCx)**: Unlock premium features and claim "Patience Rebates" using Zero-Knowledge stablecoins.
+4. **Patience Rebates**: Unlock behavioral incentives using the signed-voucher ("pull") treasury model.
 
 [Read our full Privacy Model →](docs/PRIVACY_MODEL.md)
 
@@ -63,17 +61,17 @@ Crypto traders systematically:
 
 An autonomous agent that analyzes historical trades on Solana and Base to:
 
-### Identify:
+### Identify
 - Positions sold early before significant upside
 - Losses capped correctly vs allowed to spiral
 - Drawdowns that preceded outsized gains
 
-### Quantify:
+### Quantify
 - Dollar value of impatience vs conviction
 - Asymmetry score (capped losses vs uncapped gains captured)
 - Patience tax (value lost to premature exits)
 
-### Surface:
+### Surface
 - **"Early, Not Wrong" events** — trades exited at loss/small gain that later mooned
 - **Conviction wins** — holding through drawdowns → outsized returns
 - **False conviction** — stubbornness that destroyed asymmetry
@@ -85,7 +83,8 @@ An autonomous agent that analyzes historical trades on Solana and Base to:
 1. Connect wallet (Solana/Base or both) + Ethos profile
 2. Agent autonomously explores token interactions, entry/exit timing, holding periods, post-exit price trajectories
 3. Receive **Conviction Report** with behavioral scores, missed upside vs avoided downside, comparative insights
-4. **Conviction Index accrues to your Ethos reputation** — portable, composable, credibility-backed
+4. Optionally mint private Aleo records and generate ZK-proofs of conviction predicates
+5. **Conviction Index anchors to Mantle** — portable, verifiable, composable reputation
 
 ---
 
@@ -99,7 +98,7 @@ A wallet-level score measuring how consistently a trader:
 
 **CI is not performance. CI is behavior under uncertainty.**
 
-### Conviction Labels:
+### Conviction Labels
 
 | Label | Characteristics |
 |-------|----------------|
@@ -110,97 +109,188 @@ A wallet-level score measuring how consistently a trader:
 
 ---
 
-## Ethos Integration: Reputation as Infrastructure
+## Ethos Integration
 
-### Why Ethos?
-
-Conviction is meaningless if it's siloed. Ethos makes behavioral reputation **composable, portable, and credible** across the crypto ecosystem.
-
-### How We Integrate:
-
-#### 1. Credibility Score as Entry Point
-- Use Ethos credibility score to filter out sybil wallets and wash trading
-- Only analyze wallets with sufficient on-chain reputation to ensure signal quality
-- Prevents gaming: conviction analysis requires real trading history
-
-#### 2. Conviction Index → Ethos Reputation
-- CI scores are written to user's Ethos profile as attestations
-- Behavioral labels (High Conviction, Early but Right, etc.) become reputation badges
-- Creates a **reputation-native trading identity** that travels with the wallet
-
-#### 3. Reputation-Gated Insights
-- Advanced analytics unlock based on Ethos credibility tier
-- Higher reputation users access comparative cohort data
-- Creates incentive alignment: build reputation, unlock deeper self-knowledge
-
-#### 4. Social Layer via Ethos Profiles
-- Users can display their Conviction Index publicly on Ethos
-- Other traders filter wallets by CI percentile using Ethos API
-- **"Quiet conviction" becomes discoverable reputation** before performance shows
-
-#### 5. Meta-Signal Attribution
-When a high-CI wallet (verified via Ethos) enters/exits/holds:
-- *"This wallet [Ethos credibility: 850] ranks 92nd percentile for upside capture"*
-- *"This wallet [Ethos credibility: 450] historically exits winners early"*
-- Ethos credibility score adds trust layer to behavioral insights
-
-#### 6. Reputation Staking (Future)
-- Wallets can stake Ethos reputation on their conviction thesis
-- False conviction degrades Ethos score
-- Proven conviction compounds reputation
-- Creates **skin-in-the-game for signal quality**
-
-### Technical Integration:
-- **Ethos API** for credibility score queries and attestation writes
-- **Reputation-weighted analytics** (higher Ethos score = access to richer comparative data)
-- **Composable reputation:** CI becomes queryable via Ethos by any dApp
-- **Slash protection:** Gaming detection triggers Ethos reputation penalties
+- **Credibility Score as Entry Point** — filter sybil wallets and wash trading before analysis.
+- **Conviction Index → Ethos Reputation** — CI scores written as attestations; behavioral labels become reputation badges.
+- **Meta-Signal Attribution** — Ethos credibility score adds a trust layer to behavioral insights surfaced by the agent.
 
 ---
 
 ## What This Is NOT
 
-❌ Trading bot  
-❌ Signals platform  
-❌ Leaderboard for speculation  
-❌ Financial advice  
+❌ Trading bot
+❌ Signals platform
+❌ Leaderboard for speculation
+❌ Financial advice
 
 **This is self-knowledge for asymmetric markets — backed by portable, composable reputation.**
 
 ---
 
-## Meta-Signal Layer
-
-Not trade copying. Not alerts. **Meta-signal about the trader, not the trade** — verified and weighted by Ethos credibility.
-
-The app doesn't tell you what to buy. It tells you **how seriously to take a wallet's action**, backed by their reputation.
-
----
-
 ## Tone & Aesthetic
 
-Calm, clinical, contrarian. Minimalist, data-forward. No hype, no price predictions. 
+Calm, clinical, contrarian. Minimalist, data-forward. No hype, no price predictions.
 
 Inspired by value investing, risk asymmetry, behavioral finance, quiet conviction.
 
-**Ethos integration is invisible to the user** — reputation just works, accrues, and compounds naturally.
+---
+
+## What's Actually Built
+
+This is the live, shipped surface area of the repo today.
+
+### Conviction analysis engine
+- Wallet search + connect (Solana, Base, Aleo Shield wallet)
+- Analysis pipeline: `src/app/api/analysis/route.ts`, transaction + price + batch endpoints
+- Position explorer, history panel, score breakdown, animated conviction score
+- Analysis filters and scan-progress UI
+- Share dialog + OG image generation (`/api/og`)
+- Ethos credibility gating (`src/lib/ethos.ts`, `src/lib/ethos-gates.ts`)
+- Farcaster / Neynar identity resolution (`/api/farcaster/resolve`, `/api/identity/resolve`)
+
+### Reputation tier system
+- **Tier card** showing current Ethos tier, score, progress bar to next tier, active perks, and locked-perk preview (`src/components/reputation/reputation-tier-card.tsx`)
+- **Reusable TierGate** wrapper — any gated UI can drop in `<TierGate requiredScore={X} currentScore={Y} .../>` to render a blurred preview + unlock CTA when locked (`src/components/reputation/tier-gate.tsx`)
+- **Perks registry** — `getPerksList(tier)` in `src/lib/ethos-gates.ts` is the single source of truth for what each tier unlocks; drives the tier card and any future gate UI
+- Tier tiers (visitor → member → premium @ 1000 → whale @ 1400 → alpha @ 1700 → elite @ 2000)
+
+### Alpha Discovery
+- **`/alpha` page** with two tabs: High-Conviction Traders and Token Conviction Heatmap (`src/app/alpha/page.tsx`)
+- Traders ranked by conviction score × Ethos multiplier (Elite 1.5x, Alpha 1.3x, Whale 1.15x, Premium 1.05x)
+- Token heatmap shows tokens with highest concentration of credible high-conviction holders; intensity = holderCount × avgConvictionScore, normalized 0–100
+- Gated at Ethos ≥ 1000 (premium); lower tiers see a blurred showcase preview with unlock CTA
+- API routes: `/api/alpha/traders`, `/api/alpha/tokens` (both server-side gated)
+- Showcase data fallback when the DB is empty so judges and new users see the intended UX
+- Nav link in the navbar (desktop + mobile)
+
+### Cohort Comparison
+- Embedded panel in the conviction results that benchmarks the analyzed wallet against its Ethos tier's median: conviction score, patience tax, win rate + percentile
+- Gated at Ethos ≥ 1400 (whale); lower tiers see a TierGate teaser
+- API route: `/api/cohort/compare?address=…&chain=…&score=…` (pulls from the `cohort_stats` Postgres view)
+- Hook + component: `src/hooks/use-cohort-comparison.ts`, `src/components/analysis/cohort-comparison.tsx`
+
+### Private Treasury (Privacy Cash)
+- Displays the connected Solana wallet's **private SOL balance** (LightProtocol state) via the `privacycash` SDK
+- Server-side SDK execution — the SDK depends on Node-only modules (`fs`, `node-localstorage`), so we run it on the server behind `/api/privacy/balance`; the browser bundle never imports it (configured via `serverExternalPackages` in `next.config.ts`)
+- Hook + component: `src/hooks/use-privacy-cash.ts`, `src/components/privacy/private-balance-card.tsx`
+- Explorer link + refresh button; read-only for now (deposit/withdraw require server-held session keys, deferred)
+
+### Aleo privacy layer (Phase 5 — complete)
+- Leo program `early_not_wrong_v3.aleo` (`aleo/src/main.leo`) with `ConvictionRecord`, `PrivateThesis`, and the signed-voucher `claim_rebate` transition
+- Aleo conviction card, private thesis composer, and proof dialog (`src/components/aleo/`)
+- Client + treasury libraries (`src/lib/aleo/client.ts`, `src/lib/aleo/treasury.ts`)
+- API routes: `/api/aleo/rebate`, `/api/aleo/thesis`, `/api/aleo/verify`
+- `use-aleo-conviction` hook and Shield wallet adaptor integration
+
+### Mantle agent layer (Phase 8 — in progress)
+- `MantleConvictionRegistry.sol` — anchors cross-chain subject hashes, thesis hashes, conviction scores, and archetypes on Mantle L2
+- Mantle conviction card + strategy lens (`src/components/mantle/`)
+- Agent card published to Grove (`lens://…`)
+- `scripts/publish-agent-card-to-grove.mjs`
+
+### Leaderboard
+- `/leaderboard` page and `/api/leaderboard` route
+- `leaderboard-table` component with conviction + data-quality badges
+
+### Watchlist
+- Postgres-backed personal watchlist (`/api/user/watchlist`, `use-personal-watchlist`)
 
 ---
 
-## Success Metrics
+## Roadmap Status
 
-- "I didn't realize how much upside I gave away" moments
-- Users discovering non-obvious behavioral mistakes
-- Conviction Index accruing to Ethos profiles
-- Cross-platform reputation portability
-- High-CI wallets becoming discoverable via Ethos before alpha emerges
+Staying on **testnet** until all phases below are complete.
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **5 — Aleo Privacy** | Leo program, selective disclosure, signed-voucher treasury | ✅ Shipped |
+| **8 — Mantle Agentic** | Registry contract + agent card + strategy lens | 🚧 Partial (ERC-8004 registration, RWA strategy engine for USDY/mETH, A2A/MCP endpoints, validation registry still planned) |
+| **6 — Mainnet** | Deploy `early_not_wrong_v3.aleo` to Aleo mainnet; DeFi partnerships; anonymous reputation | 🔜 After 5+8 |
+| **7 — Cross-Chain** | Arbitrum/Optimism, NFT positions, private peer comparison, ZK-endorsements | 🔮 Future |
+
+Features that were previously described in older "Recent Updates" sections but not built have either now been shipped in this codebase (reputation tier perks, Alpha Discovery, token heatmap, cohort analysis, Privacy Cash private balance) or remain intentionally deferred until their infrastructure criteria in `ROADMAP.md` are met (cluster signals, Email/Telegram alerts, Farcaster Frames endpoints, EAS on-chain attestations, anonymous peer comparison).
 
 ---
 
-## Chain Support
+## API Documentation
 
-**Initial:** Solana, Base  
-**Vision:** Chain-agnostic, reputation-composable across all EVM and non-EVM chains
+### Core Endpoints
+```
+GET /api/analysis                  - Run conviction analysis on a wallet
+GET /api/analyze/transactions      - Fetch transaction history
+GET /api/analyze/prices            - Price lookups for post-exit trajectories
+GET /api/analyze/batch             - Batched analysis requests
+GET /api/leaderboard               - Conviction leaderboard
+GET /api/alpha/traders             - Ethos-weighted top conviction wallets (gated: Ethos ≥ 1000)
+GET /api/alpha/tokens              - Token conviction heatmap (gated: Ethos ≥ 1000)
+GET /api/cohort/compare            - Tier-benchmarked comparison (gated: Ethos ≥ 1400)
+GET /api/privacy/balance           - Solana wallet's private SOL balance (Privacy Cash)
+GET /api/identity/resolve          - Cross-chain identity resolution
+GET /api/farcaster/resolve         - Farcaster / Neynar profile resolution
+GET /api/user/profile              - User profile + Ethos reputation
+GET /api/user/watchlist            - Personal watchlist CRUD
+GET /api/aleo/rebate               - Issue signed rebate voucher
+GET /api/aleo/thesis               - Commit private thesis to Aleo
+GET /api/aleo/verify               - Verify Aleo ZK-proof
+GET /api/og                        - OG image generation for shares
+```
+
+### Authentication
+All API calls require:
+- Connected wallet address (Solana, Base, or Aleo)
+- Ethos credibility verification where applicable
+
+---
+
+## Self-Hosted Deployment
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 14+
+- Aleo toolchain (for local Leo development)
+- Hardhat (for Mantle contract deployment)
+
+### Environment Variables
+```bash
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/earlynotwrong"
+POSTGRES_URL=""                 # @vercel/postgres alternate
+
+# API Keys
+ETHOS_API_KEY=""
+NEYNAR_API_KEY=""
+ALCHEMY_API_KEY=""              # Base RPC / webhooks
+HELIUS_API_KEY=""               # Solana RPC
+HELIUS_RPC_URL=""               # Optional explicit Solana RPC for Privacy Cash (falls back to mainnet-beta)
+
+# Farcaster
+FARCASTER_DEVELOPER_ID=""
+FARCASTER_SIGNER_UUID=""
+
+# Aleo
+ALEO_PRIVATE_KEY=""
+ALEO_TREASURY_PRIVATE_KEY=""    # Signs rebate vouchers
+NEXT_PUBLIC_ALEO_PROGRAM_ID="early_not_wrong_v3.aleo"
+
+# Mantle
+NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY="0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121"
+MANTLE_RPC_URL=""
+
+# Security
+JWT_SECRET=""
+ENCRYPTION_KEY=""
+```
+
+### Running locally
+```bash
+npm install
+npm run dev            # Next.js dev server
+npm run mantle:deploy  # Deploy Mantle registry to Sepolia
+```
+
+### Monitoring
+- Health checks at `/api/health` (planned)
 
 ---
 
@@ -208,324 +298,10 @@ Inspired by value investing, risk asymmetry, behavioral finance, quiet convictio
 
 **In asymmetric markets, conviction itself is a signal — but only if it's earned.**
 
-**With Ethos, that conviction becomes reputation you can take anywhere.**
+**With portable ZK-proven reputation, that conviction travels with the trader.**
 
 ---
-
-## Recent Updates: Phase 3B - Cluster Detection & Social Signals
-
-### 🆕 Cluster Signal Detection
-- **Multi-Trader Confluence:** Real-time detection when 3+ high-trust traders (score ≥65) enter the same token within a 15-minute window
-- **Cross-Chain Coverage:** Cluster detection active on both Solana (Helius webhooks) and Base (Alchemy polling)
-- **Weighted Signals:** Clusters weighted by average trust score of participating traders
-- **Cooldown Protection:** 30-minute cooldown per token to prevent signal spam
-
-### 🆕 Email & Telegram Notifications
-- **Email Alerts:** Resend-powered transactional emails with rich HTML formatting
-- **Telegram Bot:** Real-time push notifications via Telegram bot integration
-- **In-App Alerts:** Cluster signals displayed alongside trade alerts in the Conviction Alerts panel
-- **Rate Limiting:** Per-user rate limits (configurable, default 10/hour) to prevent notification fatigue
-
-### 🆕 Notification Preferences
-- **Channel Selection:** Choose in-app, email, Telegram, or any combination
-- **Threshold Tuning:** Configure minimum trust score (default 65) and cluster size (default 3)
-- **Chain Filtering:** Subscribe to Solana-only, Base-only, or all chains
-- **Self-Serve UI:** Integrated settings panel in Conviction Alerts component
-
-### 🆕 Architecture Improvements
-- **Watchlist Consolidation:** Migrated from hardcoded constant to Postgres-backed service (DRY)
-- **TradeEvent Normalization:** Canonical event model shared across Helius and Alchemy ingestion
-- **Modular Alerts System:** `src/lib/alerts/` with types, cluster-detector, and converters
-- **Queue-Based Delivery:** Async notification processing via Vercel Cron
-
----
-
-## Phase II Workstream - Mantle Turing Test Hackathon 2026
-
-### Sovereign AI Agent Identity (ERC-8004)
-- **Agent Passport**: ENW is prepared for registration as a sovereign agent on Mantle using an ERC-8004-style identity flow.
-- **Agent Card**: Metadata schema describes ENW's capabilities in wallet analysis, conviction scoring, and on-chain strategy.
-- **On-Chain Reputation**: Verified conviction analyses are designed to become Mantle-anchored reputation records for the ENW agent.
-
-### Mantle L2 Conviction Registry
-- **Proof of Analysis**: Behavioral insights and conviction scores are hashed and anchored on Mantle L2, creating a verifiable history of the agent's logic.
-- **Cross-Chain Subject Hashes**: Solana/Base wallet identifiers are stored on Mantle as hashes, so Mantle can settle reputation without pretending every analyzed wallet is EVM-native.
-- **Agentic Economy**: ENW is being extended from a dashboard into an **Agentic Strategist** that can support Mantle-native assets like **mETH**, **USDY**, and **MNT**.
-
-### Mantle Ecosystem Integration
-- **Mantle-Native Strategy Lens**: Curated Phase II story for **MNT** ecosystem beta, **mETH** liquid staking conviction, and **USDY** RWA yield discipline.
-- **RWA Analysis**: Planned support for Mantle's Real-World Asset ecosystem, including conviction analysis around **USDY** and **mETH** holders.
-- **Agent-to-Agent (A2A)**: Planned MCP/A2A endpoints so other Mantle agents can request ENW risk assessment and behavioral audits.
-
----
-
-## Recent Updates: Phase 5 - Aleo Privacy Integration (Aleo Buildathon 2026)
-
-### 🆕 Selective Disclosure via Aleo ZK-Proofs
-- **Private CI Records**: Commit your conviction metrics (Score, Archetype, Patience Tax) to Aleo as encrypted records.
-- **Zero-Knowledge Proofs**: Generate proofs for specific predicates (e.g., "Score > 80") without revealing your full wallet history.
-- **Shield Wallet Integration**: Full support for Aleo Shield Wallet for secure, off-chain record management.
-- **Proof Verification API**: Backend Oracle to verify Aleo transaction proofs and validate user claims.
-
-### 🆕 Hardened Treasury: The 'Pull' (Signed Voucher) Model
-- **Platform Authorization**: Our backend verifies eligibility and generates a signed voucher using the treasury's private key.
-- **User Execution**: The user submits this voucher to the smart contract, which verifies the signature and releases the rebate.
-- **Zero Custody**: This model eliminates the need for the platform to hold a spending private key on the server, providing production-grade security for behavioral incentives.
-
-### 🆕 Leo Smart Contract
-- **Live Program ID**: `early_not_wrong_v3.aleo`
-- **Transaction ID**: `at1m2g48kf8j6cml7dclhywfewxujhcdjnmxrckfnxjgnxxxk53cq8qqcc83j` (Latest deployment v3)
-- **Selective Disclosure Logic**: Custom Leo contract implementing privacy-preserving verification transitions.
-- **On-Chain Identity**: Decouple behavioral reputation from public wallet addresses using Aleo's private-by-default architecture.
-
-### 🆕 UI/UX Enhancements
-- **Aleo Conviction Card**: Dedicated interface for minting private records and generating ZK-proofs.
-- **Selective Disclosure Dialog**: User-friendly proof generation flow with real-time status updates and explorer integration.
-
----
-
-## Recent Updates: Phase 4 - Privacy Mode (Privacy Hack 2026)
-
-### 🆕 Privacy Cash Integration
-- **Private Sessions**: Sign a message to derive encryption key, enabling configurable private analysis sessions (basic: 30 min, extended: 24 hours, custom: user-defined)
-- **Unlinkable Analysis**: Wallet addresses cannot be correlated to analysis requests
-- **Zero Custody**: Encryption keys derived from user signatures, never stored
-- **Audited Protocol**: Privacy Cash has 14 audits and $210M+ in private volume
-
-### 🆕 Enhanced Privacy Features
-- **Privacy Tiers**: Basic (30 min), Extended (24 hours), and Custom (user-defined) session durations
-- **Privacy Preferences**: Configurable options to hide specific metrics, enable private peer comparison, and allow anonymous reputation building
-- **Private Peer Comparison**: Compare your conviction metrics against others without revealing your identity
-- **Privacy-Enhanced Reputation**: Build reputation by contributing to aggregate metrics without revealing your wallet address
-
-### 🆕 Private Attestations
-- **Encrypted Conviction Scores**: Create attestations without revealing wallet address
-- **Selective Disclosure**: Share conviction proofs with specific parties via unique URLs
-- **Hash-Based Verification**: Third parties can verify attestation authenticity without seeing data
-- **Anonymous Reputation Building**: Contribute to aggregate reputation metrics without revealing identity
-
-### 🆕 UI Enhancements
-- **Privacy Toggle**: Enable/disable in wallet connect dialog with tier selection
-- **Session Timer**: Countdown with visual indicator and tier display
-- **Privacy Preferences Panel**: Configure privacy settings (hide metrics, peer comparison, reputation building)
-- **Green Shield Badge**: Navbar indicator when privacy mode active
-- **Private Attestation Option**: Choose between public (Base EAS) or private (Privacy Cash) attestations
-- **Anonymous Reputation Builder**: Option to contribute to aggregate metrics without revealing identity
-
-### Technical Implementation
-- **SDK**: `privacycash@1.1.12` npm package
-- **Session Management**: `src/lib/privacy-cash.ts`
-- **Store Integration**: Enhanced `privacyMode` state in Zustand store with tier and preference settings
-- **Attestation Service**: `writePrivateAttestation()`, `verifyPrivateAttestation()`, and `buildPrivacyEnhancedReputation()`
-- **Hook Integration**: `useConviction` hook with `comparePeersPrivately()` and `updatePrivacyPreferences()`
-
-### Hackathon Eligibility
-- **Privacy Cash Bounty**: $15k — SDK integration, private sessions, encrypted attestations
-- **Helius Bounty**: $5k — Already using Helius RPC for Solana data
-- **Open Track**: $18k — "Private behavioral reputation" is a novel use case
-
----
-
-## Recent Updates: Phase 3A - Advanced Reputation Perks & Real-Time Intelligence
-
-### 🆕 Comprehensive Reputation Tier System
-- **4-Tier Perk Structure**: Premium (100+), Whale (500+), Alpha (1000+), Elite (2000+)
-- **Progressive Perks**: Faster refresh rates, deeper history, advanced features unlock by tier
-- **Visual Tier Indicators**: Clear progression path with next-tier requirements and new perks preview
-- **Elite Status**: Maximum perks for 2000+ Ethos users including early feature access
-
-### 🆕 Real-Time Conviction Alerts (Ethos 1000+)
-- **Live Monitoring**: Instant notifications when high-conviction traders make significant moves
-- **Severity Classification**: Critical/High/Medium alerts based on wallet reputation and trade size
-- **Rich Context**: Full trader profiles with Ethos scores, conviction history, and Farcaster identity
-- **Smart Filtering**: Customizable alert thresholds and sound notifications
-
-### 🆕 Advanced Cohort Analysis (Ethos 500+)
-- **Peer Comparison**: Compare your metrics against traders in your reputation tier
-- **Performance Benchmarking**: Win rates, returns, and Sharpe ratios by cohort
-- **Percentile Rankings**: See where you stand within your tier (Top 10%, Average, etc.)
-- **Archetype Distribution**: Most common trading patterns by reputation level
-
-### 🆕 Enhanced Reputation Perks Dashboard
-- **Perk Visualization**: Clear display of active perks and tier benefits
-- **Upgrade Path**: Progress bars and requirements for next tier
-- **Feature Unlocking**: Real-time access control based on Ethos score
-- **Tier-Specific Benefits**: Refresh rates from 5min (Premium) to 30sec (Elite)
-
-### 🆕 Advanced Feature Gating
-- **Ethos 100+**: Basic analytics, 5min refresh, 90-day history
-- **Ethos 500+**: Alpha discovery, cohort analysis, data export, 3min refresh
-- **Ethos 1000+**: Real-time alerts, whale tracking, priority support, 1min refresh  
-- **Ethos 2000+**: Custom dashboard, early access, 30sec refresh
-
----
-
-## Recent Updates: Phase 2B - Alpha Discovery Dashboard
-
-### 🆕 Alpha Discovery Engine
-- **High-Conviction Tracker**: Real-time leaderboard of Iron Pillar traders with Ethos scores >1000
-- **Reputation-Weighted Rankings**: Wallets sorted by conviction score × reputation multiplier
-- **Cross-Chain Alpha**: Unified discovery across Solana and Base networks
-- **Social Context**: Farcaster identities displayed when available
-
-### 🆕 Token Conviction Heatmap
-- **Credible Holder Analysis**: Shows tokens with highest concentration of high-conviction, high-Ethos holders
-- **Conviction Intensity Scoring**: 0-100 scale measuring collective conviction strength
-- **Multi-Chain Token Discovery**: Filter and sort by Solana/Base tokens
-- **Value-Weighted Insights**: Total value held by credible conviction traders
-
-### 🆕 Enhanced Reputation Gating
-- **Ethos Score >500**: Unlocks Alpha Discovery and Token Heatmap
-- **Ethos Score >1000**: Access to real-time conviction alerts (coming soon)
-- **Progressive Feature Unlocking**: Clear path to higher reputation tiers
-- **Sybil-Resistant Analytics**: All features filter out low-credibility wallets
-
-### 🆕 Enhanced UI Components
-- **Conviction Badge Sizes**: Small/medium/large variants for different contexts
-- **Alpha Rating System**: Unknown/Low/Medium/High/Elite classifications
-- **Reputation Tier Indicators**: Visual credibility status with color coding
-- **Responsive Dashboard**: Optimized layout for alpha discovery features
-
----
-
-## Recent Updates: Phase 2A - Reputation-Native Alpha Discovery
-
-### 🆕 Enhanced Reputation Weighting
-- **Ethos-Weighted Conviction Scores**: Base conviction scores are now multiplied by reputation tiers (Elite: 1.5x, High: 1.3x, Medium: 1.15x, Low: 1.05x)
-- **Credibility Tiers**: Visual indicators showing Unknown/Low/Medium/High/Elite reputation status
-- **Sybil-Resistant Analytics**: All scoring now filters out low-credibility wallets to surface genuine alpha
-
-### 🆕 Farcaster Identity Bridge (Selective)
-- **Social Context**: Wallets with Farcaster profiles display username, PFP, and bio
-- **Cross-Chain Discovery**: Automatically suggests linked Ethereum/Solana wallets via Farcaster verified addresses
-- **Enhanced UI**: Reputation cards show both Ethos credibility and social identity when available
-
-### 🆕 Reputation-Gated Features (Coming Soon)
-- **Premium Access**: Ethos score >100 unlocks advanced analytics
-- **Whale Analysis**: Ethos score >500 enables cohort comparisons
-- **Alpha Signals**: Ethos score >1000 provides real-time conviction alerts
-
-### Technical Implementation
-- **Neynar API Integration**: Resolves wallet addresses to Farcaster identities
-- **Enhanced Caching**: Farcaster data cached alongside Ethos reputation
-- **Modular Design**: Social features are additive, not foundational - works for all wallets
-
----
-
-## Farcaster Integration
-
-### Frame Specification Compliance
-This project implements the [Farcaster Frames Specification](https://docs.farcaster.xyz/developers/frames/spec) for seamless social integration.
-
-### Authentication Flow
-- Sign In with Farcaster (SIWF) via AuthKit
-- Neynar API integration for Farcaster identity resolution
-- Secure wallet-to-Farcaster linking
-- Cross-chain identity verification
-
-### Frame Endpoints
-```
-GET /api/frame/home - Main landing frame
-GET /api/frame/analysis/[wallet] - Individual analysis frame
-GET /api/frame/leaderboard - Conviction leaderboard frame
-POST /api/frame/action - Frame action handler
-```
-
-### Neynar Integration
-- Farcaster username and profile picture resolution
-- Verified address linking across chains
-- Social context for behavioral analysis
-- Rate-limited API calls with caching
-
-### Development
-Test frames locally using:
-```bash
-npm run dev:frame-debugger
-```
-
-Validate frames using the [Warpcast Frame Validator](https://warpcast.com/~/developers/frames)
-
-## API Documentation
-
-### Core Endpoints
-```
-GET /api/user/profile - User profile and reputation
-GET /api/trades/history - Historical trade analysis
-GET /api/conviction/score - Conviction index calculation
-GET /api/alerts/recent - Recent conviction alerts
-```
-
-### Authentication
-All API calls require:
-- Valid Farcaster signature
-- Connected wallet address
-- Ethos credibility verification
-
-### Rate Limits
-- 100 requests/minute per user
-- 1000 requests/hour per IP
-- Burst limit of 10 requests/second
-
-## Self-Hosted Deployment
-
-### Prerequisites
-- Node.js 18+
-- PostgreSQL 14+
-- Redis 6+
-- Docker (optional)
-
-### Environment Variables
-```bash
-# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/earlynotwrong"
-
-# API Keys
-ETHOS_API_KEY="your_ethos_key"
-NEYNAR_API_KEY="your_neynar_key" 
-ALCHEMY_API_KEY="your_alchemy_key"
-HELIUS_API_KEY="your_helius_key"
-
-# Farcaster
-FARCASTER_DEVELOPER_ID="your_developer_fid"
-FARCASTER_SIGNER_UUID="your_signer_uuid"
-
-# Security
-JWT_SECRET="your_jwt_secret"
-ENCRYPTION_KEY="your_encryption_key"
-
-# Mantle anchoring
-NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY="0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121"
-```
-
-### Deployment Steps
-1. Clone repository
-2. Set environment variables
-3. Run database migrations
-4. Start services
-5. Configure reverse proxy (nginx/Caddy)
-
-### Monitoring
-- Health checks at `/api/health`
-- Metrics endpoint at `/api/metrics`
-- Error tracking via Sentry
-- Performance monitoring with Datadog
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
-
-- Development setup
-- Coding standards
-- Testing requirements
-- Pull request process
-- Farcaster integration specifics
 
 ## License
 
 MIT
-
----
-
-## Contact
-
-For questions, feedback, or collaboration inquiries, reach out via [your contact method].

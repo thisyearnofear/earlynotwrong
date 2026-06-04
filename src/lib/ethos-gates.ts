@@ -439,3 +439,179 @@ export function getNextTierUnlocks(currentScore: number): {
     unlocks,
   };
 }
+
+// =============================================================================
+// Perks Registry - Human-readable benefits per tier
+// =============================================================================
+
+/**
+ * Minimum Ethos score required to enter each tier.
+ * Mirrors the thresholds in APP_CONFIG.reputation.featureGating but expressed
+ * as a per-tier lookup so UI components can reference a single source.
+ */
+export const TIER_REQUIREMENTS: Record<EthosTier, number> = {
+  visitor: 0,
+  member: 1,
+  premium: 1000,
+  whale: 1400,
+  alpha: 1700,
+  elite: 2000,
+};
+
+export interface TierPerk {
+  key: string;
+  label: string;
+  description: string;
+  icon: "clock" | "download" | "chart" | "bell" | "crown" | "shield" | "zap" | "lock";
+}
+
+const PERKS_BY_TIER: Record<EthosTier, TierPerk[]> = {
+  visitor: [],
+  member: [
+    {
+      key: "basic-analysis",
+      label: "Basic Conviction Analysis",
+      description: "30-day lookback, 20 positions per scan, 5 scans per day",
+      icon: "chart",
+    },
+    {
+      key: "leaderboard",
+      label: "Public Leaderboard",
+      description: "See top conviction wallets across Solana and Base",
+      icon: "chart",
+    },
+  ],
+  premium: [
+    {
+      key: "extended-lookback",
+      label: "60-Day Lookback",
+      description: "Deeper trading history for more accurate conviction scores",
+      icon: "clock",
+    },
+    {
+      key: "more-positions",
+      label: "30 Positions per Scan",
+      description: "Wider coverage of a wallet's activity per analysis",
+      icon: "chart",
+    },
+    {
+      key: "more-scans",
+      label: "10 Scans per Day",
+      description: "Double the daily analysis allowance",
+      icon: "zap",
+    },
+  ],
+  whale: [
+    {
+      key: "alpha-discovery",
+      label: "Alpha Discovery",
+      description: "High-conviction trader list and token conviction heatmap",
+      icon: "zap",
+    },
+    {
+      key: "cohort-comparison",
+      label: "Cohort Comparison",
+      description: "Benchmark your metrics against your reputation tier",
+      icon: "chart",
+    },
+    {
+      key: "90-day-lookback",
+      label: "90-Day Lookback",
+      description: "Quarterly trading history for pattern detection",
+      icon: "clock",
+    },
+    {
+      key: "data-export",
+      label: "Data Export",
+      description: "Download conviction metrics and positions as CSV/JSON",
+      icon: "download",
+    },
+  ],
+  alpha: [
+    {
+      key: "180-day-lookback",
+      label: "180-Day Lookback",
+      description: "Half-year history for cycle-aware conviction analysis",
+      icon: "clock",
+    },
+    {
+      key: "advanced-analytics",
+      label: "Deep Performance Audit",
+      description: "Drawdown, volatility, and raw metadata per position",
+      icon: "chart",
+    },
+    {
+      key: "50-scans",
+      label: "50 Scans per Day",
+      description: "Near-unlimited analysis throughput",
+      icon: "zap",
+    },
+  ],
+  elite: [
+    {
+      key: "365-day-lookback",
+      label: "365-Day Lookback",
+      description: "Full year of trading history",
+      icon: "clock",
+    },
+    {
+      key: "200-positions",
+      label: "200 Positions per Scan",
+      description: "Maximum coverage across all positions",
+      icon: "chart",
+    },
+    {
+      key: "unlimited-scans",
+      label: "Unlimited Scans",
+      description: "No daily cap on analyses",
+      icon: "zap",
+    },
+    {
+      key: "early-access",
+      label: "Early Feature Access",
+      description: "Preview new features before public release",
+      icon: "crown",
+    },
+  ],
+};
+
+/**
+ * Returns the perks available at a given tier, split into `unlocked` (perks
+ * granted by this tier or below) and `locked` (perks granted by higher tiers).
+ * Used by the Reputation Tier Card to render active vs upcoming perks.
+ */
+export function getPerksList(tier: EthosTier): {
+  unlocked: TierPerk[];
+  locked: { perk: TierPerk; requiredTier: EthosTier; requiredScore: number }[];
+} {
+  const tierOrder: EthosTier[] = [
+    "visitor",
+    "member",
+    "premium",
+    "whale",
+    "alpha",
+    "elite",
+  ];
+  const currentIdx = tierOrder.indexOf(tier);
+
+  const unlocked: TierPerk[] = [];
+  const locked: { perk: TierPerk; requiredTier: EthosTier; requiredScore: number }[] = [];
+
+  for (let i = 0; i < tierOrder.length; i++) {
+    const t = tierOrder[i];
+    const perks = PERKS_BY_TIER[t] || [];
+    for (const perk of perks) {
+      if (i <= currentIdx) {
+        unlocked.push(perk);
+      } else {
+        locked.push({
+          perk,
+          requiredTier: t,
+          requiredScore: TIER_REQUIREMENTS[t],
+        });
+      }
+    }
+  }
+
+  return { unlocked, locked };
+}

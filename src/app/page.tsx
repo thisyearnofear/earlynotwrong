@@ -54,6 +54,9 @@ import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
 import { MantleConvictionCard } from "@/components/mantle/mantle-conviction-card";
 import { MantleStrategyLens } from "@/components/mantle/mantle-strategy-lens";
+import { ReputationTierCard } from "@/components/reputation/reputation-tier-card";
+import { CohortComparison } from "@/components/analysis/cohort-comparison";
+import { PrivateBalanceCard } from "@/components/privacy/private-balance-card";
 import { AnimatedScore } from "@/components/ui/animated-score";
 import Link from "next/link";
 
@@ -1077,6 +1080,54 @@ export default function Home() {
                   className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
                 >
                   <AleoConvictionCard />
+                </motion.div>
+
+                {/* Reputation Tier Card */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                >
+                  <ReputationTierCard
+                    currentScore={
+                      isShowcaseMode ? 2200 : (ethosScore?.score ?? null)
+                    }
+                  />
+                </motion.div>
+
+                {/* Cohort Comparison */}
+                {convictionMetrics && (
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                  >
+                    <CohortComparison
+                      address={targetAddress}
+                      chain={analysisChain ?? undefined}
+                      userScore={convictionMetrics.score}
+                      userPatienceTax={convictionMetrics.patienceTax}
+                      userWinRate={convictionMetrics.winRate}
+                      ethosScore={
+                        isShowcaseMode ? 2200 : (ethosScore?.score ?? null)
+                      }
+                    />
+                  </motion.div>
+                )}
+
+                {/* Privacy Cash Private Treasury */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                >
+                  <PrivateBalanceCard />
                 </motion.div>
 
                 {/* Position Explorer */}

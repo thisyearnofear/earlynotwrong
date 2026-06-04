@@ -742,3 +742,200 @@ export async function healthCheck(): Promise<{
     };
   }
 }
+
+// =============================================================================
+// Alpha Discovery - Traders & Token Heatmap
+// =============================================================================
+
+export interface AlphaTrader {
+  address: string;
+  chain: "solana" | "base";
+  convictionScore: number;
+  patienceTax: number;
+  winRate: number;
+  archetype: string | null;
+  totalPositions: number;
+  displayName: string | null;
+  farcaster: string | null;
+  ens: string | null;
+  ethosScore: number | null;
+  rank: number | null;
+  rankChange: number;
+  firstSeenAt: Date;
+  lastUpdatedAt: Date;
+  /** Conviction score × Ethos multiplier, used for sorting */
+  weightedScore: number;
+}
+
+/**
+ * Ethos-weighted reputation multiplier for conviction score.
+ * Matches the README's claim of Elite 1.5x / High 1.3x / Medium 1.15x / Low 1.05x.
+ */
+function ethosMultiplier(ethosScore: number | null): number {
+  const s = ethosScore ?? 0;
+  if (s >= 2000) return 1.5;
+  if (s >= 1700) return 1.3;
+  if (s >= 1400) return 1.15;
+  if (s >= 1000) return 1.05;
+  return 1.0;
+}
+
+function mapAlphaTrader(row: Record<string, unknown>): AlphaTrader {
+  const ethos = row.ethos_score != null ? Number(row.ethos_score) : null;
+  const conviction = Number(row.conviction_score);
+  return {
+    address: row.address as string,
+    chain: row.chain as "solana" | "base",
+    convictionScore: conviction,
+    patienceTax: Number(row.patience_tax ?? 0),
+    winRate: Number(row.win_rate ?? 0),
+    archetype: (row.archetype as string) ?? null,
+    totalPositions: Number(row.total_positions ?? 0),
+    displayName: (row.display_name as string) ?? null,
+    farcaster: (row.farcaster as string) ?? null,
+    ens: (row.ens as string) ?? null,
+    ethosScore: ethos,
+    rank: row.rank != null ? Number(row.rank) : null,
+    rankChange: Number(row.rank_change ?? 0),
+    firstSeenAt: new Date(row.first_seen_at as string),
+    lastUpdatedAt: new Date(row.last_updated_at as string),
+    weightedScore: Math.round(conviction * ethosMultiplier(ethos)),
+  };
+}
+
+/**
+ * Top conviction traders from the alpha_leaderboard table, sorted by
+ * conviction score × Ethos multiplier.
+ */
+export async function getAlphaTraders(
+  chain?: "solana" | "base",
+  limit: number = 25,
+): Promise<AlphaTrader[]> {
+  try {
+    const result = chain
+      ? await sql`
+          SELECT * FROM alpha_leaderboard
+          WHERE chain = ${chain}
+          ORDER BY (conviction_score * (
+            CASE
+              WHEN ethos_score >= 2000 THEN 1.5
+              WHEN ethos_score >= 1700 THEN 1.3
+              WHEN ethos_score >= 1400 THEN 1.15
+              WHEN ethos_score >= 1000 THEN 1.05
+              ELSE 1.0
+            END
+          )) DESC
+          LIMIT ${limit}
+        `
+      : await sql`
+          SELECT * FROM alpha_leaderboard
+          ORDER BY (conviction_score * (
+            CASE
+              WHEN ethos_score >= 2000 THEN 1.5
+              WHEN ethos_score >= 1700 THEN 1.3
+              WHEN ethos_score >= 1400 THEN 1.15
+              WHEN ethos_score >= 1000 THEN 1.05
+              ELSE 1.0
+            END
+          )) DESC
+          LIMIT ${limit}
+        `;
+    return result.rows.map(mapAlphaTrader);
+  } catch (error) {
+    console.warn("Failed to fetch alpha traders:", error);
+    return [];
+  }
+}
+
+export interface TokenHeatmapEntry {
+  tokenAddress: string;
+  tokenSymbol: string | null;
+  chain: "solana" | "base";
+  holderCount: number;
+  avgConvictionScore: number;
+  totalValueHeld: number;
+  /** Intensity 0-100: normalized (holderCount × avgConvictionScore) */
+  convictionIntensity: number;
+  topHolder: string | null;
+}
+
+/**
+ * Tokens with the highest concentration of credible, high-conviction holders.
+ * Pulls from analysis_positions JOIN conviction_analyses, filtered to wallets
+ * with Ethos ≥ 1000 (premium) for sybil resistance.
+ */
+export async function getTokenHeatmap(
+  chain?: "solana" | "base",
+  limit: number = 25,
+  minEthos: number = 1000,
+): Promise<TokenHeatmapEntry[]> {
+  try {
+    const rows = chain
+      ? await sql`
+          SELECT
+            ap.token_address,
+            ap.token_symbol,
+            ap.chain,
+            COUNT(DISTINCT ap.wallet_address) AS holder_count,
+            AVG(ca.score) AS avg_conviction_score,
+            COALESCE(SUM(ap.realized_pnl), 0) AS total_value_held,
+            MAX(ca.address) AS top_holder
+          FROM analysis_positions ap
+          JOIN conviction_analyses ca
+            ON ap.analysis_id = ca.id
+            AND ap.wallet_address = ca.address
+            AND ap.chain = ca.chain
+          WHERE ap.chain = ${chain}
+            AND ca.ethos_score >= ${minEthos}
+            AND ca.analyzed_at > NOW() - INTERVAL '90 days'
+          GROUP BY ap.token_address, ap.token_symbol, ap.chain
+          HAVING COUNT(DISTINCT ap.wallet_address) >= 1
+          ORDER BY (COUNT(DISTINCT ap.wallet_address) * AVG(ca.score)) DESC
+          LIMIT ${limit}
+        `
+      : await sql`
+          SELECT
+            ap.token_address,
+            ap.token_symbol,
+            ap.chain,
+            COUNT(DISTINCT ap.wallet_address) AS holder_count,
+            AVG(ca.score) AS avg_conviction_score,
+            COALESCE(SUM(ap.realized_pnl), 0) AS total_value_held,
+            MAX(ca.address) AS top_holder
+          FROM analysis_positions ap
+          JOIN conviction_analyses ca
+            ON ap.analysis_id = ca.id
+            AND ap.wallet_address = ca.address
+            AND ap.chain = ca.chain
+          WHERE ca.ethos_score >= ${minEthos}
+            AND ca.analyzed_at > NOW() - INTERVAL '90 days'
+          GROUP BY ap.token_address, ap.token_symbol, ap.chain
+          HAVING COUNT(DISTINCT ap.wallet_address) >= 1
+          ORDER BY (COUNT(DISTINCT ap.wallet_address) * AVG(ca.score)) DESC
+          LIMIT ${limit}
+        `;
+
+    const raw = rows.rows.map((r: Record<string, unknown>) => ({
+      tokenAddress: r.token_address as string,
+      tokenSymbol: (r.token_symbol as string) ?? null,
+      chain: r.chain as "solana" | "base",
+      holderCount: Number(r.holder_count),
+      avgConvictionScore: Number(r.avg_conviction_score ?? 0),
+      totalValueHeld: Number(r.total_value_held ?? 0),
+      topHolder: (r.top_holder as string) ?? null,
+      rawIntensity: Number(r.holder_count) * Number(r.avg_conviction_score ?? 0),
+    }));
+
+    const maxIntensity = Math.max(1, ...raw.map((r) => r.rawIntensity));
+    return raw.map((entry) => {
+      const { rawIntensity, ...rest } = entry;
+      return {
+        ...rest,
+        convictionIntensity: Math.round((rawIntensity / maxIntensity) * 100),
+      };
+    });
+  } catch (error) {
+    console.warn("Failed to fetch token heatmap:", error);
+    return [];
+  }
+}

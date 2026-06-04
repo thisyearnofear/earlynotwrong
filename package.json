@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "mantle:deploy": "cd mantle && npx hardhat run scripts/deploy.cjs --network mantle-sepolia",
-    "grove:publish-agent-card": "node scripts/publish-agent-card-to-grove.mjs"
+    "grove:publish-agent-card": "node scripts/publish-agent-card-to-grove.mjs",
+    "postinstall": "test -d node_modules/@lightprotocol/hasher.rs/dist && cp node_modules/@lightprotocol/hasher.rs/dist/hasher_wasm_simd_bg.wasm node_modules/@lightprotocol/hasher.rs/dist/browser-fat/es/ && cp node_modules/@lightprotocol/hasher.rs/dist/light_wasm_hasher_bg.wasm node_modules/@lightprotocol/hasher.rs/dist/browser-fat/es/ || true"
   },
   "dependencies": {
     "@farcaster/frame-sdk": "^0.0.64",

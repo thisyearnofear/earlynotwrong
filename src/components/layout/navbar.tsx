@@ -148,6 +148,13 @@ export function Navbar() {
                 <TrendingUp className="w-3.5 h-3.5" />
                 Leaderboard
               </Link>
+              <Link
+                href="/alpha"
+                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Alpha
+              </Link>
             </div>
           </div>
 
@@ -359,6 +366,14 @@ export function Navbar() {
               >
                 <TrendingUp className="w-5 h-5" />
                 Leaderboard
+              </Link>
+              <Link
+                href="/alpha"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-signal hover:bg-surface/50 transition-colors min-h-[48px]"
+              >
+                <Zap className="w-5 h-5" />
+                Alpha Discovery
               </Link>
 
               {/* Mobile Demo Toggle */}
