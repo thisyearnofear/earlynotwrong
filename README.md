@@ -302,6 +302,17 @@ npm run mantle:deploy  # Deploy Mantle registry to Sepolia
 
 ---
 
+## Architecture & Design Principles
+
+This project is governed by a set of core principles that guide every decision — from component design to code deletion. These principles are codified in [`docs/CORE_PRINCIPLES.md`](docs/CORE_PRINCIPLES.md) and referenced in our planning documents.
+
+Key documents:
+- **[Core Principles](docs/CORE_PRINCIPLES.md)** — Enhancement First, Consolidation, DRY, and more
+- **[Hackathon Plan](docs/HACKATHON_PLAN.md)** — Implementation plan for the BNB Hack: AI Trading Agent Edition
+- **[Privacy Model](docs/PRIVACY_MODEL.md)** — Aleo ZK-powered private credential system
+- **[Security Model](docs/SECURITY.md)** — Signed-voucher treasury and replay protection
+- **[Submission Copy](docs/SUBMISSION.md)** — Mantle Turing Test Hackathon submission
+
 ## License
 
 MIT

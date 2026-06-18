@@ -1,0 +1,77 @@
+{
+  "name": "Early, Not Wrong - Trading Agent",
+  "description": "Conviction-weighted copy-trader agent for the BNB Hack: AI Trading Agent Edition. Scores wallet conviction from CMC data, selects top-K wallets, executes mirror trades via TWAK, and anchors analysis to Mantle.",
+  "engine": "openclaw",
+  "identity": {
+    "name": "Early, Not Wrong",
+    "emoji": "⏳",
+    "vibe": "Calm, clinical, contrarian. Data-forward, no hype."
+  },
+  "llm_providers": [
+    {
+      "provider": "openrouter",
+      "model": "openrouter/auto"
+    }
+  ],
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "bot_token_secret": "TELEGRAM_BOT_TOKEN",
+      "chat_id_secret": "TELEGRAM_CHAT_ID"
+    }
+  },
+  "skills": [
+    {
+      "clawhub_slug": "@pinata/api",
+      "name": "Pinata API"
+    },
+    {
+      "clawhub_slug": "@pinata/erc-8004",
+      "name": "ERC-8004"
+    },
+    {
+      "clawhub_slug": "@pinata/sqlite-sync",
+      "name": "SQLite Sync"
+    }
+  ],
+  "secrets": [
+    "CMC_API_KEY",
+    "TWAK_ACCESS_ID",
+    "TWAK_HMAC_SECRET",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "MANTLE_OPERATOR_KEY",
+    "AGENT_WALLET_KEY"
+  ],
+  "routes": [
+    {
+      "path": "/api/status",
+      "port": 3000,
+      "public": false
+    },
+    {
+      "path": "/api/trades",
+      "port": 3000,
+      "public": false
+    },
+    {
+      "path": "/api/conviction",
+      "port": 3000,
+      "public": false
+    }
+  ],
+  "scripts": {
+    "build": "npm run build",
+    "start": "node dist/index.js"
+  },
+  "tasks": [
+    {
+      "name": "trading-cycle",
+      "schedule": {
+        "every": 240
+      },
+      "prompt": "Run one complete trading cycle: fetch CMC data, score wallets, execute mirror trades via TWAK, anchor to Mantle.",
+      "timeout": 600
+    }
+  ]
+}
