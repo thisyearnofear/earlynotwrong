@@ -31,6 +31,11 @@ import type { SwapResult, TwakPortfolio } from "./lib/twak-executor.js";
 import type { GuardrailResult } from "./lib/risk-guardrails.js";
 import type { ConvictionMetrics } from "./lib/types.js";
 import { setAgentState, startServer } from "./src/server.js";
+import {
+  sendCycleSummary,
+  sendStartup,
+  sendErrorAlert,
+} from "./lib/telegram.js";
 
 // =============================================================================
 // Agent State
@@ -52,6 +57,8 @@ const state = {
   // Cycle results
   guardrailResults: [] as GuardrailResult[],
   executedTrades: [] as SwapResult[],
+  regimeScore: null as number | null,
+  sentimentLabel: null as string | null,
   lastAnchoredHash: null as string | null,
   anchoring: null as {
     hash: string;
@@ -65,7 +72,12 @@ const state = {
 // Startup Health Check
 // =============================================================================
 
-async function startupCheck(): Promise<void> {
+async function startupCheck(): Promise<{
+  twakMode: string;
+  cmcConnected: boolean;
+  walletAddress: string | null;
+  isTestnet: boolean;
+}> {
   console.log("\n── Startup Health Check ──");
 
   const [twakHealth, cmcHealth] = await Promise.all([
@@ -84,6 +96,13 @@ async function startupCheck(): Promise<void> {
   console.log(`  Guardrails: ${guardrailStatus.allOk ? "✓" : "!"} (${guardrailStatus.tradesToday}/${AGENT_CONFIG.trading.maxDailyTrades} trades today)`);
   console.log(`  Mode:      ${twakHealth.mode === "simulator" ? "SIMULATOR (no real execution)" : "LIVE"}`);
   console.log(`  Market:    ${twakHealth.testnet ? "BSC Testnet" : "BSC Mainnet"}`);
+
+  return {
+    twakMode: twakHealth.mode,
+    cmcConnected: !!cmcHealth,
+    walletAddress: twakHealth.agentAddress ?? null,
+    isTestnet: twakHealth.testnet,
+  };
 }
 
 // =============================================================================
@@ -184,6 +203,10 @@ async function scoreMarketRegime(): Promise<{
     "CAUTION";
 
   console.log(`  Regime score: ${regimeScore}/60 (${sentimentLabel})`);
+
+  // Store on state for Telegram cycle summary and other consumers
+  state.regimeScore = regimeScore;
+  state.sentimentLabel = sentimentLabel;
 
   // Score individual tokens from price data
   const convictionScores: ConvictionMetrics[] = [];
@@ -601,6 +624,8 @@ async function runCycle(): Promise<void> {
   // Reset cycle-local state
   state.guardrailResults = [];
   state.executedTrades = [];
+  state.regimeScore = null;
+  state.sentimentLabel = null;
   state.lastAnchoredHash = null;
   state.anchoring = null;
 
@@ -629,6 +654,27 @@ async function runCycle(): Promise<void> {
       state.status = "idle";
       state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
       printCycleSummary(cycleStart);
+
+      // Send cycle summary to Telegram (non-blocking, skip if not configured)
+      const elapsedEarly = ((Date.now() - cycleStart) / 1000).toFixed(1);
+      sendCycleSummary({
+        cycle: state.cycle,
+        duration: `${elapsedEarly}s`,
+        status: state.status,
+        tradesSucceeded: 0,
+        tradesFailed: 0,
+        totalVolumeUsd: state.totalVolumeUsd,
+        portfolioValueUsd: state.portfolio?.totalValueUsd ?? 0,
+        drawdownPercent: state.portfolio
+          ? guardrails.getStatus(state.portfolio.totalValueUsd).drawdownPercent
+          : 0,
+        regimeScore: state.regimeScore,
+        sentimentLabel: state.sentimentLabel,
+        anchoring: state.anchoring,
+        executedTrades: [],
+        errors: state.errors,
+      }).catch(() => {});
+
       return;
     }
 
@@ -649,12 +695,41 @@ async function runCycle(): Promise<void> {
     state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
 
     printCycleSummary(cycleStart);
+
+    // Send cycle summary to Telegram (non-blocking, skip if not configured)
+    const successfulTrades = state.executedTrades.filter(t => t.success).length;
+    const failedTrades = state.executedTrades.filter(t => !t.success).length;
+    const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
+    sendCycleSummary({
+      cycle: state.cycle,
+      duration: `${elapsed}s`,
+      status: state.status,
+      tradesSucceeded: successfulTrades,
+      tradesFailed: failedTrades,
+      totalVolumeUsd: state.totalVolumeUsd,
+      portfolioValueUsd: state.portfolio?.totalValueUsd ?? 0,
+      drawdownPercent: state.portfolio
+        ? guardrails.getStatus(state.portfolio.totalValueUsd).drawdownPercent
+        : 0,
+      regimeScore: state.regimeScore,
+      sentimentLabel: state.sentimentLabel,
+      anchoring: state.anchoring,
+      executedTrades: state.executedTrades,
+      errors: state.errors,
+    }).catch(() => {});
   } catch (error) {
     state.status = "error";
     const message = error instanceof Error ? error.message : String(error);
     state.errors.push(message);
     console.error(`\n✗ Cycle failed: ${message}`);
     console.error(error instanceof Error ? error.stack : "");
+
+    // Send error alert to Telegram (non-blocking, skip if not configured)
+    sendErrorAlert({
+      cycle: state.cycle,
+      error: message,
+      stack: error instanceof Error ? error.stack : undefined,
+    }).catch(() => {});
   }
 }
 
@@ -702,7 +777,18 @@ async function main(): Promise<void> {
   console.log("");  // spacer
 
   // Health check at startup
-  await startupCheck();
+  const health = await startupCheck();
+
+  // Send startup notification to Telegram with real health data (skip if not configured)
+  sendStartup({
+    twakMode: health.twakMode,
+    cmcConnected: health.cmcConnected,
+    walletAddress: health.walletAddress,
+    isTestnet: health.isTestnet,
+    topK: AGENT_CONFIG.trading.topK,
+    intervalMinutes: AGENT_CONFIG.trading.loopIntervalMinutes,
+    maxDrawdown: AGENT_CONFIG.trading.maxDrawdownPercent,
+  }).catch(() => {});
 
   // Sync initial state to server
   syncServerState();

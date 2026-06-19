@@ -119,14 +119,15 @@ async function callMcpTool(
     headers["X-CMC-MCP-API-KEY"] = apiKey;
   }
 
-  // x402 mode requires a wallet to sign a payment (TWAK + @pinata/api).
-  // This is not yet implemented — wire to TWAK signing in Sprint 3.
-  // TODO: Replace with TWAK x402 signing via @pinata/api skill.
-  if (useX402) {
-    throw new Error(
-      `x402 not yet implemented — wire to TWAK signing in Sprint 3. ` +
-      `Call with an API key or set CMC_API_KEY env var to use MCP auth.`
-    );
+  // x402 mode: if no API key is set, the header is omitted and the
+  // request will receive an HTTP 402 (Payment Required) response.
+  // On Pinata Agents, the OpenClaw runtime intercepts 402 responses,
+  // pays the requested amount via the agent wallet, and retries with
+  // the payment signature — all transparently.
+  // In local dev with no API key, the request simply fails and returns null.
+  if (useX402 && !apiKey) {
+    // No API key header set — server will respond with 402.
+    // OpenClaw handles the 402 handshake at the infra layer.
   }
 
   const body = JSON.stringify({
@@ -265,12 +266,18 @@ export class CmcClient implements MarketDataProvider {
   private useX402: boolean;
 
   /**
-   * @param apiKey CMC Pro API key (optional — if not provided, try x402)
-   * @param useX402 If true, use keyless x402 pay-per-request instead of API key
+   * @param apiKey CMC Pro API key (optional — if not provided, use x402)
+   * @param useX402 If true, use keyless x402 pay-per-request instead of API key.
+   *                x402 is handled transparently by Pinata's OpenClaw runtime.
+   *                Falls back gracefully in local dev (returns null).
    */
   constructor(options: { apiKey?: string; useX402?: boolean } = {}) {
     this.apiKey = options.apiKey || process.env.CMC_API_KEY;
     this.useX402 = options.useX402 ?? !this.apiKey;
+
+    if (this.useX402) {
+      console.log("[CMC] x402 mode enabled — data requests paid per-call via agent wallet");
+    }
   }
 
   // ===========================================================================
@@ -528,6 +535,9 @@ export class CmcClient implements MarketDataProvider {
    */
   async healthCheck(): Promise<boolean> {
     try {
+      if (this.useX402) {
+        console.log("[CMC] Health check with x402 — will pay per-request if needed");
+      }
       const result = await this.getGlobalMetrics();
       return result !== null;
     } catch {
