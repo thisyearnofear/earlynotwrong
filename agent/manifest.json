@@ -46,17 +46,17 @@
   "routes": [
     {
       "path": "/api/status",
-      "port": 3000,
+      "port": 31777,
       "public": false
     },
     {
       "path": "/api/trades",
-      "port": 3000,
+      "port": 31777,
       "public": false
     },
     {
       "path": "/api/conviction",
-      "port": 3000,
+      "port": 31777,
       "public": false
     }
   ],
