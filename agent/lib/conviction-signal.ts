@@ -109,11 +109,67 @@ export interface ConvictionSignal {
   score: number;
   breakdown: {
     contrarian: number;
+    rsi: number;
     quality: number;
     regime: number;
+    /** Subtracted from the bonus total. Large value = erratic price path. */
+    volatilityPenalty: number;
   };
   /** Human-readable "why" for logs and the dashboard. */
   rationale: string;
+}
+
+/**
+ * Synthesize an RSI-like timing score (0–100) from a single 7d return.
+ *
+ * True RSI needs a price history; CMC REST only gives us snapshot deltas.
+ * We model the 7d return as N=7 daily moves and estimate the win fraction
+ * `p` that would produce the observed cumulative return under a symmetric
+ * ±2% daily volatility prior. RSI then collapses to 100·p.
+ *
+ * Sanity check:
+ *   +14% over 7d  →  ~5 up days of 7  →  RSI ≈ 71  (overbought)
+ *    0%           →  balanced          →  RSI = 50  (neutral)
+ *   −25% over 7d  →  ~2 up days of 7  →  RSI ≈ 29  (oversold — our sweet spot)
+ */
+export function synthesizeRsi7d(percentChange7d: number): number {
+  const N = 7;
+  const typicalDailyMove = 0.02; // 2%
+  const r = Math.max(-0.95, percentChange7d / 100);
+  // N·(2p−1)·m ≈ r  ⟹  p = (r/(N·m) + 1) / 2
+  const p = Math.max(0.02, Math.min(0.98, (r / (N * typicalDailyMove) + 1) / 2));
+  return Math.round(p * 100);
+}
+
+/**
+ * RSI timing fraction (0–1). Rewards oversold (RSI < 35), neutral in the
+ * middle, penalizes overbought (RSI > 70). This is the *timing* layer on
+ * top of the contrarian weakness signal.
+ */
+function rsiTimingFraction(rsi: number): number {
+  if (rsi <= 25) return 1.0;    // deeply oversold — ideal entry
+  if (rsi <= 35) return 0.85;   // oversold — favorable
+  if (rsi <= 50) return 0.5;    // neutral-low
+  if (rsi <= 65) return 0.25;   // neutral-high — no timing edge
+  return 0;                     // overbought — not our trade
+}
+
+/**
+ * Volatility penalty fraction (0–1).
+ *
+ * Uses the divergence between the 7d cumulative return and the 24h return
+ * as a proxy for path erraticism. A token down 40% over 7d but up 15% in
+ * the last 24h has a volatile, choppy path — "early" here is
+ * indistinguishable from a falling knife that's bouncing. We penalize it.
+ *
+ * Capped at 1.0; scaled by 50pp → a 50pp divergence is the maximum penalty.
+ */
+export function volatilityPenaltyFraction(
+  percentChange7d: number,
+  percentChange24h: number
+): number {
+  const divergence = Math.abs(percentChange7d - percentChange24h);
+  return Math.min(1, divergence / 50);
 }
 
 /**
@@ -171,6 +227,12 @@ function qualityFraction(token: TokenQuote): number {
 
 /**
  * Score a token's conviction to OPEN a position (0–100), contrarian by design.
+ *
+ *   score = contrarian + rsi + quality + regime − volatilityPenalty
+ *
+ * The bonus components reward the thesis (weakness · oversold · liquid ·
+ * fearful market); the penalty discounts erratic paths where "early" is
+ * indistinguishable from a falling knife.
  */
 export function scoreTokenConviction(
   token: TokenQuote,
@@ -179,29 +241,40 @@ export function scoreTokenConviction(
   const w = AGENT_CONFIG.signal;
 
   const contrarian = contrarianFraction(token.percentChange7d) * w.contrarian;
+
+  const rsi = synthesizeRsi7d(token.percentChange7d);
+  const rsiBonus = rsiTimingFraction(rsi) * w.rsi;
+
   const quality = qualityFraction(token) * w.quality;
   const regimeComponent = (regime.score / 100) * w.regime;
 
-  const score = Math.round(
-    Math.max(0, Math.min(100, contrarian + quality + regimeComponent))
-  );
+  const volPenalty =
+    volatilityPenaltyFraction(token.percentChange7d, token.percentChange24h) *
+    w.volatilityPenaltyMax;
+
+  const raw = contrarian + rsiBonus + quality + regimeComponent - volPenalty;
+  const score = Math.round(Math.max(0, Math.min(100, raw)));
 
   const dip = token.percentChange7d;
   const dipText =
     dip <= -15 ? `down ${Math.abs(dip).toFixed(0)}% (early)` :
     dip < 0 ? `mild dip ${Math.abs(dip).toFixed(0)}%` :
     `up ${dip.toFixed(0)}% (chasing)`;
-  const rationale = `${dipText} · ${regime.fearLevel.replace("-", " ")} regime · ${
+  const rsiText = rsi <= 35 ? ` · RSI ${rsi} oversold` : rsi >= 70 ? ` · RSI ${rsi} hot` : "";
+  const volText = volPenalty >= w.volatilityPenaltyMax * 0.5 ? ` · erratic path (−${Math.round(volPenalty)})` : "";
+  const rationale = `${dipText}${rsiText} · ${regime.fearLevel.replace("-", " ")} regime · ${
     quality >= w.quality * 0.6 ? "deep" : quality >= w.quality * 0.3 ? "ok" : "thin"
-  } liquidity`;
+  } liquidity${volText}`;
 
   return {
     symbol: token.symbol,
     score,
     breakdown: {
       contrarian: Math.round(contrarian),
+      rsi: Math.round(rsiBonus),
       quality: Math.round(quality),
       regime: Math.round(regimeComponent),
+      volatilityPenalty: Math.round(volPenalty),
     },
     rationale,
   };

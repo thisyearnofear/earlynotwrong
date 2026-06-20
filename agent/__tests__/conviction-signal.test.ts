@@ -5,6 +5,8 @@ import {
   evaluatePosition,
   accruePosition,
   openPosition,
+  synthesizeRsi7d,
+  volatilityPenaltyFraction,
 } from "../lib/conviction-signal.js";
 import type { TokenQuote } from "../lib/cmc-client.js";
 
@@ -188,5 +190,88 @@ describe("accruePosition — tracks peak and max underwater", () => {
     const next = accruePosition(pos, 0);
     expect(next.cyclesHeld).toBe(1);
     expect(next.maxUnderwaterPercent).toBe(0);
+  });
+});
+
+describe("synthesizeRsi7d — RSI-like timing from a single 7d return", () => {
+  it("returns ~50 for flat return", () => {
+    expect(synthesizeRsi7d(0)).toBe(50);
+  });
+
+  it("returns oversold (< 35) for a meaningful 7d dip", () => {
+    expect(synthesizeRsi7d(-25)).toBeLessThan(35);
+    expect(synthesizeRsi7d(-35)).toBeLessThan(35);
+  });
+
+  it("returns overbought (> 70) for a meaningful 7d run", () => {
+    expect(synthesizeRsi7d(25)).toBeGreaterThan(70);
+  });
+
+  it("is monotonic in the 7d return", () => {
+    const weak = synthesizeRsi7d(-30);
+    const neutral = synthesizeRsi7d(0);
+    const strong = synthesizeRsi7d(30);
+    expect(weak).toBeLessThan(neutral);
+    expect(neutral).toBeLessThan(strong);
+  });
+
+  it("clamps catastrophic collapse (−95%) without crashing", () => {
+    const rsi = synthesizeRsi7d(-95);
+    expect(rsi).toBeGreaterThanOrEqual(0);
+    expect(rsi).toBeLessThan(10);
+  });
+});
+
+describe("volatilityPenaltyFraction — penalizes erratic paths", () => {
+  it("returns 0 when 7d and 24h agree (smooth path)", () => {
+    expect(volatilityPenaltyFraction(-20, -20)).toBe(0);
+    expect(volatilityPenaltyFraction(10, 10)).toBe(0);
+  });
+
+  it("returns the maximum (1) when divergence is 50pp+", () => {
+    expect(volatilityPenaltyFraction(-40, 15)).toBe(1);
+    expect(volatilityPenaltyFraction(50, 0)).toBe(1);
+  });
+
+  it("scales linearly between 0 and 1", () => {
+    const mid = volatilityPenaltyFraction(-25, 0); // 25pp divergence
+    expect(mid).toBeCloseTo(0.5, 2);
+  });
+});
+
+describe("scoreTokenConviction — integrated formula", () => {
+  const fearfulRegime = {
+    score: 75,
+    label: "FEAR",
+    fearGreedIndex: 25,
+    fearLevel: "fear" as const,
+  };
+
+  it("awards a bonus to a smooth-path oversold token vs a choppy-path equally-down token", () => {
+    // Smooth path: down 20% over 7d AND down 20% over 24h → low vol penalty
+    const smooth = scoreTokenConviction(
+      makeQuote({ percentChange7d: -20, percentChange24h: -20 }),
+      fearfulRegime
+    );
+    // Erratic path: down 40% over 7d BUT up 15% in the last 24h → 55pp divergence
+    const erratic = scoreTokenConviction(
+      makeQuote({ percentChange7d: -40, percentChange24h: 15 }),
+      fearfulRegime
+    );
+    // Smooth should score meaningfully higher due to the vol penalty on erratic
+    expect(smooth.score).toBeGreaterThan(erratic.score);
+    expect(erratic.breakdown.volatilityPenalty).toBeGreaterThan(
+      smooth.breakdown.volatilityPenalty
+    );
+  });
+
+  it("surfaces RSI and volatility in the breakdown and rationale", () => {
+    const signal = scoreTokenConviction(
+      makeQuote({ percentChange7d: -25, percentChange24h: -5 }),
+      fearfulRegime
+    );
+    expect(signal.breakdown.rsi).toBeGreaterThanOrEqual(0);
+    expect(typeof signal.breakdown.volatilityPenalty).toBe("number");
+    expect(signal.rationale).toMatch(/RSI|oversold|erratic|fear/i);
   });
 });

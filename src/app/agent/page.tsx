@@ -86,7 +86,13 @@ interface ConvictionData {
   signals: Array<{
     symbol: string;
     score: number;
-    breakdown: { contrarian: number; quality: number; regime: number };
+    breakdown: {
+      contrarian: number;
+      rsi: number;
+      quality: number;
+      regime: number;
+      volatilityPenalty: number;
+    };
     rationale: string;
   }>;
   heldPositions: Array<{
@@ -650,8 +656,12 @@ function Dashboard({
                       </div>
                       <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-foreground-muted">
                         <span>contrarian <span className="text-signal">{s.breakdown.contrarian}</span></span>
+                        <span>· rsi <span className="text-cyan-400">{s.breakdown.rsi}</span></span>
                         <span>· quality <span className="text-patience">{s.breakdown.quality}</span></span>
                         <span>· regime <span className="text-cyan-400">{s.breakdown.regime}</span></span>
+                        {s.breakdown.volatilityPenalty > 0 && (
+                          <span>· vol <span className="text-impatience">−{s.breakdown.volatilityPenalty}</span></span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
