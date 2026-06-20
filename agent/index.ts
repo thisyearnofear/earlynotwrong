@@ -858,8 +858,8 @@ async function main(): Promise<void> {
   console.log(`Eligible tokens: ${AGENT_CONFIG.competition.eligibleTokens.length}`);
   console.log(`Default slippage: ${AGENT_CONFIG.trading.defaultSlippageBps} bps`);
 
-  // Start the HTTP server (serves /status, /trades, /conviction on port 3000)
-  const server = startServer(3000);
+  // Start the HTTP server (serves /status, /trades, /conviction on exotic port)
+  const server = startServer(31777);
   console.log("");  // spacer
 
   // Health check at startup

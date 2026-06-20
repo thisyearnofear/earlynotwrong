@@ -196,7 +196,7 @@ export function startServer(
   port: number = 3000,
   options: { fallbackPorts?: number[] } = {}
 ): ReturnType<typeof serve> {
-  const fallbacks = options.fallbackPorts ?? [3100, 3001, 0];
+  const fallbacks = options.fallbackPorts ?? [31778, 31779, 0];
   const portsToTry = [port, ...fallbacks];
 
   let lastError: unknown;
