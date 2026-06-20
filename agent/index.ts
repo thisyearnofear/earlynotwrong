@@ -20,6 +20,11 @@
  * See docs/HACKATHON_PLAN.md for the full architecture and sprint plan.
  */
 
+// Load .env FIRST. This module has no other imports; its body runs before
+// any sibling module reads process.env — guaranteeing CMC_API_KEY, TWAK_*,
+// and MANTLE_OPERATOR_KEY are available at module-construction time.
+import "./lib/env-loader.js";
+
 import { AGENT_CONFIG } from "./lib/config.js";
 import { cmcClient } from "./lib/cmc-client.js";
 import { twakExecutor } from "./lib/twak-executor.js";

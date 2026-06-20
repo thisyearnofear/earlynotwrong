@@ -142,7 +142,8 @@ async function loadFromSqliteSync(): Promise<PersistentState | null> {
 
     if (!res.ok) return null;
 
-    const data = await res.json();
+    const data = (await res.json()) as { value?: string } | null;
+
     if (data?.value) {
       return JSON.parse(data.value) as PersistentState;
     }

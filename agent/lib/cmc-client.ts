@@ -113,8 +113,9 @@ async function restGet<T = Record<string, unknown>>(
       return null;
     }
 
-    const json = await response.json();
-    return (json.data ?? json) as T;
+    const json = (await response.json()) as { data?: unknown } | unknown;
+    const payload = "data" in (json as object) ? (json as { data: unknown }).data : json;
+    return payload as T;
   } catch (error) {
     console.warn(`CMC REST request failed for ${path}:`, error);
     return null;
