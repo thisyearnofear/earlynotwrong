@@ -89,7 +89,7 @@ export class RiskGuardrails {
   private lastTradeAt: number | null = null;
 
   constructor(
-    initialPortfolioValue: number = 10000,
+    initialPortfolioValue: number = 0,
     overrides?: Partial<typeof AGENT_CONFIG.trading>
   ) {
     const t = { ...AGENT_CONFIG.trading, ...overrides };

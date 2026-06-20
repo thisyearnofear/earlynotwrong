@@ -5,7 +5,7 @@ import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Menu, X } from "lucide-react";
+import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Activity, Menu, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -154,6 +154,13 @@ export function Navbar() {
               >
                 <Zap className="w-3.5 h-3.5" />
                 Alpha
+              </Link>
+              <Link
+                href="/agent"
+                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
+              >
+                <Activity className="w-3.5 h-3.5" />
+                Agent
               </Link>
             </div>
           </div>
@@ -374,6 +381,14 @@ export function Navbar() {
               >
                 <Zap className="w-5 h-5" />
                 Alpha Discovery
+              </Link>
+              <Link
+                href="/agent"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-signal hover:bg-surface/50 transition-colors min-h-[48px]"
+              >
+                <Activity className="w-5 h-5" />
+                Agent Dashboard
               </Link>
 
               {/* Mobile Demo Toggle */}
