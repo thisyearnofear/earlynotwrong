@@ -30,13 +30,15 @@ export const AGENT_CONFIG = {
   // assets during fear — NOT momentum/chasing recent winners.
   signal: {
     // Reward weakness / being early (negative recent returns).
-    contrarian: 35,
+    contrarian: 30,
     // Reward oversold timing (synthesized RSI < 35 from 7d return).
     rsi: 10,
     // Reward liquidity & size (capped downside, room to run).
-    quality: 25,
+    quality: 20,
     // Reward entering when the market is fearful (low FGI, negative funding).
     regime: 20,
+    // Reward on-chain accumulation (growing holder base over 7d).
+    holders: 10,
     // Cap on the volatility-erraticism penalty (large |7d − 24h| divergence).
     volatilityPenaltyMax: 15,
     // Floor for "early" — collapses worse than this are avoided, not bought.

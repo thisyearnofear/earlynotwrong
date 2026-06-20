@@ -16,6 +16,7 @@
  */
 
 import { AGENT_CONFIG } from "./config.js";
+import { holderGrowthFraction } from "./holder-growth.js";
 import type {
   TokenQuote,
   GlobalMetrics,
@@ -112,9 +113,15 @@ export interface ConvictionSignal {
     rsi: number;
     quality: number;
     regime: number;
+    /** On-chain accumulation bonus. 0 when holder history is unavailable. */
+    holders: number;
     /** Subtracted from the bonus total. Large value = erratic price path. */
     volatilityPenalty: number;
   };
+  /** Holder count from BscScan, or null if unavailable. */
+  holderCount: number | null;
+  /** Holder growth % over the lookback window, or null if history too short. */
+  holderGrowthPercent: number | null;
   /** Human-readable "why" for logs and the dashboard. */
   rationale: string;
 }
@@ -228,15 +235,19 @@ function qualityFraction(token: TokenQuote): number {
 /**
  * Score a token's conviction to OPEN a position (0–100), contrarian by design.
  *
- *   score = contrarian + rsi + quality + regime − volatilityPenalty
+ *   score = contrarian + rsi + quality + regime + holders − volatilityPenalty
  *
  * The bonus components reward the thesis (weakness · oversold · liquid ·
- * fearful market); the penalty discounts erratic paths where "early" is
- * indistinguishable from a falling knife.
+ * fearful market · accumulating holders); the penalty discounts erratic
+ * paths where "early" is indistinguishable from a falling knife.
+ *
+ * `holderMetric` is optional — when absent (no BscScan key or not enough
+ * history), the holders component scores 0 and the rationale flags it.
  */
 export function scoreTokenConviction(
   token: TokenQuote,
-  regime: MarketRegime
+  regime: MarketRegime,
+  holderMetric?: { count: number; growthPercent: number | null }
 ): ConvictionSignal {
   const w = AGENT_CONFIG.signal;
 
@@ -248,11 +259,16 @@ export function scoreTokenConviction(
   const quality = qualityFraction(token) * w.quality;
   const regimeComponent = (regime.score / 100) * w.regime;
 
+  const growthFraction = holderGrowthFraction(holderMetric?.growthPercent ?? null);
+  const holderBonus =
+    growthFraction === null ? 0 : growthFraction * w.holders;
+
   const volPenalty =
     volatilityPenaltyFraction(token.percentChange7d, token.percentChange24h) *
     w.volatilityPenaltyMax;
 
-  const raw = contrarian + rsiBonus + quality + regimeComponent - volPenalty;
+  const raw =
+    contrarian + rsiBonus + quality + regimeComponent + holderBonus - volPenalty;
   const score = Math.round(Math.max(0, Math.min(100, raw)));
 
   const dip = token.percentChange7d;
@@ -261,10 +277,16 @@ export function scoreTokenConviction(
     dip < 0 ? `mild dip ${Math.abs(dip).toFixed(0)}%` :
     `up ${dip.toFixed(0)}% (chasing)`;
   const rsiText = rsi <= 35 ? ` · RSI ${rsi} oversold` : rsi >= 70 ? ` · RSI ${rsi} hot` : "";
+  const holderText =
+    !holderMetric ? "" :
+    holderMetric.growthPercent === null ? ` · ${holderMetric.count.toLocaleString()} holders (no history)` :
+    holderMetric.growthPercent >= 5 ? ` · +${holderMetric.growthPercent.toFixed(1)}% holders` :
+    holderMetric.growthPercent <= -3 ? ` · ${holderMetric.growthPercent.toFixed(1)}% holders (fading)` :
+    ` · ${holderMetric.growthPercent >= 0 ? "+" : ""}${holderMetric.growthPercent.toFixed(1)}% holders`;
   const volText = volPenalty >= w.volatilityPenaltyMax * 0.5 ? ` · erratic path (−${Math.round(volPenalty)})` : "";
   const rationale = `${dipText}${rsiText} · ${regime.fearLevel.replace("-", " ")} regime · ${
     quality >= w.quality * 0.6 ? "deep" : quality >= w.quality * 0.3 ? "ok" : "thin"
-  } liquidity${volText}`;
+  } liquidity${holderText}${volText}`;
 
   return {
     symbol: token.symbol,
@@ -274,8 +296,11 @@ export function scoreTokenConviction(
       rsi: Math.round(rsiBonus),
       quality: Math.round(quality),
       regime: Math.round(regimeComponent),
+      holders: Math.round(holderBonus),
       volatilityPenalty: Math.round(volPenalty),
     },
+    holderCount: holderMetric?.count ?? null,
+    holderGrowthPercent: holderMetric?.growthPercent ?? null,
     rationale,
   };
 }

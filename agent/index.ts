@@ -27,7 +27,7 @@ import "./lib/env-loader.js";
 
 import { AGENT_CONFIG } from "./lib/config.js";
 import { cmcClient } from "./lib/cmc-client.js";
-import { twakExecutor } from "./lib/twak-executor.js";
+import { twakExecutor, TwakExecutor } from "./lib/twak-executor.js";
 import { guardrails } from "./lib/risk-guardrails.js";
 
 import {
@@ -62,6 +62,13 @@ import {
 import { summarizeError, isRecoverable } from "./lib/errors.js";
 import { AGENT_MODE } from "./lib/config.js";
 import { persistState, loadPersistentState } from "./lib/persistence.js";
+import {
+  loadHolderCache,
+  saveHolderCache,
+  fetchHolderCount,
+  recordHolderCount,
+} from "./lib/bscscan-client.js";
+import { computeHolderMetric } from "./lib/holder-growth.js";
 
 // =============================================================================
 // Agent State
@@ -213,8 +220,55 @@ async function analyzeConviction(): Promise<{
   const regime = scoreMarketRegime(md?.globalMetrics ?? null, md?.derivatives ?? null);
   console.log(`  Regime: ${regime.score}/100 — ${regime.label} (FGI=${regime.fearGreedIndex ?? "?"})`);
 
-  const convictionSignals = (md?.tokenPrices ?? []).map((t) =>
-    scoreTokenConviction(t, regime)
+  // --- Holder-growth integration (BscScan) ---
+  // Load cache, resolve addresses, fetch counts, compute metrics.
+  // Fully gated on BSCSCAN_API_KEY — when absent, holderMetrics stays empty
+  // and the conviction signal gracefully omits the holder component.
+  const holderCache = loadHolderCache();
+  const holderMetrics = new Map<string, { count: number; growthPercent: number | null }>();
+  const tokens = md?.tokenPrices ?? [];
+
+  if (process.env.BSCSCAN_API_KEY) {
+    const resolved = TwakExecutor.getResolvedAddresses();
+
+    // Resolve addresses for tokens not yet cached (up to 10 to stay fast).
+    const unresolved = tokens
+      .filter((t) => !resolved.has(t.symbol.toUpperCase()))
+      .slice(0, 10);
+    for (const t of unresolved) {
+      await twakExecutor.resolveAddress(t.symbol);
+    }
+
+    const addresses = TwakExecutor.getResolvedAddresses();
+    let fetched = 0;
+    for (const t of tokens) {
+      const addr = addresses.get(t.symbol.toUpperCase());
+      if (!addr) continue;
+      const count = await fetchHolderCount(addr, t.symbol);
+      if (count !== null) {
+        recordHolderCount(holderCache, t.symbol, count);
+        fetched++;
+      }
+      // Free tier: 1 call/s pacing.
+      if (fetched < tokens.length) await new Promise((r) => setTimeout(r, 1100));
+    }
+    saveHolderCache(holderCache);
+    if (fetched > 0) console.log(`  [holders] Fetched ${fetched} holder counts`);
+  }
+
+  // Compute metrics from cache (works even without API key if cache has data).
+  for (const t of tokens) {
+    const metric = computeHolderMetric(holderCache, t.symbol);
+    if (metric.count > 0) {
+      holderMetrics.set(t.symbol, {
+        count: metric.count,
+        growthPercent: metric.growthPercent,
+      });
+    }
+  }
+
+  const convictionSignals = tokens.map((t) =>
+    scoreTokenConviction(t, regime, holderMetrics.get(t.symbol))
   );
 
   const top = [...convictionSignals]

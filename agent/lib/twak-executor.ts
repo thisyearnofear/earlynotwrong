@@ -580,6 +580,20 @@ export class TwakExecutor {
   }
 
   /**
+   * Resolve a token symbol to its BEP-20 contract address via `twak search`.
+   * Public wrapper around the private resolver — used by the holder-growth
+   * module to look up BscScan contract addresses.
+   */
+  async resolveAddress(symbol: string): Promise<string | null> {
+    return this.resolveTokenAddress(symbol);
+  }
+
+  /** All symbol → address mappings resolved so far this session. */
+  static getResolvedAddresses(): Map<string, string> {
+    return new Map(TwakExecutor.tokenAddressCache);
+  }
+
+  /**
    * Check the token address cache for a resolved address.
    * Returns the cached address if found, or the original symbol if not.
    */
