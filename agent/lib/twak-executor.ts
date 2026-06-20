@@ -83,6 +83,16 @@ interface TwakConfig {
   testnet?: boolean;
   /** Slippage in basis points (default: 100 = 1%) */
   defaultSlippageBps?: number;
+  /**
+   * For testing: inject a custom execFile implementation.
+   * Must follow Node.js callback pattern: (file, args, options, callback) => void.
+   */
+  execFileOverride?: (
+    file: string,
+    args: readonly string[],
+    options: Record<string, unknown>,
+    callback: (error: Error | null, result: { stdout: string; stderr: string }) => void
+  ) => void;
 }
 
 interface SwapRequest {
@@ -142,7 +152,7 @@ interface TwakHealth {
 // =============================================================================
 
 export class TwakExecutor {
-  private config: Required<TwakConfig>;
+  private config: Required<Omit<TwakConfig, "execFileOverride">>;
   private simulatorBalances: Map<string, BalanceEntry> = new Map();
   private simulatorPortfolio: TwakPortfolio = {
     totalValueUsd: 10000, // Starting simulated portfolio
@@ -152,6 +162,9 @@ export class TwakExecutor {
   };
   private simulatorSwapHistory: SwapResult[] = [];
   private lastQuote: { tokenIn: string; tokenOut: string; amountIn: string; amountOut: string; price: number } | null = null;
+
+  /** Promisified execFile for async CLI calls (supports DI for testing). */
+  private execFileAsync: typeof execFileAsync;
 
   constructor(config: TwakConfig = {}) {
     this.config = {
@@ -163,6 +176,11 @@ export class TwakExecutor {
       testnet: config.testnet ?? true,
       defaultSlippageBps: config.defaultSlippageBps ?? AGENT_CONFIG.trading.defaultSlippageBps,
     };
+
+    // Dependency injection: use custom execFile override for testing, or real one
+    this.execFileAsync = config.execFileOverride
+      ? (promisify(config.execFileOverride) as unknown as typeof execFileAsync)
+      : execFileAsync;
 
     // Initialize simulator with demo portfolio
     if (this.config.simulator) {
@@ -310,7 +328,7 @@ export class TwakExecutor {
 
     // Check if twak CLI is installed using execFile (non-blocking)
     try {
-      await execFileAsync("twak", ["--version"], {
+      await this.execFileAsync("twak", ["--version"], {
         env: this.getEnv(),
         timeout: 5000,
       });
@@ -338,6 +356,17 @@ export class TwakExecutor {
 
   /** In-memory cache: symbol -> BEP-20 contract address (resolved via twak search). */
   private static tokenAddressCache = new Map<string, string>();
+
+  /** Clear all caches (for testing). */
+  static resetCaches(): void {
+    TwakExecutor.tokenAddressCache.clear();
+    TwakExecutor.liquidityCache.clear();
+  }
+
+  /** Clear only the liquidity cache (for testing address cache isolation). */
+  static resetLiquidityCache(): void {
+    TwakExecutor.liquidityCache.clear();
+  }
 
   /**
    * In-memory cache: symbol -> { hasLiquidity, checkedAt }
@@ -390,7 +419,7 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput(chain, "chain");
 
       const slippagePercent = Math.max(0.1, Math.min(50, slippage / 100));
-      const { stdout } = await execFileAsync("twak", [
+      const { stdout } = await this.execFileAsync("twak", [
         "swap",
         "--usd",
         request.amountIn,
@@ -453,7 +482,7 @@ export class TwakExecutor {
     if (symbol.startsWith("0x") && symbol.length === 42) return null;
 
     try {
-      const { stdout } = await execFileAsync("twak", [
+      const { stdout } = await this.execFileAsync("twak", [
         "search",
         symbol,
         "--networks=bsc",
@@ -521,7 +550,7 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput("1", "amount");
       TwakExecutor.validateSafeInput(tokenParam, "tokenOut");
 
-      const { stdout, stderr } = await execFileAsync("twak", [
+      const { stdout, stderr } = await this.execFileAsync("twak", [
         "swap",
         "--usd",
         "1",
@@ -567,7 +596,7 @@ export class TwakExecutor {
     TwakExecutor.validateSafeInput(request.tokenIn, "tokenIn");
     TwakExecutor.validateSafeInput(request.tokenOut, "tokenOut");
 
-    const { stdout } = await execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync("twak", [
       "swap",
       "--usd",
       request.amountIn,
@@ -596,7 +625,7 @@ export class TwakExecutor {
   private async liveBalance(token: string): Promise<BalanceEntry | null> {
     TwakExecutor.validateSafeInput(token, "token");
 
-    const { stdout } = await execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync("twak", [
       "balance",
       token,
       "--chain=bsc",
@@ -609,7 +638,7 @@ export class TwakExecutor {
   }
 
   private async livePortfolio(): Promise<TwakPortfolio> {
-    const { stdout } = await execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync("twak", [
       "wallet",
       "portfolio",
     ], {
@@ -621,7 +650,7 @@ export class TwakExecutor {
   }
 
   private async liveHistory(limit: number): Promise<SwapResult[]> {
-    const { stdout } = await execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync("twak", [
       "history",
       `--limit=${limit}`,
     ], {
@@ -633,7 +662,7 @@ export class TwakExecutor {
   }
 
   private async liveRegister(): Promise<RegistrationResult> {
-    const { stdout } = await execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync("twak", [
       "compete",
       "register",
     ], {

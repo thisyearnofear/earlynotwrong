@@ -161,9 +161,9 @@ describe("RiskGuardrails", () => {
   // Flow: Token Allowlist
   // =========================================================================
 
-  it("rejects a trade with a non-eligible token", () => {
+  it("rejects a trade with a non-eligible tokenOut", () => {
     const result = guardrails.checkTrade({
-      tokenIn: "USDC",
+      tokenIn: "BNB",    // BNB is native gas token, not in eligible list — should be allowed
       tokenOut: "SHIBADOGEMOON", // not in allowlist
       amountInUsd: 500,
       expectedAmountOut: 0,
@@ -173,6 +173,19 @@ describe("RiskGuardrails", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.code).toBe("TOKEN_NOT_ALLOWED");
+  });
+
+  it("allows BNB as tokenIn (native gas token, not in eligible list)", () => {
+    const result = guardrails.checkTrade({
+      tokenIn: "BNB",
+      tokenOut: "ETH",  // ETH is in the eligible tokens list
+      amountInUsd: 500,
+      expectedAmountOut: 0,
+      convictionScore: 80,
+      portfolioValue: 10000,
+    });
+
+    expect(result.allowed).toBe(true);
   });
 
   // =========================================================================
@@ -239,7 +252,7 @@ describe("RiskGuardrails", () => {
   // =========================================================================
 
   it("rejects trades before the trading window opens", () => {
-    vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
+    vi.setSystemTime(new Date("2025-06-01T12:00:00Z"));
     const earlyGuardrails = new RiskGuardrails(10000);
 
     const result = earlyGuardrails.checkTrade({
@@ -256,7 +269,7 @@ describe("RiskGuardrails", () => {
   });
 
   it("rejects trades after the trading window closes", () => {
-    vi.setSystemTime(new Date("2026-07-01T12:00:00Z"));
+    vi.setSystemTime(new Date("2028-01-01T12:00:00Z"));
     const lateGuardrails = new RiskGuardrails(10000);
 
     const result = lateGuardrails.checkTrade({
@@ -317,7 +330,7 @@ describe("RiskGuardrails", () => {
   // =========================================================================
 
   it("fails fast on the first failing check (trading window first)", () => {
-    vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
+    vi.setSystemTime(new Date("2025-06-01T12:00:00Z"));
     const earlyGuardrails = new RiskGuardrails(10000);
 
     const result = earlyGuardrails.checkTrade({
@@ -329,7 +342,7 @@ describe("RiskGuardrails", () => {
       portfolioValue: 0,
     });
 
-    // Should fail on trading window check first, not token allowlist
+    // Trading window check is first — returns closed before portfolio check
     expect(result.code).toBe("TRADING_WINDOW_CLOSED");
   });
 });
