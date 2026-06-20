@@ -1,495 +1,674 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
-  fetchAgentStatus,
-  fetchAgentTrades,
-  fetchAgentConviction,
-  type AgentStatus,
-  type AgentTrades,
-  type AgentConviction,
-} from "@/lib/agent-client";
-import {
   Activity,
-  RefreshCw,
   TrendingUp,
   Shield,
   AlertTriangle,
+  DollarSign,
+  RefreshCw,
   ExternalLink,
-  Wallet,
+  CheckCircle2,
+  XCircle,
+  ChevronRight,
+  Zap,
   BarChart3,
+  Globe,
+  FileText,
 } from "lucide-react";
 
-const POLL_INTERVAL = 15_000; // 15 seconds
+// ─── Types ───
 
-function formatTime(ts: number | null): string {
-  if (!ts) return "—";
+interface AgentStatus {
+  agent: string;
+  version: string;
+  status: string;
+  cycle: number;
+  lastRunAt: number;
+  nextRunAt: number;
+  totalTrades: number;
+  totalVolumeUsd: number;
+  errors: number;
+  portfolio: {
+    totalValueUsd: number;
+    positions: number;
+    chains: string[];
+  };
+  guardrails: {
+    drawdownPercent: number;
+    peakValueUsd: number;
+    tradesToday: number;
+    dailyLimit: number;
+    drawdownExceeded: boolean;
+    allOk: boolean;
+  };
+}
+
+interface Trade {
+  timestamp: number;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  success: boolean;
+}
+
+interface TradesResponse {
+  totalSessionTrades: number;
+  totalVolumeUsd: number;
+  recentTrades: Trade[];
+}
+
+interface ConvictionData {
+  marketData: {
+    fearGreedIndex: number;
+    fearGreedLabel: string;
+    totalMarketCapUsd: number;
+    btcFundingRate: number;
+    ethFundingRate: number;
+    tokensTracked: number;
+  };
+  portfolio: {
+    totalValueUsd: number;
+    drawdownPercent: number;
+    positions: Array<{ symbol: string; valueUsd: number }>;
+  };
+  anchoredHash: string;
+  anchoredUrl: string;
+}
+
+// ─── Constants ───
+
+const REFRESH_INTERVAL = 30_000; // 30s
+
+// ─── Helpers ───
+
+function formatCurrency(n: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
+function formatCompact(n: number): string {
+  if (n >= 1_000_000_000_000) return `${(n / 1_000_000_000_000).toFixed(1)}T`;
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  return formatCurrency(n);
+}
+
+function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZoneName: "short",
   });
 }
 
-function formatRelative(ts: number | null): string {
-  if (!ts) return "—";
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+// ─── Components ───
+
+function StatBadge({ label, value, color }: { label: string; value: string | number; color?: string }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-xs font-mono">
+      <span className="text-foreground-muted uppercase tracking-wider">{label}</span>
+      <span className={cn("font-semibold", color || "text-foreground")}>{value}</span>
+    </div>
+  );
 }
 
-function formatUsd(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value);
+function StatusDot({ ok }: { ok: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-block w-2 h-2 rounded-full shadow-[0_0_8px]",
+        ok ? "bg-patience shadow-patience/50" : "bg-impatience shadow-impatience/50",
+      )}
+    />
+  );
 }
 
-export default function AgentDashboardPage() {
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-8 w-64 bg-surface/50 rounded-lg" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-40 bg-surface/30 rounded-xl border border-border/50" />
+        ))}
+      </div>
+      <div className="h-64 bg-surface/30 rounded-xl border border-border/50" />
+    </div>
+  );
+}
+
+// ─── Main Page ───
+
+export default function AgentDashboard() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [trades, setTrades] = useState<AgentTrades | null>(null);
-  const [conviction, setConviction] = useState<AgentConviction | null>(null);
+  const [trades, setTrades] = useState<TradesResponse | null>(null);
+  const [conviction, setConviction] = useState<ConvictionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastPoll, setLastPoll] = useState<number | null>(null);
+  const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const [countdown, setCountdown] = useState(REFRESH_INTERVAL / 1000);
 
-  const pollAll = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     try {
-      const [s, t, c] = await Promise.all([
-        fetchAgentStatus(),
-        fetchAgentTrades(),
-        fetchAgentConviction(),
+      const [statusRes, tradesRes, convictionRes] = await Promise.all([
+        fetch("/api/agent/proxy?endpoint=status"),
+        fetch("/api/agent/proxy?endpoint=trades"),
+        fetch("/api/agent/proxy?endpoint=conviction"),
       ]);
-      if (s || t || c) {
-        setStatus(s);
-        setTrades(t);
-        setConviction(c);
-        setError(null);
-      } else {
-        setError("Cannot reach agent — is it running?");
-      }
+
+      if (!statusRes.ok) throw new Error(`/status returned ${statusRes.status}`);
+      if (!tradesRes.ok) throw new Error(`/trades returned ${tradesRes.status}`);
+      if (!convictionRes.ok) throw new Error(`/conviction returned ${convictionRes.status}`);
+
+      setStatus(await statusRes.json());
+      setTrades(await tradesRes.json());
+      setConviction(await convictionRes.json());
+      setError(null);
     } catch (e) {
-      setError("Cannot reach agent — is it running?");
+      setError(e instanceof Error ? e.message : "Failed to connect to agent");
     } finally {
       setLoading(false);
-      setLastPoll(Date.now());
+      setLastFetch(new Date());
+      setCountdown(REFRESH_INTERVAL / 1000);
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
-    pollAll();
-    const interval = setInterval(pollAll, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [pollAll]);
+    fetchAll();
+  }, [fetchAll]);
 
-  // Color coding
-  const statusColor =
-    status?.status === "running" ? "text-signal" :
-    status?.status === "error" ? "text-red-500" :
-    status?.status === "idle" ? "text-patience" :
-    "text-foreground-muted";
+  // Auto-refresh countdown
+  useEffect(() => {
+    if (loading) return;
+    const timer = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          fetchAll();
+          return REFRESH_INTERVAL / 1000;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [loading, fetchAll]);
 
-  const statusDot = status?.status === "running" ? "animate-pulse" : "";
+  const cycleActive = status && status.status === "running";
+  const cycleIdle = status && status.status === "idle";
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
       <Navbar />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-20">
+      <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-signal mb-2">
                 <Activity className="w-3 h-3" />
-                Agent Dashboard
+                Autonomous Trading Agent
               </div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-                Trading Agent Monitor
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                Early, Not Wrong
               </h1>
-              <p className="mt-2 text-sm text-foreground-muted max-w-2xl">
-                Live status and metrics from the autonomous TWAK trading agent.
+              <p className="mt-1 text-sm text-foreground-muted">
+                Live dashboard for the BNB Hack autonomous trading agent
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={pollAll}
-              className="gap-2"
-              disabled={loading}
-            >
-              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-3">
+              {status && (
+                <StatBadge
+                  label="Cycle"
+                  value={`#${status.cycle}`}
+                  color="text-signal"
+                />
+              )}
+              {status && (
+                <StatBadge
+                  label="Trades"
+                  value={status.totalTrades}
+                  color="text-patience"
+                />
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full text-xs font-mono"
+                onClick={fetchAll}
+                disabled={loading}
+              >
+                <RefreshCw className={cn("w-3 h-3 mr-1.5", loading && "animate-spin")} />
+                {countdown}s
+              </Button>
+            </div>
           </div>
+
+          {lastFetch && (
+            <p className="text-[10px] font-mono text-foreground-dim mt-2">
+              Last updated: {lastFetch.toLocaleTimeString()} · Auto-refresh every {REFRESH_INTERVAL / 1000}s
+            </p>
+          )}
         </motion.div>
 
-        {/* Connection Error Banner */}
-        {error && (
+        {loading && <LoadingSkeleton />}
+
+        {error && !loading && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 rounded-lg border border-amber-500/30 bg-amber-500/5 flex items-center gap-3"
+            className="flex flex-col items-center justify-center py-20 text-center space-y-4"
           >
-            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+            <AlertTriangle className="w-12 h-12 text-impatience/60" />
             <div>
-              <p className="text-sm font-medium text-amber-400">{error}</p>
-              <p className="text-xs text-foreground-muted mt-0.5">
-                Make sure the agent is running with <code className="text-[10px] px-1 py-0.5 rounded bg-surface font-mono">node dist/index.js</code>
+              <h2 className="text-xl font-bold mb-1">Agent Unreachable</h2>
+              <p className="text-sm text-foreground-muted max-w-md">
+                Could not connect to the trading agent on the VPS.
+                The VPS may be offline or the agent may have stopped.
               </p>
+              <p className="text-xs font-mono text-impatience mt-2">{error}</p>
             </div>
+            <Button variant="outline" size="sm" onClick={fetchAll} className="rounded-full">
+              <RefreshCw className="w-3 h-3 mr-1.5" />
+              Retry
+            </Button>
           </motion.div>
         )}
 
-        {/* Status Grid */}
-        {status && (
+        {!loading && !error && status && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
-          >
-            {/* Status */}
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-xs font-mono text-foreground-muted">
-                  <Activity className="w-3.5 h-3.5" />
-                  Agent Status
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <span className={cn("w-2 h-2 rounded-full", statusColor, statusDot)} />
-                  <span className="text-lg font-bold capitalize">{status.status}</span>
-                </div>
-                <div className="mt-2 text-xs text-foreground-muted space-y-1">
-                  <p>Cycle #{status.cycle}</p>
-                  <p>Last run: {formatRelative(status.lastRunAt)}</p>
-                  {status.nextRunAt && (
-                    <p>Next: {formatTime(status.nextRunAt)}</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Portfolio */}
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-xs font-mono text-foreground-muted">
-                  <Wallet className="w-3.5 h-3.5" />
-                  Portfolio
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold text-patience">
-                  {formatUsd(status.portfolio.totalValueUsd)}
-                </div>
-                <div className="mt-2 text-xs text-foreground-muted space-y-1">
-                  <p>{status.portfolio.positions} position{status.portfolio.positions !== 1 ? "s" : ""}</p>
-                  <p>{status.portfolio.chains.join(", ") || "BSC"}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Volume */}
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-xs font-mono text-foreground-muted">
-                  <BarChart3 className="w-3.5 h-3.5" />
-                  Volume
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">
-                  {formatUsd(status.totalVolumeUsd)}
-                </div>
-                <div className="mt-2 text-xs text-foreground-muted space-y-1">
-                  <p>{status.totalTrades} total trades</p>
-                  <p>{status.errors} error{status.errors !== 1 ? "s" : ""}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Guardrails */}
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-xs font-mono text-foreground-muted">
-                  <Shield className="w-3.5 h-3.5" />
-                  Guardrails
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "inline-flex items-center px-2 py-0.5 rounded text-xs font-mono",
-                    status.guardrails.allOk
-                      ? "bg-patience/10 text-patience"
-                      : "bg-red-500/10 text-red-400"
-                  )}>
-                    {status.guardrails.allOk ? "OK" : "LIMITED"}
-                  </span>
-                  <span className={cn(
-                    "text-lg font-bold",
-                    status.guardrails.drawdownExceeded ? "text-red-500" : "text-foreground"
-                  )}>
-                    {status.guardrails.drawdownPercent.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="mt-2 text-xs text-foreground-muted space-y-1">
-                  <p>{status.guardrails.tradesToday}/{status.guardrails.dailyLimit} trades today</p>
-                  <p>Peak: {formatUsd(status.guardrails.peakValueUsd)}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column: Trades */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-signal" />
-                  <CardTitle className="text-sm font-mono uppercase tracking-wider">
-                    Recent Trades
-                  </CardTitle>
-                </div>
-                <CardDescription>
-                  {trades ? `${trades.totalSessionTrades} trades this session` : "Loading..."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {trades && trades.recentTrades.length > 0 ? (
-                  <div className="space-y-2">
-                    {trades.recentTrades.map((trade, i) => (
-                      <div
-                        key={`${trade.timestamp}-${i}`}
-                        className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-surface/30"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className={cn(
-                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-mono",
-                            trade.success
-                              ? "bg-patience/10 text-patience"
-                              : "bg-red-500/10 text-red-400"
-                          )}>
-                            {trade.success ? "✓" : "✗"}
-                          </span>
-                          <div>
-                            <p className="text-xs font-medium">
-                              {trade.tokenIn} → {trade.tokenOut}
-                            </p>
-                            <p className="text-[10px] text-foreground-muted">
-                              {formatTime(trade.timestamp)}
-                              {trade.success && trade.txHash && (
-                                <> · <span className="font-mono">{trade.txHash.slice(0, 8)}...</span></>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-mono">
-                            {trade.amountIn} → {trade.amountOut.slice(0, 8)}
-                          </p>
-                          {trade.explorerUrl && (
-                            <a
-                              href={trade.explorerUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-signal hover:underline inline-flex items-center gap-1"
-                            >
-                              View <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-foreground-muted">
-                    <Activity className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-xs font-mono">No trades executed yet this session</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Right Column: Market Data + Anchoring */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
             className="space-y-6"
           >
-            {/* Market Data */}
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-signal" />
-                  <CardTitle className="text-sm font-mono uppercase tracking-wider">
-                    Market Data
+            {/* Row 1: Agent Status + Portfolio + Guardrails */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Agent Status Card */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <Activity className="w-3.5 h-3.5 text-signal" />
+                    Agent Status
                   </CardTitle>
-                </div>
-                <CardDescription>
-                  {conviction?.marketData
-                    ? `${conviction.marketData.tokensTracked} tokens tracked`
-                    : "No data available"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {conviction?.marketData ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 rounded-lg border border-border/50 bg-surface/30">
-                      <p className="text-[10px] font-mono text-foreground-muted uppercase mb-1">Fear & Greed</p>
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-lg font-bold",
-                          conviction.marketData.fearGreedIndex !== null && conviction.marketData.fearGreedIndex <= 25
-                            ? "text-red-400"
-                            : conviction.marketData.fearGreedIndex !== null && conviction.marketData.fearGreedIndex >= 75
-                            ? "text-patience"
-                            : "text-foreground"
-                        )}>
-                          {conviction.marketData.fearGreedIndex ?? "—"}
-                        </span>
-                        <span className="text-[10px] text-foreground-muted">
-                          {conviction.marketData.fearGreedLabel}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-lg border border-border/50 bg-surface/30">
-                      <p className="text-[10px] font-mono text-foreground-muted uppercase mb-1">Market Cap</p>
-                      <p className="text-lg font-bold">
-                        {conviction.marketData.totalMarketCapUsd
-                          ? `$${(conviction.marketData.totalMarketCapUsd / 1e12).toFixed(2)}T`
-                          : "—"}
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-lg border border-border/50 bg-surface/30">
-                      <p className="text-[10px] font-mono text-foreground-muted uppercase mb-1">BTC Funding</p>
-                      <p className={cn(
-                        "text-lg font-bold",
-                        conviction.marketData.btcFundingRate !== null && conviction.marketData.btcFundingRate < 0
-                          ? "text-patience"
-                          : "text-foreground"
-                      )}>
-                        {conviction.marketData.btcFundingRate !== null
-                          ? `${(conviction.marketData.btcFundingRate * 100).toFixed(4)}%`
-                          : "—"}
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-lg border border-border/50 bg-surface/30">
-                      <p className="text-[10px] font-mono text-foreground-muted uppercase mb-1">ETH Funding</p>
-                      <p className={cn(
-                        "text-lg font-bold",
-                        conviction.marketData.ethFundingRate !== null && conviction.marketData.ethFundingRate < 0
-                          ? "text-patience"
-                          : "text-foreground"
-                      )}>
-                        {conviction.marketData.ethFundingRate !== null
-                          ? `${(conviction.marketData.ethFundingRate * 100).toFixed(4)}%`
-                          : "—"}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-foreground-muted">
-                    <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-xs font-mono">Market data unavailable</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Anchoring */}
-            <Card className="glass-panel border-border/50 bg-surface/40">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-signal" />
-                  <CardTitle className="text-sm font-mono uppercase tracking-wider">
-                    Mantle Anchoring
-                  </CardTitle>
-                </div>
-                <CardDescription>
-                  On-chain proof-of-analysis on Mantle Sepolia
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {conviction?.anchoring ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "inline-flex items-center px-2 py-0.5 rounded text-xs font-mono",
-                        conviction.anchoring.mode === "on-chain"
-                          ? "bg-patience/10 text-patience"
-                          : conviction.anchoring.mode === "simulator"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-red-500/10 text-red-400"
-                      )}>
-                        {conviction.anchoring.mode === "on-chain" ? "ON-CHAIN ✓" :
-                         conviction.anchoring.mode === "simulator" ? "SIMULATOR" :
-                         conviction.anchoring.mode}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <StatusDot ok={cycleIdle ?? false} />
+                    <span className="text-lg font-semibold capitalize">{status.status}</span>
+                    {cycleActive && (
+                      <span className="text-xs font-mono text-signal animate-pulse">
+                        RUNNING...
                       </span>
-                      {conviction.anchoring.gasUsed && (
-                        <span className="text-[10px] text-foreground-muted">
-                          Gas: {conviction.anchoring.gasUsed}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] font-mono text-foreground-muted space-y-1">
-                      {conviction.anchoring.blockNumber && (
-                        <p>Block: {conviction.anchoring.blockNumber}</p>
-                      )}
-                      <p className="truncate">Tx: {conviction.anchoring.hash}</p>
-                    </div>
-                    {conviction.anchoredUrl && (
-                      <a
-                        href={conviction.anchoredUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-signal hover:underline mt-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        View on Explorer
-                      </a>
                     )}
                   </div>
-                ) : (
-                  <div className="text-center py-6 text-foreground-muted">
-                    <Shield className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-xs font-mono">No anchoring data yet</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-foreground-muted">Version</span>
+                      <p className="text-foreground">{status.version}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Status</span>
+                      <p className="text-foreground">{status.status}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Last Run</span>
+                      <p className="text-foreground">{formatTime(status.lastRunAt)}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Next Run</span>
+                      <p className="text-foreground">{formatTime(status.nextRunAt)}</p>
+                    </div>
                   </div>
-                )}
+                </CardContent>
+              </Card>
+
+              {/* Portfolio Card */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <DollarSign className="w-3.5 h-3.5 text-patience" />
+                    Portfolio
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-2xl sm:text-3xl font-bold tabular-nums text-foreground">
+                    {formatCurrency(status.portfolio.totalValueUsd)}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-foreground-muted">Positions</span>
+                      <p className="text-foreground">{status.portfolio.positions}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Chains</span>
+                      <p className="text-foreground">{status.portfolio.chains.join(", ")}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Volume (total)</span>
+                      <p className="text-patience">{formatCurrency(status.totalVolumeUsd)}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Errors</span>
+                      <p className={cn(status.errors > 0 ? "text-impatience" : "text-patience")}>
+                        {status.errors}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Guardrails Card */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-impatience" />
+                    Guardrails
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <StatusDot ok={status.guardrails.allOk} />
+                    <span className={cn(
+                      "text-lg font-semibold",
+                      status.guardrails.allOk ? "text-patience" : "text-impatience",
+                    )}>
+                      {status.guardrails.allOk ? "All Systems Nominal" : "Limit Breached"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-foreground-muted">Drawdown</span>
+                      <p className={cn(
+                        status.guardrails.drawdownExceeded ? "text-impatience" : "text-patience"
+                      )}>
+                        {status.guardrails.drawdownPercent.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Peak Value</span>
+                      <p className="text-foreground">{formatCurrency(status.guardrails.peakValueUsd)}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Today's Trades</span>
+                      <p className={cn(
+                        status.guardrails.tradesToday >= status.guardrails.dailyLimit
+                          ? "text-impatience"
+                          : "text-patience"
+                      )}>
+                        {status.guardrails.tradesToday}/{status.guardrails.dailyLimit}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Row 2: Recent Trades + Market Data */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Trades */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <BarChart3 className="w-3.5 h-3.5 text-patience" />
+                    Recent Trades
+                    {trades && (
+                      <span className="ml-auto text-foreground-dim text-[10px]">
+                        {trades.totalSessionTrades} total · {formatCurrency(trades.totalVolumeUsd)} volume
+                      </span>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {trades && trades.recentTrades.length > 0 ? (
+                    <div className="space-y-2">
+                      {trades.recentTrades.map((trade, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40 hover:border-signal/20 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-1 text-sm font-semibold">
+                              <span className="text-impatience">{trade.tokenIn}</span>
+                              <ChevronRight className="w-3 h-3 text-foreground-muted shrink-0" />
+                              <span className="text-patience">{trade.tokenOut}</span>
+                            </div>
+                            <span className="text-xs font-mono text-foreground-muted">
+                              ${trade.amountIn}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {trade.success ? (
+                              <span className="flex items-center gap-1 text-xs text-patience">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Executed
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-impatience">
+                                <XCircle className="w-3 h-3" />
+                                Failed
+                              </span>
+                            )}
+                            <span className="text-[10px] text-foreground-dim font-mono">
+                              {formatTime(trade.timestamp)}
+                            </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
+                      <BarChart3 className="w-8 h-8 mb-2 opacity-40" />
+                      <p className="text-xs font-mono">No trades yet this session</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Market Data */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-signal" />
+                    Market Data
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {conviction && (
+                    <>
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-bold tabular-nums">{conviction.marketData.fearGreedIndex}</span>
+                          <span className={cn(
+                            "text-xs font-mono px-2 py-0.5 rounded-full",
+                            conviction.marketData.fearGreedIndex <= 25
+                              ? "bg-impatience/10 text-impatience border border-impatience/20"
+                              : conviction.marketData.fearGreedIndex >= 75
+                              ? "bg-patience/10 text-patience border border-patience/20"
+                              : "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+                          )}>
+                            {conviction.marketData.fearGreedLabel}
+                          </span>
+                        </div>
+                        <span className="text-xs text-foreground-muted font-mono">
+                          Fear & Greed Index
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                        <div>
+                          <span className="text-foreground-muted">Market Cap</span>
+                          <p className="text-foreground">{formatCompact(conviction.marketData.totalMarketCapUsd)}</p>
+                        </div>
+                        <div>
+                          <span className="text-foreground-muted">Tokens Tracked</span>
+                          <p className="text-foreground">{conviction.marketData.tokensTracked}</p>
+                        </div>
+                        <div>
+                          <span className="text-foreground-muted">BTC Funding</span>
+                          <p className="text-foreground">{(conviction.marketData.btcFundingRate * 100).toFixed(4)}%</p>
+                        </div>
+                        <div>
+                          <span className="text-foreground-muted">ETH Funding</span>
+                          <p className="text-foreground">{(conviction.marketData.ethFundingRate * 100).toFixed(4)}%</p>
+                        </div>
+                      </div>
+                      {conviction.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+                        <div className="pt-2 border-t border-border/50">
+                          <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted">
+                            <FileText className="w-3 h-3" />
+                            <span>Anchored on Mantle:</span>
+                            <a
+                              href={conviction.anchoredUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-signal hover:underline truncate"
+                            >
+                              {conviction.anchoredHash.slice(0, 18)}...
+                              <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Row 3: Architecture Pipeline */}
+            <Card className="bg-surface/30 border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                  <Zap className="w-3.5 h-3.5 text-signal" />
+                  Pipeline Architecture
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                  {[
+                    { label: "CMC Data", icon: Globe, desc: "Market data, F&G, funding", color: "text-blue-400" },
+                    { label: "Conviction", icon: TrendingUp, desc: "Token scoring (0-100)", color: "text-signal" },
+                    { label: "Liquidity", icon: Activity, desc: "DEX check via TWAK", color: "text-emerald-400" },
+                    { label: "Sizing", icon: BarChart3, desc: "Adaptive 0.8^n decay", color: "text-amber-400" },
+                    { label: "Guardrails", icon: Shield, desc: "8-layer risk check", color: "text-impatience" },
+                    { label: "TWAK Swap", icon: Zap, desc: "Agent Wallet Mode", color: "text-purple-400" },
+                    { label: "Mantle", icon: FileText, desc: "ERC-8004 anchor", color: "text-cyan-400" },
+                    { label: "HTTP API", icon: Activity, desc: "/status /trades /conviction", color: "text-foreground-muted" },
+                  ].map((step, i) => (
+                    <div
+                      key={i}
+                      className="flex flex-col items-center text-center p-3 rounded-lg bg-surface/40 border border-border/40 hover:border-signal/20 transition-colors gap-2"
+                    >
+                      <step.icon className={cn("w-5 h-5", step.color)} />
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-foreground">{step.label}</span>
+                      <span className="text-[8px] text-foreground-muted">{step.desc}</span>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 
-            {/* Last poll time */}
-            {lastPoll && (
-              <p className="text-[10px] text-foreground-muted text-center font-mono">
-                Updated {formatRelative(lastPoll)} · Polling every {POLL_INTERVAL / 1000}s
-              </p>
-            )}
+            {/* Row 4: Demo Video + Links */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Demo */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <Activity className="w-3.5 h-3.5 text-signal" />
+                    Demo Recording
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-lg overflow-hidden border border-border/50 bg-surface/50">
+                    <div className="p-4 text-center">
+                      <p className="text-sm text-foreground-muted mb-3">
+                        Watch the live terminal replay showing all three endpoints
+                      </p>
+                      <a
+                        href="https://asciinema.org/a/lMVdIaBr9G2KK9Ni"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="default" size="sm" className="rounded-full">
+                          <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                          Watch Demo (asciinema)
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Links */}
+              <Card className="bg-surface/30 border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                    <ExternalLink className="w-3.5 h-3.5 text-signal" />
+                    Resources
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {[
+                    {
+                      label: "GitHub Repository",
+                      href: "https://github.com/thisyearnofear/earlynotwrong",
+                      desc: "Full source code",
+                    },
+                    {
+                      label: "BNB Hack Submission",
+                      href: "https://dorahacks.io/hackathon/bnbhack-twt-cmc/detail",
+                      desc: "Track 2 — Strategy Skills",
+                    },
+                    {
+                      label: "Agent Wallet",
+                      href: "https://testnet.bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a",
+                      desc: "0xA1Dd482E...5888a",
+                    },
+                    {
+                      label: "Mantle Registry",
+                      href: "https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C",
+                      desc: "0x81226e88...eeB15C",
+                    },
+                  ].map((link, i) => (
+                    <a
+                      key={i}
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40 hover:border-signal/20 transition-colors group"
+                    >
+                      <div>
+                        <p className="text-xs font-semibold text-foreground group-hover:text-signal transition-colors">
+                          {link.label}
+                        </p>
+                        <p className="text-[10px] text-foreground-muted font-mono mt-0.5">{link.desc}</p>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-foreground-muted group-hover:text-signal shrink-0" />
+                    </a>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
           </motion.div>
-        </div>
-      </div>
-    </main>
+        )}
+      </main>
+    </div>
   );
 }
