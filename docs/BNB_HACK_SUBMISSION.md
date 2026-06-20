@@ -269,15 +269,15 @@ CYCLE #1 — 2026-06-20T12:15:38.592Z
 
 ### Demo Video
 
-[Link to demo video — pending recording using the script above]
+**asciinema replay:** https://asciinema.org/a/lMVdIaBr9G2KK9Ni
 
-**Recommended recording tool:** QuickTime Player (macOS) screen recording or OBS Studio. Show:
-1. Terminal SSH into VPS
-2. Three curl commands to /status, /trades, /conviction
-3. The agent terminal log
-4. BSCScan showing the wallet address with trades
+Click the link above to watch a terminal replay of the live demo in your browser. Covers:
+1. Connecting to the VPS
+2. `GET /status` — cycle count, portfolio, guardrails
+3. `GET /trades` — 3 live TWAK swaps (SLX, AXS, BSB)
+4. `GET /conviction` — Fear & Greed, market data, on-chain anchored thesis hash
 
-Duration target: 2-3 minutes.
+Duration: ~30 seconds playback time.
 
 ---
 
@@ -320,7 +320,7 @@ The integration is non-trivial — it's the foundation of every trading decision
 - [x] Unit tests (64 passing)
 - [x] Source code on GitHub (thisyearnofear/earlynotwrong)
 - [x] Documentation (README, SOUL.md, HACKATHON_PLAN.md)
-- [ ] Demo video recorded
+- [x] Demo video recorded (asciinema: https://asciinema.org/a/lMVdIaBr9G2KK9Ni)
 - [ ] Submitted on DoraHacks
 
 ---
