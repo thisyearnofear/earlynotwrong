@@ -181,14 +181,15 @@ export class TwakExecutor {
    * @returns SwapResult with tx hash or error
    */
   async executeSwap(request: SwapRequest): Promise<SwapResult> {
-    // Validate token allowlist
-    if (!isEligibleToken(request.tokenIn) || !isEligibleToken(request.tokenOut)) {
+    // Validate token allowlist — only tokenOut (the target) must be an eligible hackathon token
+    // tokenIn can be BNB (native gas token) or any stablecoin the wallet holds
+    if (!isEligibleToken(request.tokenOut)) {
       return {
         success: false,
         tokenIn: request.tokenIn,
         tokenOut: request.tokenOut,
         amountIn: request.amountIn,
-        error: `Token not in competition allowlist: ${!isEligibleToken(request.tokenIn) ? request.tokenIn : request.tokenOut}`,
+        error: `Token not in competition allowlist: ${request.tokenOut}`,
         timestamp: Date.now(),
       };
     }
@@ -335,6 +336,17 @@ export class TwakExecutor {
   /** Shell-safe character whitelist for CLI parameters. */
   private static readonly SAFE_INPUT_RE = /^[a-zA-Z0-9._-]+$/;
 
+  /** In-memory cache: symbol -> BEP-20 contract address (resolved via twak search). */
+  private static tokenAddressCache = new Map<string, string>();
+
+  /**
+   * In-memory cache: symbol -> { hasLiquidity, checkedAt }
+   * Prevents re-checking the same token every cycle.
+   * Cache TTL: 1 hour (liquidity doesn't change that fast).
+   */
+  private static liquidityCache = new Map<string, { hasLiquidity: boolean; checkedAt: number }>();
+  private static readonly LIQUIDITY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
   /** Build the augmented env for CLI subprocess calls. */
   private getEnv(): NodeJS.ProcessEnv {
     return {
@@ -357,25 +369,35 @@ export class TwakExecutor {
     }
   }
 
+  /**
+   * Execute a live swap via the TWAK CLI.
+   * Tries symbol-based swap first (fast path for well-known tokens).
+   * If TWAK doesn't recognize a symbol, resolves the contract address
+   * via `twak search` and retries with the address.
+   */
   private async executeLiveSwap(request: SwapRequest): Promise<SwapResult> {
-    const chain = request.chain || (this.config.testnet ? "bsc-testnet" : "bsc");
+    const chain = request.chain || "bsc";
     const slippage = request.slippageBps ?? this.config.defaultSlippageBps;
 
+    // Check cache for resolved addresses; fall back to original symbol
+    const tokenIn = this.resolveCachedToken(request.tokenIn);
+    const tokenOut = this.resolveCachedToken(request.tokenOut);
+
     try {
-      // Validate all user-provided inputs for shell safety
       TwakExecutor.validateSafeInput(request.amountIn, "amount");
-      TwakExecutor.validateSafeInput(request.tokenIn, "tokenIn");
-      TwakExecutor.validateSafeInput(request.tokenOut, "tokenOut");
+      TwakExecutor.validateSafeInput(tokenIn, "tokenIn");
+      TwakExecutor.validateSafeInput(tokenOut, "tokenOut");
       TwakExecutor.validateSafeInput(chain, "chain");
 
+      const slippagePercent = Math.max(0.1, Math.min(50, slippage / 100));
       const { stdout } = await execFileAsync("twak", [
         "swap",
+        "--usd",
         request.amountIn,
-        request.tokenIn,
-        request.tokenOut,
+        tokenIn,
+        tokenOut,
         `--chain=${chain}`,
-        `--slippage=${slippage}`,
-        "--autonomous",
+        `--slippage=${slippagePercent}`,
       ], {
         env: this.getEnv(),
         timeout: 30000,
@@ -384,6 +406,25 @@ export class TwakExecutor {
       return this.parseSwapOutput(stdout, request);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+
+      // Auto-resolve: if TWAK doesn't recognize a token, look up the address
+      if (message.includes("Unknown token")) {
+        console.log(`  [TWAK] Token not recognized, resolving addresses...`);
+        const resolvedIn = await this.resolveTokenAddress(request.tokenIn);
+        const resolvedOut = await this.resolveTokenAddress(request.tokenOut);
+
+        if (resolvedIn || resolvedOut) {
+          // Cache resolved addresses and retry the swap
+          if (resolvedIn) TwakExecutor.tokenAddressCache.set(request.tokenIn.toUpperCase(), resolvedIn);
+          if (resolvedOut) TwakExecutor.tokenAddressCache.set(request.tokenOut.toUpperCase(), resolvedOut);
+          return this.executeLiveSwap({
+            ...request,
+            tokenIn: resolvedIn ?? tokenIn,
+            tokenOut: resolvedOut ?? tokenOut,
+          });
+        }
+      }
+
       return {
         success: false,
         tokenIn: request.tokenIn,
@@ -393,6 +434,128 @@ export class TwakExecutor {
         timestamp: Date.now(),
       };
     }
+  }
+
+  /**
+   * Resolve a token symbol to its BEP-20 contract address using `twak search`.
+   * Caches the result so subsequent swaps don't need to search again.
+   *
+   * Skips if already cached or if the input is already a 0x contract address.
+   */
+  private async resolveTokenAddress(symbol: string): Promise<string | null> {
+    const upper = symbol.toUpperCase();
+
+    // Check cache first
+    const cached = TwakExecutor.tokenAddressCache.get(upper);
+    if (cached) return cached;
+
+    // Skip symbols that look like contract addresses already
+    if (symbol.startsWith("0x") && symbol.length === 42) return null;
+
+    try {
+      const { stdout } = await execFileAsync("twak", [
+        "search",
+        symbol,
+        "--networks=bsc",
+        "--limit=10",
+        "--json",
+      ], {
+        env: this.getEnv(),
+        timeout: 10000,
+      });
+
+      const results = JSON.parse(stdout);
+      if (!Array.isArray(results) || results.length === 0) {
+        console.log(`  [TWAK] No search results for ${symbol}`);
+        return null;
+      }
+
+      // BSC-only results, preferring CMC-listed tokens (legitimate projects)
+      const bscResults = results.filter((r: any) => r.chain === "bsc");
+      if (bscResults.length === 0) return null;
+
+      // Prefer CMC-listed tokens (have coinmarketcap logo URLs)
+      const cmcToken = bscResults.find((r: any) =>
+        r.logoUrl?.includes("coinmarketcap.com")
+      );
+      const bestMatch = cmcToken ?? bscResults[0];
+
+      if (!bestMatch.address) return null;
+
+      TwakExecutor.tokenAddressCache.set(upper, bestMatch.address);
+      console.log(`  [TWAK] Resolved ${symbol} → ${bestMatch.address} (${bestMatch.name})`);
+      return bestMatch.address;
+    } catch (error) {
+      console.warn(`  [TWAK] Failed to resolve token ${symbol}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Check whether a token has sufficient DEX liquidity via TWAK.
+   * Runs `twak swap --usd 1 BNB <token> --quote-only` and checks for a valid quote.
+   * Results are cached for 1 hour to avoid redundant API calls.
+   *
+   * In simulator mode, always returns true (no real TWAK to check).
+   */
+  async checkLiquidity(symbol: string): Promise<boolean> {
+    const upper = symbol.toUpperCase();
+
+    // Simulator mode: skip real check
+    if (this.config.simulator) return true;
+
+    // Check cache first
+    const cached = TwakExecutor.liquidityCache.get(upper);
+    if (cached && Date.now() - cached.checkedAt < TwakExecutor.LIQUIDITY_CACHE_TTL_MS) {
+      return cached.hasLiquidity;
+    }
+
+    // Resolve the token address (uses cache or twak search)
+    let tokenParam = this.resolveCachedToken(upper);
+    if (tokenParam === upper) {
+      const resolved = await this.resolveTokenAddress(symbol);
+      if (resolved) tokenParam = resolved;
+    }
+
+    try {
+      TwakExecutor.validateSafeInput("1", "amount");
+      TwakExecutor.validateSafeInput(tokenParam, "tokenOut");
+
+      const { stdout, stderr } = await execFileAsync("twak", [
+        "swap",
+        "--usd",
+        "1",
+        "BNB",
+        tokenParam,
+        "--quote-only",
+        "--chain=bsc",
+      ], {
+        env: this.getEnv(),
+        timeout: 15000,
+      });
+
+      // Check for valid quote output — TWAK returns JSON with 'output:' key
+      // Wrapped in quotes: output: '854.599... SLX'
+      const hasQuote = /(?:amountOut|expectedOutput|received|output)[:\s]+'?[\d.]+/i.test(stdout);
+      const hasRevert = /revert|insufficient|liquidity|insufficient_output/i.test(stderr + stdout);
+      const result = hasQuote && !hasRevert;
+
+      TwakExecutor.liquidityCache.set(upper, { hasLiquidity: result, checkedAt: Date.now() });
+      console.log(`  [TWAK] Liquidity check: ${symbol} → ${result ? "✓" : "✗"}`);
+      return result;
+    } catch (error) {
+      console.log(`  [TWAK] Liquidity check failed for ${symbol}:`, error instanceof Error ? error.message : String(error));
+      TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
+      return false;
+    }
+  }
+
+  /**
+   * Check the token address cache for a resolved address.
+   * Returns the cached address if found, or the original symbol if not.
+   */
+  private resolveCachedToken(symbol: string): string {
+    return TwakExecutor.tokenAddressCache.get(symbol.toUpperCase()) ?? symbol;
   }
 
   private async liveQuote(request: {
@@ -406,11 +569,12 @@ export class TwakExecutor {
 
     const { stdout } = await execFileAsync("twak", [
       "swap",
+      "--usd",
       request.amountIn,
       request.tokenIn,
       request.tokenOut,
       "--quote-only",
-      `--chain=${this.config.testnet ? "bsc-testnet" : "bsc"}`,
+      "--chain=bsc",
     ], {
       env: this.getEnv(),
       timeout: 15000,
@@ -435,7 +599,7 @@ export class TwakExecutor {
     const { stdout } = await execFileAsync("twak", [
       "balance",
       token,
-      `--chain=${this.config.testnet ? "bsc-testnet" : "bsc"}`,
+      "--chain=bsc",
     ], {
       env: this.getEnv(),
       timeout: 10000,

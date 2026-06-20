@@ -294,8 +294,32 @@ async function createTradeProposals(
     return [];
   }
 
-  // Select top-K tokens
-  const selected = scoredTokens.slice(0, AGENT_CONFIG.trading.topK);
+  // Scan down the candidate list to find topK liquid tokens
+  // Liquidity is scarce for hackathon tokens, so we check progressively
+  // and bail early once we have enough tradeable tokens.
+  const MAX_SCAN = Math.min(scoredTokens.length, AGENT_CONFIG.trading.topK * 10); // Check up to 30 tokens
+  const liquidTokens: typeof scoredTokens = [];
+  const checkedTokens: string[] = [];
+
+  console.log(`  Scanning up to ${MAX_SCAN} tokens for DEX liquidity...`);
+
+  for (let i = 0; i < MAX_SCAN && liquidTokens.length < AGENT_CONFIG.trading.topK; i++) {
+    const candidate = scoredTokens[i];
+    if (!candidate) break;
+    checkedTokens.push(candidate.token.symbol);
+
+    const hasLiquidity = await twakExecutor.checkLiquidity(candidate.token.symbol);
+    if (hasLiquidity) {
+      liquidTokens.push(candidate);
+    }
+  }
+
+  console.log(`  Checked ${checkedTokens.length} tokens, ${liquidTokens.length} have DEX liquidity`);
+
+  if (liquidTokens.length === 0) {
+    console.log("  No tradeable tokens with sufficient liquidity. Skipping trading this cycle.");
+    return [];
+  }
 
   // Size each position: evenly split the per-trade budget
   const perTradeUsd = Math.min(
@@ -303,7 +327,7 @@ async function createTradeProposals(
     portfolioValue * (AGENT_CONFIG.trading.maxPositionConcentrationPercent / 100)
   );
 
-  const proposals = selected.map(s => ({
+  const proposals = liquidTokens.map(s => ({
     tokenSymbol: s.token.symbol,
     convictionScore: s.conviction,
     amountInUsd: Math.round(perTradeUsd),
@@ -339,7 +363,7 @@ async function checkTradeGuardrails(
 
   for (const proposal of proposals) {
     const result = guardrails.checkTrade({
-      tokenIn: "USDC",     // Always swap from USDC (stable)
+      tokenIn: "BNB",      // Swap from BNB (native token we hold)
       tokenOut: proposal.tokenSymbol,
       amountInUsd: proposal.amountInUsd,
       expectedAmountOut: 0,
@@ -378,7 +402,7 @@ async function executeTrades(
   const results: SwapResult[] = [];
 
   for (const proposal of proposals) {
-    console.log(`  → Swapping $${proposal.amountInUsd} USDC → ${proposal.tokenSymbol} (conviction: ${proposal.convictionScore})`);
+    console.log(`  → Swapping $${proposal.amountInUsd} BNB → ${proposal.tokenSymbol} (conviction: ${proposal.convictionScore})`);
 
     // Retry loop: up to 3 total attempts (1 initial + 2 retries) on network errors
     const MAX_RETRIES = 2;
@@ -393,7 +417,7 @@ async function executeTrades(
 
       try {
         const swapResult = await twakExecutor.executeSwap({
-          tokenIn: "USDC",
+          tokenIn: "BNB",
           tokenOut: proposal.tokenSymbol,
           amountIn: proposal.amountInUsd.toString(),
           slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,

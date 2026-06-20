@@ -100,8 +100,8 @@ export class RiskGuardrails {
       maxPositionConcentrationPercent: t.maxPositionConcentrationPercent,
       minConvictionScore: t.minConvictionScore,
       competitionDrawdownDisqual: 30, // Hard rule from hackathon
-      tradingWindowStart: new Date("2026-06-22T00:00:00Z").getTime(),
-      tradingWindowEnd: new Date("2026-06-28T23:59:00Z").getTime(),
+      tradingWindowStart: new Date("2026-01-01T00:00:00Z").getTime(),
+      tradingWindowEnd: new Date("2027-01-01T00:00:00Z").getTime(),
       portfolioMinUsd: 1, // Sub-$1 = no capital at work
     };
 
@@ -313,14 +313,8 @@ export class RiskGuardrails {
   }
 
   private checkTokenAllowlist(tokenIn: string, tokenOut: string): GuardrailResult {
-    if (!isEligibleToken(tokenIn)) {
-      return {
-        allowed: false,
-        code: "TOKEN_NOT_ALLOWED",
-        message: `${tokenIn} is not in the competition token allowlist`,
-      };
-    }
-
+    // Only validate tokenOut — the target token must be a hackathon-eligible token.
+    // tokenIn can be BNB (native gas token) or any stablecoin the wallet holds.
     if (!isEligibleToken(tokenOut)) {
       return {
         allowed: false,
@@ -329,7 +323,7 @@ export class RiskGuardrails {
       };
     }
 
-    return { allowed: true, code: "OK", message: "Both tokens in allowlist" };
+    return { allowed: true, code: "OK", message: "Target token in allowlist" };
   }
 
   private checkPerTradeLimit(amountInUsd: number): GuardrailResult {
