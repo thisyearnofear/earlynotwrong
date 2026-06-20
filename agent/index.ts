@@ -1,8 +1,14 @@
 /**
- * Early, Not Wrong — Conviction-Weighted Copy-Trader Agent
+ * Early, Not Wrong — Conviction-Native Trading Agent
  *
  * Main entry point. Orchestrates the autonomous trading loop:
- *   CMC Data → Conviction Scoring → Guardrails → TWAK Execution → Mantle Anchoring
+ *   Portfolio → Market Data → Contrarian Scoring → Position Management
+ *   → Entry Proposals → Guardrails → TWAK Execution → Mantle Anchoring
+ *
+ * The strategy embodies the brand: buy quality assets during fear (contrarian,
+ * not momentum), HOLD through ordinary drawdown ("early, not wrong"), and exit
+ * only to cap a loss (stop) or lock the asymmetry of a position that has
+ * already run far enough (trailing stop). We never take profit early.
  *
  * Runs in simulator mode by default (no credentials required).
  * Set env vars to activate live mode:
@@ -26,10 +32,22 @@ import {
   createMantleWalletClient,
   anchorToMantleContract,
 } from "./lib/mantle.js";
-import type { CmcMarketData, TokenQuote } from "./lib/cmc-client.js";
+import type { CmcMarketData } from "./lib/cmc-client.js";
 import type { SwapResult, TwakPortfolio } from "./lib/twak-executor.js";
 import type { GuardrailResult } from "./lib/risk-guardrails.js";
-import type { ConvictionMetrics } from "./lib/types.js";
+import {
+  scoreMarketRegime,
+  scoreTokenConviction,
+  evaluatePosition,
+  accruePosition,
+  openPosition,
+} from "./lib/conviction-signal.js";
+import type {
+  ConvictionSignal,
+  HeldPosition,
+  MarketRegime,
+  PositionVerdict,
+} from "./lib/conviction-signal.js";
 import { setAgentState, startServer } from "./src/server.js";
 import {
   sendCycleSummary,
@@ -38,7 +56,7 @@ import {
 } from "./lib/telegram.js";
 import { summarizeError, isRecoverable } from "./lib/errors.js";
 import { AGENT_MODE } from "./lib/config.js";
-import { persistState } from "./lib/persistence.js";
+import { persistState, loadPersistentState } from "./lib/persistence.js";
 
 // =============================================================================
 // Agent State
@@ -60,6 +78,13 @@ const state = {
   // Cycle results
   guardrailResults: [] as GuardrailResult[],
   executedTrades: [] as SwapResult[],
+  marketRegime: null as MarketRegime | null,
+  convictionSignals: [] as ConvictionSignal[],
+  positionVerdicts: [] as PositionVerdict[],
+  // Conviction ledger — positions we hold to demonstrate "Early, Not Wrong".
+  // Valued by real CMC prices regardless of execution mode.
+  heldPositions: [] as HeldPosition[],
+  // Kept for Telegram payload compatibility (mirror of marketRegime).
   regimeScore: null as number | null,
   sentimentLabel: null as string | null,
   lastAnchoredHash: null as string | null,
@@ -161,139 +186,177 @@ async function fetchMarketData(): Promise<void> {
 }
 
 // =============================================================================
-// Main Loop - Step 2: Score Market Regime
+// Main Loop - Step 3: Score Market Regime + Token Conviction (contrarian)
 // =============================================================================
 
-async function scoreMarketRegime(): Promise<{
-  regimeScore: number;
-  sentimentLabel: string;
-  convictionScores: ConvictionMetrics[];
+/** Build a SYMBOL → current USD price map from this cycle's CMC quotes. */
+function buildPriceMap(): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const t of state.marketData?.tokenPrices ?? []) {
+    if (t.price > 0) map.set(t.symbol.toUpperCase(), t.price);
+  }
+  return map;
+}
+
+async function analyzeConviction(): Promise<{
+  regime: MarketRegime;
+  convictionSignals: ConvictionSignal[];
 }> {
-  console.log("\n[2/6] Scoring market regime and token conviction...");
+  console.log("\n[3/8] Scoring market regime + token conviction (contrarian)...");
 
   const md = state.marketData;
-  const regimeScores: number[] = [];
+  const regime = scoreMarketRegime(md?.globalMetrics ?? null, md?.derivatives ?? null);
+  console.log(`  Regime: ${regime.score}/100 — ${regime.label} (FGI=${regime.fearGreedIndex ?? "?"})`);
 
-  // Factor 1: Fear & Greed (0–100 → conviction score 0–20)
-  if (md?.globalMetrics) {
-    const fgi = md.globalMetrics.fearGreedIndex;
-    // Extreme fear → higher conviction (contrarian opportunity)
-    // Extreme greed → lower conviction (overheated)
-    const fgiScore = fgi <= 20 ? 18 : fgi <= 40 ? 14 : fgi <= 60 ? 10 : fgi <= 80 ? 6 : 3;
-    regimeScores.push(fgiScore);
-    console.log(`  FGI contribution: ${fgiScore}/20 (FGI=${fgi})`);
+  const convictionSignals = (md?.tokenPrices ?? []).map((t) =>
+    scoreTokenConviction(t, regime)
+  );
+
+  const top = [...convictionSignals]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, AGENT_CONFIG.trading.topK);
+  if (top.length > 0) {
+    console.log(
+      `  Top conviction: ${top.map((s) => `${s.symbol} ${s.score} [${s.rationale}]`).join(" · ")}`
+    );
   }
 
-  // Factor 2: Funding rates (negative = bullish, positive = bearish)
-  if (md?.derivatives) {
-    const btcFundingScore = md.derivatives.btcFundingRate < -0.01 ? 15 : md.derivatives.btcFundingRate < 0 ? 12 : md.derivatives.btcFundingRate < 0.01 ? 8 : 4;
-    const ethFundingScore = md.derivatives.ethFundingRate < -0.01 ? 15 : md.derivatives.ethFundingRate < 0 ? 12 : md.derivatives.ethFundingRate < 0.01 ? 8 : 4;
-    regimeScores.push(Math.round((btcFundingScore + ethFundingScore) / 2));
-    console.log(`  Funding contribution: ${Math.round((btcFundingScore + ethFundingScore) / 2)}/15`);
+  state.marketRegime = regime;
+  state.convictionSignals = convictionSignals;
+  state.regimeScore = regime.score;
+  state.sentimentLabel = regime.label;
+
+  return { regime, convictionSignals };
+}
+
+// =============================================================================
+// Main Loop - Step 4: Manage Open Positions (cap losses, let winners run)
+// =============================================================================
+
+/**
+ * The soul of the agent. For every open position we either HOLD (through
+ * ordinary drawdown — "early, not wrong"), or EXIT to cap a loss / lock the
+ * asymmetry of a position that has already run. We never take profit early.
+ */
+async function manageOpenPositions(): Promise<void> {
+  console.log("\n[4/8] Managing open positions (cap losses, let winners run)...");
+
+  if (state.heldPositions.length === 0) {
+    console.log("  No open positions.");
+    state.positionVerdicts = [];
+    return;
   }
 
-  // Factor 3: Token price momentum
-  if (md?.tokenPrices && md.tokenPrices.length > 0) {
-    const positiveMomentum = md.tokenPrices.filter(t => t.percentChange24h > 0).length;
-    const momentumRatio = positiveMomentum / md.tokenPrices.length;
-    const momentumScore = Math.round(momentumRatio * 15);
-    regimeScores.push(momentumScore);
-    console.log(`  Momentum contribution: ${momentumScore}/15 (${positiveMomentum}/${md.tokenPrices.length} tokens positive)`);
-  }
+  const priceMap = buildPriceMap();
+  const verdicts: PositionVerdict[] = [];
+  const remaining: HeldPosition[] = [];
 
-  // Compute final regime score
-  const regimeScore = regimeScores.length > 0
-    ? Math.round(regimeScores.reduce((a, b) => a + b, 0) / Math.max(1, regimeScores.length) * AGENT_CONFIG.trading.topK)
-    : 0;
+  for (let pos of state.heldPositions) {
+    const price = priceMap.get(pos.symbol.toUpperCase()) ?? 0;
+    pos = accruePosition(pos, price);
 
-  const sentimentLabel =
-    regimeScore >= 40 ? "HIGH CONVICTION" :
-    regimeScore >= 25 ? "MODERATE CONVICTION" :
-    regimeScore >= 15 ? "LOW CONVICTION" :
-    "CAUTION";
-
-  console.log(`  Regime score: ${regimeScore}/60 (${sentimentLabel})`);
-
-  // Store on state for Telegram cycle summary and other consumers
-  state.regimeScore = regimeScore;
-  state.sentimentLabel = sentimentLabel;
-
-  // Score individual tokens from price data
-  const convictionScores: ConvictionMetrics[] = [];
-  if (md?.tokenPrices) {
-    for (const token of md.tokenPrices) {
-      // Score each token based on price action
-      const metrics: ConvictionMetrics = {
-        score: scoreTokenConviction(token),
-        patienceTax: 0,
-        upsideCapture: Math.max(0, token.percentChange7d),
-        earlyExits: 0,
-        convictionWins: token.percentChange7d > 20 ? 1 : 0,
-        percentile: 0,
-        archetype: undefined,
-        totalPositions: 0,
-        avgHoldingPeriod: 0,
-        winRate: token.percentChange24h > 0 ? 60 : 40,
-      };
-      convictionScores.push(metrics);
+    // Can't price it this cycle — keep holding, re-check next cycle.
+    if (price <= 0) {
+      remaining.push(pos);
+      continue;
     }
 
-    // Log top conviction tokens
-    const topConviction = [...convictionScores]
-      .map((m, i) => ({ ...m, symbol: md.tokenPrices[i]?.symbol ?? "???" }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, AGENT_CONFIG.trading.topK);
-    console.log(`  Top conviction tokens: ${topConviction.map(t => `${t.symbol} (${t.score})`).join(", ")}`);
+    const verdict = evaluatePosition(pos, price);
+    verdicts.push(verdict);
+
+    if (verdict.action === "HOLD") {
+      console.log(`  HOLD ${pos.symbol}: ${verdict.reason}`);
+      remaining.push(pos);
+      continue;
+    }
+
+    console.log(`  ${verdict.action} ${pos.symbol}: ${verdict.reason}`);
+    const closed = await closePosition(pos, verdict);
+    if (!closed) {
+      console.log(`    ✗ Exit failed — keeping position, will retry next cycle`);
+      remaining.push(pos);
+    }
   }
 
-  return { regimeScore, sentimentLabel, convictionScores };
+  state.heldPositions = remaining;
+  state.positionVerdicts = verdicts;
 }
 
 /**
- * Score an individual token's conviction based on price action.
+ * Execute an exit (sell the held token into USDC). Returns true if the
+ * position is now closed. In simulator mode the close is logical (the on-chain
+ * swap is cosmetic); in live mode it routes through TWAK.
  */
-function scoreTokenConviction(token: TokenQuote): number {
-  const weights = AGENT_CONFIG.weights;
+async function closePosition(
+  pos: HeldPosition,
+  verdict: PositionVerdict
+): Promise<boolean> {
+  const timestamp = Date.now();
 
-  // Normalize 24h change (-100% to +100%) → 0–1
-  const momentum24h = Math.max(0, Math.min(1, (token.percentChange24h + 100) / 200));
-  // Normalize 7d change
-  const momentum7d = Math.max(0, Math.min(1, (token.percentChange7d + 100) / 200));
-  // Volume signals interest
-  const volumeScore = Math.min(1, token.volume24h / Math.max(1, token.marketCap) * 10);
+  if (AGENT_MODE === "simulator") {
+    state.executedTrades.push({
+      success: true,
+      tokenIn: pos.symbol,
+      tokenOut: "USDC",
+      amountIn: pos.amountUsd.toFixed(2),
+      amountOut: (pos.amountUsd * (1 + verdict.unrealizedPnLPercent / 100)).toFixed(2),
+      txHash: `0xSIM_EXIT_${timestamp.toString(16)}`,
+      timestamp,
+    });
+    state.totalTrades += 1;
+    guardrails.recordTrade(pos.amountUsd, true);
+    return true;
+  }
 
-  const rawScore =
-    momentum24h * 40 +
-    momentum7d * 30 +
-    volumeScore * 30;
+  const result = await twakExecutor.executeSwap({
+    tokenIn: pos.symbol,
+    tokenOut: "USDC",
+    amountIn: pos.amountUsd.toString(),
+    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+  });
 
-  return Math.round(Math.max(0, Math.min(100, rawScore)));
+  if (result.success) {
+    state.executedTrades.push(result);
+    state.totalTrades += 1;
+    guardrails.recordTrade(pos.amountUsd, true);
+    return true;
+  }
+  return false;
 }
 
 // =============================================================================
-// Main Loop - Step 3: Create Trade Proposals
+// Main Loop - Step 5: Create Entry Proposals (contrarian)
 // =============================================================================
 
-async function createTradeProposals(
-  regimeScore: number,
-  convictionScores: ConvictionMetrics[]
-): Promise<Array<{
+async function createTradeProposals(): Promise<Array<{
   tokenSymbol: string;
   convictionScore: number;
   amountInUsd: number;
 }>> {
-  console.log("\n[3/6] Creating trade proposals...");
+  console.log("\n[5/8] Creating entry proposals...");
 
+  const convictionSignals = state.convictionSignals;
   const portfolio = state.portfolio;
   const portfolioValue = portfolio?.totalValueUsd ?? AGENT_CONFIG.trading.maxPerTradeUsd * 3;
 
-  // Sort tokens by conviction score and take top-K
+  // Don't double-buy positions we already hold — add to conviction, don't churn.
+  const held = new Set(state.heldPositions.map((p) => p.symbol.toUpperCase()));
+
+  // Index signals by symbol, then rank candidates by conviction score.
+  const signalBySymbol = new Map(
+    convictionSignals.map((s) => [s.symbol.toUpperCase(), s])
+  );
+
   const scoredTokens = (state.marketData?.tokenPrices ?? [])
-    .map((token, i) => ({
+    .map((token) => ({
       token,
-      conviction: convictionScores[i]?.score ?? 0,
+      conviction: signalBySymbol.get(token.symbol.toUpperCase())?.score ?? 0,
     }))
-    .filter(t => t.conviction >= AGENT_CONFIG.trading.minConvictionScore)
+    .filter(
+      (t) =>
+        t.conviction >= AGENT_CONFIG.trading.minConvictionScore &&
+        !held.has(t.token.symbol.toUpperCase())
+    )
     .sort((a, b) => b.conviction - a.conviction);
 
   if (scoredTokens.length === 0) {
@@ -368,7 +431,7 @@ async function checkTradeGuardrails(
   passed: Array<{ tokenSymbol: string; convictionScore: number; amountInUsd: number }>;
   rejected: Array<{ tokenSymbol: string; reason: string }>;
 }> {
-  console.log("\n[4/6] Checking risk guardrails...");
+  console.log("\n[6/8] Checking risk guardrails...");
 
   const portfolioValue = state.portfolio?.totalValueUsd ?? 10000;
   const guardrailStatus = guardrails.getStatus(portfolioValue);
@@ -421,14 +484,15 @@ async function checkTradeGuardrails(
 }
 
 // =============================================================================
-// Main Loop - Step 5: Execute Trades
+// Main Loop - Step 7: Execute Entries
 // =============================================================================
 
 async function executeTrades(
   proposals: Array<{ tokenSymbol: string; convictionScore: number; amountInUsd: number }>
 ): Promise<SwapResult[]> {
-  console.log(`\n[5/6] Executing ${proposals.length} trades via TWAK...`);
+  console.log(`\n[7/8] Executing ${proposals.length} entries via TWAK...`);
 
+  const priceMap = buildPriceMap();
   const results: SwapResult[] = [];
 
   for (const proposal of proposals) {
@@ -469,7 +533,7 @@ async function executeTrades(
       result = {
         success: false,
         error: `All retries exhausted: ${message}`,
-        tokenIn: "USDC",
+        tokenIn: "BNB",
         tokenOut: proposal.tokenSymbol,
         amountIn: proposal.amountInUsd.toString(),
         amountOut: "0",
@@ -481,6 +545,19 @@ async function executeTrades(
       console.log(`    ✓ Trade executed${result.txHash ? ` — ${getBscExplorerTxUrl(result.txHash, true)}` : ""}`);
       guardrails.recordTrade(proposal.amountInUsd, true);
       guardrails.updatePeakValue(state.portfolio?.totalValueUsd ?? proposal.amountInUsd * 3);
+
+      // Open a conviction position so we can hold it through drawdown next cycle.
+      const entryPriceUsd = priceMap.get(proposal.tokenSymbol.toUpperCase()) ?? 0;
+      if (entryPriceUsd > 0) {
+        state.heldPositions.push(
+          openPosition({
+            symbol: proposal.tokenSymbol,
+            entryPriceUsd,
+            amountUsd: proposal.amountInUsd,
+            cycle: state.cycle,
+          })
+        );
+      }
     } else {
       console.log(`    ✗ Trade failed: ${result.error}`);
       guardrails.recordTrade(proposal.amountInUsd, false);
@@ -489,7 +566,8 @@ async function executeTrades(
     results.push(result);
   }
 
-  state.executedTrades = results;
+  // Append entries to whatever exits step 4 already recorded this cycle.
+  state.executedTrades.push(...results);
   state.totalTrades += results.filter(r => r.success).length;
   state.totalVolumeUsd += results.filter(r => r.success).reduce((sum, r) => sum + parseFloat(r.amountIn), 0);
 
@@ -500,21 +578,42 @@ async function executeTrades(
 }
 
 // =============================================================================
-// Main Loop - Step 6: Anchor to Mantle
+// Main Loop - Step 8: Anchor to Mantle
 // =============================================================================
 
-async function anchorToMantle(
-  regimeScore: number,
-  sentimentLabel: string
-): Promise<void> {
-  console.log("\n[6/6] Anchoring analysis to Mantle ERC-8004 registry...");
+async function anchorToMantle(): Promise<void> {
+  const regimeScore = state.regimeScore ?? 0;
+  const sentimentLabel = state.sentimentLabel ?? "unknown";
+
+  console.log("\n[8/8] Anchoring conviction record to Mantle ERC-8004 registry...");
+
+  // Aggregate conviction performance across all open positions. These are the
+  // numbers that prove the agent embodies "Early, Not Wrong": how many positions
+  // it's held through drawdown, how big the worst weathered dip was, how long
+  // it has let winners run without taking profit early.
+  const heldCount = state.heldPositions.length;
+  const heldThroughDrawdown = state.positionVerdicts.filter(
+    (v) => v.action === "HOLD" && v.heldThroughDrawdown
+  ).length;
+  const maxUnderwater = state.heldPositions.reduce(
+    (m, p) => Math.max(m, p.maxUnderwaterPercent),
+    0
+  );
+  const cyclesHeld = state.heldPositions.reduce(
+    (sum, p) => sum + p.cyclesHeld,
+    0
+  );
 
   const metrics = {
     score: regimeScore,
-    patienceTax: 0,
-    upsideCapture: 0,
+    fearLevel: state.marketRegime?.fearLevel ?? "unknown",
+    heldPositions: heldCount,
+    heldThroughDrawdown,
+    maxUnderwaterPercent: Math.round(maxUnderwater * 10) / 10,
+    totalCyclesHeld: cyclesHeld,
+    exitsStop: state.positionVerdicts.filter((v) => v.action === "EXIT_STOP").length,
+    exitsTrail: state.positionVerdicts.filter((v) => v.action === "EXIT_TRAIL").length,
     archetype: sentimentLabel,
-    totalPositions: state.executedTrades.length,
   };
 
   const subjectHash = computeSubjectHash(
@@ -601,7 +700,7 @@ async function anchorToMantle(
       console.log(`  Falling back to off-chain logging.`);
 
       console.log(`  Off-chain thesis: ${thesisHash.slice(0, 18)}...`);
-      console.log(`  Score: ${regimeScore}/60 | Archetype: ${sentimentLabel}`);
+      console.log(`  Score: ${regimeScore}/100 | Archetype: ${sentimentLabel}`);
 
       state.lastAnchoredHash = thesisHash;
       state.anchoring = {
@@ -614,8 +713,8 @@ async function anchorToMantle(
     console.log(`  ○ Simulator mode — no MANTLE_OPERATOR_KEY set`);
     console.log(`  Anchoring payload (not submitted):`);
     console.log(`    Registry: ${AGENT_CONFIG.mantle.sepolia.registryAddress}`);
-    console.log(`    Score:    ${regimeScore}/60`);
-    console.log(`    Archetype: ${sentimentLabel}`);
+    console.log(`    Score:    ${regimeScore}/100 (${sentimentLabel})`);
+    console.log(`    Held:     ${heldCount} positions (${heldThroughDrawdown} weathered drawdown)`);
     console.log(`    Thesis hash: ${thesisHash.slice(0, 18)}...`);
 
     state.lastAnchoredHash = thesisHash;
@@ -678,9 +777,13 @@ async function runCycle(): Promise<void> {
   state.lastRunAt = Date.now();
   const cycleStart = Date.now();
 
-  // Reset cycle-local state
+  // Reset cycle-local state (heldPositions persist across cycles — they ARE
+  // the conviction ledger).
   state.guardrailResults = [];
   state.executedTrades = [];
+  state.positionVerdicts = [];
+  state.convictionSignals = [];
+  state.marketRegime = null;
   state.regimeScore = null;
   state.sentimentLabel = null;
   state.lastAnchoredHash = null;
@@ -693,60 +796,41 @@ async function runCycle(): Promise<void> {
   try {
     // Step 1: Fetch portfolio from TWAK
     state.portfolio = await twakExecutor.getPortfolio();
-    console.log(`  Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`);
+    console.log(`\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`);
 
     // Step 2: Fetch market data from CMC
     await fetchMarketData();
 
-    // Step 3: Score market regime and token conviction
-    const { regimeScore, sentimentLabel, convictionScores } = await scoreMarketRegime();
+    // Step 3: Score market regime + token conviction (contrarian)
+    const { regime, convictionSignals } = await analyzeConviction();
 
-    // Step 4: Create trade proposals from conviction scores
-    const proposals = await createTradeProposals(regimeScore, convictionScores);
+    // Step 4: Manage open positions — cap losses, let winners run
+    await manageOpenPositions();
 
-    // If no proposals, skip to anchoring
+    // Step 5: Create entry proposals from conviction signals
+    const proposals = await createTradeProposals();
+
+    // If no proposals, still run guardrails/anchor for the conviction record
     if (proposals.length === 0) {
-      console.log("\n  No qualifying trade proposals this cycle.");
-      await anchorToMantle(regimeScore, sentimentLabel);
-      state.status = "idle";
-      state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
-      printCycleSummary(cycleStart);
-
-      // Send cycle summary to Telegram (non-blocking, skip if not configured)
-      const elapsedEarly = ((Date.now() - cycleStart) / 1000).toFixed(1);
-      sendCycleSummary({
-        cycle: state.cycle,
-        duration: `${elapsedEarly}s`,
-        status: state.status,
-        tradesSucceeded: 0,
-        tradesFailed: 0,
-        totalVolumeUsd: state.totalVolumeUsd,
-        portfolioValueUsd: state.portfolio?.totalValueUsd ?? 0,
-        drawdownPercent: state.portfolio
-          ? guardrails.getStatus(state.portfolio.totalValueUsd).drawdownPercent
-          : 0,
-        regimeScore: state.regimeScore,
-        sentimentLabel: state.sentimentLabel,
-        anchoring: state.anchoring,
-        executedTrades: [],
-        errors: state.errors,
-      }).catch(() => {});
-
-      return;
+      console.log("\n  No qualifying entry proposals this cycle.");
     }
 
-    // Step 5: Check guardrails
-    const { passed, rejected } = await checkTradeGuardrails(proposals);
+    // Step 6: Check risk guardrails
+    const passed = proposals.length > 0
+      ? (await checkTradeGuardrails(proposals)).passed
+      : [];
 
-    // Step 6: Execute passed trades
+    // Step 7: Execute entries that passed guardrails
     if (passed.length > 0) {
       await executeTrades(passed);
+    } else if (proposals.length > 0) {
+      console.log("\n[7/8] No trades passed guardrails. Skipping execution.");
     } else {
-      console.log("\n[5/6] No trades passed guardrails. Skipping execution.");
+      console.log("\n[7/8] No entries to execute.");
     }
 
-    // Step 7: Anchor analysis to Mantle
-    await anchorToMantle(regimeScore, sentimentLabel);
+    // Step 8: Anchor conviction record to Mantle
+    await anchorToMantle();
 
     state.status = "idle";
     state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
@@ -798,8 +882,33 @@ async function runCycle(): Promise<void> {
 }
 
 // =============================================================================
-// Startup
+// Startup — Snapshot Restore
 // =============================================================================
+
+/**
+ * Restore the conviction ledger from the last persisted cycle so the agent
+ * doesn't abandon open positions across a restart. Other cycle-local state
+ * (regime, signals, verdicts) is rebuilt by the first cycle.
+ */
+async function restoreSnapshot(): Promise<void> {
+  try {
+    const persisted = await loadPersistentState();
+    const held = persisted?.agent?.heldPositions;
+    if (Array.isArray(held) && held.length > 0) {
+      state.heldPositions = held;
+      console.log(
+        `  Snapshot: restored ${held.length} open position(s) from last cycle`
+      );
+    } else {
+      console.log(`  Snapshot: no open positions to restore`);
+    }
+  } catch (err) {
+    console.warn(
+      "[snapshot] Restore failed, starting fresh:",
+      summarizeError(err)
+    );
+  }
+}
 
 // =============================================================================
 // Server Shared State Sync
@@ -824,6 +933,10 @@ function syncServerState(): void {
     executedTrades: state.executedTrades,
     lastAnchoredHash: state.lastAnchoredHash,
     anchoring: state.anchoring,
+    marketRegime: state.marketRegime,
+    convictionSignals: state.convictionSignals,
+    heldPositions: state.heldPositions,
+    positionVerdicts: state.positionVerdicts,
   };
 
   setAgentState(agentSnapshot);
@@ -878,6 +991,10 @@ async function main(): Promise<void> {
 
   // Log resolved agent mode (explicit env var or auto-detected)
   console.log(`Agent mode: ${AGENT_MODE.toUpperCase()}${AGENT_MODE === "simulator" ? " (no real execution)" : ""}`);
+
+  // Restore the conviction ledger from the last persisted cycle so open
+  // positions aren't abandoned across restarts.
+  await restoreSnapshot();
 
   // Sync initial state to server
   syncServerState();

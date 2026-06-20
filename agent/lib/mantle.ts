@@ -192,15 +192,12 @@ export function computeSubjectHash(chain: string, address: string): `0x${string}
 
 /**
  * Create a deterministic thesis hash from analysis results.
- * Produces the same hash as the ENW web app given identical input.
+ * The shape of `metrics` is whatever the agent's conviction engine produces
+ * for this cycle — the hash is just keccak256 of the canonical JSON.
  */
-export function computeThesisHash(metrics: {
-  score: number;
-  patienceTax: number;
-  upsideCapture: number;
-  archetype: string;
-  totalPositions: number;
-}): `0x${string}` {
+export function computeThesisHash(
+  metrics: Record<string, string | number | boolean | null>
+): `0x${string}` {
   const input = JSON.stringify(metrics);
   return keccak256(input);
 }

@@ -1,6 +1,6 @@
 {
   "name": "Early, Not Wrong - Trading Agent",
-  "description": "Conviction-weighted copy-trader agent for the BNB Hack: AI Trading Agent Edition. Scores wallet conviction from CMC data, selects top-K wallets, executes mirror trades via TWAK, and anchors analysis to Mantle.",
+  "description": "Conviction-native trading agent for the BNB Hack: AI Trading Agent Edition. Scores contrarian conviction from CMC data (weakness + quality during fear), opens positions it holds through drawdown, caps losses at −35% and lets winners run past +100%, anchors the conviction record to Mantle.",
   "engine": "openclaw",
   "identity": {
     "name": "Early, Not Wrong",
@@ -70,7 +70,7 @@
       "schedule": {
         "every": 240
       },
-      "prompt": "Run one complete trading cycle: fetch CMC data, score wallets, execute mirror trades via TWAK, anchor to Mantle.",
+      "prompt": "Run one full trading cycle: fetch CMC data, score contrarian regime, manage open positions (cap losses, let winners run), open entries on quality weakness, check guardrails, execute via TWAK, anchor the conviction record to Mantle.",
       "timeout": 600
     }
   ]

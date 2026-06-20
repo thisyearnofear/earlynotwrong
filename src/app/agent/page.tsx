@@ -69,6 +69,12 @@ interface TradesResponse {
 }
 
 interface ConvictionData {
+  regime: {
+    score: number;
+    label: string;
+    fearGreedIndex: number | null;
+    fearLevel: string;
+  } | null;
   marketData: {
     fearGreedIndex: number;
     fearGreedLabel: string;
@@ -76,7 +82,30 @@ interface ConvictionData {
     btcFundingRate: number;
     ethFundingRate: number;
     tokensTracked: number;
-  };
+  } | null;
+  signals: Array<{
+    symbol: string;
+    score: number;
+    breakdown: { contrarian: number; quality: number; regime: number };
+    rationale: string;
+  }>;
+  heldPositions: Array<{
+    symbol: string;
+    entryPriceUsd: number;
+    amountUsd: number;
+    entryCycle: number;
+    cyclesHeld: number;
+    peakPriceUsd: number;
+    maxUnderwaterPercent: number;
+  }>;
+  positionVerdicts: Array<{
+    symbol: string;
+    action: "HOLD" | "EXIT_STOP" | "EXIT_TRAIL";
+    unrealizedPnLPercent: number;
+    drawdownFromPeakPercent: number;
+    heldThroughDrawdown: boolean;
+    reason: string;
+  }>;
   portfolio: {
     totalValueUsd: number;
     drawdownPercent: number;
@@ -84,6 +113,7 @@ interface ConvictionData {
   };
   anchoredHash: string;
   anchoredUrl: string;
+  anchoring: { hash: string; mode: string } | null;
 }
 
 // ─── Constants ───
@@ -91,21 +121,21 @@ interface ConvictionData {
 const REFRESH_INTERVAL = 30_000; // 30s
 
 const PIPELINE_STEPS = [
-  { label: "CMC Data", icon: Globe, desc: "Market data, F&G, funding", color: "text-blue-400", bgGlow: "bg-blue-500/5" },
-  { label: "Conviction", icon: TrendingUp, desc: "Token scoring (0–100)", color: "text-signal", bgGlow: "bg-signal/5" },
-  { label: "Liquidity", icon: Activity, desc: "DEX check via TWAK", color: "text-emerald-400", bgGlow: "bg-emerald-500/5" },
-  { label: "Sizing", icon: BarChart3, desc: "Adaptive 0.8ⁿ decay", color: "text-amber-400", bgGlow: "bg-amber-500/5" },
-  { label: "Guardrails", icon: Shield, desc: "8-layer risk check", color: "text-impatience", bgGlow: "bg-red-500/5" },
-  { label: "TWAK Swap", icon: Zap, desc: "Agent Wallet Mode", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
-  { label: "Mantle", icon: FileText, desc: "ERC-8004 anchor", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
-  { label: "API", icon: Activity, desc: "REST endpoints", color: "text-foreground-muted", bgGlow: "bg-foreground/5" },
+  { label: "Portfolio", icon: Globe, desc: "TWAK balance", color: "text-blue-400", bgGlow: "bg-blue-500/5" },
+  { label: "CMC Data", icon: Globe, desc: "FGI · Funding · Prices", color: "text-blue-400", bgGlow: "bg-blue-500/5" },
+  { label: "Regime", icon: Signal, desc: "Contrarian 0–100", color: "text-signal", bgGlow: "bg-signal/5" },
+  { label: "Positions", icon: Shield, desc: "Cap loss · Trail run", color: "text-emerald-400", bgGlow: "bg-emerald-500/5" },
+  { label: "Entries", icon: TrendingUp, desc: "Weakness + quality", color: "text-amber-400", bgGlow: "bg-amber-500/5" },
+  { label: "Guardrails", icon: Shield, desc: "Risk limits", color: "text-impatience", bgGlow: "bg-red-500/5" },
+  { label: "TWAK", icon: Zap, desc: "Self-custody swap", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
+  { label: "Mantle", icon: FileText, desc: "Conviction anchor", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
 ];
 
 const HERO_STEPS = [
-  { icon: Signal, label: "Fetching market data", detail: "Fear & Greed · Funding rates · Token prices" },
-  { icon: TrendingUp, label: "Scoring conviction", detail: "149 BEP-20 tokens · Momentum · Volume · Regime" },
-  { icon: Shield, label: "Running guardrails", detail: "Drawdown · Concentration · Daily limit · Allowlist" },
-  { icon: Zap, label: "Connecting to TWAK", detail: "Live wallet · BSC Testnet · Agent Wallet Mode" },
+  { icon: Signal, label: "Reading the crowd", detail: "Fear & Greed · Funding rates · Token prices" },
+  { icon: TrendingUp, label: "Scoring contrarian conviction", detail: "Quality assets down during fear — never chasing momentum" },
+  { icon: Shield, label: "Holding through drawdown", detail: "Capping losses at −35% · Letting winners run past +100%" },
+  { icon: Zap, label: "Executing via TWAK", detail: "Self-custody · BSC Testnet · Agent Wallet Mode" },
 ];
 
 // ─── Helpers ───
@@ -224,10 +254,10 @@ function LoadingStory() {
           transition={{ delay: 0.3, duration: 0.6 }}
           className="text-base md:text-lg text-foreground-muted max-w-2xl mx-auto leading-relaxed"
         >
-          An autonomous AI trading agent for the{" "}
-          <span className="text-foreground font-semibold">BNB Hack</span>.
-          Conviction-weighted copy-trading with self-custody execution and
-          on-chain proof.
+          Most traders sell winners too early. This agent is built not to —{" "}
+          <span className="text-foreground font-semibold">contrarian entries</span>,{" "}
+          <span className="text-foreground font-semibold">held through drawdown</span>,
+          capped only when the thesis breaks.
         </motion.p>
 
         {/* Connection Steps */}
@@ -546,7 +576,198 @@ function Dashboard({
         </Card>
       </div>
 
-      {/* Row 2: Recent Trades + Market Data */}
+      {/* Row 2: Conviction Signals (the thesis, visible) + Held Positions (the proof) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="bg-surface/30 border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+              <Signal className="w-3.5 h-3.5 text-signal" />
+              Conviction Signals
+              {conviction?.regime && (
+                <span className="ml-auto flex items-center gap-1.5 text-[10px]">
+                  <span className="font-mono text-foreground-dim">Regime</span>
+                  <span className={cn(
+                    "font-semibold tabular-nums px-1.5 py-0.5 rounded-full",
+                    conviction.regime.score >= 60
+                      ? "bg-patience/10 text-patience border border-patience/20"
+                      : conviction.regime.score <= 30
+                      ? "bg-impatience/10 text-impatience border border-impatience/20"
+                      : "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+                  )}>
+                    {conviction.regime.score}/100
+                  </span>
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {conviction?.regime && (
+              <div className="p-3 rounded-lg bg-surface/40 border border-border/40">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="text-xs font-mono text-foreground-muted uppercase tracking-wider">
+                      {conviction.regime.label}
+                    </p>
+                    <p className="text-[10px] font-mono text-foreground-dim mt-0.5">
+                      FGI {conviction.regime.fearGreedIndex ?? "—"} · {conviction.regime.fearLevel}
+                    </p>
+                  </div>
+                  <div className="text-3xl font-bold tabular-nums text-signal">
+                    {conviction.regime.score}
+                  </div>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-surface/60 overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${conviction.regime.score}%` }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className={cn(
+                      "h-full rounded-full",
+                      conviction.regime.score >= 60 ? "bg-patience" :
+                      conviction.regime.score <= 30 ? "bg-impatience" : "bg-amber-400",
+                    )}
+                  />
+                </div>
+              </div>
+            )}
+
+            {conviction && conviction.signals.length > 0 ? (
+              <div className="space-y-1.5">
+                {conviction.signals.slice(0, 6).map((s, i) => (
+                  <motion.div
+                    key={s.symbol}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-surface/40 border border-border/40 hover:border-signal/20 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">{s.symbol}</span>
+                        <span className="text-[10px] font-mono text-foreground-dim">
+                          {s.rationale}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-foreground-muted">
+                        <span>contrarian <span className="text-signal">{s.breakdown.contrarian}</span></span>
+                        <span>· quality <span className="text-patience">{s.breakdown.quality}</span></span>
+                        <span>· regime <span className="text-cyan-400">{s.breakdown.regime}</span></span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="w-12 h-1 rounded-full bg-surface/60 overflow-hidden">
+                        <div
+                          className="h-full bg-signal rounded-full"
+                          style={{ width: `${s.score}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-bold tabular-nums w-7 text-right">
+                        {s.score}
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
+                <Signal className="w-8 h-8 mb-2 opacity-40" />
+                <p className="text-xs font-mono">No signals scored above threshold</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-surface/30 border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-patience" />
+              Conviction Ledger
+              {conviction && (
+                <span className="ml-auto text-foreground-dim text-[10px] font-mono">
+                  {conviction.heldPositions.length} held ·{" "}
+                  {conviction.positionVerdicts.filter((v) => v.heldThroughDrawdown).length} weathered drawdown
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {conviction && conviction.heldPositions.length > 0 ? (
+              <div className="space-y-1.5">
+                {conviction.heldPositions.map((p, i) => {
+                  const verdict = conviction.positionVerdicts.find(
+                    (v) => v.symbol === p.symbol
+                  );
+                  const currentPnl = verdict?.unrealizedPnLPercent ?? 0;
+                  return (
+                    <motion.div
+                      key={p.symbol}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="p-2.5 rounded-lg bg-surface/40 border border-border/40 hover:border-patience/20 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{p.symbol}</span>
+                            {verdict && (
+                              <span className={cn(
+                                "text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-full border",
+                                verdict.action === "HOLD"
+                                  ? "border-patience/30 bg-patience/10 text-patience"
+                                  : verdict.action === "EXIT_TRAIL"
+                                  ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400"
+                                  : "border-impatience/30 bg-impatience/10 text-impatience",
+                              )}>
+                                {verdict.action === "HOLD" ? "Holding" : verdict.action === "EXIT_TRAIL" ? "Trailing" : "Stopped"}
+                              </span>
+                            )}
+                            {verdict?.heldThroughDrawdown && (
+                              <span className="text-[9px] font-mono text-signal">
+                                ◆ early, not wrong
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted">
+                            <span>${p.amountUsd.toFixed(0)} entry</span>
+                            <span>·</span>
+                            <span>{p.cyclesHeld} cycles held</span>
+                            <span>·</span>
+                            <span className="text-foreground-dim">
+                              −{p.maxUnderwaterPercent.toFixed(1)}% worst dip
+                            </span>
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "text-sm font-bold tabular-nums shrink-0",
+                          currentPnl >= 0 ? "text-patience" : "text-impatience",
+                        )}>
+                          {currentPnl >= 0 ? "+" : ""}{currentPnl.toFixed(1)}%
+                        </div>
+                      </div>
+                      {verdict && (
+                        <p className="text-[10px] font-mono text-foreground-dim mt-1.5 leading-tight">
+                          {verdict.reason}
+                        </p>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
+                <Shield className="w-8 h-8 mb-2 opacity-40" />
+                <p className="text-xs font-mono text-center">No open positions</p>
+                <p className="text-[10px] font-mono text-foreground-dim mt-1 text-center max-w-xs">
+                  The agent opens contrarian entries during fear. The next qualifying signal will appear here.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Row 3: Recent Trades + Market Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="bg-surface/30 border-border/50">
           <CardHeader className="pb-2">
@@ -617,7 +838,7 @@ function Dashboard({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {conviction && (
+            {conviction?.marketData && (
               <>
                 <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
@@ -655,41 +876,31 @@ function Dashboard({
                     <p className="text-foreground">{(conviction.marketData.ethFundingRate * 100).toFixed(4)}%</p>
                   </div>
                 </div>
-                {conviction.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
-                  <div className="pt-2 border-t border-border/50">
-                    <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted">
-                      <FileText className="w-3 h-3" />
-                      <span>Anchored on Mantle:</span>
-                      <a
-                        href={conviction.anchoredUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-signal hover:underline truncate"
-                      >
-                        {conviction.anchoredHash.slice(0, 18)}...
-                        <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
-                      </a>
-                    </div>
-                  </div>
-                )}
               </>
+            )}
+            {conviction?.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+              <div className={cn(
+                "pt-2",
+                conviction.marketData ? "border-t border-border/50" : "",
+              )}>
+                <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted">
+                  <FileText className="w-3 h-3" />
+                  <span>Conviction anchored on Mantle:</span>
+                  <a
+                    href={conviction.anchoredUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-signal hover:underline truncate"
+                  >
+                    {conviction.anchoredHash.slice(0, 18)}...
+                    <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
+                  </a>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Row 3: Architecture Pipeline */}
-      <Card className="bg-surface/30 border-border/50">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-signal" />
-            Pipeline Architecture
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PipelineGrid />
-        </CardContent>
-      </Card>
 
       {/* Row 4: Demo Video + Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -776,6 +987,19 @@ function Dashboard({
           </CardContent>
         </Card>
       </div>
+
+      {/* Row 5: Pipeline Architecture (demoted — supports, doesn't lead) */}
+      <Card className="bg-surface/30 border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+            <Zap className="w-3.5 h-3.5 text-signal" />
+            Pipeline Architecture
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PipelineGrid />
+        </CardContent>
+      </Card>
     </motion.div>
   );
 }
@@ -858,13 +1082,13 @@ export default function AgentDashboard() {
             <div>
               <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-signal mb-2">
                 <Activity className="w-3 h-3" />
-                Autonomous Trading Agent
+                Conviction-Native Trading Agent
               </div>
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
                 Early, Not Wrong
               </h1>
               <p className="mt-1 text-sm text-foreground-muted">
-                BNB Hack — Track 2: Strategy Skills
+                Contrarian entries · held through drawdown · capped only when the thesis breaks
               </p>
             </div>
             <div className="flex items-center gap-3">

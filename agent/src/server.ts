@@ -20,6 +20,12 @@ import { guardrails } from "../lib/risk-guardrails.js";
 import { getMantleExplorerTxUrl } from "../lib/mantle.js";
 import type { SwapResult } from "../lib/twak-executor.js";
 import type { CmcMarketData } from "../lib/cmc-client.js";
+import type {
+  ConvictionSignal,
+  HeldPosition,
+  MarketRegime,
+  PositionVerdict,
+} from "../lib/conviction-signal.js";
 
 // =============================================================================
 // Shared agent state — populated by index.ts before starting the server
@@ -42,6 +48,11 @@ export interface AgentServerState {
     blockNumber?: number;
     gasUsed?: string;
   } | null;
+  // Conviction-native fields — the soul of the agent, surfaced on the dashboard.
+  marketRegime: MarketRegime | null;
+  convictionSignals: ConvictionSignal[];
+  heldPositions: HeldPosition[];
+  positionVerdicts: PositionVerdict[];
 }
 
 let agentState: AgentServerState = {
@@ -56,6 +67,10 @@ let agentState: AgentServerState = {
   executedTrades: [],
   lastAnchoredHash: null,
   anchoring: null,
+  marketRegime: null,
+  convictionSignals: [],
+  heldPositions: [],
+  positionVerdicts: [],
 };
 
 /**
@@ -152,6 +167,8 @@ app.get("/conviction", async (c) => {
   const guardrailStatus = guardrails.getStatus(portfolio.totalValueUsd);
 
   const body = {
+    // ── Market regime (contrarian lens) ────────────────────────────────────
+    regime: agentState.marketRegime,
     marketData: agentState.marketData
       ? {
           fearGreedIndex: agentState.marketData.globalMetrics?.fearGreedIndex ?? null,
@@ -163,6 +180,43 @@ app.get("/conviction", async (c) => {
           trending: agentState.marketData.trendingNarratives.slice(0, 5),
         }
       : null,
+
+    // ── Per-token entry signals (ranked by conviction) ─────────────────────
+    // These are the scores the agent uses to pick entries — contrarian, not
+    // momentum. A higher score = better "early, not wrong" opportunity.
+    signals: [...agentState.convictionSignals]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 15)
+      .map((s) => ({
+        symbol: s.symbol,
+        score: s.score,
+        breakdown: s.breakdown,
+        rationale: s.rationale,
+      })),
+
+    // ── Held positions (the conviction ledger) ─────────────────────────────
+    // What the agent is currently holding through drawdown / letting run.
+    // This is the proof it embodies "Early, Not Wrong".
+    heldPositions: agentState.heldPositions.map((p) => ({
+      symbol: p.symbol,
+      entryPriceUsd: p.entryPriceUsd,
+      amountUsd: p.amountUsd,
+      entryCycle: p.entryCycle,
+      cyclesHeld: p.cyclesHeld,
+      peakPriceUsd: p.peakPriceUsd,
+      maxUnderwaterPercent: Math.round(p.maxUnderwaterPercent * 10) / 10,
+    })),
+
+    // ── Latest position verdicts (what the agent decided this cycle) ───────
+    positionVerdicts: agentState.positionVerdicts.map((v) => ({
+      symbol: v.symbol,
+      action: v.action,
+      unrealizedPnLPercent: v.unrealizedPnLPercent,
+      drawdownFromPeakPercent: v.drawdownFromPeakPercent,
+      heldThroughDrawdown: v.heldThroughDrawdown,
+      reason: v.reason,
+    })),
+
     portfolio: {
       totalValueUsd: portfolio.totalValueUsd,
       drawdownPercent: Math.round(guardrailStatus.drawdownPercent * 10) / 10,
@@ -171,6 +225,8 @@ app.get("/conviction", async (c) => {
         valueUsd: p.valueUsd,
       })),
     },
+
+    // ── On-chain conviction record ─────────────────────────────────────────
     anchoredHash: agentState.anchoring?.hash ?? agentState.lastAnchoredHash,
     anchoredUrl: agentState.anchoring
       ? getMantleExplorerTxUrl(agentState.anchoring.hash)

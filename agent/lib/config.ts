@@ -25,74 +25,23 @@ export function resolveAgentMode(): "live" | "simulator" {
 export const AGENT_MODE = resolveAgentMode();
 
 export const AGENT_CONFIG = {
-  // Scoring Weights (0-100 total)
-  weights: {
-    winRate: 0.25,
-    upsideCapture: 0.35,
-    earlyExitMitigation: 0.25, // 100 - earlyExitRate
-    holdingPeriod: 0.15,
-  },
-
-  // Reputation score thresholds (Ethos-derived)
-  reputation: {
-    scoreThresholds: {
-      elite: 2000,
-      alpha: 1700,
-      whale: 1400,
-      premium: 1000,
-      member: 1,
-      visitor: 0,
-    },
-
-    // Ethos tier → conviction score multipliers
-    // Higher tiers get more weight when ranking wallets
-    convictionMultipliers: {
-      elite: 1.5,
-      alpha: 1.3,
-      whale: 1.15,
-      premium: 1.05,
-      member: 1.0,
-      visitor: 1.0,
-    } as Record<string, number>,
-
-    // Minimum thresholds for data sources
-    dataMinScore: {
-      alphaDiscovery: 1000,
-      cohortComparison: 1400,
-    },
-  },
-
-  // Archetype Thresholds
-  archetypes: {
-    IRON_PILLAR: {
-      minScore: 90,
-      maxPatienceTax: 1000,
-      label: "Iron Pillar",
-    },
-    PROFIT_PHANTOM: {
-      minScore: 70,
-      minPatienceTax: 5000,
-      label: "Profit Phantom",
-    },
-    EXIT_VOYAGER: {
-      maxScore: 40,
-      label: "Exit Voyager",
-    },
-    DIAMOND_HAND: {
-      label: "Diamond Hand", // Default fallback
-    },
-  },
-
-  // Analysis Constants
-  analysis: {
-    defaultTimeHorizon: 180,
-    minTradeValue: 100,
-    patienceTaxWindowDays: 90,
+  // Conviction signal weights (entry scoring, 0–100 total).
+  // The thesis is "Early, Not Wrong": reward contrarian entries on quality
+  // assets during fear — NOT momentum/chasing recent winners.
+  signal: {
+    // Reward weakness / being early (negative recent returns).
+    contrarian: 45,
+    // Reward liquidity & size (capped downside, room to run).
+    quality: 30,
+    // Reward entering when the market is fearful (low FGI, negative funding).
+    regime: 25,
+    // Floor for "early" — collapses worse than this are avoided, not bought.
+    capitulationFloorPercent: -70,
   },
 
   // Agent Trading Parameters
   trading: {
-    // Max positions to copy per cycle
+    // Max new conviction entries to open per cycle
     topK: 3,
 
     // Cycle interval in minutes
@@ -107,8 +56,17 @@ export const AGENT_CONFIG = {
     // Slippage
     defaultSlippageBps: 100, // 1%
 
-    // Minimum conviction score to consider copying
-    minConvictionScore: 60,
+    // Minimum conviction score required to open a position
+    minConvictionScore: 55,
+
+    // ── Position management (the soul: cap losses, let winners run) ──
+    // Hard stop — the thesis is invalidated. This is the only reason we exit
+    // a losing position. We do NOT sell into ordinary drawdown.
+    stopLossPercent: 35,
+    // We never take profit early. A trailing stop only arms AFTER a position
+    // has run far enough that locking in the asymmetry is no longer "early".
+    trailingActivationGainPercent: 100,
+    trailingStopPercent: 30,
   },
 
   // BSC Chain Config (hackathon competition chain)
@@ -158,16 +116,6 @@ export const AGENT_CONFIG = {
       "APR", "IRYS", "EURI", "XUSD", "BARD", "DUSK", "SUSHI", "PEAQ",
       "COAI", "BDCA", "XAUM",
     ],
-  },
-
-  // CMC AI Agent Hub
-  cmc: {
-    mcpEndpoint: "https://mcp.coinmarketcap.com/mcp",
-    // x402: keyless, pay-per-request at $0.01/request on Base
-    x402Endpoint: "https://api.coinmarketcap.com/data-api/v3",
-    x402CostPerRequest: 0.01, // USD
-    minRequestsPerCycle: 3,
-    maxRequestsPerCycle: 10,
   },
 
   // Mantle ERC-8004 (existing ENW registry)

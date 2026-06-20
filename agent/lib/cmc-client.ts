@@ -15,7 +15,7 @@
  */
 
 import { AGENT_CONFIG } from "./config.js";
-import type { MarketDataProvider, WalletConviction } from "./types.js";
+import type { MarketDataProvider } from "./types.js";
 
 // =============================================================================
 // Types (kept from MCP client for compatibility)
@@ -267,14 +267,6 @@ export class CmcClient implements MarketDataProvider {
   // ===========================================================================
   // MarketDataProvider Interface
   // ===========================================================================
-
-  /**
-   * Wallet-level data is not available via the CMC Pro REST API.
-   * Market-level signals are used instead.
-   */
-  async fetchTopWallets(): Promise<WalletConviction[]> {
-    return [];
-  }
 
   /**
    * Fetch current price for a token by symbol.

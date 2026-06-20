@@ -2,7 +2,7 @@
   "name": "early-not-wrong-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Conviction-weighted copy-trader agent for BNB Hack: AI Trading Agent Edition",
+  "description": "Conviction-native trading agent for BNB Hack — contrarian entries, held through drawdown, capped only when the thesis breaks",
   "type": "module",
   "scripts": {
     "build": "tsc",

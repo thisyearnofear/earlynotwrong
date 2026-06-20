@@ -59,20 +59,6 @@ export interface ConvictionMetrics {
   winRate: number;
 }
 
-export interface WalletConviction {
-  address: string;
-  chain: "bsc";
-  convictionScore: number;
-  patienceTax: number;
-  winRate: number;
-  archetype: string | null;
-  totalPositions: number;
-  ethosScore: number | null;
-  displayName: string | null;
-  weightedScore: number;
-  rank: number;
-}
-
 export interface TradeExecution {
   tokenIn: string;
   tokenOut: string;
@@ -108,7 +94,6 @@ export interface RiskGuardrails {
 
 export interface MarketDataProvider {
   name: "cmc" | "helius" | "birdeye";
-  fetchTopWallets(): Promise<WalletConviction[]>;
   fetchTokenPrice(address: string): Promise<number>;
   fetchFearGreedIndex(): Promise<number>;
   fetchFundingRates(): Promise<Record<string, number>>;
