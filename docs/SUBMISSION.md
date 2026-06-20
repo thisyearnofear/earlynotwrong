@@ -49,9 +49,9 @@ The app includes a curated Mantle Strategy Lens so judges can see how the same b
 
 ## Mantle Deployment
 
-- Registry: `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
-- Registry explorer: `https://explorer.sepolia.mantle.xyz/address/0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
-- Agent/operator wallet: `0x4F01CB28EfC79bb0fF722b4d2B9cA62E313DC5fd`
+- Registry (Mantle Turing Test): `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
+- Registry (BNB Hack agent): `0x81226e8894D334c790D9a972855592E6C4eeB15C`
+- BNB Hack agent operator: `0x145e91520c3128828C8031339a7b7CC49f1BDEF6`
 - Agent card URI: `lens://3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf`
 - Agent card gateway: `https://api.grove.storage/3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf`
 - Contract access model: owner-managed operator allowlist. The deployer is authorized in the constructor, and the owner can authorize additional ENW operator wallets with `setOperatorAuthorization`.

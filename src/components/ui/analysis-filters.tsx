@@ -3,9 +3,90 @@
 import * as React from "react";
 import { useAppStore } from "@/lib/store";
 import { Clock, DollarSign, Filter } from "lucide-react";
-import { Button } from "@/components/ui/button"; // Button exists
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+
+// Tick positions for the time horizon slider (showing valid snap values)
+const TIME_TICKS = [
+  { value: 30, label: "30d" },
+  { value: 90, label: "3mo" },
+  { value: 180, label: "6mo" },
+  { value: 365, label: "1y" },
+];
+
+// Tick positions for the min trade value slider
+const VALUE_TICKS = [
+  { value: 0, label: "$0" },
+  { value: 1000, label: "$1K" },
+  { value: 2000, label: "$2K" },
+  { value: 3000, label: "$3K" },
+  { value: 4000, label: "$4K" },
+  { value: 5000, label: "$5K+" },
+];
+
+function SliderTicks({
+  ticks,
+  min,
+  max,
+  currentValue,
+  onSelect,
+}: {
+  ticks: { value: number; label: string }[];
+  min: number;
+  max: number;
+  currentValue: number;
+  onSelect?: (value: number) => void;
+}) {
+  const range = max - min;
+  // Inset from the container edges to align with the visible range input track
+  // (native range inputs inset the track by ~8px on each side for the thumb)
+  return (
+    <div className="relative w-full h-4 px-[10px]">
+      {/* Clickable tick marks */}
+      <div className="relative w-full h-full">
+        {ticks.map((tick) => {
+          const pct = ((tick.value - min) / range) * 100;
+          const isActive = currentValue >= tick.value;
+          return (
+            <div
+              key={tick.value}
+              className="absolute flex flex-col items-center"
+              style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
+            >
+              <button
+                type="button"
+                onClick={() => onSelect?.(tick.value)}
+                className={cn(
+                  "flex flex-col items-center group cursor-pointer transition-all",
+                )}
+              >
+                <div
+                  className={cn(
+                    "w-px h-1.5 transition-all",
+                    isActive ? "bg-foreground/40" : "bg-foreground/15",
+                    "group-hover:h-2.5 group-hover:bg-foreground/60",
+                  )}
+                />
+                <span
+                  className={cn(
+                    "text-[8px] font-mono mt-0.5 whitespace-nowrap transition-all",
+                    isActive
+                      ? "text-foreground-muted/70"
+                      : "text-foreground-dim/50",
+                    "group-hover:text-foreground/80 group-hover:scale-110",
+                  )}
+                >
+                  {tick.label}
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function AnalysisFilters({ className }: { className?: string }) {
     const { parameters, setParameters } = useAppStore();
@@ -77,13 +158,10 @@ export function AnalysisFilters({ className }: { className?: string }) {
                                         type="range"
                                         min="30"
                                         max="365"
-                                        step="30" // Steps of 30 ensures 30, 60, 90...
-                                        // Store expects 30 | 90 | 180 | 365
-                                        // We'll map nearest valid value or allow flexible if store permits
+                                        step="30"
                                         value={parameters.timeHorizon}
                                         onChange={(e) => {
                                             const val = parseInt(e.target.value);
-                                            // Snap to valid values
                                             let snapVal: 30 | 90 | 180 | 365 = 180;
                                             if (val <= 60) snapVal = 30;
                                             else if (val <= 135) snapVal = 90;
@@ -94,10 +172,13 @@ export function AnalysisFilters({ className }: { className?: string }) {
                                         }}
                                         className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
                                     />
-                                    <div className="flex justify-between text-[10px] text-foreground-muted font-mono">
-                                        <span>30d</span>
-                                        <span>365d</span>
-                                    </div>
+                                    <SliderTicks
+                                        ticks={TIME_TICKS}
+                                        min={30}
+                                        max={365}
+                                        currentValue={parameters.timeHorizon}
+                                        onSelect={(val) => setParameters({ timeHorizon: val as 30 | 90 | 180 | 365 })}
+                                    />
                                 </div>
 
                                 <div className="space-y-2">
@@ -119,10 +200,13 @@ export function AnalysisFilters({ className }: { className?: string }) {
                                         }
                                         className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
                                     />
-                                    <div className="flex justify-between text-[10px] text-foreground-muted font-mono">
-                                        <span>$0</span>
-                                        <span>$5k+</span>
-                                    </div>
+                                    <SliderTicks
+                                        ticks={VALUE_TICKS}
+                                        min={0}
+                                        max={5000}
+                                        currentValue={parameters.minTradeValue}
+                                        onSelect={(val) => setParameters({ minTradeValue: val })}
+                                    />
                                 </div>
                             </div>
                         </div>

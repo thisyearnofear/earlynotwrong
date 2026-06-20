@@ -30,8 +30,8 @@ A **conviction-weighted copy-trader agent** deployed on Pinata Agents that:
                     │      Pinata Agent (host)     │
                     │                              │
                     │  ┌───────────────────────┐  │
-  CMC Agent Hub ────►  │   Data Ingestion      │  │
-  (funding, F&G,   │  │   (CMC MCP / Skills)   │  │
+  CMC Pro REST API ──►  │   Data Ingestion      │  │
+  (funding, F&G,   │  │   (CMC v1/v3/v5 REST)  │  │
    top wallets)    │  └──────────┬────────────┘  │
                     │             │               │
                     │  ┌──────────▼────────────┐  │
@@ -128,11 +128,13 @@ This respects **CLEAN** (separation of concerns), **MODULAR** (independent modul
 
 ### 1. CMC Data Ingestion (`agent/lib/cmc-client.ts`)
 
-Fetches wallet behavior signals from CMC AI Agent Hub:
-- Top wallet flows (which wallets are accumulating/distributing in-scope tokens)
-- Funding rates (perp positioning sentiment)
-- Fear & Greed Index (market regime context)
-- Token metadata (for allowlist filter)
+Fetches market data from the CMC Pro REST API:
+- Fear & Greed Index (via `/v3/fear-and-greed/latest`)
+- Derivatives funding rates & open interest (via `/v5/cryptocurrency/derivatives/market-pairs/list/latest`)
+- Token quotes & global metrics (via standard v1 REST API)
+- Token ID resolution (via `/v1/cryptocurrency/map`)
+
+**Note**: The CMC MCP endpoint (`mcp.coinmarketcap.com`) was returning HTTP 400 for all requests during development. The agent was pivoted to use the Pro REST API (`pro-api.coinmarketcap.com`) instead, which provides identical data through well-documented v1/v3/v5 endpoints.
 
 **Principle**: MODULAR — the CMC client implements a `MarketDataProvider` interface that can be swapped for Helius/Birdeye without changing the engine.
 

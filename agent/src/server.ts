@@ -189,22 +189,53 @@ app.get("/conviction", async (c) => {
 
 /**
  * Start the HTTP server on the configured port.
+ * Falls back to alternative ports if the primary is in use.
  * Returns the server instance so it can be shut down gracefully.
  */
-export function startServer(port: number = 3000): ReturnType<typeof serve> {
-  console.log(`[server] Starting HTTP server on port ${port}...`);
+export function startServer(
+  port: number = 3000,
+  options: { fallbackPorts?: number[] } = {}
+): ReturnType<typeof serve> {
+  const fallbacks = options.fallbackPorts ?? [3100, 3001, 0];
+  const portsToTry = [port, ...fallbacks];
 
-  const server = serve({
-    fetch: app.fetch,
-    port,
-  });
+  let lastError: unknown;
 
-  console.log(`[server] Routes:`);
-  console.log(`  GET /status     — Agent status and guardrails`);
-  console.log(`  GET /trades     — Trade history`);
-  console.log(`  GET /conviction — Market data and conviction scores`);
+  for (const candidatePort of portsToTry) {
+    try {
+      console.log(`[server] Trying port ${candidatePort}...`);
+      const server = serve({
+        fetch: app.fetch,
+        port: candidatePort,
+      });
 
-  return server;
+      const actualPort = candidatePort || (server.address() as any)?.port || candidatePort;
+      console.log(`[server] Running on port ${actualPort}`);
+      console.log(`[server] Routes:`);
+      console.log(`  GET /status     — Agent status and guardrails`);
+      console.log(`  GET /trades     — Trade history`);
+      console.log(`  GET /conviction — Market data and conviction scores`);
+
+      return server;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[server] Port ${candidatePort} failed:`, (err as Error)?.message || String(err));
+      // If this was the user-requested port and it failed, log a warning
+      if (candidatePort === port) {
+        console.warn(`[server] Primary port ${port} unavailable — trying fallbacks...`);
+      }
+    }
+  }
+
+  // All ports failed — log the error and return a mock server that logs
+  console.error(`[server] All ports unavailable. Last error:`, (lastError as Error)?.message || String(lastError));
+  console.warn(`[server] HTTP server not available — agent continuing without it.`);
+
+  // Return a mock server object so the caller doesn't crash
+  return {
+    close: () => {},
+    address: () => null,
+  } as unknown as ReturnType<typeof serve>;
 }
 
 // =============================================================================

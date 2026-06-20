@@ -1,28 +1,28 @@
 /**
- * CMC Agent Hub Client
+ * CMC Client
  *
- * Wraps the CoinMarketCap AI Agent Hub MCP server as a typed client.
- * Uses JSON-RPC 2.0 over HTTP (Streamable HTTP transport).
- * Supports both API key auth and x402 (keyless, pay-per-request).
+ * Fetches market data from the CoinMarketCap Pro REST API.
+ * Uses the standard X-CMC_PRO_API_KEY header for authentication.
  *
- * CMC MCP endpoint: https://mcp.coinmarketcap.com/mcp
- * Auth: X-CMC-MCP-API-KEY header or x402 (no key)
+ * NOTE: The CMC MCP endpoint (mcp.coinmarketcap.com) was returning
+ * HTTP 400 for all requests. This implementation uses the proven
+ * REST API instead.
  *
- * NOTE: CMC provides market-level data (prices, sentiment, derivatives),
- * not wallet-level data. For wallet-level data (which wallets to copy),
- * we'll need a separate integration (BscScan API, Helius on BSC, etc.).
- * This is noted in the risk register.
+ * Fear & Greed Index is fetched from CMC's /v3/fear-and-greed/latest endpoint.
+ * Derivatives data (funding rates, open interest) comes from CMC's
+ * /v5/cryptocurrency/derivatives/market-pairs/list/latest endpoint.
+ * Trending narratives are unavailable via the REST API (defaults to empty).
  */
 
 import { AGENT_CONFIG } from "./config.js";
 import type { MarketDataProvider, WalletConviction } from "./types.js";
 
 // =============================================================================
-// Types
+// Types (kept from MCP client for compatibility)
 // =============================================================================
 
 export interface CmcIdMap {
-  /** Token symbol → CMC ID lookup, populated by search_cryptos */
+  /** Token symbol → CMC ID lookup */
   [symbol: string]: number;
 }
 
@@ -87,170 +87,166 @@ export interface CmcMarketData {
 }
 
 // =============================================================================
-// Lightweight MCP Client (no SDK dependency)
+// REST API Client
 // =============================================================================
 
-type JsonRpcResponse = {
-  jsonrpc: string;
-  id: number;
-  result?: { content?: Array<{ type: string; text: string }> };
-  error?: { code: number; message: string };
-};
+const BASE_URL = "https://pro-api.coinmarketcap.com";
 
 /**
- * Makes a JSON-RPC call to the CMC MCP endpoint.
- * Uses the Streamable HTTP transport with X-CMC-MCP-API-KEY authentication.
- * If no API key is set, tries x402 (keyless) mode.
+ * Make a GET request to the CMC Pro REST API.
  */
-async function callMcpTool(
-  toolName: string,
-  args: Record<string, unknown> = {},
-  options: { apiKey?: string; useX402?: boolean } = {}
-): Promise<Record<string, unknown> | null> {
-  const { apiKey, useX402 } = options;
-  const endpoint = AGENT_CONFIG.cmc.mcpEndpoint;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-
-  if (apiKey) {
-    headers["X-CMC-MCP-API-KEY"] = apiKey;
-  }
-
-  // x402 mode: if no API key is set, the header is omitted and the
-  // request will receive an HTTP 402 (Payment Required) response.
-  // On Pinata Agents, the OpenClaw runtime intercepts 402 responses,
-  // pays the requested amount via the agent wallet, and retries with
-  // the payment signature — all transparently.
-  // In local dev with no API key, the request simply fails and returns null.
-  if (useX402 && !apiKey) {
-    // No API key header set — server will respond with 402.
-    // OpenClaw handles the 402 handshake at the infra layer.
-  }
-
-  const body = JSON.stringify({
-    jsonrpc: "2.0",
-    method: "tools/call",
-    params: {
-      name: toolName,
-      arguments: args,
-    },
-    id: 1,
-  });
-
+async function restGet<T = Record<string, unknown>>(
+  path: string,
+  apiKey: string
+): Promise<T | null> {
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body,
-      // MCP uses streaming for some responses; accept both streaming and JSON
-      signal: AbortSignal.timeout(15000),
+    const response = await fetch(`${BASE_URL}${path}`, {
+      headers: {
+        "X-CMC_PRO_API_KEY": apiKey,
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
-      console.warn(`CMC MCP error ${response.status} for tool ${toolName}: ${response.statusText}`);
+      console.warn(`CMC REST error ${response.status} for ${path}: ${response.statusText}`);
       return null;
     }
 
-    const contentType = response.headers.get("content-type") || "";
-
-    if (contentType.includes("text/event-stream")) {
-      // SSE response — read the stream
-      const reader = response.body?.getReader();
-      if (!reader) return null;
-      const decoder = new TextDecoder();
-      let text = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-      }
-      return parseSseResponse(text);
-    }
-
-    // JSON response
-    const data: JsonRpcResponse = await response.json();
-
-    if (data.error) {
-      console.warn(`CMC MCP tool ${toolName} error: ${data.error.message}`);
-      return null;
-    }
-
-    return extractContent(data);
+    const json = await response.json();
+    return (json.data ?? json) as T;
   } catch (error) {
-    console.warn(`CMC MCP request failed for ${toolName}:`, error);
+    console.warn(`CMC REST request failed for ${path}:`, error);
     return null;
   }
 }
 
-/** Parse a text/event-stream response into a JSON object. */
-function parseSseResponse(text: string): Record<string, unknown> | null {
-  // SSE format lines: "event: result", "data: { ... }", "\n"
-  // We only care about the data lines with valid JSON-RPC payloads.
-  for (const line of text.split("\n")) {
-    if (line.startsWith("data: ")) {
-      try {
-        const data: JsonRpcResponse = JSON.parse(line.slice(6));
-        return extractContent(data);
-      } catch {
-        continue;
-      }
+/**
+ * Fetch the Fear & Greed Index from CMC's /v3/fear-and-greed/latest endpoint.
+ * Returns 0–100 where 0 = extreme fear, 100 = extreme greed.
+ */
+async function fetchFearGreedFromCmc(apiKey: string): Promise<number> {
+  try {
+    const data = await restGet<{ value: number; value_classification: string }>(
+      "/v3/fear-and-greed/latest",
+      apiKey
+    );
+    if (data && typeof data.value === "number") {
+      return Math.max(0, Math.min(100, data.value));
     }
+    return 50;
+  } catch {
+    return 50;
   }
-  return null;
 }
 
-/** Extract the text content from a JSON-RPC result. */
-function extractContent(data: JsonRpcResponse): Record<string, unknown> | null {
-  const content = data.result?.content;
-  if (!content || content.length === 0) return null;
-
-  // Find the first text content item
-  const textItem = content.find((c) => c.type === "text");
-  if (!textItem) return null;
-
+/**
+ * Fetch derivatives data (funding rates, open interest) from CMC's v5 endpoint.
+ * Returns funding rates for BTC and ETH, plus aggregate open interest.
+ */
+async function fetchDerivativesMetrics(
+  apiKey: string
+): Promise<DerivativesMetrics | null> {
   try {
-    return JSON.parse(textItem.text);
+    const [btcResult, ethResult] = await Promise.all([
+      restGet<Record<string, unknown>>(
+        "/v5/cryptocurrency/derivatives/market-pairs/list/latest?crypto_symbol=BTC&limit=1",
+        apiKey
+      ),
+      restGet<Record<string, unknown>>(
+        "/v5/cryptocurrency/derivatives/market-pairs/list/latest?crypto_symbol=ETH&limit=1",
+        apiKey
+      ),
+    ]);
+
+    const btcMarketPairs = (btcResult?.market_pairs as Array<Record<string, unknown>> | undefined) ?? [];
+    const ethMarketPairs = (ethResult?.market_pairs as Array<Record<string, unknown>> | undefined) ?? [];
+
+    // Extract funding rates from the first market pair's exchange_reported_quotes
+    const btcFundingRate = extractFundingRate(btcMarketPairs);
+    const ethFundingRate = extractFundingRate(ethMarketPairs);
+
+    // Aggregate open interest
+    const btcOi = extractOpenInterest(btcMarketPairs);
+    const ethOi = extractOpenInterest(ethMarketPairs);
+    const totalOpenInterest = btcOi + ethOi;
+
+    // Aggregate volume
+    const btcVol = extractVolume24h(btcMarketPairs);
+    const ethVol = extractVolume24h(ethMarketPairs);
+    const totalVolume = btcVol + ethVol;
+
+    return {
+      totalOpenInterestUsd: totalOpenInterest,
+      totalVolume24hUsd: totalVolume,
+      btcFundingRate,
+      ethFundingRate,
+      liquidationData: null,
+      lastUpdated: Date.now(),
+    };
   } catch {
-    // Text content might not be JSON; return as-is wrapped
-    return { text: textItem.text };
+    return null;
   }
+}
+
+function extractFundingRate(marketPairs: Array<Record<string, unknown>>): number {
+  for (const pair of marketPairs) {
+    const quotes = pair.exchange_reported_quotes as Array<Record<string, unknown>> | undefined;
+    if (quotes && quotes.length > 0) {
+      const rate = safeNumber(quotes[0].funding_rate);
+      if (rate !== 0) return rate;
+    }
+  }
+  return 0;
+}
+
+function extractOpenInterest(marketPairs: Array<Record<string, unknown>>): number {
+  for (const pair of marketPairs) {
+    const quotes = pair.exchange_reported_quotes as Array<Record<string, unknown>> | undefined;
+    if (quotes && quotes.length > 0) {
+      const oi = safeNumber(quotes[0].open_interest);
+      if (oi > 0) return oi;
+    }
+  }
+  return 0;
+}
+
+function extractVolume24h(marketPairs: Array<Record<string, unknown>>): number {
+  for (const pair of marketPairs) {
+    const quotes = pair.exchange_reported_quotes as Array<Record<string, unknown>> | undefined;
+    if (quotes && quotes.length > 0) {
+      const vol = safeNumber(quotes[0].volume_24h_quote ?? quotes[0].volume_24h);
+      if (vol > 0) return vol;
+    }
+  }
+  return 0;
 }
 
 // =============================================================================
-// Token ID Resolution (Cache to avoid repeated searches)
+// Token ID Cache
 // =============================================================================
 
 const TOKEN_ID_CACHE = new Map<string, number>();
 
 /**
- * Resolve a token symbol to its CMC ID using search_cryptos.
- * Results are cached in-memory.
+ * Resolve a token symbol to its CMC ID using the /v1/cryptocurrency/map endpoint.
  */
-async function resolveTokenId(
-  symbol: string,
-  apiKey?: string
-): Promise<number | null> {
+async function resolveTokenId(symbol: string, apiKey: string): Promise<number | null> {
   const upper = symbol.toUpperCase();
   if (TOKEN_ID_CACHE.has(upper)) return TOKEN_ID_CACHE.get(upper)!;
 
-  const result = await callMcpTool("search_cryptos", { query: symbol }, { apiKey });
-  if (!result) return null;
+  const symbolParam = encodeURIComponent(symbol);
+  const result = await restGet<Array<{ id: number; symbol: string }>>(
+    `/v1/cryptocurrency/map?symbol=${symbolParam}&limit=1`,
+    apiKey
+  );
 
-  // search_cryptos returns an array of matches; pick the first exact match
-  const matches = Array.isArray(result) ? result : (result.matches ?? result.data ?? []);
-  const match = Array.isArray(matches)
-    ? matches.find(
-        (m: Record<string, unknown>) =>
-          String(m.symbol).toUpperCase() === upper
-      )
-    : null;
-
-  if (match && typeof match.id === "number") {
-    TOKEN_ID_CACHE.set(upper, match.id);
-    return match.id;
+  if (Array.isArray(result) && result.length > 0) {
+    const match = result[0];
+    if (match && typeof match.id === "number") {
+      TOKEN_ID_CACHE.set(upper, match.id);
+      return match.id;
+    }
   }
 
   return null;
@@ -262,22 +258,10 @@ async function resolveTokenId(
 
 export class CmcClient implements MarketDataProvider {
   readonly name = "cmc" as const;
-  private apiKey: string | undefined;
-  private useX402: boolean;
+  private apiKey: string;
 
-  /**
-   * @param apiKey CMC Pro API key (optional — if not provided, use x402)
-   * @param useX402 If true, use keyless x402 pay-per-request instead of API key.
-   *                x402 is handled transparently by Pinata's OpenClaw runtime.
-   *                Falls back gracefully in local dev (returns null).
-   */
-  constructor(options: { apiKey?: string; useX402?: boolean } = {}) {
-    this.apiKey = options.apiKey || process.env.CMC_API_KEY;
-    this.useX402 = options.useX402 ?? !this.apiKey;
-
-    if (this.useX402) {
-      console.log("[CMC] x402 mode enabled — data requests paid per-call via agent wallet");
-    }
+  constructor(options: { apiKey?: string } = {}) {
+    this.apiKey = options.apiKey || process.env.CMC_API_KEY || "";
   }
 
   // ===========================================================================
@@ -285,34 +269,15 @@ export class CmcClient implements MarketDataProvider {
   // ===========================================================================
 
   /**
-   * Fetch top conviction wallets.
-   *
-   * NOTE: CMC MCP does not provide wallet-level data. This method returns
-   * an empty array. Wallet-level data requires a separate integration
-   * (BscScan API, or the existing ENW data pipeline ported to BSC).
-   *
-   * For the hackathon, the agent uses market-level signals (Fear & Greed,
-   * funding rates, token prices) to inform conviction-weighted trades
-   * rather than wallet-level copy trading.
+   * Wallet-level data is not available via the CMC Pro REST API.
+   * Market-level signals are used instead.
    */
   async fetchTopWallets(): Promise<WalletConviction[]> {
-    console.warn(
-      "[CMC] Wallet-level data not available via CMC Agent Hub.",
-      "Market-level signals will be used instead."
-    );
     return [];
   }
 
   /**
-   * Fetch current price for a token.
-   *
-   * NOTE: CMC uses symbols and CMC IDs, not on-chain addresses.
-   * The `address` parameter is treated as a symbol (e.g., "BNB", "ETH").
-   *
-   * For address-based lookups (0x... format), maintain a token symbol
-   * registry mapping BSC token addresses to their CMC symbols.
-   *
-   * @returns The price in USD, or 0 if the token cannot be resolved.
+   * Fetch current price for a token by symbol.
    */
   async fetchTokenPrice(symbol: string): Promise<number> {
     if (!symbol) return 0;
@@ -320,15 +285,13 @@ export class CmcClient implements MarketDataProvider {
     return quote?.price ?? 0;
   }
 
-  /** Fetch Fear & Greed Index (0–100, where 0 = extreme fear, 100 = extreme greed). */
+  /** Fetch Fear & Greed Index from CMC's /v3/fear-and-greed/latest. */
   async fetchFearGreedIndex(): Promise<number> {
-    const metrics = await this.getGlobalMetrics();
-    return metrics?.fearGreedIndex ?? 50;
+    return fetchFearGreedFromCmc(this.apiKey);
   }
 
   /**
-   * Fetch funding rates for major tokens.
-   * Returns a map of symbol → funding rate (e.g., { "BTC": 0.01, "ETH": 0.005 }).
+   * Fetch funding rates from CMC's v5 derivatives endpoint.
    */
   async fetchFundingRates(): Promise<Record<string, number>> {
     const derivatives = await this.getDerivativesMetrics();
@@ -345,89 +308,61 @@ export class CmcClient implements MarketDataProvider {
 
   /**
    * Fetch all market data the agent needs in one call.
-   * Returns structured data from multiple CMC tools.
    */
   async fetchMarketData(): Promise<CmcMarketData> {
-    const [globalMetrics, derivatives, tokenPrices, narratives] =
-      await Promise.all([
-        this.getGlobalMetrics(),
-        this.getDerivativesMetrics(),
-        this.getEligibleTokenQuotes(),
-        this.getTrendingNarratives(),
-      ]);
-
-    const symbolPrices = tokenPrices.reduce<Record<string, TokenQuote>>(
-      (acc, q) => {
-        acc[q.symbol] = q;
-        return acc;
-      },
-      {}
-    );
+    const [globalMetrics, derivatives, tokenPrices] = await Promise.all([
+      this.getGlobalMetrics(),
+      this.getDerivativesMetrics(),
+      this.getEligibleTokenQuotes(),
+    ]);
 
     return {
       globalMetrics,
       derivatives,
       tokenPrices,
       tokenHolders: [],
-      trendingNarratives: narratives,
+      trendingNarratives: [],
     };
   }
 
   // ===========================================================================
-  // Individual Tool Wrappers
+  // Data Methods
   // ===========================================================================
 
   /**
-   * Get global market metrics: total market cap, BTC/ETH dominance,
-   * Fear & Greed Index, total volume.
+   * Get global market metrics from CMC + Fear & Greed from CMC's v3 endpoint.
    */
   async getGlobalMetrics(): Promise<GlobalMetrics | null> {
-    const result = await callMcpTool("get_global_metrics_latest", {}, { apiKey: this.apiKey, useX402: this.useX402 });
-    if (!result) return null;
+    const [data, fearGreedIndex] = await Promise.all([
+      restGet<Record<string, unknown>>(
+        "/v1/global-metrics/quotes/latest",
+        this.apiKey
+      ),
+      fetchFearGreedFromCmc(this.apiKey),
+    ]);
+    if (!data) return null;
+
+    const quote = (data.quote as Record<string, unknown>)?.USD as Record<string, unknown> | undefined;
 
     return {
-      totalMarketCapUsd: safeNumber(result.totalMarketCap),
-      btcDominance: safeNumber(result.btcDominance),
-      ethDominance: safeNumber(result.ethDominance),
-      fearGreedIndex: safeNumber(result.fearGreedIndex, 50),
-      totalVolumeUsd: safeNumber(result.totalVolume24h),
+      totalMarketCapUsd: safeNumber(quote?.total_market_cap ?? data.total_market_cap),
+      btcDominance: safeNumber(data.btc_dominance),
+      ethDominance: safeNumber(data.eth_dominance),
+      fearGreedIndex,
+      totalVolumeUsd: safeNumber(quote?.total_volume_24h ?? data.total_volume_24h),
       lastUpdated: Date.now(),
     };
   }
 
   /**
-   * Get derivatives market metrics: open interest, funding rates, liquidations.
+   * Get derivatives metrics (funding rates, open interest) from CMC's v5 endpoint.
    */
   async getDerivativesMetrics(): Promise<DerivativesMetrics | null> {
-    const result = await callMcpTool(
-      "get_global_crypto_derivatives_metrics",
-      {},
-      { apiKey: this.apiKey, useX402: this.useX402 }
-    );
-    if (!result) return null;
-
-    return {
-      totalOpenInterestUsd: safeNumber(result.totalOpenInterest),
-      totalVolume24hUsd: safeNumber(result.totalVolume24h),
-      btcFundingRate: safeNumber(result.btcFundingRate),
-      ethFundingRate: safeNumber(result.ethFundingRate),
-      liquidationData: result.liquidationData
-        ? {
-            longLiquidations24h: safeNumber(
-              (result.liquidationData as Record<string, unknown>).longLiquidations24h
-            ),
-            shortLiquidations24h: safeNumber(
-              (result.liquidationData as Record<string, unknown>).shortLiquidations24h
-            ),
-          }
-        : null,
-      lastUpdated: Date.now(),
-    };
+    return fetchDerivativesMetrics(this.apiKey);
   }
 
   /**
    * Get latest price quote for a specific token by symbol.
-   * @param symbol Token symbol (e.g., "BTC", "ETH", "BNB"). Required.
    */
   async getQuote(symbol: string): Promise<TokenQuote | null> {
     if (!symbol) return null;
@@ -435,111 +370,78 @@ export class CmcClient implements MarketDataProvider {
     const id = await resolveTokenId(symbol, this.apiKey);
     if (!id) return null;
 
-    const result = await callMcpTool(
-      "get_crypto_quotes_latest",
-      { id },
-      { apiKey: this.apiKey, useX402: this.useX402 }
+    // Use ID-based lookup for precision
+    const result = await restGet<Record<string, unknown>>(
+      `/v1/cryptocurrency/quotes/latest?id=${id}`,
+      this.apiKey
     );
-    if (!result) return null;
 
-    const data = result.data ?? result;
+    if (!result) return null;
+    const data = result[String(id)] as Record<string, unknown> | undefined;
+    if (!data) return null;
+
     return parseTokenQuote(data);
   }
 
   /**
-   * Get price quotes for all eligible tokens.
+   * Get price quotes for all eligible tokens by symbol batch.
    */
   async getEligibleTokenQuotes(): Promise<TokenQuote[]> {
-    const ids = await this.resolveEligibleTokenIds();
-    if (ids.length === 0) return [];
+    const symbols = AGENT_CONFIG.competition.eligibleTokens;
 
-    // Batch in groups of 50 (CMC limit)
-    const batches: TokenQuote[] = [];
-    for (let i = 0; i < ids.length; i += 50) {
-      const batchIds = ids.slice(i, i + 50);
-      const result = await callMcpTool(
-        "get_crypto_quotes_latest",
-        { id: batchIds.join(",") },
-        { apiKey: this.apiKey, useX402: this.useX402 }
+    const quotes: TokenQuote[] = [];
+
+    // CMC REST API supports up to 100 symbols per request
+    for (let i = 0; i < symbols.length; i += 100) {
+      const batch = symbols.slice(i, i + 100);
+      const symbolParam = batch.map((s) => encodeURIComponent(s)).join(",");
+
+      const result = await restGet<Record<string, unknown>>(
+        `/v1/cryptocurrency/quotes/latest?symbol=${symbolParam}`,
+        this.apiKey
       );
-      if (result) {
-        const data = Array.isArray(result.data) ? result.data : [result.data].filter(Boolean);
-        batches.push(...data.map(parseTokenQuote).filter((q): q is TokenQuote => q !== null));
+
+      if (result && typeof result === "object") {
+        for (const symbol of batch) {
+          const data = result[symbol] as Record<string, unknown> | undefined;
+          if (data) {
+            const quote = parseTokenQuote(data);
+            if (quote) quotes.push(quote);
+          }
+        }
       }
     }
 
-    return batches;
+    return quotes;
   }
 
   /**
-   * Get holder distribution metrics for a token.
+   * Token holder metrics are not available via the CMC Pro REST API.
    */
-  async getTokenMetrics(symbol: string): Promise<TokenMetrics | null> {
-    const id = await resolveTokenId(symbol, this.apiKey);
-    if (!id) return null;
-
-    const result = await callMcpTool(
-      "get_crypto_metrics",
-      { id },
-      { apiKey: this.apiKey, useX402: this.useX402 }
-    );
-    if (!result) return null;
-
-    return {
-      id,
-      symbol,
-      holderCount: safeNumber(result.totalHolderCount),
-      whaleHolderCount: safeNumber(result.whaleHolderCount),
-      whalePercentOfSupply: safeNumber(result.whalePercentOfSupply),
-      averageHolderBalance: safeNumber(result.averageHolderBalance),
-    };
+  async getTokenMetrics(_symbol: string): Promise<TokenMetrics | null> {
+    return null;
   }
 
   /**
-   * Get trending crypto narratives.
+   * Trending narratives are not available via the CMC Pro REST API.
    */
   async getTrendingNarratives(): Promise<TrendingNarrative[]> {
-    const result = await callMcpTool(
-      "trending_crypto_narratives",
-      {},
-      { apiKey: this.apiKey, useX402: this.useX402 }
-    );
-    if (!result) return [];
-
-    const data = result.data ?? result.narratives ?? [];
-    return Array.isArray(data) ? (data as TrendingNarrative[]) : [];
+    return [];
   }
 
   /**
-   * Resolve all eligible token symbols to their CMC IDs.
-   * Uses batch resolution with caching.
-   */
-  private async resolveEligibleTokenIds(): Promise<number[]> {
-    const symbols = AGENT_CONFIG.competition.eligibleTokens;
-    const ids: number[] = [];
-
-    // Batch resolve in groups of 10 to avoid rate limits
-    for (let i = 0; i < symbols.length; i += 10) {
-      const batch = symbols.slice(i, i + 10);
-      const results = await Promise.all(
-        batch.map((sym) => resolveTokenId(sym, this.apiKey))
-      );
-      ids.push(...results.filter((id): id is number => id !== null));
-    }
-
-    return ids;
-  }
-
-  /**
-   * Quick health check — can we reach the CMC MCP endpoint?
+   * Quick health check — can we reach the CMC REST API?
    */
   async healthCheck(): Promise<boolean> {
     try {
-      if (this.useX402) {
-        console.log("[CMC] Health check with x402 — will pay per-request if needed");
+      const data = await restGet<Record<string, unknown>>(
+        "/v1/global-metrics/quotes/latest",
+        this.apiKey
+      );
+      if (data) {
+        console.log("[CMC] Connected via REST API");
       }
-      const result = await this.getGlobalMetrics();
-      return result !== null;
+      return data !== null;
     } catch {
       return false;
     }
@@ -562,9 +464,9 @@ function safeNumber(value: unknown, fallback: number = 0): number {
 function parseTokenQuote(data: unknown): TokenQuote | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
-  if (!d.id) return null;
+  if (!d.id && !d.symbol) return null;
 
-  // CMC returns quotes under a .USD key inside .quote
+  // CMC REST returns quotes under data[symbol].quote.USD
   let quote: Record<string, unknown> | undefined;
   if (d.quote && typeof d.quote === "object") {
     const q = d.quote as Record<string, unknown>;
@@ -572,17 +474,17 @@ function parseTokenQuote(data: unknown): TokenQuote | null {
   }
 
   return {
-    id: Number(d.id),
+    id: Number(d.id || 0),
     name: String(d.name || ""),
     symbol: String(d.symbol || ""),
     slug: String(d.slug || ""),
     price: safeNumber(quote?.price),
-    volume24h: safeNumber(quote?.volume24h),
-    marketCap: safeNumber(quote?.marketCap),
-    percentChange1h: safeNumber(quote?.percentChange1h),
-    percentChange24h: safeNumber(quote?.percentChange24h),
-    percentChange7d: safeNumber(quote?.percentChange7d),
-    lastUpdated: String(quote?.lastUpdated || ""),
+    volume24h: safeNumber(quote?.volume_24h ?? quote?.volume24h),
+    marketCap: safeNumber(quote?.market_cap ?? quote?.marketCap),
+    percentChange1h: safeNumber(quote?.percent_change_1h ?? quote?.percentChange1h),
+    percentChange24h: safeNumber(quote?.percent_change_24h ?? quote?.percentChange24h),
+    percentChange7d: safeNumber(quote?.percent_change_7d ?? quote?.percentChange7d),
+    lastUpdated: String(quote?.last_updated ?? quote?.lastUpdated ?? ""),
   };
 }
 

@@ -5,7 +5,9 @@
  * Wraps the `twak` CLI as a typed interface. Supports both live execution
  * and a simulator mode for testing without a live TWAK connection.
  *
- * TWAK CLI: https://portal.trustwallet.com
+ * Uses execAsync (child_process.execFile) instead of execSync to avoid
+ * blocking the event loop during CLI operations.
+ *
  * Auth: TWAK_ACCESS_ID + TWAK_HMAC_SECRET (env vars, configured via Pinata secrets)
  *
  * Two modes:
@@ -16,16 +18,61 @@
  * TWAK handles self-custody signing — the agent never touches the private key.
  */
 
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { AGENT_CONFIG } from "./config.js";
-import type { TradeExecution, PortfolioState, PortfolioPosition } from "./types.js";
 import { isEligibleToken } from "./constants.js";
+
+const execFileAsync = promisify(execFile);
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface TwakConfig {
+export type { SwapRequest, SwapResult, BalanceEntry, TwakPortfolio, RegistrationResult, TwakHealth, TwakConfig };
+
+// =============================================================================
+// Retry Helper
+// =============================================================================
+
+/**
+ * Retry an async function with exponential backoff.
+ * Only retries on network-like errors (not business logic errors).
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    label: string;
+    maxRetries?: number;
+    baseDelayMs?: number;
+    timeoutMs?: number;
+  }
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 2;
+  const baseDelay = options.baseDelayMs ?? 1000;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt); // 1s, 2s, 4s...
+        console.log(`  [${options.label}] Retry ${attempt + 1}/${maxRetries} in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+// =============================================================================
+// Retained Types (moved outside export for clarity)
+// =============================================================================
+
+interface TwakConfig {
   accessId?: string;
   hmacSecret?: string;
   /** Agent wallet address (set after registration or config) */
@@ -38,7 +85,7 @@ export interface TwakConfig {
   defaultSlippageBps?: number;
 }
 
-export interface SwapRequest {
+interface SwapRequest {
   tokenIn: string;
   tokenOut: string;
   amountIn: string; // string to handle decimal precision
@@ -46,7 +93,7 @@ export interface SwapRequest {
   chain?: string;
 }
 
-export interface SwapResult {
+interface SwapResult {
   success: boolean;
   txHash?: string;
   explorerUrl?: string;
@@ -59,7 +106,7 @@ export interface SwapResult {
   timestamp: number;
 }
 
-export interface BalanceEntry {
+interface BalanceEntry {
   token: string;
   symbol: string;
   balance: string;
@@ -67,14 +114,14 @@ export interface BalanceEntry {
   chain: string;
 }
 
-export interface TwakPortfolio {
+interface TwakPortfolio {
   totalValueUsd: number;
   positions: BalanceEntry[];
   chains: string[];
   lastUpdated: number;
 }
 
-export interface RegistrationResult {
+interface RegistrationResult {
   success: boolean;
   agentAddress?: string;
   txHash?: string;
@@ -82,7 +129,7 @@ export interface RegistrationResult {
   error?: string;
 }
 
-export interface TwakHealth {
+interface TwakHealth {
   available: boolean;
   version?: string;
   agentAddress?: string;
@@ -155,7 +202,6 @@ export class TwakExecutor {
 
   /**
    * Get a quote without executing (price discovery).
-   * Only available in live mode; simulator uses last simulated price.
    */
   async getQuote(request: {
     tokenIn: string;
@@ -163,21 +209,24 @@ export class TwakExecutor {
     amountIn: string;
   }): Promise<{ amountOut: string; price: number } | null> {
     if (this.config.simulator) {
-      // Simulator: return stored last quote or a mock price
       if (this.lastQuote &&
           this.lastQuote.tokenIn === request.tokenIn &&
           this.lastQuote.tokenOut === request.tokenOut &&
           this.lastQuote.amountIn === request.amountIn) {
         return { amountOut: this.lastQuote.amountOut, price: this.lastQuote.price };
       }
-      // Mock quote: 1% slippage on a $100 token
       const amount = parseFloat(request.amountIn);
-      const mockPrice = 100; // Assume $100 per token
+      const mockPrice = 100;
       const mockAmountOut = ((amount * mockPrice) * 0.99).toFixed(6);
       return { amountOut: mockAmountOut, price: mockPrice };
     }
 
-    return this.liveQuote(request);
+    return withRetry(() => this.liveQuote(request), {
+      label: "quote",
+      maxRetries: 2,
+      baseDelayMs: 1000,
+      timeoutMs: 15000,
+    });
   }
 
   /**
@@ -187,7 +236,13 @@ export class TwakExecutor {
     if (this.config.simulator) {
       return this.simulatorPortfolio;
     }
-    return this.livePortfolio();
+
+    return withRetry(() => this.livePortfolio(), {
+      label: "portfolio",
+      maxRetries: 2,
+      baseDelayMs: 1000,
+      timeoutMs: 15000,
+    });
   }
 
   /**
@@ -197,7 +252,13 @@ export class TwakExecutor {
     if (this.config.simulator) {
       return this.simulatorBalances.get(token.toUpperCase()) ?? null;
     }
-    return this.liveBalance(token);
+
+    return withRetry(() => this.liveBalance(token), {
+      label: "balance",
+      maxRetries: 2,
+      baseDelayMs: 1000,
+      timeoutMs: 10000,
+    });
   }
 
   /**
@@ -207,12 +268,17 @@ export class TwakExecutor {
     if (this.config.simulator) {
       return this.simulatorSwapHistory.slice(0, limit);
     }
-    return this.liveHistory(limit);
+
+    return withRetry(() => this.liveHistory(limit), {
+      label: "history",
+      maxRetries: 2,
+      baseDelayMs: 1000,
+      timeoutMs: 10000,
+    });
   }
 
   /**
    * Register the agent wallet for the hackathon competition.
-   * Runs `twak compete register` to register on-chain.
    */
   async registerForCompetition(): Promise<RegistrationResult> {
     if (this.config.simulator) {
@@ -241,9 +307,12 @@ export class TwakExecutor {
       };
     }
 
-    // Check if twak CLI is installed
+    // Check if twak CLI is installed using execFile (non-blocking)
     try {
-      execSync("twak --version", { stdio: "pipe", timeout: 5000 });
+      await execFileAsync("twak", ["--version"], {
+        env: this.getEnv(),
+        timeout: 5000,
+      });
       return {
         available: true,
         mode,
@@ -260,15 +329,20 @@ export class TwakExecutor {
   }
 
   // ===========================================================================
-  // Live Mode (CLI-backed)
+  // Live Mode (CLI-backed via execFile for non-blocking I/O)
   // ===========================================================================
 
-  /**
-   * Execute a swap via the `twak` CLI.
-   * Command: twak swap <amount> <tokenIn> <tokenOut> --chain bsc
-   */
   /** Shell-safe character whitelist for CLI parameters. */
   private static readonly SAFE_INPUT_RE = /^[a-zA-Z0-9._-]+$/;
+
+  /** Build the augmented env for CLI subprocess calls. */
+  private getEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      TWAK_ACCESS_ID: this.config.accessId,
+      TWAK_HMAC_SECRET: this.config.hmacSecret,
+    };
+  }
 
   /**
    * Validate that a CLI parameter contains only safe characters.
@@ -294,8 +368,7 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput(request.tokenOut, "tokenOut");
       TwakExecutor.validateSafeInput(chain, "chain");
 
-      const cmd = [
-        "twak",
+      const { stdout } = await execFileAsync("twak", [
         "swap",
         request.amountIn,
         request.tokenIn,
@@ -303,20 +376,12 @@ export class TwakExecutor {
         `--chain=${chain}`,
         `--slippage=${slippage}`,
         "--autonomous",
-      ].join(" ");
-
-      const output = execSync(cmd, {
-        env: {
-          ...process.env,
-          TWAK_ACCESS_ID: this.config.accessId,
-          TWAK_HMAC_SECRET: this.config.hmacSecret,
-        },
+      ], {
+        env: this.getEnv(),
         timeout: 30000,
-        stdio: "pipe",
       });
 
-      const result = output.toString();
-      return this.parseSwapOutput(result, request);
+      return this.parseSwapOutput(stdout, request);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
@@ -330,150 +395,99 @@ export class TwakExecutor {
     }
   }
 
-  /**
-   * Get a quote via TWAK CLI without executing.
-   * Command: twak swap <amount> <tokenIn> <tokenOut> --chain bsc --quote-only
-   */
   private async liveQuote(request: {
     tokenIn: string;
     tokenOut: string;
     amountIn: string;
   }): Promise<{ amountOut: string; price: number } | null> {
-    try {
-      TwakExecutor.validateSafeInput(request.amountIn, "amount");
-      TwakExecutor.validateSafeInput(request.tokenIn, "tokenIn");
-      TwakExecutor.validateSafeInput(request.tokenOut, "tokenOut");
+    TwakExecutor.validateSafeInput(request.amountIn, "amount");
+    TwakExecutor.validateSafeInput(request.tokenIn, "tokenIn");
+    TwakExecutor.validateSafeInput(request.tokenOut, "tokenOut");
 
-      const cmd = [
-        "twak",
-        "swap",
-        request.amountIn,
-        request.tokenIn,
-        request.tokenOut,
-        "--quote-only",
-        `--chain=${this.config.testnet ? "bsc-testnet" : "bsc"}`,
-      ].join(" ");
+    const { stdout } = await execFileAsync("twak", [
+      "swap",
+      request.amountIn,
+      request.tokenIn,
+      request.tokenOut,
+      "--quote-only",
+      `--chain=${this.config.testnet ? "bsc-testnet" : "bsc"}`,
+    ], {
+      env: this.getEnv(),
+      timeout: 15000,
+    });
 
-      const output = execSync(cmd, {
-        env: {
-          ...process.env,
-          TWAK_ACCESS_ID: this.config.accessId,
-          TWAK_HMAC_SECRET: this.config.hmacSecret,
-        },
-        timeout: 15000,
-        stdio: "pipe",
-      });
+    const amountOutMatch = stdout.match(/(?:amountOut|expectedOutput)[:\s]+([\d.]+)/i);
+    const priceMatch = stdout.match(/(?:price|rate)[:\s]+([\d.]+)/i);
 
-      // Parse output for price/amount
-      const text = output.toString();
-      const amountOutMatch = text.match(/(?:amountOut|expectedOutput)[:\s]+([\d.]+)/i);
-      const priceMatch = text.match(/(?:price|rate)[:\s]+([\d.]+)/i);
-
-      if (amountOutMatch) {
-        const amountOut = amountOutMatch[1];
-        const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
-        this.lastQuote = { ...request, amountOut, price };
-        return { amountOut, price };
-      }
-
-      return null;
-    } catch {
-      return null;
+    if (amountOutMatch) {
+      const amountOut = amountOutMatch[1];
+      const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+      this.lastQuote = { ...request, amountOut, price };
+      return { amountOut, price };
     }
+
+    return null;
   }
 
   private async liveBalance(token: string): Promise<BalanceEntry | null> {
-    try {
-      TwakExecutor.validateSafeInput(token, "token");
-      const output = execSync(`twak balance ${token} --chain=${this.config.testnet ? "bsc-testnet" : "bsc"}`, {
-        env: {
-          ...process.env,
-          TWAK_ACCESS_ID: this.config.accessId,
-          TWAK_HMAC_SECRET: this.config.hmacSecret,
-        },
-        timeout: 10000,
-        stdio: "pipe",
-      });
+    TwakExecutor.validateSafeInput(token, "token");
 
-      const text = output.toString();
-      return this.parseBalanceOutput(text, token);
-    } catch {
-      return null;
-    }
+    const { stdout } = await execFileAsync("twak", [
+      "balance",
+      token,
+      `--chain=${this.config.testnet ? "bsc-testnet" : "bsc"}`,
+    ], {
+      env: this.getEnv(),
+      timeout: 10000,
+    });
+
+    return this.parseBalanceOutput(stdout, token);
   }
 
   private async livePortfolio(): Promise<TwakPortfolio> {
-    try {
-      const output = execSync("twak wallet portfolio", {
-        env: {
-          ...process.env,
-          TWAK_ACCESS_ID: this.config.accessId,
-          TWAK_HMAC_SECRET: this.config.hmacSecret,
-        },
-        timeout: 15000,
-        stdio: "pipe",
-      });
+    const { stdout } = await execFileAsync("twak", [
+      "wallet",
+      "portfolio",
+    ], {
+      env: this.getEnv(),
+      timeout: 15000,
+    });
 
-      return this.parsePortfolioOutput(output.toString());
-    } catch {
-      return {
-        totalValueUsd: 0,
-        positions: [],
-        chains: [],
-        lastUpdated: Date.now(),
-      };
-    }
+    return this.parsePortfolioOutput(stdout);
   }
 
   private async liveHistory(limit: number): Promise<SwapResult[]> {
-    try {
-      const output = execSync(`twak history --limit=${limit}`, {
-        env: {
-          ...process.env,
-          TWAK_ACCESS_ID: this.config.accessId,
-          TWAK_HMAC_SECRET: this.config.hmacSecret,
-        },
-        timeout: 10000,
-        stdio: "pipe",
-      });
+    const { stdout } = await execFileAsync("twak", [
+      "history",
+      `--limit=${limit}`,
+    ], {
+      env: this.getEnv(),
+      timeout: 10000,
+    });
 
-      return this.parseHistoryOutput(output.toString());
-    } catch {
-      return [];
-    }
+    return this.parseHistoryOutput(stdout);
   }
 
   private async liveRegister(): Promise<RegistrationResult> {
-    try {
-      const output = execSync("twak compete register", {
-        env: {
-          ...process.env,
-          TWAK_ACCESS_ID: this.config.accessId,
-          TWAK_HMAC_SECRET: this.config.hmacSecret,
-        },
-        timeout: 60000,
-        stdio: "pipe",
-      });
+    const { stdout } = await execFileAsync("twak", [
+      "compete",
+      "register",
+    ], {
+      env: this.getEnv(),
+      timeout: 60000,
+    });
 
-      const text = output.toString();
-      const addressMatch = text.match(/(?:address|agent|wallet)[:\s]+(0x[a-fA-F0-9]{40})/i);
-      const txHashMatch = text.match(/(?:tx|transaction|hash)[:\s]+(0x[a-fA-F0-9]{64})/i);
+    const addressMatch = stdout.match(/(?:address|agent|wallet)[:\s]+(0x[a-fA-F0-9]{40})/i);
+    const txHashMatch = stdout.match(/(?:tx|transaction|hash)[:\s]+(0x[a-fA-F0-9]{64})/i);
 
-      return {
-        success: true,
-        agentAddress: addressMatch?.[1],
-        txHash: txHashMatch?.[1],
-        explorerUrl: txHashMatch?.[1]
-          ? `https://${this.config.testnet ? "testnet." : ""}bscscan.com/tx/${txHashMatch[1]}`
-          : undefined,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        success: false,
-        error: `Registration failed: ${message}`,
-      };
-    }
+    return {
+      success: true,
+      agentAddress: addressMatch?.[1],
+      txHash: txHashMatch?.[1],
+      explorerUrl: txHashMatch?.[1]
+        ? `https://${this.config.testnet ? "testnet." : ""}bscscan.com/tx/${txHashMatch[1]}`
+        : undefined,
+    };
   }
 
   // ===========================================================================
@@ -481,7 +495,6 @@ export class TwakExecutor {
   // ===========================================================================
 
   private initSimulator(): void {
-    // Start with a demo portfolio on BSC
     const startingBalance: BalanceEntry[] = [
       { token: "BNB", symbol: "BNB", balance: "10.0", valueUsd: 6000, chain: "bsc" },
       { token: "USDC", symbol: "USDC", balance: "3000.0", valueUsd: 3000, chain: "bsc" },
@@ -525,14 +538,11 @@ export class TwakExecutor {
       };
     }
 
-    // Simulate swap with price discovery
-    // In a real scenario, TWAK would find the best route
     const mockPriceIn = this.getMockPrice(request.tokenIn);
     const mockPriceOut = this.getMockPrice(request.tokenOut);
     const slippageMultiplier = 1 - ((request.slippageBps ?? this.config.defaultSlippageBps) / 10000);
     const amountOut = ((amount * mockPriceIn) / mockPriceOut) * slippageMultiplier;
 
-    // Update balances
     const inNewBalance = (parseFloat(inBalance.balance) - amount).toFixed(6);
     this.simulatorBalances.set(request.tokenIn.toUpperCase(), {
       ...inBalance,
@@ -559,7 +569,6 @@ export class TwakExecutor {
       });
     }
 
-    // Update portfolio
     const allPositions = Array.from(this.simulatorBalances.values());
     this.simulatorPortfolio = {
       totalValueUsd: allPositions.reduce((sum, p) => sum + p.valueUsd, 0),
@@ -568,7 +577,6 @@ export class TwakExecutor {
       lastUpdated: Date.now(),
     };
 
-    // Store quote
     this.lastQuote = {
       tokenIn: request.tokenIn,
       tokenOut: request.tokenOut,
@@ -577,7 +585,6 @@ export class TwakExecutor {
       price: mockPriceOut / mockPriceIn,
     };
 
-    // Create result
     const txHash = `0xSIMULATED_${Date.now().toString(16)}`;
     const result: SwapResult = {
       success: true,
@@ -589,7 +596,7 @@ export class TwakExecutor {
       tokenOut: request.tokenOut,
       amountIn: request.amountIn,
       amountOut: amountOut.toFixed(6),
-      feeUsd: 0.01, // Simulated fee
+      feeUsd: 0.01,
       timestamp: Date.now(),
     };
 
@@ -617,10 +624,7 @@ export class TwakExecutor {
   // Output Parsing (live mode CLI output → typed data)
   // ===========================================================================
 
-  private parseSwapOutput(
-    output: string,
-    request: SwapRequest
-  ): SwapResult {
+  private parseSwapOutput(output: string, request: SwapRequest): SwapResult {
     const txHashMatch = output.match(/(?:tx|transaction|hash)[:\s]+(0x[a-fA-F0-9]{64})/i);
     const amountOutMatch = output.match(/(?:amountOut|received|output)[:\s]+([\d.]+)/i);
 
@@ -654,7 +658,6 @@ export class TwakExecutor {
   }
 
   private parsePortfolioOutput(output: string): TwakPortfolio {
-    // Basic parsing — extract lines with balance: value patterns
     const lines = output.split("\n");
     const positions: BalanceEntry[] = [];
     let totalUsd = 0;

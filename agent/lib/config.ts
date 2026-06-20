@@ -4,6 +4,26 @@
  * and Aleo chain config. Single source of truth for agent-side constants.
  */
 
+/**
+ * Resolve the agent's operating mode from env or default.
+ * Explicit mode via AGENT_MODE env var overrides implicit auto-detection.
+ *
+ * Values:
+ *   "live"      — Full execution (requires TWAK_ACCESS_ID, CMC_API_KEY or x402, etc.)
+ *   "simulator" — In-memory mocks, no real execution
+ *   "auto"      — (default) Auto-detect: live if TWAK_ACCESS_ID is set, else simulator
+ */
+export function resolveAgentMode(): "live" | "simulator" {
+  const explicit = process.env.AGENT_MODE?.toLowerCase().trim();
+  if (explicit === "live") return "live";
+  if (explicit === "simulator") return "simulator";
+  // Auto-detect: if TWAK credentials are set, assume live
+  return process.env.TWAK_ACCESS_ID ? "live" : "simulator";
+}
+
+/** The resolved operating mode at startup. */
+export const AGENT_MODE = resolveAgentMode();
+
 export const AGENT_CONFIG = {
   // Scoring Weights (0-100 total)
   weights: {
@@ -156,7 +176,7 @@ export const AGENT_CONFIG = {
       chainId: 5003,
       rpcUrl: "https://rpc.sepolia.mantle.xyz",
       explorerUrl: "https://explorer.sepolia.mantle.xyz",
-      registryAddress: "0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121",
+      registryAddress: "0x81226e8894D334c790D9a972855592E6C4eeB15C",
     },
   },
 } as const;

@@ -22,7 +22,6 @@ import {
   Activity,
   TrendingUp,
   Shield,
-  ShieldCheck,
   AlertTriangle,
   Settings,
   Share2,
@@ -33,7 +32,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { keccak256, toBytes } from "viem";
 import { ConvictionBadge } from "@/components/ui/conviction-badge";
 import { ScoreBreakdownDialog } from "@/components/ui/score-breakdown";
-import { ethosClient } from "@/lib/ethos";
 import { PositionExplorer } from "@/components/ui/position-explorer";
 import { ShareDialog } from "@/components/ui/share-dialog";
 import { ErrorPanel } from "@/components/ui/error-panel";
@@ -54,10 +52,10 @@ import { AleoConvictionCard } from "@/components/aleo/aleo-conviction-card";
 import { AleoPrivateThesis } from "@/components/aleo/aleo-private-thesis";
 import { MantleConvictionCard } from "@/components/mantle/mantle-conviction-card";
 import { MantleStrategyLens } from "@/components/mantle/mantle-strategy-lens";
-import { ReputationTierCard } from "@/components/reputation/reputation-tier-card";
-import { CohortComparison } from "@/components/analysis/cohort-comparison";
+import { ReputationHub } from "@/components/reputation/reputation-hub";
 import { PrivateBalanceCard } from "@/components/privacy/private-balance-card";
 import { AnimatedScore } from "@/components/ui/animated-score";
+import { EthosReputationSkeleton } from "@/components/ui/ethos-skeleton";
 import Link from "next/link";
 
 export default function Home() {
@@ -565,7 +563,7 @@ export default function Home() {
 
         {/* Dynamic Content Area */}
         <div className="flex-1 relative w-full max-w-6xl mx-auto">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             {/* STATE: ANALYZING (TERMINAL) */}
             {isAnalyzing && (
               <motion.div
@@ -574,10 +572,19 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.3 }}
-                className="w-full max-w-2xl mx-auto space-y-4"
+                className="w-full max-w-5xl mx-auto"
               >
-                <ScanProgress />
-                <Terminal logs={logs} className="min-h-100" />
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                  {/* Terminal column */}
+                  <div className="lg:col-span-3 space-y-4">
+                    <ScanProgress />
+                    <Terminal logs={logs} className="min-h-80" />
+                  </div>
+                  {/* Preview skeleton cards */}
+                  <motion.div layoutId="ethos-reputation-card" className="lg:col-span-2 space-y-4">
+                    <EthosReputationSkeleton />
+                  </motion.div>
+                </div>
               </motion.div>
             )}
 
@@ -855,188 +862,20 @@ export default function Home() {
                   </Card>
                 </motion.div>
 
-                {/* Ethos Card */}
+                {/* Reputation Hub (Ethos, Tiers, Cohort) */}
                 <motion.div
+                  layoutId="ethos-reputation-card"
                   variants={{
                     hidden: { opacity: 0, y: 20 },
                     visible: { opacity: 1, y: 0 },
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
                 >
-                  <Card className="glass-panel border-border/50 bg-surface/40 flex flex-col justify-between h-full relative overflow-hidden">
-                    {/* Analyzing Other Wallet Indicator */}
-                    {isConnected &&
-                      targetAddress &&
-                      targetAddress !== activeAddress && (
-                        <div className="absolute top-0 left-0 right-0 bg-signal/10 border-b border-signal/20 py-1 px-4 flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
-                          <span className="text-[10px] font-mono text-signal uppercase font-bold tracking-widest">
-                            Inspecting Public Profile
-                          </span>
-                        </div>
-                      )}
-
-                    <CardHeader
-                      className={cn(
-                        isConnected &&
-                          targetAddress &&
-                          targetAddress !== activeAddress
-                          ? "pt-8"
-                          : "pt-6",
-                      )}
-                    >
-                      {/* Farcaster Identity Display */}
-                      {farcasterIdentity && (
-                        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-signal/5 border border-signal/20 max-h-35 overflow-hidden">
-                          {farcasterIdentity.pfpUrl && (
-                            <a
-                              href={`https://warpcast.com/${farcasterIdentity.username}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                            >
-                              <img
-                                src={farcasterIdentity.pfpUrl}
-                                alt={farcasterIdentity.username}
-                                className="w-10 h-10 rounded-full ring-2 ring-signal/30 hover:ring-signal/50 transition-all"
-                                loading="lazy"
-                              />
-                            </a>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-foreground truncate">
-                              {farcasterIdentity.displayName ||
-                                farcasterIdentity.username}
-                            </div>
-                            <div className="text-xs text-foreground-muted truncate">
-                              @{farcasterIdentity.username}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between mb-2">
-                        <CardTitle className="text-sm font-mono text-foreground-muted tracking-wider uppercase">
-                          Reputation
-                        </CardTitle>
-                        <ShieldCheck className="w-5 h-5 text-ethos" />
-                      </div>
-
-                      <div className="text-3xl font-bold text-foreground">
-                        {ethosScore
-                          ? "Verified"
-                          : farcasterIdentity
-                            ? "Farcaster Verified"
-                            : "Unknown"}
-                      </div>
-                      <CardDescription className="text-xs">
-                        {ethosScore
-                          ? "Verified via Ethos Network"
-                          : farcasterIdentity
-                            ? "Link your wallet to Ethos for reputation scoring"
-                            : "Connect a wallet with Ethos history to unlock cohort comparison"}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="p-4 rounded-lg bg-surface/50 border border-border space-y-3">
-                        {unifiedTrustScore && unifiedTrustScore.score > 0 && (
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-foreground-muted">
-                              Trust Score
-                            </span>
-                            <span className="font-mono text-signal font-bold">
-                              {unifiedTrustScore.score}/100
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-foreground-muted">
-                            Credibility
-                          </span>
-                          <span className="font-mono text-foreground">
-                            {ethosScore?.score ?? "---"}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-foreground-muted">Tier</span>
-                          <span
-                            className={cn(
-                              "font-mono text-xs px-2 py-1 rounded",
-                              (ethosScore?.score ?? 0) >= 2000
-                                ? "bg-patience/20 text-patience"
-                                : (ethosScore?.score ?? 0) >= 1000
-                                  ? "bg-signal/20 text-signal"
-                                  : (ethosScore?.score ?? 0) >= 500
-                                    ? "bg-foreground/20 text-foreground"
-                                    : (ethosScore?.score ?? 0) >= 100
-                                      ? "bg-foreground-muted/20 text-foreground-muted"
-                                      : "bg-surface text-foreground-muted",
-                            )}
-                          >
-                            {(ethosScore?.score ?? 0) >= 2000
-                              ? "Elite"
-                              : (ethosScore?.score ?? 0) >= 1000
-                                ? "High"
-                                : (ethosScore?.score ?? 0) >= 500
-                                  ? "Medium"
-                                  : (ethosScore?.score ?? 0) >= 100
-                                    ? "Low"
-                                    : "Unknown"}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-foreground-muted">
-                            Sybil Risk
-                          </span>
-                          <span className="font-mono text-patience">
-                            {ethosScore?.score
-                              ? ethosScore.score > 1000
-                                ? "Low"
-                                : "Medium"
-                              : "---"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          variant="outline"
-                          className="w-full border-border hover:bg-surface text-xs font-mono"
-                          onClick={() => {
-                            if (ethosProfile) {
-                              const profileUrl =
-                                ethosClient.getProfileUrl(ethosProfile);
-                              window.open(
-                                profileUrl,
-                                "_blank",
-                                "noopener,noreferrer",
-                              );
-                            } else if (farcasterIdentity?.username) {
-                              window.open(
-                                `https://app.ethos.network/profile/x/${farcasterIdentity.username}/score`,
-                                "_blank",
-                                "noopener,noreferrer",
-                              );
-                            } else if (targetAddress) {
-                              window.open(
-                                `https://app.ethos.network/profile/${targetAddress}`,
-                                "_blank",
-                                "noopener,noreferrer",
-                              );
-                            } else {
-                              window.open(
-                                "https://app.ethos.network",
-                                "_blank",
-                                "noopener,noreferrer",
-                              );
-                            }
-                          }}
-                        >
-                          {ethosScore ? "VIEW ETHOS PROFILE" : "BUILD REPUTATION ON ETHOS →"}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <ReputationHub
+                    isConnected={isConnected}
+                    activeAddress={activeAddress}
+                    isShowcaseMode={isShowcaseMode}
+                  />
                 </motion.div>
 
                 {/* Mantle Agentic Card */}
@@ -1079,45 +918,7 @@ export default function Home() {
                   }}
                   className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
                 >
-                  <AleoConvictionCard />
-                </motion.div>
-
-                {/* Reputation Tier Card */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                >
-                  <ReputationTierCard
-                    currentScore={
-                      isShowcaseMode ? 2200 : (ethosScore?.score ?? null)
-                    }
-                  />
-                </motion.div>
-
-                {/* Cohort Comparison */}
-                {convictionMetrics && (
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                  >
-                    <CohortComparison
-                      address={targetAddress}
-                      chain={analysisChain ?? undefined}
-                      userScore={convictionMetrics.score}
-                      userPatienceTax={convictionMetrics.patienceTax}
-                      userWinRate={convictionMetrics.winRate}
-                      ethosScore={
-                        isShowcaseMode ? 2200 : (ethosScore?.score ?? null)
-                      }
-                    />
-                  </motion.div>
-                )}
+                  <AleoConvictionCard />                </motion.div>
 
                 {/* Privacy Cash Private Treasury */}
                 <motion.div

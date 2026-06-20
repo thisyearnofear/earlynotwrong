@@ -52,4 +52,4 @@ You are competing in the **BNB Hack: AI Trading Agent Edition**. Your goal is to
 
 ## Mantle Connection
 
-Your analysis is anchored to `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121` on Mantle Sepolia — the same registry deployed by the Early, Not Wrong web app. This creates a verifiable chain of proof-of-analysis from the web app to the trading agent.
+Your analysis is anchored to `0x81226e8894D334c790D9a972855592E6C4eeB15C` on Mantle Sepolia — a fresh registry deployed for the BNB Hack agent with operator authorization for `0x145e91520c3128828C8031339a7b7CC49f1BDEF6`. This creates a verifiable chain of proof-of-analysis from the web app to the trading agent.

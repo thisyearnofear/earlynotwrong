@@ -36,6 +36,9 @@ import {
   sendStartup,
   sendErrorAlert,
 } from "./lib/telegram.js";
+import { summarizeError, isRecoverable } from "./lib/errors.js";
+import { AGENT_MODE } from "./lib/config.js";
+import { persistState } from "./lib/persistence.js";
 
 // =============================================================================
 // Agent State
@@ -719,15 +722,22 @@ async function runCycle(): Promise<void> {
     }).catch(() => {});
   } catch (error) {
     state.status = "error";
-    const message = error instanceof Error ? error.message : String(error);
-    state.errors.push(message);
-    console.error(`\n✗ Cycle failed: ${message}`);
-    console.error(error instanceof Error ? error.stack : "");
+    const summary = summarizeError(error);
+    state.errors.push(summary);
+    console.error(`\n✗ Cycle failed: ${summary}`);
+    if (error instanceof Error && error.stack) {
+      console.error(error.stack);
+    }
+
+    // Log whether the error is recoverable
+    if (!isRecoverable(error)) {
+      console.error(`  Non-recoverable error — agent will not retry this cycle.`);
+    }
 
     // Send error alert to Telegram (non-blocking, skip if not configured)
     sendErrorAlert({
       cycle: state.cycle,
-      error: message,
+      error: summary,
       stack: error instanceof Error ? error.stack : undefined,
     }).catch(() => {});
   }
@@ -741,8 +751,14 @@ async function runCycle(): Promise<void> {
 // Server Shared State Sync
 // =============================================================================
 
+/** Compute a quick config hash from the trading params. */
+function computeConfigHash(): string {
+  const t = AGENT_CONFIG.trading;
+  return `${t.topK}-${t.loopIntervalMinutes}-${t.maxDrawdownPercent}-${t.maxPerTradeUsd}-${t.maxDailyTrades}`;
+}
+
 function syncServerState(): void {
-  setAgentState({
+  const agentSnapshot = {
     cycle: state.cycle,
     status: state.status,
     lastRunAt: state.lastRunAt,
@@ -754,6 +770,22 @@ function syncServerState(): void {
     executedTrades: state.executedTrades,
     lastAnchoredHash: state.lastAnchoredHash,
     anchoring: state.anchoring,
+  };
+
+  setAgentState(agentSnapshot);
+
+  // Persist state after every sync (non-blocking, errors are logged)
+  persistState({
+    agentState: agentSnapshot,
+    guardrails: {
+      peakValueUsd: guardrails.getPeakValue(),
+      totalTradesExecuted: guardrails.getTotals().totalTrades,
+      totalVolumeUsd: guardrails.getTotals().totalVolumeUsd,
+      lastTradeAt: state.lastRunAt,
+    },
+    configHash: computeConfigHash(),
+  }).catch((err) => {
+    console.warn("[persistence] State write failed:", summarizeError(err));
   });
 }
 
@@ -790,6 +822,9 @@ async function main(): Promise<void> {
     maxDrawdown: AGENT_CONFIG.trading.maxDrawdownPercent,
   }).catch(() => {});
 
+  // Log resolved agent mode (explicit env var or auto-detected)
+  console.log(`Agent mode: ${AGENT_MODE.toUpperCase()}${AGENT_MODE === "simulator" ? " (no real execution)" : ""}`);
+
   // Sync initial state to server
   syncServerState();
 
@@ -797,14 +832,32 @@ async function main(): Promise<void> {
   console.log("\nStarting first cycle...");
   await runCycle();
 
-  // Sync state after first cycle
+  // Sync state after first cycle (also persists via syncServerState)
   syncServerState();
 
-  // Schedule subsequent cycles
+  // Schedule subsequent cycles with error isolation
+  // Each cycle runs independently — a failure in one cycle does not
+  // prevent subsequent cycles from executing.
   const intervalMs = AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
   console.log(`\nNext cycle scheduled in ${AGENT_CONFIG.trading.loopIntervalMinutes} minutes (${new Date(Date.now() + intervalMs).toISOString()})`);
   setInterval(() => {
-    runCycle().then(syncServerState).catch(() => {});
+    // Error isolation: wrap the entire cycle in a try/catch so that
+    // an unhandled rejection in one cycle doesn't crash the timer.
+    runCycle()
+      .then(() => {
+        try {
+          syncServerState();
+        } catch (syncError) {
+          console.error("State sync failed after cycle:", summarizeError(syncError));
+        }
+      })
+      .catch((cycleError) => {
+        console.error("Unhandled cycle error (isolated):", summarizeError(cycleError));
+        // Ensure the server still reports the latest known state
+        try {
+          syncServerState();
+        } catch { /* ignore */ }
+      });
   }, intervalMs);
 
   // Keep process alive — graceful shutdown stops the server

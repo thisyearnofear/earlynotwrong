@@ -4,8 +4,8 @@
  * Handles anchoring analysis hashes to the existing Mantle ERC-8004 registry.
  */
 
-import { keccak_256 as _keccak256 } from "@noble/hashes/sha3";
-import { bytesToHex } from "@noble/hashes/utils";
+import { keccak_256 as _keccak256 } from "@noble/hashes/sha3.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { createWalletClient, createPublicClient, http, defineChain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { AGENT_CONFIG } from "./config.js";

@@ -2,6 +2,39 @@
 
 > Being early feels like being wrong. Until it doesn't.
 
+An agentic on-chain behavioral analysis app that combines a **conviction analysis dashboard** (Next.js web app) with an **autonomous trading agent** (Node.js CLI/background process) for the BNB Hack: AI Trading Agent Edition.
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+cd agent && npm install && cd ..
+
+# Start in simulator mode (no credentials needed)
+AGENT_MODE=simulator npm run --prefix agent dev
+
+# Start in live mode (requires env vars)
+export TWAK_ACCESS_ID=...
+export TWAK_HMAC_SECRET=...
+export CMC_API_KEY=...
+npm run --prefix agent dev
+
+# Start the web app (separate terminal)
+npm run dev
+```
+
+## Key Documents
+
+| Document | Purpose |
+|----------|---------|
+| [`SOUL.md`](./SOUL.md) | Design philosophy and architectural soul |
+| [`AGENTS.md`](./AGENTS.md) | Agent orchestration guide for AI agents |
+| [`docs/HACKATHON_PLAN.md`](./docs/HACKATHON_PLAN.md) | BNB Hack implementation plan |
+| [`docs/SUBMISSION.md`](./docs/SUBMISSION.md) | Mantle Turing Test Hackathon submission |
+
+---
+
 An agentic on-chain behavioral analysis app that helps crypto traders understand whether their biggest losses came from being wrong — or from not staying right long enough. The app analyzes **Solana** and **Base** wallet behavior, then anchors AI-generated conviction records to **Mantle** as a verifiable agent reputation layer. "Early, Not Wrong" uses **Aleo ZK-Proofs** so traders can build and prove portable behavioral reputation without revealing their underlying wallet history.
 
 ## Chain Architecture
@@ -15,8 +48,8 @@ An agentic on-chain behavioral analysis app that helps crypto traders understand
 ## Mantle Phase II Submission
 
 - **Track**: AI Alpha & Data
-- **Registry**: `0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121`
-- **First Anchor Tx**: `0xc2a1283ea23e394bf8a5b54f4329647ca3319235250d28861cdd9b6dd44907c4`
+- **Registry**: `0x81226e8894D334c790D9a972855592E6C4eeB15C` (BNB Hack agent; Mantle Turing Test submission uses `0xBd93c9...`)
+- **First Anchor Tx**: `0xf0ef9259...` (BNB Hack agent cycle #1)
 - **Demo Wallet**: Jesse Dixon showcase wallet on Base, `0x32DA784C5A5813bAB4D52e84840869c273E15E28`
 - **Agent Card**: `lens://3d290df5a33aefd485a09d6f5170b8169c198d6ac35a560335fab19e01ca5acf`
 
@@ -274,7 +307,7 @@ ALEO_TREASURY_PRIVATE_KEY=""    # Signs rebate vouchers
 NEXT_PUBLIC_ALEO_PROGRAM_ID="early_not_wrong_v3.aleo"
 
 # Mantle
-NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY="0xBd93c9fd88d7D3D5a7b64b24C137f3666E287121"
+NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY="0x81226e8894D334c790D9a972855592E6C4eeB15C"
 MANTLE_RPC_URL=""
 
 # Security
