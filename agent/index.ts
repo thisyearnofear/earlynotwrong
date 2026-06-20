@@ -71,6 +71,13 @@ const state = {
   } | null,
 };
 
+/**
+ * Track consecutive concentration-limit guardrail rejections per token.
+ * Used for adaptive sizing: each rejection reduces the proposed trade size
+ * by 20% so the next cycle's proposal is more likely to pass.
+ */
+const concentrationRejectionCount = new Map<string, number>();
+
 // =============================================================================
 // Startup Health Check
 // =============================================================================
@@ -321,19 +328,33 @@ async function createTradeProposals(
     return [];
   }
 
-  // Size each position: evenly split the per-trade budget
-  const perTradeUsd = Math.min(
+  // Size each position with three layers of safety:
+  // 1. Reduced concentration cap (15% vs guardrails 20%) for headroom
+  // 2. Safety margin (0.9x) to avoid hitting the limit exactly
+  // 3. Adaptive sizing — reduce by 20% per consecutive concentration rejection
+  const PROPOSAL_CONCENTRATION_PERCENT = 15;
+  const SAFETY_MARGIN = 0.9;
+  const ADAPTIVE_DECAY = 0.8;
+
+  const basePerTrade = Math.min(
     AGENT_CONFIG.trading.maxPerTradeUsd,
-    portfolioValue * (AGENT_CONFIG.trading.maxPositionConcentrationPercent / 100)
+    portfolioValue * (PROPOSAL_CONCENTRATION_PERCENT / 100)
   );
 
-  const proposals = liquidTokens.map(s => ({
-    tokenSymbol: s.token.symbol,
-    convictionScore: s.conviction,
-    amountInUsd: Math.round(perTradeUsd),
-  }));
+  const safePerTrade = basePerTrade * SAFETY_MARGIN;
 
-  console.log(`  Proposals: ${proposals.map(p => `${p.tokenSymbol} $${p.amountInUsd} (score: ${p.convictionScore})`).join(", ")}`);
+  const proposals = liquidTokens.map(s => {
+    const rejectionCount = concentrationRejectionCount.get(s.token.symbol) ?? 0;
+    const adaptiveMultiplier = Math.pow(ADAPTIVE_DECAY, rejectionCount);
+    const amountInUsd = Math.round(safePerTrade * adaptiveMultiplier);
+    return {
+      tokenSymbol: s.token.symbol,
+      convictionScore: s.conviction,
+      amountInUsd,
+    };
+  });
+
+  console.log(`  Proposals: ${proposals.map(p => `${p.tokenSymbol} $${p.amountInUsd} (score: ${p.convictionScore})${concentrationRejectionCount.get(p.tokenSymbol) ? ` [rejected ${concentrationRejectionCount.get(p.tokenSymbol)}x before]` : ""}`).join(", ")}`);
   return proposals;
 }
 
@@ -370,6 +391,15 @@ async function checkTradeGuardrails(
       convictionScore: proposal.convictionScore,
       portfolioValue,
     });
+
+    // Track concentration rejections for adaptive sizing in the next cycle
+    if (result.code === "CONCENTRATION_LIMIT") {
+      const current = concentrationRejectionCount.get(proposal.tokenSymbol) ?? 0;
+      concentrationRejectionCount.set(proposal.tokenSymbol, current + 1);
+    } else if (result.allowed) {
+      // Reset on success — the token is no longer over-concentrated
+      concentrationRejectionCount.delete(proposal.tokenSymbol);
+    }
 
     if (result.allowed) {
       passed.push(proposal);
