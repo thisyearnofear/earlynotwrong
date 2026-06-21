@@ -197,12 +197,11 @@ describe("TwakExecutor — Allowlist Validation", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects non-eligible tokenOut (BNB is not in eligible tokens)", async () => {
+  it("allows BNB as tokenOut for selling positions (self-funding harvest)", async () => {
     const result = await executor.executeSwap({
       tokenIn: "USDC", tokenOut: "BNB", amountIn: "12",
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Token not in competition allowlist");
+    expect(result.success).toBe(true);
   });
 
   it("rejects completely unknown tokenOut", async () => {

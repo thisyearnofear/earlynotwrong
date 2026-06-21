@@ -394,6 +394,56 @@ async function closePosition(
 }
 
 // =============================================================================
+// Main Loop - Step 4b: Harvest for BNB (self-funding)
+// =============================================================================
+
+const BNB_FLOOR_USD = 5; // Minimum BNB needed for one trade
+const MIN_CYCLES_TO_HARVEST = 8; // Position must have been held this long
+
+async function harvestForBnb(): Promise<void> {
+  const bnbPosition = state.portfolio?.positions.find(
+    (p) => p.symbol.toUpperCase() === "BNB" || p.token.toUpperCase() === "BNB"
+  );
+  const bnbValue = bnbPosition?.valueUsd ?? 0;
+
+  if (bnbValue >= BNB_FLOOR_USD) return;
+
+  const maturePositions = state.heldPositions
+    .filter((p) => p.cyclesHeld >= MIN_CYCLES_TO_HARVEST)
+    .sort((a, b) => a.amountUsd - b.amountUsd); // smallest first
+
+  if (maturePositions.length === 0) {
+    console.log(`  [harvest] BNB low ($${bnbValue.toFixed(2)}) but no mature positions (need ${MIN_CYCLES_TO_HARVEST}+ cycles)`);
+    return;
+  }
+
+  const target = maturePositions[0];
+  console.log(`\n[4b/8] Harvesting for BNB (balance: $${bnbValue.toFixed(2)})...`);
+  console.log(`  Selling ${target.symbol} ($${target.amountUsd}) — held ${target.cyclesHeld} cycles, lowest conviction position`);
+
+  const result = await twakExecutor.executeSwap({
+    tokenIn: target.symbol,
+    tokenOut: "BNB",
+    amountIn: target.amountUsd.toString(),
+    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+  });
+
+  if (result.success) {
+    state.heldPositions = state.heldPositions.filter(
+      (p) => p.symbol !== target.symbol
+    );
+    state.executedTrades.push(result);
+    state.totalTrades += 1;
+    guardrails.recordTrade(target.amountUsd, true);
+    console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${result.txHash?.slice(0, 10)}...)`);
+    // Refresh portfolio to pick up new BNB balance
+    state.portfolio = await twakExecutor.getPortfolio();
+  } else {
+    console.log(`  ✗ Harvest failed: ${result.error}`);
+  }
+}
+
+// =============================================================================
 // Main Loop - Step 5: Create Entry Proposals (contrarian)
 // =============================================================================
 
@@ -875,6 +925,9 @@ async function runCycle(): Promise<void> {
 
     // Step 4: Manage open positions — cap losses, let winners run
     await manageOpenPositions();
+
+    // Step 4b: Harvest mature positions to BNB if balance is low (self-funding)
+    await harvestForBnb();
 
     // Step 5: Create entry proposals from conviction signals
     const proposals = await createTradeProposals();

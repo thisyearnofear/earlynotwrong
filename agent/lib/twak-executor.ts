@@ -201,7 +201,7 @@ export class TwakExecutor {
   async executeSwap(request: SwapRequest): Promise<SwapResult> {
     // Validate token allowlist — only tokenOut (the target) must be an eligible hackathon token
     // tokenIn can be BNB (native gas token) or any stablecoin the wallet holds
-    if (!isEligibleToken(request.tokenOut)) {
+    if (request.tokenOut.toUpperCase() !== "BNB" && !isEligibleToken(request.tokenOut)) {
       return {
         success: false,
         tokenIn: request.tokenIn,
