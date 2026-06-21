@@ -1,14 +1,14 @@
 /**
- * BscScan Client — Holder-count queries for on-chain conviction.
+ * On-Chain Holder Count Client — BSC behavioral conviction data.
  *
- * Queries the BscScan `tokenholdercount` endpoint for BEP-20 tokens and
- * caches results in `agent/data/holders.json` so we can compute holder
- * GROWTH across cycles without re-querying (the free tier is 1 call/s
- * with a 100k/day budget; we query once per token per cycle).
+ * Queries BEP-20 token holder counts from two sources:
+ *   1. NodeReal MegaNode (primary) — JSON-RPC `nr_getTokenHolderCount`
+ *   2. CoinGecko token info (fallback) — REST `holders.count`
  *
- * Fully gated on `BSCSCAN_API_KEY` — when the key isn't set, all queries
- * return null and the conviction signal gracefully omits the holder
- * component. The cache still works for any previously-fetched counts.
+ * Results are cached in `agent/data/holders.json` so we can compute holder
+ * GROWTH across cycles without re-querying. Each source is env-gated: when
+ * the key isn't set, that source is skipped. The cache still works for any
+ * previously-fetched counts.
  *
  * Contract addresses come from TWAK's symbol → address resolver, so we
  * don't maintain a separate address table.
@@ -19,7 +19,8 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CACHE_FILE = "holders.json";
-const API_BASE = "https://api.bscscan.com/api";
+const NODEREAL_RPC = "https://bsc-mainnet.nodereal.io/v1";
+const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 
 export interface HolderSnapshot {
   count: number;
@@ -45,7 +46,6 @@ function findDataDir(): string | null {
     if (parent === dir) break;
     dir = parent;
   }
-  // Fallback: create a sibling data/ directory next to the compiled output.
   const fallback = resolve(here, "data");
   try {
     mkdirSync(fallback, { recursive: true });
@@ -73,61 +73,112 @@ export function saveHolderCache(cache: HolderCache): void {
     writeFileSync(cachePath, JSON.stringify(cache, null, 2), "utf-8");
   } catch (err) {
     console.warn(
-      "[bscscan] Failed to persist holder cache:",
+      "[holders] Failed to persist holder cache:",
       (err as Error)?.message || String(err)
     );
   }
 }
 
 // =============================================================================
-// Live query — gated on BSCSCAN_API_KEY, respects the 1-call/s free-tier pace
+// Primary: NodeReal MegaNode — JSON-RPC nr_getTokenHolderCount (50 CUs/call)
+// =============================================================================
+
+async function fetchFromNodeReal(
+  contractAddress: string,
+  symbol: string
+): Promise<number | null> {
+  const apiKey = process.env.NODEREAL_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`${NODEREAL_RPC}/${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "nr_getTokenHolderCount",
+        params: [contractAddress],
+        id: 1,
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[holders] ${symbol}: NodeReal HTTP ${res.status}`);
+      return null;
+    }
+    const body = (await res.json()) as {
+      result?: { result?: string };
+      error?: { message?: string };
+    };
+    if (body.error) {
+      console.warn(`[holders] ${symbol}: NodeReal ${body.error.message}`);
+      return null;
+    }
+    const hex = body.result?.result;
+    if (!hex) return null;
+    const count = parseInt(hex, 16);
+    return Number.isFinite(count) && count >= 0 ? count : null;
+  } catch (err) {
+    console.warn(
+      `[holders] ${symbol} NodeReal failed:`,
+      (err as Error)?.message || String(err)
+    );
+    return null;
+  }
+}
+
+// =============================================================================
+// Fallback: CoinGecko token info — REST holders.count
+// =============================================================================
+
+async function fetchFromCoinGecko(
+  contractAddress: string,
+  symbol: string
+): Promise<number | null> {
+  const apiKey = process.env.COINGECKO_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = `${COINGECKO_BASE}/onchain/networks/bsc/tokens/${contractAddress}/info`;
+    const res = await fetch(url, {
+      headers: { "x-cg-demo-api-key": apiKey },
+    });
+    if (!res.ok) {
+      console.warn(`[holders] ${symbol}: CoinGecko HTTP ${res.status}`);
+      return null;
+    }
+    const body = (await res.json()) as {
+      data?: { attributes?: { holders?: { count?: number } } };
+    };
+    const count = body.data?.attributes?.holders?.count;
+    return typeof count === "number" && count >= 0 ? count : null;
+  } catch (err) {
+    console.warn(
+      `[holders] ${symbol} CoinGecko failed:`,
+      (err as Error)?.message || String(err)
+    );
+    return null;
+  }
+}
+
+// =============================================================================
+// Public API — tries NodeReal first, falls back to CoinGecko
 // =============================================================================
 
 /**
  * Fetch the current holder count for a BEP-20 token. Returns null if:
- *   - BSCSCAN_API_KEY isn't set (expected in simulator / offline mode)
- *   - The network call fails
- *   - BscScan returns a non-OK status
+ *   - Neither NODEREAL_API_KEY nor COINGECKO_API_KEY is set
+ *   - Both sources fail or return no data
  */
 export async function fetchHolderCount(
   contractAddress: string,
   symbol: string
 ): Promise<number | null> {
-  const apiKey = process.env.BSCSCAN_API_KEY;
-  if (!apiKey) return null;
   if (!contractAddress) return null;
 
-  try {
-    const url = `${API_BASE}?module=token&action=tokenholdercount&contractaddress=${contractAddress}&apikey=${apiKey}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.warn(
-        `[bscscan] ${symbol}: HTTP ${res.status} from holder-count endpoint`
-      );
-      return null;
-    }
-    const body = (await res.json()) as {
-      status: string;
-      message: string;
-      result: string;
-    };
-    if (body.status !== "1" || body.result === undefined) {
-      // BscScan returns status "0" with a message on unknown contracts — that's
-      // not an error, just missing data.
-      if (body.message !== "OK" && body.message !== "No data found") {
-        console.warn(`[bscscan] ${symbol}: ${body.message}`);
-      }
-      return null;
-    }
-    const count = parseInt(body.result, 10);
-    return Number.isFinite(count) && count >= 0 ? count : null;
-  } catch (err) {
-    console.warn(
-      `[bscscan] ${symbol} fetch failed:`,
-      (err as Error)?.message || String(err)
-    );
-    return null;
-  }
+  const nodeReal = await fetchFromNodeReal(contractAddress, symbol);
+  if (nodeReal !== null) return nodeReal;
+
+  return fetchFromCoinGecko(contractAddress, symbol);
 }
 
 /**
@@ -142,11 +193,9 @@ export function recordHolderCount(
 ): void {
   const key = symbol.toUpperCase();
   const history = cache[key] ?? [];
-  // De-duplicate within the same minute to avoid churn on rapid restarts.
   const last = history[history.length - 1];
   if (last && now - last.fetchedAt < 60_000 && last.count === count) return;
   history.push({ count, fetchedAt: now });
-  // Cap at 500 snapshots per symbol (~2 months at 4h cycles).
   if (history.length > 500) history.splice(0, history.length - 500);
   cache[key] = history;
 }

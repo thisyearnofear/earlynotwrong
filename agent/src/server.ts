@@ -191,6 +191,8 @@ app.get("/conviction", async (c) => {
         symbol: s.symbol,
         score: s.score,
         breakdown: s.breakdown,
+        holderCount: s.holderCount,
+        holderGrowthPercent: s.holderGrowthPercent,
         rationale: s.rationale,
       })),
 

@@ -220,37 +220,47 @@ async function analyzeConviction(): Promise<{
   const regime = scoreMarketRegime(md?.globalMetrics ?? null, md?.derivatives ?? null);
   console.log(`  Regime: ${regime.score}/100 — ${regime.label} (FGI=${regime.fearGreedIndex ?? "?"})`);
 
-  // --- Holder-growth integration (BscScan) ---
+  // --- Holder-growth integration (on-chain) ---
   // Load cache, resolve addresses, fetch counts, compute metrics.
-  // Fully gated on BSCSCAN_API_KEY — when absent, holderMetrics stays empty
-  // and the conviction signal gracefully omits the holder component.
+  // Gated on NODEREAL_API_KEY (primary) or COINGECKO_API_KEY (fallback).
+  // When neither is set, holderMetrics stays empty and the conviction signal
+  // gracefully omits the holder component.
   const holderCache = loadHolderCache();
   const holderMetrics = new Map<string, { count: number; growthPercent: number | null }>();
   const tokens = md?.tokenPrices ?? [];
 
-  if (process.env.BSCSCAN_API_KEY) {
-    const resolved = TwakExecutor.getResolvedAddresses();
+  if (process.env.NODEREAL_API_KEY || process.env.COINGECKO_API_KEY) {
+    // Pre-score tokens to find the most promising candidates for holder data.
+    // This avoids wasting API calls on stablecoins and large-caps that will
+    // never have high contrarian conviction.
+    const preScores = tokens.map((t) => ({
+      symbol: t.symbol,
+      preScore: scoreTokenConviction(t, regime).score,
+    }));
+    const topCandidates = [...preScores]
+      .sort((a, b) => b.preScore - a.preScore)
+      .slice(0, 15);
 
-    // Resolve addresses for tokens not yet cached (up to 10 to stay fast).
-    const unresolved = tokens
-      .filter((t) => !resolved.has(t.symbol.toUpperCase()))
-      .slice(0, 10);
-    for (const t of unresolved) {
-      await twakExecutor.resolveAddress(t.symbol);
+    const resolved = TwakExecutor.getResolvedAddresses();
+    const toResolve = topCandidates.filter(
+      (c) => !resolved.has(c.symbol.toUpperCase())
+    );
+    for (const c of toResolve) {
+      await twakExecutor.resolveAddress(c.symbol);
     }
 
     const addresses = TwakExecutor.getResolvedAddresses();
     let fetched = 0;
-    for (const t of tokens) {
-      const addr = addresses.get(t.symbol.toUpperCase());
+    for (const c of topCandidates) {
+      const addr = addresses.get(c.symbol.toUpperCase());
       if (!addr) continue;
-      const count = await fetchHolderCount(addr, t.symbol);
+      const count = await fetchHolderCount(addr, c.symbol);
       if (count !== null) {
-        recordHolderCount(holderCache, t.symbol, count);
+        recordHolderCount(holderCache, c.symbol, count);
         fetched++;
       }
-      // Free tier: 1 call/s pacing.
-      if (fetched < tokens.length) await new Promise((r) => setTimeout(r, 1100));
+      // NodeReal free tier: no hard rate limit but pace to be polite.
+      if (fetched < toResolve.length) await new Promise((r) => setTimeout(r, 600));
     }
     saveHolderCache(holderCache);
     if (fetched > 0) console.log(`  [holders] Fetched ${fetched} holder counts`);
