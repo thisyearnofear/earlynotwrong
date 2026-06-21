@@ -997,6 +997,8 @@ async function runCycle(): Promise<void> {
       anchoring: state.anchoring,
       executedTrades: state.executedTrades,
       errors: state.errors,
+      positionLedgerUsd: state.heldPositions.reduce((sum, p) => sum + p.amountUsd, 0),
+      positionsHeld: state.heldPositions.length,
       topSignals: [...state.convictionSignals]
         .sort((a, b) => b.score - a.score)
         .slice(0, 5)

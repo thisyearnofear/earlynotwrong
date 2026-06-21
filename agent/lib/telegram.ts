@@ -75,6 +75,8 @@ export async function sendCycleSummary(params: {
   } | null;
   executedTrades: SwapResult[];
   errors: string[];
+  positionLedgerUsd?: number;
+  positionsHeld?: number;
   topSignals?: Array<{
     symbol: string;
     score: number;
@@ -141,7 +143,10 @@ export async function sendCycleSummary(params: {
 
   // Portfolio
   lines.push(`<b>Portfolio</b>`);
-  lines.push(`  Value: $${params.portfolioValueUsd.toFixed(2)}`);
+  lines.push(`  On-chain: $${params.portfolioValueUsd.toFixed(2)}`);
+  if (params.positionLedgerUsd) {
+    lines.push(`  Positions: $${params.positionLedgerUsd.toFixed(2)} (${params.positionsHeld ?? "?"} held)`);
+  }
   lines.push(`  Drawdown: ${params.drawdownPercent.toFixed(1)}%`);
   lines.push(``);
 
