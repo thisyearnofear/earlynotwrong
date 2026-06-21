@@ -629,6 +629,32 @@ async function executeTrades(
 ): Promise<SwapResult[]> {
   console.log(`\n[7/8] Executing ${proposals.length} entries via TWAK...`);
 
+  // Pre-flight: check BNB balance before attempting any trades.
+  // Each trade needs: trade amount (in BNB) + gas (~$1.50). Don't waste gas
+  // on trades that will fail with "insufficient funds".
+  const GAS_BUFFER_USD = 1.5;
+  const bnbPrice = state.marketData?.tokenPrices?.find(
+    (t) => t.symbol.toUpperCase() === "BNB"
+  )?.price ?? 589;
+  const bnbPosition = state.portfolio?.positions.find(
+    (p) => p.symbol.toUpperCase() === "BNB" || p.token.toUpperCase() === "BNB"
+  );
+  const bnbBalanceUsd = (bnbPosition?.valueUsd ?? 0);
+
+  // Calculate how many trades we can afford
+  const tradeCostUsd = (proposals[0]?.amountInUsd ?? 2) + GAS_BUFFER_USD;
+  const affordableTrades = Math.floor(bnbBalanceUsd / tradeCostUsd);
+
+  if (affordableTrades === 0) {
+    console.log(`  ⚠ BNB too low ($${bnbBalanceUsd.toFixed(2)}) — need $${tradeCostUsd.toFixed(2)} per trade. Skipping all trades.`);
+    return [];
+  }
+
+  if (affordableTrades < proposals.length) {
+    console.log(`  ⚠ BNB ($${bnbBalanceUsd.toFixed(2)}) only covers ${affordableTrades}/${proposals.length} trades. Reducing.`);
+    proposals = proposals.slice(0, affordableTrades);
+  }
+
   const priceMap = buildPriceMap();
   const results: SwapResult[] = [];
 

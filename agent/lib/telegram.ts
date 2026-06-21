@@ -72,6 +72,7 @@ export async function sendCycleSummary(params: {
     mode: string;
     blockNumber?: number;
     gasUsed?: string;
+    hash?: string;
   } | null;
   executedTrades: SwapResult[];
   errors: string[];
@@ -132,11 +133,13 @@ export async function sendCycleSummary(params: {
 
     for (const trade of params.executedTrades) {
       const icon = trade.success ? "✅" : "❌";
-      const link = trade.txHash ? ` <a href="${getBscExplorerTxUrl(trade.txHash, true)}">tx</a>` : "";
       const out = trade.amountOut ? `$${trade.amountOut}` : trade.success ? "✓" : "✗";
-      lines.push(
-        `${icon} ${trade.tokenIn} → ${trade.tokenOut}: $${trade.amountIn} → ${out}${link}`
-      );
+      let line = `${icon} ${trade.tokenIn} → ${trade.tokenOut}: $${trade.amountIn} → ${out}`;
+      if (trade.txHash) {
+        const url = `https://bscscan.com/tx/${trade.txHash}`;
+        line += `\n    <a href="${url}">${url}</a>`;
+      }
+      lines.push(line);
     }
     lines.push(``);
   }
@@ -160,8 +163,15 @@ export async function sendCycleSummary(params: {
     lines.push(`  ${modeIcon} ${params.anchoring.mode}`);
     if (params.anchoring.blockNumber) lines.push(`  Block: ${params.anchoring.blockNumber}`);
     if (params.anchoring.gasUsed) lines.push(`  Gas: ${params.anchoring.gasUsed}`);
+    if (params.anchoring.hash) {
+      const mantleUrl = `https://explorer.sepolia.mantle.xyz/tx/${params.anchoring.hash}`;
+      lines.push(`  <a href="${mantleUrl}">Verify on Mantle Explorer</a>`);
+    }
     lines.push(``);
   }
+
+  // Verification footer
+  lines.push(`<i>Wallet: <a href="https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a">0xA1Dd...888a</a> · BSC Mainnet</i>`);
 
   // Errors
   if (params.errors.length > 0) {
