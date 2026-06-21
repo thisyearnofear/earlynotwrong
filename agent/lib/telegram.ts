@@ -88,9 +88,10 @@ export async function sendCycleSummary(params: {
   const statusEmoji =
     params.status === "error" ? "🔴" : params.anchoring?.mode === "on-chain" ? "🟢" : "🟡";
 
+  const displayStatus = params.status === "idle" ? "completed" : params.status;
   const lines: string[] = [
     `${statusEmoji} <b>Cycle #${params.cycle} — ${params.duration}</b>`,
-    `Status: ${params.status}`,
+    `Status: ${displayStatus}`,
     ``,
   ];
 
@@ -130,8 +131,9 @@ export async function sendCycleSummary(params: {
     for (const trade of params.executedTrades) {
       const icon = trade.success ? "✅" : "❌";
       const link = trade.txHash ? ` <a href="${getBscExplorerTxUrl(trade.txHash, true)}">tx</a>` : "";
+      const out = trade.amountOut ? `$${trade.amountOut}` : trade.success ? "✓" : "✗";
       lines.push(
-        `${icon} ${trade.tokenIn} → ${trade.tokenOut}: $${trade.amountIn} → ${trade.amountOut}${link}`
+        `${icon} ${trade.tokenIn} → ${trade.tokenOut}: $${trade.amountIn} → ${out}${link}`
       );
     }
     lines.push(``);
