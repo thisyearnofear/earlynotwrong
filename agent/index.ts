@@ -74,6 +74,79 @@ import { computeHolderMetric } from "./lib/holder-growth.js";
 // Used for pre-flight balance checks and PnL tracking.
 const GAS_BUFFER_USD = 1.5;
 
+const COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain";
+
+/**
+ * Augment the TWAK portfolio with CoinGecko prices for tokens TWAK can't price.
+ * TWAK's portfolio parser only captures tokens with known USD values — hackathon
+ * tokens and newer BEP-20s often show as $0. We estimate the token balance from
+ * cost basis (amountUsd / entryPrice) and look up the current price via CoinGecko.
+ */
+async function augmentPortfolioWithCoinGecko(): Promise<void> {
+  const apiKey = process.env.COINGECKO_API_KEY;
+  if (!apiKey || !state.portfolio || state.heldPositions.length === 0) return;
+
+  const addresses = TwakExecutor.getResolvedAddresses();
+  const twakPriced = new Set(
+    state.portfolio.positions
+      .filter((p) => p.valueUsd > 0.01)
+      .map((p) => p.symbol.toUpperCase())
+  );
+
+  // Collect unpriced positions with known contract addresses
+  const unpriced = state.heldPositions.filter(
+    (p) => !twakPriced.has(p.symbol.toUpperCase()) && addresses.has(p.symbol.toUpperCase())
+  );
+  if (unpriced.length === 0) return;
+
+  const contractList = unpriced
+    .map((p) => addresses.get(p.symbol.toUpperCase())!)
+    .filter((a, i, arr) => arr.indexOf(a) === i); // dedupe
+
+  try {
+    const url = `${COINGECKO_PRICE_URL}?contract_addresses=${contractList.join(",")}&vs_currencies=usd`;
+    const res = await fetch(url, { headers: { "x-cg-demo-api-key": apiKey } });
+    if (!res.ok) return;
+    const prices = (await res.json()) as Record<string, { usd?: number }>;
+
+    let addedValue = 0;
+    for (const pos of unpriced) {
+      const addr = addresses.get(pos.symbol.toUpperCase())?.toLowerCase();
+      if (!addr || !prices[addr]?.usd) continue;
+
+      const currentPrice = prices[addr].usd!;
+      const tokenBalance = pos.entryPriceUsd > 0 ? pos.amountUsd / pos.entryPriceUsd : 0;
+      const currentValue = tokenBalance * currentPrice;
+
+      if (currentValue > 0.01) {
+        addedValue += currentValue;
+        // Add or update position in the TWAK portfolio
+        const existing = state.portfolio!.positions.find(
+          (p) => p.symbol.toUpperCase() === pos.symbol.toUpperCase()
+        );
+        if (existing) {
+          existing.valueUsd = currentValue;
+        } else {
+          state.portfolio!.positions.push({
+            token: pos.symbol,
+            symbol: pos.symbol,
+            balance: tokenBalance.toString(),
+            valueUsd: currentValue,
+            chain: "bsc",
+          });
+        }
+      }
+    }
+
+    if (addedValue > 0) {
+      state.portfolio!.totalValueUsd += addedValue;
+      console.log(`  [coingecko] Augmented portfolio +$${addedValue.toFixed(2)} (${unpriced.length} tokens priced)`);
+    }
+  } catch {
+    // Non-fatal — TWAK value is still usable
+  }
+}
+
 // =============================================================================
 // Agent State
 // =============================================================================
@@ -971,6 +1044,8 @@ async function runCycle(): Promise<void> {
   try {
     // Step 1: Fetch portfolio from TWAK
     state.portfolio = await twakExecutor.getPortfolio();
+    // Augment with CoinGecko prices for tokens TWAK can't price
+    await augmentPortfolioWithCoinGecko();
     console.log(`\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`);
 
     // Step 2: Fetch market data from CMC
