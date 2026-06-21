@@ -226,7 +226,7 @@ This is the live, shipped surface area of the repo today.
 - **8-step autonomous loop**: portfolio → market data → 6-factor conviction scoring → position management → proposals → guardrails → TWAK execution → Mantle anchoring
 - **6-factor conviction signal**: contrarian (30) + RSI timing (10) + quality (15) + regime (20) + holder growth (10) − volatility penalty. Pure functions in `agent/lib/conviction-signal.ts`, fully testable.
 - **On-chain behavioral conviction**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`) + CoinGecko fallback query BEP-20 holder counts for the top 15 conviction candidates. Growth tracked over 7d in `agent/data/holders.json` — tokens with expanding holder bases earn a bonus ("smart money accumulating").
-- **Position management**: HOLD through ordinary drawdown ("early, not wrong"), EXIT only to cap loss (−35% stop) or trail a winner (+100% activation → 30% give-back). Never takes profit early.
+- **Tiered position management**: HOLD through ordinary drawdown ("early, not wrong"), take 33% profit at +50% (capital recycling), full exit only at −35% stop or +100% trail. Self-funding: harvests weakest mature position to BNB when balance runs low.
 - **Self-custody execution**: TWAK (Trust Wallet Agent Kit) for BSC testnet swaps with DEX liquidity checks and address resolution via `twak search`.
 - **Live dashboard**: `/agent` page with real-time conviction signals, regime score, held positions, and trade history — proxied from the VPS agent at `http://144.202.117.160:31777`.
 - **Agent API**: `GET /status`, `GET /trades`, `GET /conviction` — served by Hono HTTP server on port 31777.
@@ -238,6 +238,23 @@ This is the live, shipped surface area of the repo today.
 
 ### Watchlist
 - Postgres-backed personal watchlist (`/api/user/watchlist`, `use-personal-watchlist`)
+
+---
+
+## BNB Hack Progress
+
+| Date | Milestone |
+|------|-----------|
+| Jun 21 | **Self-funding agent** — harvests mature positions (8+ cycles) to BNB when balance runs low, no manual top-ups needed |
+| Jun 21 | **Tiered profit-taking** — sell 33% at +50% gain, remainder trails at +100% → 30% give-back |
+| Jun 21 | **Live trades on BSC mainnet** — 6 trades executed, 12 positions held through drawdown |
+| Jun 21 | **Mantle on-chain anchoring** — conviction records anchored to Mantle Sepolia (ERC-8004) |
+| Jun 21 | **On-chain holder conviction** — NodeReal JSON-RPC + CoinGecko fallback query BEP-20 holder counts for top 15 candidates |
+| Jun 21 | **6-factor conviction signal** — contrarian + RSI timing + quality + regime + holder growth − volatility penalty |
+| Jun 20 | **Thesis realignment** — conviction-native strategy replacing momentum bot |
+| Jun 20 | **TWAK integration** — self-custody execution via Trust Wallet Agent Kit |
+
+**Current state**: Agent running live under pm2, cycling every 4 hours, trading on BSC mainnet, anchoring to Mantle, posting to Telegram. 12 positions held across 3 portfolio layers (legacy, recent, fresh).
 
 ---
 

@@ -147,16 +147,25 @@ describe("evaluatePosition — cap losses, let winners run", () => {
   });
 
   it("EXIT_TRAILs only after a big run gives back from the peak", () => {
-    // Position ran to +120%, then gave back 30% from peak.
-    const pos = { ...base, peakPriceUsd: 220 };
+    // Position ran to +120%, partial already taken, then gave back 30% from peak.
+    const pos = { ...base, peakPriceUsd: 220, partialProfitTaken: true };
     const verdict = evaluatePosition(pos, 154); // 220 → 154 = −30% from peak
     expect(verdict.action).toBe("EXIT_TRAIL");
     expect(verdict.reason).toMatch(/asymmetry/i);
   });
 
+  it("EXIT_PARTIAL at +50% gain — sell 33%, let the rest ride", () => {
+    // Position ran to +60%, partial not yet taken.
+    const pos = { ...base, peakPriceUsd: 160 };
+    const verdict = evaluatePosition(pos, 155);
+    expect(verdict.action).toBe("EXIT_PARTIAL");
+    expect(verdict.sellFraction).toBeCloseTo(0.33, 1);
+    expect(verdict.reason).toMatch(/33%/i);
+  });
+
   it("HOLDs a big winner that has NOT yet given back from peak", () => {
-    // Up 150%, still near peak — let it run.
-    const pos = { ...base, peakPriceUsd: 250 };
+    // Up 150%, partial already taken, still near peak — let it run.
+    const pos = { ...base, peakPriceUsd: 250, partialProfitTaken: true };
     const verdict = evaluatePosition(pos, 245);
     expect(verdict.action).toBe("HOLD");
   });

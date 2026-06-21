@@ -45,7 +45,12 @@ The **agent** is the primary focus for BNB Hack. The **web app** is the Convicti
    - Regime (20) — fear & greed + funding rate composite
    - Holder growth (10) — on-chain holder base expansion (NodeReal + CoinGecko)
    - Volatility penalty — subtracted for erratic 7d price paths
-4. **Manage open positions** — HOLD through drawdown, EXIT only to cap loss (−35%) or trail a winner (+100% activation → 30% give-back)
+4. **Manage open positions** — tiered exits:
+   - HOLD through ordinary drawdown ("early, not wrong")
+   - EXIT_PARTIAL at +50% gain — sell 33%, let the rest ride (capital recycling)
+   - EXIT_STOP at −35% — thesis invalidated, cap the loss
+   - EXIT_TRAIL at +100% peak → 30% give-back — lock the asymmetry
+4b. **Harvest for BNB** — when BNB balance < $5, sell the weakest position held 8+ cycles to replenish trading capital (self-funding)
 5. **Create trade proposals** — top-K tokens weighted by conviction, with DEX liquidity check
 6. **Check guardrails** — drawdown, daily limit, position concentration
 7. **Execute trades** via TWAK (with retry)

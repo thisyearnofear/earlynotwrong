@@ -322,9 +322,11 @@ export interface HeldPosition {
   /** Worst drawdown from entry weathered while holding (>= 0). */
   maxUnderwaterPercent: number;
   cyclesHeld: number;
+  /** True once the first partial profit (33% at +50%) has been taken. */
+  partialProfitTaken: boolean;
 }
 
-export type PositionAction = "HOLD" | "EXIT_STOP" | "EXIT_TRAIL";
+export type PositionAction = "HOLD" | "EXIT_STOP" | "EXIT_TRAIL" | "EXIT_PARTIAL";
 
 export interface PositionVerdict {
   symbol: string;
@@ -334,6 +336,8 @@ export interface PositionVerdict {
   reason: string;
   /** True once the position has weathered a meaningful dip and is still open. */
   heldThroughDrawdown: boolean;
+  /** Fraction of position to sell (1.0 = full exit, 0.33 = partial profit). */
+  sellFraction: number;
 }
 
 /** Create a fresh held position from an executed entry. */
@@ -353,6 +357,7 @@ export function openPosition(params: {
     peakPriceUsd: params.entryPriceUsd,
     maxUnderwaterPercent: 0,
     cyclesHeld: 0,
+    partialProfitTaken: false,
   };
 }
 
@@ -382,12 +387,13 @@ export function accruePosition(
 /**
  * Decide what to do with a held position.
  *
- * The ONLY reasons to sell:
+ * Exit rules (tiered):
  *   1. Stop hit — down past stopLossPercent: thesis invalidated, cap the loss.
- *   2. Trailing stop — only AFTER a large run, give back trailingStopPercent
- *      from the peak: lock the asymmetry we earned.
- * Everything else is HOLD. We never sell into ordinary drawdown, and we never
- * take profit early.
+ *   2. Partial profit — at +50% gain, sell 33% (take chips off, recycle capital).
+ *      Fires once per position (tracked by partialProfitTaken flag).
+ *   3. Trailing stop — only AFTER a large run (+100% peak), give back
+ *      trailingStopPercent from the peak: lock the asymmetry we earned.
+ * Everything else is HOLD. We never sell into ordinary drawdown.
  */
 export function evaluatePosition(
   pos: HeldPosition,
@@ -412,6 +418,7 @@ export function evaluatePosition(
       drawdownFromPeakPercent: round1(drawdownFromPeak),
       reason: `Stop hit: down ${Math.abs(pnl).toFixed(0)}% — thesis invalidated, capping loss`,
       heldThroughDrawdown,
+      sellFraction: 1,
     };
   }
 
@@ -419,6 +426,20 @@ export function evaluatePosition(
     pos.entryPriceUsd > 0
       ? ((pos.peakPriceUsd - pos.entryPriceUsd) / pos.entryPriceUsd) * 100
       : 0;
+
+  // Tiered profit-taking: sell 33% at +50% gain (once per position).
+  if (!pos.partialProfitTaken && peakGain >= t.partialProfitGainPercent) {
+    return {
+      symbol: pos.symbol,
+      action: "EXIT_PARTIAL",
+      unrealizedPnLPercent: round1(pnl),
+      drawdownFromPeakPercent: round1(drawdownFromPeak),
+      reason: `Up ${peakGain.toFixed(0)}% — taking 33% profit, letting the rest ride`,
+      heldThroughDrawdown,
+      sellFraction: 0.33,
+    };
+  }
+
   const trailingArmed = peakGain >= t.trailingActivationGainPercent;
   if (trailingArmed && drawdownFromPeak >= t.trailingStopPercent) {
     return {
@@ -428,6 +449,7 @@ export function evaluatePosition(
       drawdownFromPeakPercent: round1(drawdownFromPeak),
       reason: `Up ${peakGain.toFixed(0)}% at peak, gave back ${drawdownFromPeak.toFixed(0)}% — locking asymmetry`,
       heldThroughDrawdown,
+      sellFraction: 1,
     };
   }
 
@@ -443,6 +465,7 @@ export function evaluatePosition(
     drawdownFromPeakPercent: round1(drawdownFromPeak),
     reason,
     heldThroughDrawdown,
+    sellFraction: 0,
   };
 }
 

@@ -304,8 +304,9 @@ async function analyzeConviction(): Promise<{
 
 /**
  * The soul of the agent. For every open position we either HOLD (through
- * ordinary drawdown — "early, not wrong"), or EXIT to cap a loss / lock the
- * asymmetry of a position that has already run. We never take profit early.
+ * ordinary drawdown — "early, not wrong"), take partial profit at +50%
+ * (sell 33%, let the rest ride), or EXIT fully to cap a loss / lock the
+ * asymmetry of a position that has already run.
  */
 async function manageOpenPositions(): Promise<void> {
   console.log("\n[4/8] Managing open positions (cap losses, let winners run)...");
@@ -339,6 +340,23 @@ async function manageOpenPositions(): Promise<void> {
       continue;
     }
 
+    if (verdict.action === "EXIT_PARTIAL") {
+      const sellAmount = pos.amountUsd * verdict.sellFraction;
+      console.log(`  PARTIAL ${pos.symbol}: ${verdict.reason} (selling $${sellAmount.toFixed(2)})`);
+      const partialPos = { ...pos, amountUsd: sellAmount };
+      const closed = await closePosition(partialPos, verdict);
+      if (closed) {
+        pos.partialProfitTaken = true;
+        pos.amountUsd -= sellAmount;
+        remaining.push(pos);
+        console.log(`    ✓ Sold $${sellAmount.toFixed(2)}, keeping $${pos.amountUsd.toFixed(2)} riding`);
+      } else {
+        console.log(`    ✗ Partial exit failed — keeping full position, will retry next cycle`);
+        remaining.push(pos);
+      }
+      continue;
+    }
+
     console.log(`  ${verdict.action} ${pos.symbol}: ${verdict.reason}`);
     const closed = await closePosition(pos, verdict);
     if (!closed) {
@@ -366,7 +384,7 @@ async function closePosition(
     state.executedTrades.push({
       success: true,
       tokenIn: pos.symbol,
-      tokenOut: "USDC",
+      tokenOut: "BNB",
       amountIn: pos.amountUsd.toFixed(2),
       amountOut: (pos.amountUsd * (1 + verdict.unrealizedPnLPercent / 100)).toFixed(2),
       txHash: `0xSIM_EXIT_${timestamp.toString(16)}`,

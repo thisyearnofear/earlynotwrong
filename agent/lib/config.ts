@@ -69,8 +69,13 @@ export const AGENT_CONFIG = {
     // Hard stop — the thesis is invalidated. This is the only reason we exit
     // a losing position. We do NOT sell into ordinary drawdown.
     stopLossPercent: 35,
-    // We never take profit early. A trailing stop only arms AFTER a position
-    // has run far enough that locking in the asymmetry is no longer "early".
+    // Tiered profit-taking: sell 33% at +50%, remainder trails at +100%.
+    // This recycles capital from proven winners into new conviction entries.
+    partialProfitGainPercent: 50,
+
+    // We never exit into ordinary drawdown. A trailing stop only arms AFTER
+    // a position has run far enough that locking in the asymmetry is no
+    // longer "early".
     trailingActivationGainPercent: 100,
     trailingStopPercent: 30,
   },
