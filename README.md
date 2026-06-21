@@ -222,6 +222,16 @@ This is the live, shipped surface area of the repo today.
 - Agent card published to Grove (`lens://…`)
 - `scripts/publish-agent-card-to-grove.mjs`
 
+### Autonomous Trading Agent (BNB Hack — live)
+- **8-step autonomous loop**: portfolio → market data → 6-factor conviction scoring → position management → proposals → guardrails → TWAK execution → Mantle anchoring
+- **6-factor conviction signal**: contrarian (30) + RSI timing (10) + quality (15) + regime (20) + holder growth (10) − volatility penalty. Pure functions in `agent/lib/conviction-signal.ts`, fully testable.
+- **On-chain behavioral conviction**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`) + CoinGecko fallback query BEP-20 holder counts for the top 15 conviction candidates. Growth tracked over 7d in `agent/data/holders.json` — tokens with expanding holder bases earn a bonus ("smart money accumulating").
+- **Position management**: HOLD through ordinary drawdown ("early, not wrong"), EXIT only to cap loss (−35% stop) or trail a winner (+100% activation → 30% give-back). Never takes profit early.
+- **Self-custody execution**: TWAK (Trust Wallet Agent Kit) for BSC testnet swaps with DEX liquidity checks and address resolution via `twak search`.
+- **Live dashboard**: `/agent` page with real-time conviction signals, regime score, held positions, and trade history — proxied from the VPS agent at `http://144.202.117.160:31777`.
+- **Agent API**: `GET /status`, `GET /trades`, `GET /conviction` — served by Hono HTTP server on port 31777.
+- **Telegram alerts**: Cycle summaries with per-trade details, portfolio status, regime score, and Mantle anchoring confirmation.
+
 ### Leaderboard
 - `/leaderboard` page and `/api/leaderboard` route
 - `leaderboard-table` component with conviction + data-quality badges
@@ -309,6 +319,17 @@ NEXT_PUBLIC_ALEO_PROGRAM_ID="early_not_wrong_v3.aleo"
 # Mantle
 NEXT_PUBLIC_MANTLE_CONVICTION_REGISTRY="0x81226e8894D334c790D9a972855592E6C4eeB15C"
 MANTLE_RPC_URL=""
+
+# Trading Agent
+TWAK_ACCESS_ID=""                  # TWAK credentials (live mode)
+TWAK_HMAC_SECRET=""                # TWAK credentials (live mode)
+AGENT_WALLET_KEY=""                # Agent wallet address
+CMC_API_KEY=""                     # CMC Pro REST API key
+NODEREAL_API_KEY=""                # NodeReal MegaNode — BSC holder counts
+COINGECKO_API_KEY=""               # CoinGecko demo — holder count fallback
+MANTLE_OPERATOR_KEY=""             # Mantle anchoring private key
+TELEGRAM_BOT_TOKEN=""              # Telegram cycle alerts
+TELEGRAM_CHAT_ID=""                # Telegram chat target
 
 # Security
 JWT_SECRET=""

@@ -91,8 +91,11 @@ interface ConvictionData {
       rsi: number;
       quality: number;
       regime: number;
+      holders: number;
       volatilityPenalty: number;
     };
+    holderCount: number | null;
+    holderGrowthPercent: number | null;
     rationale: string;
   }>;
   heldPositions: Array<{
@@ -659,10 +662,23 @@ function Dashboard({
                         <span>· rsi <span className="text-cyan-400">{s.breakdown.rsi}</span></span>
                         <span>· quality <span className="text-patience">{s.breakdown.quality}</span></span>
                         <span>· regime <span className="text-cyan-400">{s.breakdown.regime}</span></span>
+                        {s.holderCount != null && (
+                          <span>· holders <span className="text-amber-400">{s.breakdown.holders}</span></span>
+                        )}
                         {s.breakdown.volatilityPenalty > 0 && (
                           <span>· vol <span className="text-impatience">−{s.breakdown.volatilityPenalty}</span></span>
                         )}
                       </div>
+                      {s.holderCount != null && (
+                        <div className="flex items-center gap-2 mt-0.5 text-[9px] font-mono text-foreground-dim">
+                          <span>{s.holderCount.toLocaleString()} holders</span>
+                          {s.holderGrowthPercent != null && (
+                            <span className={s.holderGrowthPercent >= 0 ? "text-emerald-500" : "text-impatience"}>
+                              {s.holderGrowthPercent >= 0 ? "+" : ""}{s.holderGrowthPercent.toFixed(1)}% growth
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <div className="w-12 h-1 rounded-full bg-surface/60 overflow-hidden">

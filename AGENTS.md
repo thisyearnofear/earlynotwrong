@@ -19,31 +19,44 @@ The **agent** is the primary focus for BNB Hack. The **web app** is the Convicti
 
 | File | Purpose |
 |------|---------|
-| `agent/index.ts` | Main loop — 6-step trading cycle |
+| `agent/index.ts` | Main loop — 8-step trading cycle |
 | `agent/src/server.ts` | HTTP server (3 routes: `/status`, `/trades`, `/conviction`) |
-| `agent/lib/config.ts` | Single config — trading params, chain configs, thresholds |
+| `agent/lib/config.ts` | Single config — trading params, chain configs, thresholds, signal weights |
 | `agent/lib/cmc-client.ts` | CMC Pro REST API client (market data) |
-| `agent/lib/twak-executor.ts` | TWAK CLI wrapper (trade execution) |
+| `agent/lib/conviction-signal.ts` | 6-factor conviction scoring engine (pure functions) |
+| `agent/lib/bscscan-client.ts` | On-chain holder counts via NodeReal JSON-RPC + CoinGecko fallback |
+| `agent/lib/holder-growth.ts` | Holder growth % computation and scoring fraction |
+| `agent/lib/twak-executor.ts` | TWAK CLI wrapper (trade execution + address resolution) |
 | `agent/lib/mantle.ts` | Mantle ERC-8004 anchoring (viem) |
 | `agent/lib/risk-guardrails.ts` | Risk limits (drawdown, position size, daily count) |
 | `agent/lib/telegram.ts` | Telegram dispatch (cycle summaries, errors) |
 | `agent/lib/persistence.ts` | SQLite Sync state persistence |
+| `agent/lib/env-loader.ts` | Loads `.env` before module construction |
 | `agent/lib/errors.ts` | Standardized error types |
 
-### Trading Loop (7 Steps)
+### Trading Loop (8 Steps)
 
 1. **Fetch portfolio** from TWAK
 2. **Fetch market data** from CMC REST API
-3. **Score market regime** — Fear & Greed (CMC v3), funding rates (CMC v5), token momentum → conviction scores
-4. **Create trade proposals** — top-K tokens weighted by conviction
-5. **Check guardrails** — drawdown, daily limit, position concentration
-6. **Execute trades** via TWAK (with retry)
-7. **Anchor to Mantle** — submit thesis hash + score to ERC-8004 registry
+3. **Score market regime + token conviction** — Fear & Greed (CMC v3), funding rates (CMC v5), then 6-factor per-token scoring:
+   - Contrarian (30) — rewards assets down 7d during fear
+   - RSI timing (10) — synthesized RSI(14) from 7d return; bonus for oversold
+   - Quality (15) — market cap × liquidity filter
+   - Regime (20) — fear & greed + funding rate composite
+   - Holder growth (10) — on-chain holder base expansion (NodeReal + CoinGecko)
+   - Volatility penalty — subtracted for erratic 7d price paths
+4. **Manage open positions** — HOLD through drawdown, EXIT only to cap loss (−35%) or trail a winner (+100% activation → 30% give-back)
+5. **Create trade proposals** — top-K tokens weighted by conviction, with DEX liquidity check
+6. **Check guardrails** — drawdown, daily limit, position concentration
+7. **Execute trades** via TWAK (with retry)
+8. **Anchor to Mantle** — submit thesis hash + score to ERC-8004 registry
 
 ### Key Patterns
 
 - **Simulator mode**: Auto-detected when `TWAK_ACCESS_ID` is not set. Uses in-memory mock portfolio.
 - **CMC API key**: CMC queries use the Pro REST API with `X-CMC_PRO_API_KEY` header. Fallback to neutral values if the API is unreachable. Fear & Greed from CMC v3 endpoint, derivatives from CMC v5 endpoint.
+- **Holder data (on-chain conviction)**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`, 50 CUs/call) is the primary source; CoinGecko token info (`holders.count`) is the fallback. Both gated on env vars (`NODEREAL_API_KEY`, `COINGECKO_API_KEY`). Results cached in `agent/data/holders.json`; growth computed over 7d lookback after 24h+ of snapshots. Agent pre-scores tokens to target the top 15 candidates, not the full universe.
+- **Env loader**: `agent/lib/env-loader.ts` runs `dotenv` before any module construction so API keys resolve at import time.
 - **Telegram dispatch**: Non-blocking `.catch(() => {})` — env-vars-gated startup/cycle/error alerts.
 - **Guardrails**: Pure in-memory state with daily counter reset. Hard limits from `AGENT_CONFIG.trading`.
 - **Retry with backoff**: Trade execution and Mantle anchoring use linear backoff (1s, 2s).

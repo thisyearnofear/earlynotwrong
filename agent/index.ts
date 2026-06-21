@@ -926,6 +926,16 @@ async function runCycle(): Promise<void> {
       anchoring: state.anchoring,
       executedTrades: state.executedTrades,
       errors: state.errors,
+      topSignals: [...state.convictionSignals]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map((s) => ({
+          symbol: s.symbol,
+          score: s.score,
+          rationale: s.rationale,
+          holderCount: s.holderCount,
+          holderGrowthPercent: s.holderGrowthPercent,
+        })),
     }).catch(() => {});
   } catch (error) {
     state.status = "error";

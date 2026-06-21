@@ -75,6 +75,13 @@ export async function sendCycleSummary(params: {
   } | null;
   executedTrades: SwapResult[];
   errors: string[];
+  topSignals?: Array<{
+    symbol: string;
+    score: number;
+    rationale: string;
+    holderCount: number | null;
+    holderGrowthPercent: number | null;
+  }>;
 }): Promise<void> {
   if (!isConfigured()) return;
 
@@ -87,6 +94,31 @@ export async function sendCycleSummary(params: {
     ``,
   ];
 
+  // Conviction regime
+  if (params.regimeScore !== null && params.sentimentLabel) {
+    lines.push(`<b>Regime</b>`);
+    lines.push(`  ${params.regimeScore}/100 — ${params.sentimentLabel}`);
+    lines.push(``);
+  }
+
+  // Top conviction signals
+  if (params.topSignals && params.topSignals.length > 0) {
+    lines.push(`<b>Top Signals</b>`);
+    for (const s of params.topSignals.slice(0, 5)) {
+      let holderInfo = "";
+      if (s.holderCount != null) {
+        holderInfo = ` · ${s.holderCount.toLocaleString()} holders`;
+        if (s.holderGrowthPercent != null) {
+          const sign = s.holderGrowthPercent >= 0 ? "+" : "";
+          holderInfo += ` (${sign}${s.holderGrowthPercent.toFixed(1)}%)`;
+        }
+      }
+      lines.push(`  <b>${s.symbol}</b> ${s.score}/100${holderInfo}`);
+      lines.push(`    <i>${s.rationale}</i>`);
+    }
+    lines.push(``);
+  }
+
   // Trades
   if (params.tradesSucceeded > 0 || params.tradesFailed > 0) {
     lines.push(`<b>Trades</b>`);
@@ -95,7 +127,6 @@ export async function sendCycleSummary(params: {
     if (params.totalVolumeUsd > 0) lines.push(`  Vol: $${params.totalVolumeUsd.toFixed(2)}`);
     lines.push(``);
 
-    // Per-trade details
     for (const trade of params.executedTrades) {
       const icon = trade.success ? "✅" : "❌";
       const link = trade.txHash ? ` <a href="${getBscExplorerTxUrl(trade.txHash, true)}">tx</a>` : "";
@@ -111,14 +142,6 @@ export async function sendCycleSummary(params: {
   lines.push(`  Value: $${params.portfolioValueUsd.toFixed(2)}`);
   lines.push(`  Drawdown: ${params.drawdownPercent.toFixed(1)}%`);
   lines.push(``);
-
-  // Conviction
-  if (params.regimeScore !== null && params.sentimentLabel) {
-    lines.push(`<b>Conviction</b>`);
-    lines.push(`  Score: ${params.regimeScore}/60`);
-    lines.push(`  Sentiment: ${params.sentimentLabel}`);
-    lines.push(``);
-  }
 
   // Anchoring
   if (params.anchoring) {
