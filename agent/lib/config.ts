@@ -48,7 +48,7 @@ export const AGENT_CONFIG = {
   // Agent Trading Parameters
   trading: {
     // Max new conviction entries to open per cycle
-    topK: 3,
+    topK: 2,
 
     // Cycle interval in minutes
     loopIntervalMinutes: 240,
@@ -56,14 +56,15 @@ export const AGENT_CONFIG = {
     // Risk guardrails (hard limits)
     maxDrawdownPercent: 25, // Trip before the 30% disqualification line
     maxPerTradeUsd: 1000,
-    maxDailyTrades: 10,
+    maxDailyTrades: 6,
     maxPositionConcentrationPercent: 20,
 
     // Slippage
     defaultSlippageBps: 100, // 1%
 
-    // Minimum conviction score required to open a position
-    minConvictionScore: 55,
+    // Minimum conviction score required to open a position.
+    // At ~$1.50 gas/trade, only strong signals justify the cost.
+    minConvictionScore: 58,
 
     // ── Position management (the soul: cap losses, let winners run) ──
     // Hard stop — the thesis is invalidated. This is the only reason we exit

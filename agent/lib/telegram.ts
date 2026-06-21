@@ -78,6 +78,9 @@ export async function sendCycleSummary(params: {
   errors: string[];
   positionLedgerUsd?: number;
   positionsHeld?: number;
+  gasSpentThisCycle?: number;
+  totalGasSpent?: number;
+  realizedPnl?: number;
   topSignals?: Array<{
     symbol: string;
     score: number;
@@ -88,102 +91,79 @@ export async function sendCycleSummary(params: {
 }): Promise<void> {
   if (!isConfigured()) return;
 
-  const statusEmoji =
-    params.status === "error" ? "🔴" : params.anchoring?.mode === "on-chain" ? "🟢" : "🟡";
-
   const displayStatus = params.status === "idle" ? "completed" : params.status;
-  const lines: string[] = [
-    `${statusEmoji} <b>Cycle #${params.cycle} — ${params.duration}</b>`,
-    `Status: ${displayStatus}`,
-    ``,
+  const gas = params.gasSpentThisCycle ?? 0;
+
+  // ── Message 1: Trading Update (regime + signals + trades) ──
+  const msg1: string[] = [
+    `📊 <b>Cycle #${params.cycle}</b> — ${params.duration} — ${displayStatus}`,
   ];
 
-  // Conviction regime
   if (params.regimeScore !== null && params.sentimentLabel) {
-    lines.push(`<b>Regime</b>`);
-    lines.push(`  ${params.regimeScore}/100 — ${params.sentimentLabel}`);
-    lines.push(``);
+    msg1.push(`${params.regimeScore}/100 — ${params.sentimentLabel}`);
   }
 
-  // Top conviction signals
   if (params.topSignals && params.topSignals.length > 0) {
-    lines.push(`<b>Top Signals</b>`);
-    for (const s of params.topSignals.slice(0, 5)) {
-      let holderInfo = "";
-      if (s.holderCount != null) {
-        holderInfo = ` · ${s.holderCount.toLocaleString()} holders`;
-        if (s.holderGrowthPercent != null) {
-          const sign = s.holderGrowthPercent >= 0 ? "+" : "";
-          holderInfo += ` (${sign}${s.holderGrowthPercent.toFixed(1)}%)`;
-        }
-      }
-      lines.push(`  <b>${s.symbol}</b> ${s.score}/100${holderInfo}`);
-      lines.push(`    <i>${s.rationale}</i>`);
-    }
-    lines.push(``);
+    msg1.push(``);
+    const sigLines = params.topSignals.slice(0, 3).map((s) => {
+      const h = s.holderCount != null ? ` · ${s.holderCount.toLocaleString()} holders` : "";
+      return `  ${s.symbol} ${s.score}/100${h}`;
+    });
+    msg1.push(...sigLines);
   }
 
-  // Trades
   if (params.tradesSucceeded > 0 || params.tradesFailed > 0) {
-    lines.push(`<b>Trades</b>`);
-    lines.push(`  ✅ ${params.tradesSucceeded} succeeded`);
-    if (params.tradesFailed > 0) lines.push(`  ❌ ${params.tradesFailed} failed`);
-    if (params.totalVolumeUsd > 0) lines.push(`  Vol: $${params.totalVolumeUsd.toFixed(2)}`);
-    lines.push(``);
+    msg1.push(``);
+    const tradeParts: string[] = [];
+    if (params.tradesSucceeded > 0) tradeParts.push(`✅${params.tradesSucceeded}`);
+    if (params.tradesFailed > 0) tradeParts.push(`❌${params.tradesFailed}`);
+    let tradeLine = `Trades: ${tradeParts.join(" ")}`;
+    if (params.totalVolumeUsd > 0) tradeLine += ` · vol $${params.totalVolumeUsd.toFixed(0)}`;
+    if (gas > 0) tradeLine += ` · gas ~$${gas.toFixed(2)}`;
+    msg1.push(tradeLine);
 
     for (const trade of params.executedTrades) {
       const icon = trade.success ? "✅" : "❌";
       const out = trade.amountOut ? `$${trade.amountOut}` : trade.success ? "✓" : "✗";
-      let line = `${icon} ${trade.tokenIn} → ${trade.tokenOut}: $${trade.amountIn} → ${out}`;
+      let line = `${icon} ${trade.tokenIn}→${trade.tokenOut} $${trade.amountIn}→${out}`;
       if (trade.txHash) {
-        const url = `https://bscscan.com/tx/${trade.txHash}`;
-        line += `\n    <a href="${url}">${url}</a>`;
+        line += ` <a href="https://bscscan.com/tx/${trade.txHash}">tx</a>`;
       }
-      lines.push(line);
+      msg1.push(line);
     }
-    lines.push(``);
   }
 
-  // Portfolio
-  lines.push(`<b>Portfolio</b>`);
-  lines.push(`  On-chain: $${params.portfolioValueUsd.toFixed(2)}`);
-  if (params.positionLedgerUsd) {
-    lines.push(`  Positions: $${params.positionLedgerUsd.toFixed(2)} (${params.positionsHeld ?? "?"} held)`);
-  }
-  lines.push(`  Drawdown: ${params.drawdownPercent.toFixed(1)}%`);
-  lines.push(``);
+  await sendMessage(msg1.join("\n"));
 
-  // Anchoring
+  // ── Message 2: Portfolio + PnL + Anchoring ──
+  const msg2: string[] = [`💰 <b>Portfolio</b>`];
+
+  const invested = params.positionLedgerUsd ?? 0;
+  const realized = params.realizedPnl ?? 0;
+  const totalGas = params.totalGasSpent ?? 0;
+  const unrealized = params.portfolioValueUsd - invested;
+  const netPnl = unrealized + realized - totalGas;
+  const pnlSign = netPnl >= 0 ? "+" : "";
+
+  msg2.push(`  Invested: $${invested.toFixed(2)} (${params.positionsHeld ?? 0} positions)`);
+  msg2.push(`  On-chain: $${params.portfolioValueUsd.toFixed(2)}`);
+  msg2.push(`  Gas spent: $${totalGas.toFixed(2)}`);
+  if (realized !== 0) msg2.push(`  Realized: ${realized >= 0 ? "+" : ""}$${realized.toFixed(2)}`);
+  msg2.push(`  <b>Net P&L: ${pnlSign}$${netPnl.toFixed(2)}</b>`);
+
   if (params.anchoring) {
-    const modeIcon =
-      params.anchoring.mode === "on-chain" ? "✅" :
-      params.anchoring.mode === "simulator" ? "🔄" :
-      "⚠️";
-    lines.push(`<b>Anchoring</b>`);
-    lines.push(`  ${modeIcon} ${params.anchoring.mode}`);
-    if (params.anchoring.blockNumber) lines.push(`  Block: ${params.anchoring.blockNumber}`);
-    if (params.anchoring.gasUsed) lines.push(`  Gas: ${params.anchoring.gasUsed}`);
+    const modeIcon = params.anchoring.mode === "on-chain" ? "⚓" : "🔄";
+    let anchorLine = `${modeIcon} ${params.anchoring.mode}`;
+    if (params.anchoring.blockNumber) anchorLine += ` · block ${params.anchoring.blockNumber}`;
     if (params.anchoring.hash) {
-      const mantleUrl = `https://explorer.sepolia.mantle.xyz/tx/${params.anchoring.hash}`;
-      lines.push(`  <a href="${mantleUrl}">Verify on Mantle Explorer</a>`);
+      anchorLine += ` · <a href="https://explorer.sepolia.mantle.xyz/tx/${params.anchoring.hash}">verify</a>`;
     }
-    lines.push(``);
+    msg2.push(anchorLine);
   }
 
-  // Verification footer
-  lines.push(`<i>Wallet: <a href="https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a">0xA1Dd...888a</a> · BSC Mainnet</i>`);
+  msg2.push(`<i><a href="https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a">0xA1Dd...888a</a> · BSC Mainnet</i>`);
 
-  // Errors
-  if (params.errors.length > 0) {
-    lines.push(`<b>Errors (${params.errors.length})</b>`);
-    for (const err of params.errors.slice(0, 3)) {
-      lines.push(`  ⚠️ ${err.slice(0, 200)}`);
-    }
-    if (params.errors.length > 3) lines.push(`  ... and ${params.errors.length - 3} more`);
-    lines.push(``);
-  }
-
-  await sendMessage(lines.join("\n"));
+  await sendMessage(msg2.join("\n"));
 }
 
 /**

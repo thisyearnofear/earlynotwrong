@@ -70,6 +70,10 @@ import {
 } from "./lib/bscscan-client.js";
 import { computeHolderMetric } from "./lib/holder-growth.js";
 
+// Gas cost estimate per BSC swap (~$1.50 at current gas prices).
+// Used for pre-flight balance checks and PnL tracking.
+const GAS_BUFFER_USD = 1.5;
+
 // =============================================================================
 // Agent State
 // =============================================================================
@@ -81,6 +85,8 @@ const state = {
   nextRunAt: null as number | null,
   totalTrades: 0,
   totalVolumeUsd: 0,
+  totalGasSpentUsd: 0,
+  realizedPnlUsd: 0,
   errors: [] as string[],
 
   // Cached market data for this cycle
@@ -397,7 +403,7 @@ async function closePosition(
 
   const result = await twakExecutor.executeSwap({
     tokenIn: pos.symbol,
-    tokenOut: "USDC",
+    tokenOut: "BNB",
     amountIn: pos.amountUsd.toString(),
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
@@ -405,6 +411,10 @@ async function closePosition(
   if (result.success) {
     state.executedTrades.push(result);
     state.totalTrades += 1;
+    state.totalGasSpentUsd += GAS_BUFFER_USD;
+    // Track realized PnL: what we got back minus what we put in
+    const exitValue = parseFloat(result.amountOut ?? "0");
+    state.realizedPnlUsd += (exitValue - pos.amountUsd);
     guardrails.recordTrade(pos.amountUsd, true);
     return true;
   }
@@ -630,9 +640,8 @@ async function executeTrades(
   console.log(`\n[7/8] Executing ${proposals.length} entries via TWAK...`);
 
   // Pre-flight: check BNB balance before attempting any trades.
-  // Each trade needs: trade amount (in BNB) + gas (~$1.50). Don't waste gas
+  // Each trade needs: trade amount (in BNB) + gas. Don't waste gas
   // on trades that will fail with "insufficient funds".
-  const GAS_BUFFER_USD = 1.5;
   const bnbPrice = state.marketData?.tokenPrices?.find(
     (t) => t.symbol.toUpperCase() === "BNB"
   )?.price ?? 589;
@@ -708,6 +717,9 @@ async function executeTrades(
       console.log(`    ✓ Trade executed${result.txHash ? ` — ${getBscExplorerTxUrl(result.txHash, true)}` : ""}`);
       guardrails.recordTrade(proposal.amountInUsd, true);
       guardrails.updatePeakValue(state.portfolio?.totalValueUsd ?? proposal.amountInUsd * 3);
+
+      // Track gas cost (~$1.50 per BSC swap at current gas prices)
+      state.totalGasSpentUsd += GAS_BUFFER_USD;
 
       // Open a conviction position so we can hold it through drawdown next cycle.
       const entryPriceUsd = priceMap.get(proposal.tokenSymbol.toUpperCase()) ?? 0;
@@ -1025,6 +1037,9 @@ async function runCycle(): Promise<void> {
       errors: state.errors,
       positionLedgerUsd: state.heldPositions.reduce((sum, p) => sum + p.amountUsd, 0),
       positionsHeld: state.heldPositions.length,
+      gasSpentThisCycle: state.executedTrades.filter(t => t.success).length * GAS_BUFFER_USD,
+      totalGasSpent: state.totalGasSpentUsd,
+      realizedPnl: state.realizedPnlUsd,
       topSignals: [...state.convictionSignals]
         .sort((a, b) => b.score - a.score)
         .slice(0, 5)
