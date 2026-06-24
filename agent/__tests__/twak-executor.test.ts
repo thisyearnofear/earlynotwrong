@@ -384,3 +384,56 @@ describe("TwakExecutor — Edge Cases", () => {
     expect(await executor.checkLiquidity("SLX")).toBe(false);
   });
 });
+
+// =============================================================================
+// Portfolio parser — regression test for the BNB-as-USD bug
+//
+// Bug: parser matched the first numeric token (the balance) as USD value,
+// so 0.057 BNB was reported as $0.06 instead of $33. This caused the
+// agent to skip all entries and double its loop interval — a phantom
+// conservative mode triggered by misread BNB.
+// =============================================================================
+
+describe("TwakExecutor — Portfolio Parser", () => {
+  it("parses BNB USD value from $ column, not from balance", async () => {
+    // Sample TWAK `wallet portfolio` output. Note the long decimal balance
+    // for BNB and the explicit $USD column at the end of each row.
+    const twakPortfolioOutput = [
+      "Chain        Type    Symbol            Balance               USD",
+      "────────────────────────────────────────────────────────────────────────",
+      "bsc          native  BNB               0.05717979978759799  $33.03",
+      "bsc          token   USDC              0.648383822632066233 $0.65",
+      "base         token   USDC              5                    $5.00",
+      "Total USD: $38.68",
+      "",
+    ].join("\n");
+
+    const queue = createResponseQueue();
+    queue.queue.push((_err, result) => {
+      result.stdout = twakPortfolioOutput;
+      result.stderr = "";
+    });
+
+    const executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      execFileOverride: queue.execFileOverride,
+    });
+
+    const portfolio = await executor.getPortfolio();
+
+    // The critical assertion: BNB must be reported as ~$33, not $0.057.
+    const bnb = portfolio.positions.find((p) => p.symbol === "BNB");
+    expect(bnb).toBeDefined();
+    expect(bnb!.valueUsd).toBeCloseTo(33.03, 1);
+
+    // USDC total across BSC + Base = $5.65
+    const usdcTotal = portfolio.positions
+      .filter((p) => p.symbol === "USDC")
+      .reduce((sum, p) => sum + p.valueUsd, 0);
+    expect(usdcTotal).toBeCloseTo(5.65, 1);
+
+    // Total should sum to $38.68
+    expect(portfolio.totalValueUsd).toBeCloseTo(38.68, 1);
+  });
+});

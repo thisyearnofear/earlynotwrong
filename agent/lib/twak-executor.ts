@@ -869,21 +869,46 @@ export class TwakExecutor {
     const positions: BalanceEntry[] = [];
     let totalUsd = 0;
 
+    // TWAK portfolio CLI format:
+    //   Chain        Type    Symbol            Balance               USD
+    //   ────────────────────────────────────────────────────────────────
+    //   bsc          native  BNB               0.05717979978759799  $33.03
+    //   bsc          token   USDC              0.648383822632066233 $0.65
+    //   ...
+    //   Total USD: $9.81
+    //
+    // We parse by column position: chain (1), type (2), symbol (3),
+    // balance (4, numeric), $USD (5). The earlier regex `(\w+)[:\s]+\$?([\d.]+)`
+    // was matching "BNB  0.057..." and treating the balance as USD — which
+    // made the agent think BNB was worth $0.06 instead of $33. Critical bug.
+    const rowPattern = /^\s*(\S+)\s+(\S+)\s+(\S+)\s+[\d.eE+-]+\s+\$([\d.]+)/;
+
     for (const line of lines) {
-      const match = line.match(/(\w+)[:\s]+\$?([\d.]+)/);
-      if (match) {
-        const symbol = match[1].toUpperCase();
-        const value = parseFloat(match[2]);
-        if (value > 0) {
-          totalUsd += value;
-          positions.push({
-            token: symbol,
-            symbol,
-            balance: "0",
-            valueUsd: value,
-            chain: "bsc",
-          });
-        }
+      // Skip header, separator, and total lines
+      if (
+        line.includes("Chain") ||
+        line.includes("───") ||
+        line.toLowerCase().includes("total") ||
+        line.trim() === ""
+      ) {
+        continue;
+      }
+
+      const m = line.match(rowPattern);
+      if (!m) continue;
+
+      const symbol = m[3].toUpperCase();
+      const valueUsd = parseFloat(m[4]);
+
+      if (valueUsd > 0 && symbol !== "TOTAL") {
+        totalUsd += valueUsd;
+        positions.push({
+          token: symbol,
+          symbol,
+          balance: "0",
+          valueUsd,
+          chain: "bsc",
+        });
       }
     }
 
