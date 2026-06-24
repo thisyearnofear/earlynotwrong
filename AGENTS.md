@@ -50,10 +50,14 @@ The **agent** is the primary focus for BNB Hack. The **web app** is the Convicti
    - EXIT_PARTIAL at +50% gain — sell 33%, let the rest ride (capital recycling)
    - EXIT_STOP at −35% — thesis invalidated, cap the loss
    - EXIT_TRAIL at +100% peak → 30% give-back — lock the asymmetry
-4b. **Harvest for BNB** — when BNB balance < $5, sell the weakest position held 8+ cycles to replenish trading capital (self-funding)
-5. **Create trade proposals** — top-K tokens weighted by conviction, with DEX liquidity check
-6. **Check guardrails** — drawdown, daily limit, position concentration
-7. **Execute trades** via TWAK (with retry)
+4b. **Harvest for BNB** — when BNB balance < `bankroll.harvestMinBnbUsd` (default $8), sell the weakest position held 8+ cycles. **Fallback ladder** (since v0.2):
+   - Primary: position → BNB direct swap
+   - Fallback A: position → USDC → BNB (deeper USDC liquidity on most BSC pairs)
+   - Fallback B: size probe ($0.50 then $1) to diagnose amount-related reverts (catches tax tokens)
+   - Final: Telegram alert + 5-cycle cooldown on the broken token
+5. **Create trade proposals** — top-K tokens weighted by conviction, with DEX liquidity check. **Bankroll-aware sizing** (since v0.2): per-trade cap = `min(portfolio × 15%, (BNB − reserve) × 50%)`. Entries skipped entirely when BNB < `bankroll.entrySkipBelowBnbUsd` (default $10).
+6. **Check guardrails** — drawdown, daily limit, position concentration. **Peak value tracking** (since v0.2): seeded only at end of cycle from a post-trade portfolio snapshot, never from a pre-trade value (avoids phantom drawdowns on every restart).
+7. **Execute trades** via TWAK. **Pre-flight** (since v0.2): re-checks live BNB and refuses if the trade would breach `bankroll.minBnbReserveUsd` (default $5). **Exit fallback ladder**: primary → 5% slippage → USDC pair → Telegram alert.
 8. **Anchor to Mantle** — submit thesis hash + score to ERC-8004 registry
 
 ### Key Patterns
@@ -64,7 +68,19 @@ The **agent** is the primary focus for BNB Hack. The **web app** is the Convicti
 - **Env loader**: `agent/lib/env-loader.ts` runs `dotenv` before any module construction so API keys resolve at import time.
 - **Telegram dispatch**: Non-blocking `.catch(() => {})` — env-vars-gated startup/cycle/error alerts.
 - **Guardrails**: Pure in-memory state with daily counter reset. Hard limits from `AGENT_CONFIG.trading`.
+- **Bankroll management** (since v0.2): `AGENT_CONFIG.trading.bankroll` defines a non-spendable BNB reserve, an entry-skip floor, and a per-trade cap as a fraction of tradeable BNB. When BNB drops below `targetBnbUsd` (default $25), the loop interval doubles (4h → 8h) to preserve gas spent on Mantle anchoring.
+- **Position reconciliation** (since v0.2): at startup, `restoreSnapshot()` cross-checks `state.heldPositions` against the live TWAK portfolio and drops ghost positions (in-memory entries with no on-chain balance). Prevents stuck positions like H-at-−55% from haunting the conviction ledger forever.
+- **Portfolio parser** (since v0.2): `parsePortfolioOutput` reads the `$USD` column from TWAK's column-aligned output. Earlier regex matched the first numeric token (balance), reporting BNB's balance (0.057) as its USD value — fixed and covered by a regression test in `__tests__/twak-executor.test.ts`.
 - **Retry with backoff**: Trade execution and Mantle anchoring use linear backoff (1s, 2s).
+
+### Important Conventions
+
+- All `agent/lib/` imports use `.js` extension (ESM modules compiled from `.ts`).
+- Never import Next.js path aliases (`@/`) in agent code.
+- Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
+- `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
+- Tests live in `agent/__tests__/` — Vitest framework.
+- `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 
 ### Important Conventions
 

@@ -270,11 +270,11 @@ export class RiskGuardrails {
   }
 
   private checkDrawdown(portfolioValue: number): GuardrailResult {
-    // No trades yet — no drawdown possible
-    if (this.peakValueUsd <= 0) {
-      this.peakValueUsd = portfolioValue;
-      return { allowed: true, code: "OK", message: "No drawdown history" };
-    }
+    // Peak value is set explicitly at end of cycle (post-trade). Until it's
+    // been set at least once, drawdown is reported as 0 — we don't want
+    // the FIRST checkDrawdown call (which sees a pre-trade portfolio value)
+    // to lock the peak at that pre-trade number and flag the subsequent
+    // deployment of capital as a phantom drawdown.
 
     const drawdownPercent =
       this.peakValueUsd > 0

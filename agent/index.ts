@@ -74,6 +74,56 @@ import { computeHolderMetric } from "./lib/holder-growth.js";
 // Used for pre-flight balance checks and PnL tracking.
 const GAS_BUFFER_USD = 1.5;
 
+/**
+ * Pull the live BNB USD value out of the cycle's TWAK portfolio snapshot.
+ * Returns 0 if BNB isn't present (e.g., fresh wallet before first funding).
+ */
+function getBnbUsd(portfolio: TwakPortfolio | null): number {
+  if (!portfolio) return 0;
+  const bnb = portfolio.positions.find(
+    (p) => p.symbol?.toUpperCase() === "BNB" || p.token?.toUpperCase() === "BNB"
+  );
+  return bnb?.valueUsd ?? 0;
+}
+
+/**
+ * Conservative size cap for a single trade, derived from BNB availability
+ * (not portfolio value). Returns 0 if the trade would breach the BNB
+ * reserve floor.
+ *
+ * The point: when BNB is the binding constraint, sizing off portfolio value
+ * is reckless. We always cap by (BNB - reserve) * maxTradeFractionOfBnb.
+ */
+function computeBankrollCap(bnbUsd: number): {
+  tradeableBnb: number;
+  maxByBnb: number;
+  canTrade: boolean;
+  reason?: string;
+} {
+  const cfg = AGENT_CONFIG.trading.bankroll;
+  const tradeableBnb = Math.max(0, bnbUsd - cfg.minBnbReserveUsd);
+  const maxByBnb = tradeableBnb * cfg.maxTradeFractionOfBnb;
+
+  if (bnbUsd < cfg.entrySkipBelowBnbUsd) {
+    return {
+      tradeableBnb,
+      maxByBnb,
+      canTrade: false,
+      reason: `BNB ($${bnbUsd.toFixed(2)}) below entry floor ($${cfg.entrySkipBelowBnbUsd}) — focus on harvest + exits`,
+    };
+  }
+  if (maxByBnb < 0.5) {
+    return {
+      tradeableBnb,
+      maxByBnb,
+      canTrade: false,
+      reason: `Tradeable BNB ($${maxByBnb.toFixed(2)}) below minimum trade size — defer`,
+    };
+  }
+
+  return { tradeableBnb, maxByBnb, canTrade: true };
+}
+
 const COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain";
 
 /**
@@ -481,17 +531,77 @@ async function closePosition(
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
 
-  if (result.success) {
-    state.executedTrades.push(result);
-    state.totalTrades += 1;
-    state.totalGasSpentUsd += GAS_BUFFER_USD;
-    // Track realized PnL: what we got back minus what we put in
-    const exitValue = parseFloat(result.amountOut ?? "0");
-    state.realizedPnlUsd += (exitValue - pos.amountUsd);
-    guardrails.recordTrade(pos.amountUsd, true);
-    return true;
+  // ── Exit fallback ladder ──
+  // 1. Primary:    pos → BNB at default slippage (handled by `result` above)
+  // 2. Fallback A: pos → BNB at 5% slippage (for thin pools)
+  // 3. Fallback B: pos → USDC at default slippage (USDC pair usually deeper)
+  // 4. Final:      alert and return false — caller keeps position flagged
+  //
+  // Bankroll guard: refuse to attempt exit if position is too small to
+  // justify gas. EXIT_STOP on a $0.05 token is not worth burning $1.50.
+  const MIN_SWAP_USD = 1.0;
+  if (pos.amountUsd < MIN_SWAP_USD) {
+    console.log(`    [exit] Position too small ($${pos.amountUsd.toFixed(2)}) to justify gas — deferring`);
+    return false;
   }
+
+  if (result.success) {
+    return finalizeExit(pos, result, verdict, timestamp);
+  }
+  console.log(`    [exit] Primary exit failed: ${result.error}`);
+
+  // 2. Fallback A: high slippage (5%)
+  console.log(`    [exit] Fallback A: retrying at 5% slippage`);
+  const hiSlipResult = await twakExecutor.executeSwap({
+    tokenIn: pos.symbol,
+    tokenOut: "BNB",
+    amountIn: pos.amountUsd.toString(),
+    slippageBps: 500,
+  });
+  if (hiSlipResult.success) {
+    return finalizeExit(pos, hiSlipResult, verdict, timestamp);
+  }
+  console.log(`    [exit] High-slippage failed: ${hiSlipResult.error}`);
+
+  // 3. Fallback B: route through USDC (almost always deeper liquidity)
+  console.log(`    [exit] Fallback B: routing ${pos.symbol} → USDC`);
+  const usdcResult = await twakExecutor.executeSwap({
+    tokenIn: pos.symbol,
+    tokenOut: "USDC",
+    amountIn: pos.amountUsd.toString(),
+    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+  });
+  if (usdcResult.success) {
+    console.log(`    [exit] USDC leg succeeded — closing position (USDC held as stablecoin)`);
+    return finalizeExit(pos, usdcResult, verdict, timestamp);
+  }
+
+  // 4. Final: alert + keep position
+  console.log(`    [exit] All exit paths failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)})`);
+  sendErrorAlert({
+    cycle: state.cycle,
+    error: `EXIT ${verdict.action} failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)}, ${verdict.unrealizedPnLPercent.toFixed(1)}% PnL) after 3 attempts. Position kept.`,
+  }).catch(() => {});
   return false;
+}
+
+/**
+ * Shared bookkeeping for a successful exit (used by all exit paths).
+ * Records trade, gas, PnL, and clears the position from the ledger.
+ */
+function finalizeExit(
+  pos: HeldPosition,
+  result: SwapResult,
+  verdict: PositionVerdict,
+  timestamp: number
+): boolean {
+  state.executedTrades.push(result);
+  state.totalTrades += 1;
+  state.totalGasSpentUsd += GAS_BUFFER_USD;
+  const exitValue = parseFloat(result.amountOut ?? "0");
+  state.realizedPnlUsd += exitValue - pos.amountUsd;
+  guardrails.recordTrade(pos.amountUsd, true);
+  return true;
 }
 
 // =============================================================================
@@ -507,10 +617,14 @@ async function harvestForBnb(): Promise<void> {
   );
   const bnbValue = bnbPosition?.valueUsd ?? 0;
 
-  if (bnbValue >= BNB_FLOOR_USD) return;
+  // Bankroll-aware threshold: trigger harvest when BNB falls below the
+  // configured floor (default $8). Higher than the gas reserve ($5) so we
+  // have room to actually run the harvest swap.
+  const HARVEST_FLOOR = AGENT_CONFIG.trading.bankroll.harvestMinBnbUsd;
+  if (bnbValue >= HARVEST_FLOOR) return;
 
   const maturePositions = state.heldPositions
-    .filter((p) => p.cyclesHeld >= MIN_CYCLES_TO_HARVEST)
+    .filter((p) => p.cyclesHeld >= MIN_CYCLES_TO_HARVEST && !unharvestableTokens.has(p.symbol))
     .sort((a, b) => a.amountUsd - b.amountUsd); // smallest first
 
   if (maturePositions.length === 0) {
@@ -519,28 +633,134 @@ async function harvestForBnb(): Promise<void> {
   }
 
   const target = maturePositions[0];
-  console.log(`\n[4b/8] Harvesting for BNB (balance: $${bnbValue.toFixed(2)})...`);
+  console.log(`\n[4b/8] Harvesting for BNB (balance: $${bnbValue.toFixed(2)}, floor: $${HARVEST_FLOOR})...`);
   console.log(`  Selling ${target.symbol} ($${target.amountUsd}) — held ${target.cyclesHeld} cycles, lowest conviction position`);
 
-  const result = await twakExecutor.executeSwap({
+  // ── Fallback ladder ──
+  // 1. Primary:  ${target.symbol} → BNB (deepest pools)
+  // 2. Fallback A: ${target.symbol} → USDC → BNB (USDC has the deepest
+  //    liquidity on BSC; intermediate hop often succeeds when direct fails)
+  // 3. Fallback B: smaller test swap to diagnose amount-related reverts
+  // 4. Final: Telegram alert + mark token un-harvestable for next cycles
+
+  // 1. Primary attempt
+  const primary = await twakExecutor.executeSwap({
     tokenIn: target.symbol,
     tokenOut: "BNB",
     amountIn: target.amountUsd.toString(),
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
 
-  if (result.success) {
+  if (primary.success) {
     state.heldPositions = state.heldPositions.filter(
       (p) => p.symbol !== target.symbol
     );
-    state.executedTrades.push(result);
+    state.executedTrades.push(primary);
     state.totalTrades += 1;
     guardrails.recordTrade(target.amountUsd, true);
-    console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${result.txHash?.slice(0, 10)}...)`);
-    // Refresh portfolio to pick up new BNB balance
+    console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
     state.portfolio = await twakExecutor.getPortfolio();
+    return;
+  }
+
+  // 2. Fallback A: route through USDC
+  console.log(`  ⚠ Primary harvest failed: ${primary.error}`);
+  console.log(`  [harvest] Fallback A: routing ${target.symbol} → USDC → BNB`);
+
+  const halfAmount = (target.amountUsd / 2).toFixed(2);
+  const toUsdc = await twakExecutor.executeSwap({
+    tokenIn: target.symbol,
+    tokenOut: "USDC",
+    amountIn: halfAmount,
+    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+  });
+
+  if (toUsdc.success) {
+    const usdcBalance = await twakExecutor.getBalance("USDC");
+    const usdcUsd = usdcBalance?.valueUsd ?? 0;
+    if (usdcUsd > 0.5) {
+      const usdcToBnb = await twakExecutor.executeSwap({
+        tokenIn: "USDC",
+        tokenOut: "BNB",
+        amountIn: usdcUsd.toFixed(2),
+        slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+      });
+      if (usdcToBnb.success) {
+        // Remove the FULL position from the ledger — we sold half and the
+        // other half is now illiquid (still tracked as remaining cost basis
+        // but no longer a swap candidate). Better to clear than to retry
+        // forever on a broken pair.
+        state.heldPositions = state.heldPositions.filter(
+          (p) => p.symbol !== target.symbol
+        );
+        state.executedTrades.push(toUsdc, usdcToBnb);
+        state.totalTrades += 2;
+        guardrails.recordTrade(target.amountUsd, true);
+        console.log(`  ✓ Harvested via USDC hop (${toUsdc.txHash?.slice(0, 10)} → ${usdcToBnb.txHash?.slice(0, 10)})`);
+        state.portfolio = await twakExecutor.getPortfolio();
+        return;
+      }
+      console.log(`  ⚠ USDC → BNB failed: ${usdcToBnb.error}`);
+    } else {
+      console.log(`  ⚠ USDC leg produced $${usdcUsd.toFixed(2)} (too small to continue)`);
+    }
   } else {
-    console.log(`  ✗ Harvest failed: ${result.error}`);
+    console.log(`  ⚠ ${target.symbol} → USDC failed: ${toUsdc.error}`);
+  }
+
+  // 3. Fallback B: smaller test amount (catches tax/transfer-fee tokens
+  // where the revert is amount-proportional)
+  console.log(`  [harvest] Fallback B: test swap at $0.50 to diagnose revert`);
+  const tinyTest = await twakExecutor.executeSwap({
+    tokenIn: target.symbol,
+    tokenOut: "BNB",
+    amountIn: "0.5",
+    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+  });
+  if (tinyTest.success) {
+    // The token is swapable, just not at full size — try medium size
+    console.log(`  ✓ Tiny swap worked, retrying at $1`);
+    const retry = await twakExecutor.executeSwap({
+      tokenIn: target.symbol,
+      tokenOut: "BNB",
+      amountIn: "1",
+      slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+    });
+    if (retry.success) {
+      state.executedTrades.push(tinyTest, retry);
+      state.totalTrades += 2;
+      guardrails.recordTrade(1.5, true);
+      // Reduce remaining position cost basis by what we sold (~$1.50)
+      const idx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
+      if (idx >= 0) {
+        state.heldPositions[idx].amountUsd = Math.max(0, state.heldPositions[idx].amountUsd - 1.5);
+      }
+      console.log(`  ✓ Harvested via size-probing (${tinyTest.txHash?.slice(0, 10)}, ${retry.txHash?.slice(0, 10)})`);
+      state.portfolio = await twakExecutor.getPortfolio();
+      return;
+    }
+  }
+
+  // 4. Final: alert and stop retrying this token for N cycles
+  console.log(`  ✗ All harvest attempts failed for ${target.symbol}`);
+  console.log(`  [harvest] Marking ${target.symbol} as un-harvestable for 5 cycles`);
+  unharvestableTokens.set(target.symbol, 5);
+  sendErrorAlert({
+    cycle: state.cycle,
+    error: `Harvest failed for ${target.symbol} after 3 attempts (primary + USDC hop + size probe). Token marked un-harvestable.`,
+  }).catch(() => {});
+}
+
+/**
+ * Per-token cooldown for tokens that fail the harvest ladder. Prevents
+ * the same broken token from being tried every cycle.
+ */
+const unharvestableTokens = new Map<string, number>();
+
+function tickUnharvestableCooldowns(): void {
+  for (const [sym, count] of unharvestableTokens.entries()) {
+    if (count <= 1) unharvestableTokens.delete(sym);
+    else unharvestableTokens.set(sym, count - 1);
   }
 }
 
@@ -615,13 +835,25 @@ async function createTradeProposals(): Promise<Array<{
   // 1. Reduced concentration cap (15% vs guardrails 20%) for headroom
   // 2. Safety margin (0.9x) to avoid hitting the limit exactly
   // 3. Adaptive sizing — reduce by 20% per consecutive concentration rejection
+  // 4. BNB-aware bankroll cap — never let one trade consume more than
+  //    `maxTradeFractionOfBnb` of tradeable BNB. This is the binding
+  //    constraint when bankroll is tight (vs portfolio %, which can lie).
   const PROPOSAL_CONCENTRATION_PERCENT = 15;
   const SAFETY_MARGIN = 0.9;
   const ADAPTIVE_DECAY = 0.8;
 
+  // Bankroll check — if BNB can't fund a single trade, bail early.
+  const bnbUsd = getBnbUsd(portfolio);
+  const bankroll = computeBankrollCap(bnbUsd);
+  if (!bankroll.canTrade) {
+    console.log(`  [bankroll] ${bankroll.reason}`);
+    return [];
+  }
+
   const basePerTrade = Math.min(
     AGENT_CONFIG.trading.maxPerTradeUsd,
-    portfolioValue * (PROPOSAL_CONCENTRATION_PERCENT / 100)
+    portfolioValue * (PROPOSAL_CONCENTRATION_PERCENT / 100),
+    bankroll.maxByBnb
   );
 
   const safePerTrade = basePerTrade * SAFETY_MARGIN;
@@ -638,6 +870,7 @@ async function createTradeProposals(): Promise<Array<{
   });
 
   console.log(`  Proposals: ${proposals.map(p => `${p.tokenSymbol} $${p.amountInUsd} (score: ${p.convictionScore})${concentrationRejectionCount.get(p.tokenSymbol) ? ` [rejected ${concentrationRejectionCount.get(p.tokenSymbol)}x before]` : ""}`).join(", ")}`);
+  console.log(`  [bankroll] BNB=$${bnbUsd.toFixed(2)}, tradeable=$${bankroll.tradeableBnb.toFixed(2)}, per-trade cap=$${bankroll.maxByBnb.toFixed(2)} → sized to $${safePerTrade.toFixed(2)}`);
   return proposals;
 }
 
@@ -718,23 +951,52 @@ async function executeTrades(
   const bnbPrice = state.marketData?.tokenPrices?.find(
     (t) => t.symbol.toUpperCase() === "BNB"
   )?.price ?? 589;
-  const bnbPosition = state.portfolio?.positions.find(
-    (p) => p.symbol.toUpperCase() === "BNB" || p.token.toUpperCase() === "BNB"
-  );
-  const bnbBalanceUsd = (bnbPosition?.valueUsd ?? 0);
+  const bnbBalanceUsd = getBnbUsd(state.portfolio);
+  const bankroll = computeBankrollCap(bnbBalanceUsd);
 
-  // Calculate how many trades we can afford
+  // Defensive pre-flight: re-check on-chain BNB (TWAK portfolio can drift
+  // from the chain). If we can't reach TWAK here, fall back to the cached
+  // value but log the warning.
+  let liveBnbUsd = bnbBalanceUsd;
+  try {
+    const liveBnb = await twakExecutor.getBalance("BNB");
+    if (liveBnb && liveBnb.valueUsd > 0) {
+      liveBnbUsd = liveBnb.valueUsd;
+      if (Math.abs(liveBnbUsd - bnbBalanceUsd) > 0.5) {
+        console.log(`  [preflight] BNB drift: portfolio=$${bnbBalanceUsd.toFixed(2)}, live=$${liveBnbUsd.toFixed(2)} — using live`);
+      }
+    }
+  } catch {
+    console.log(`  [preflight] Live BNB check failed, using portfolio value $${bnbBalanceUsd.toFixed(2)}`);
+  }
+
+  if (!bankroll.canTrade) {
+    console.log(`  ⚠ ${bankroll.reason}`);
+    return [];
+  }
+
+  // Calculate how many trades we can afford — uses LIVE BNB, not the cached
+  // portfolio value. Each trade reserves its full USD size + gas.
   const tradeCostUsd = (proposals[0]?.amountInUsd ?? 2) + GAS_BUFFER_USD;
-  const affordableTrades = Math.floor(bnbBalanceUsd / tradeCostUsd);
+  const affordableTrades = Math.floor(liveBnbUsd / tradeCostUsd);
 
   if (affordableTrades === 0) {
-    console.log(`  ⚠ BNB too low ($${bnbBalanceUsd.toFixed(2)}) — need $${tradeCostUsd.toFixed(2)} per trade. Skipping all trades.`);
+    console.log(`  ⚠ BNB too low ($${liveBnbUsd.toFixed(2)}) — need $${tradeCostUsd.toFixed(2)} per trade. Skipping all trades.`);
     return [];
   }
 
   if (affordableTrades < proposals.length) {
-    console.log(`  ⚠ BNB ($${bnbBalanceUsd.toFixed(2)}) only covers ${affordableTrades}/${proposals.length} trades. Reducing.`);
+    console.log(`  ⚠ BNB ($${liveBnbUsd.toFixed(2)}) only covers ${affordableTrades}/${proposals.length} trades. Reducing.`);
     proposals = proposals.slice(0, affordableTrades);
+  }
+
+  // Hard pre-flight check: refuse if the FIRST trade would breach the
+  // BNB reserve floor. TWAK will reject with "insufficient funds" anyway,
+  // but doing this check client-side saves a failed-tx and gas.
+  const reserveAfterFirst = liveBnbUsd - tradeCostUsd;
+  if (reserveAfterFirst < AGENT_CONFIG.trading.bankroll.minBnbReserveUsd) {
+    console.log(`  ⚠ First trade would leave BNB at $${reserveAfterFirst.toFixed(2)} (below $${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd} reserve). Skipping.`);
+    return [];
   }
 
   const priceMap = buildPriceMap();
@@ -789,7 +1051,9 @@ async function executeTrades(
     if (result.success) {
       console.log(`    ✓ Trade executed${result.txHash ? ` — ${getBscExplorerTxUrl(result.txHash, true)}` : ""}`);
       guardrails.recordTrade(proposal.amountInUsd, true);
-      guardrails.updatePeakValue(state.portfolio?.totalValueUsd ?? proposal.amountInUsd * 3);
+      // NOTE: peak value is updated at the END of runCycle, not per-trade.
+      // Updating mid-trade creates false drawdowns — converting BNB to a
+      // new position shouldn't register as a 25%+ loss.
 
       // Track gas cost (~$1.50 per BSC swap at current gas prices)
       state.totalGasSpentUsd += GAS_BUFFER_USD;
@@ -1048,6 +1312,9 @@ async function runCycle(): Promise<void> {
     await augmentPortfolioWithCoinGecko();
     console.log(`\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`);
 
+    // Tick down per-token harvest cooldowns (one cycle elapsed since last tick)
+    tickUnharvestableCooldowns();
+
     // Step 2: Fetch market data from CMC
     await fetchMarketData();
 
@@ -1087,6 +1354,23 @@ async function runCycle(): Promise<void> {
 
     state.status = "idle";
     state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+
+    // Refresh portfolio snapshot AFTER all trades have settled, then update
+    // peak. The cycle's state.portfolio is from step 1 (pre-trade) and would
+    // otherwise register as a phantom drawdown when capital is deployed into
+    // new positions.
+    try {
+      const postCyclePortfolio = await twakExecutor.getPortfolio();
+      state.portfolio = postCyclePortfolio;
+      guardrails.updatePeakValue(postCyclePortfolio.totalValueUsd);
+    } catch (err) {
+      // If the refresh fails, fall back to the cached value rather than
+      // throw — anchoring already succeeded, this is housekeeping.
+      console.warn(`  [peak-refresh] Post-cycle portfolio refresh failed:`, summarizeError(err));
+      if (state.portfolio) {
+        guardrails.updatePeakValue(state.portfolio.totalValueUsd);
+      }
+    }
 
     printCycleSummary(cycleStart);
 
@@ -1170,6 +1454,38 @@ async function restoreSnapshot(): Promise<void> {
     } else {
       console.log(`  Snapshot: no open positions to restore`);
     }
+
+    // ── Reconcile with on-chain reality ──
+    // state.json can drift from TWAK (e.g., H at -55% that won't exit, or
+    // positions that were sold off-chain). Cross-check each restored
+    // position against the live TWAK portfolio and drop ghosts — positions
+    // that have no on-chain balance. This stops stuck positions from
+    // haunting the conviction ledger forever.
+    if (state.heldPositions.length > 0 && AGENT_MODE === "live") {
+      try {
+        const livePortfolio = await twakExecutor.getPortfolio();
+        const liveSymbols = new Set(
+          livePortfolio.positions
+            .filter((p) => parseFloat(p.balance) > 0 && p.valueUsd > 0.01)
+            .map((p) => p.symbol.toUpperCase())
+        );
+        const before = state.heldPositions.length;
+        state.heldPositions = state.heldPositions.filter((p) => {
+          const live = liveSymbols.has(p.symbol.toUpperCase());
+          if (!live) {
+            console.log(`  [reconcile] Dropping ghost position ${p.symbol} ($${p.amountUsd.toFixed(2)}) — no on-chain balance`);
+          }
+          return live;
+        });
+        if (state.heldPositions.length < before) {
+          console.log(`  [reconcile] Pruned ${before - state.heldPositions.length} ghost position(s); ${state.heldPositions.length} confirmed on-chain`);
+        } else {
+          console.log(`  [reconcile] All ${state.heldPositions.length} positions confirmed on-chain`);
+        }
+      } catch (err) {
+        console.warn(`  [reconcile] On-chain check failed, keeping all positions:`, summarizeError(err));
+      }
+    }
   } catch (err) {
     console.warn(
       "[snapshot] Restore failed, starting fresh:",
@@ -1234,10 +1550,11 @@ async function main(): Promise<void> {
   console.log("║  BNB Hack: AI Trading Agent Edition   ║");
   console.log("╚═══════════════════════════════════════╝");
   console.log(`\nTop-K: ${AGENT_CONFIG.trading.topK}`);
-  console.log(`Interval: ${AGENT_CONFIG.trading.loopIntervalMinutes} minutes`);
+  console.log(`Interval: ${AGENT_CONFIG.trading.loopIntervalMinutes} minutes (×2 when BNB < $${AGENT_CONFIG.trading.bankroll.targetBnbUsd})`);
   console.log(`Max drawdown: ${AGENT_CONFIG.trading.maxDrawdownPercent}%`);
   console.log(`Eligible tokens: ${AGENT_CONFIG.competition.eligibleTokens.length}`);
   console.log(`Default slippage: ${AGENT_CONFIG.trading.defaultSlippageBps} bps`);
+  console.log(`Bankroll: reserve=$${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd}, target=$${AGENT_CONFIG.trading.bankroll.targetBnbUsd}, max-trade-fraction=${AGENT_CONFIG.trading.bankroll.maxTradeFractionOfBnb * 100}%, entry-skip-below=$${AGENT_CONFIG.trading.bankroll.entrySkipBelowBnbUsd}`);
 
   // Start the HTTP server (serves /status, /trades, /conviction on exotic port)
   const server = startServer(31777);
@@ -1274,30 +1591,49 @@ async function main(): Promise<void> {
   // Sync state after first cycle (also persists via syncServerState)
   syncServerState();
 
-  // Schedule subsequent cycles with error isolation
+  // Schedule subsequent cycles with error isolation.
   // Each cycle runs independently — a failure in one cycle does not
   // prevent subsequent cycles from executing.
-  const intervalMs = AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
-  console.log(`\nNext cycle scheduled in ${AGENT_CONFIG.trading.loopIntervalMinutes} minutes (${new Date(Date.now() + intervalMs).toISOString()})`);
-  setInterval(() => {
-    // Error isolation: wrap the entire cycle in a try/catch so that
-    // an unhandled rejection in one cycle doesn't crash the timer.
-    runCycle()
-      .then(() => {
-        try {
-          syncServerState();
-        } catch (syncError) {
-          console.error("State sync failed after cycle:", summarizeError(syncError));
-        }
-      })
-      .catch((cycleError) => {
-        console.error("Unhandled cycle error (isolated):", summarizeError(cycleError));
-        // Ensure the server still reports the latest known state
-        try {
-          syncServerState();
-        } catch { /* ignore */ }
-      });
-  }, intervalMs);
+  //
+  // We use a self-rescheduling setTimeout instead of setInterval so that
+  // the loop interval can adapt to BNB availability. When BNB is below the
+  // target ($25), the agent runs cycles less frequently (8h instead of 4h)
+  // to preserve gas spent on Mantle anchoring.
+  const baseIntervalMs = AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+
+  const scheduleNextCycle = (): void => {
+    const bnbUsd = getBnbUsd(state.portfolio);
+    const cfg = AGENT_CONFIG.trading.bankroll;
+    const intervalMs = cfg.adaptiveInterval && bnbUsd > 0 && bnbUsd < cfg.targetBnbUsd
+      ? baseIntervalMs * 2
+      : baseIntervalMs;
+    const intervalMinutes = intervalMs / 60000;
+
+    state.nextRunAt = Date.now() + intervalMs;
+    console.log(`\nNext cycle in ${intervalMinutes} minutes (${new Date(state.nextRunAt).toISOString()})${intervalMs > baseIntervalMs ? ` — adaptive (BNB=$${bnbUsd.toFixed(2)} < target=$${cfg.targetBnbUsd})` : ""}`);
+
+    setTimeout(() => {
+      runCycle()
+        .then(() => {
+          try {
+            syncServerState();
+          } catch (syncError) {
+            console.error("State sync failed after cycle:", summarizeError(syncError));
+          }
+        })
+        .catch((cycleError) => {
+          console.error("Unhandled cycle error (isolated):", summarizeError(cycleError));
+          try {
+            syncServerState();
+          } catch { /* ignore */ }
+        })
+        .finally(() => {
+          scheduleNextCycle();
+        });
+    }, intervalMs);
+  };
+
+  scheduleNextCycle();
 
   // Keep process alive — graceful shutdown stops the server
   process.on("SIGINT", () => {

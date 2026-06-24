@@ -79,6 +79,33 @@ export const AGENT_CONFIG = {
     // longer "early".
     trailingActivationGainPercent: 100,
     trailingStopPercent: 30,
+
+    // ── Bankroll management (the survival logic) ──
+    // The hackathon scoring rules require a non-zero portfolio through the
+    // trading window — a sub-$1 portfolio scores 0% for that hour. BNB is
+    // also the gas + trade-value asset; once it runs out, the agent can
+    // neither exit nor harvest. So bankroll sizing is conservative by design:
+    // we cap trade size as a fraction of available BNB (not portfolio value),
+    // and we keep a non-spendable gas reserve.
+    bankroll: {
+      // Never let BNB drop below this — strictly reserved for gas + emergency
+      // exits. Trades are skipped when BNB < this + one trade cost.
+      minBnbReserveUsd: 5,
+      // When BNB is below this, slow down (double cycle interval) so we
+      // burn less Mantle anchor gas per day.
+      targetBnbUsd: 25,
+      // Cap on a single trade as a fraction of TRADEABLE BNB (BNB - reserve).
+      // 0.5 means one trade can use at most half of what we can afford to spend.
+      maxTradeFractionOfBnb: 0.5,
+      // When BNB is below this, skip new entries entirely — focus cycles on
+      // closing positions and harvesting back into BNB.
+      entrySkipBelowBnbUsd: 10,
+      // Trigger harvest when BNB drops below this. Lower than the entry
+      // skip floor so we have room to harvest and try again.
+      harvestMinBnbUsd: 8,
+      // When BNB is low, double the loop interval to save gas on anchoring.
+      adaptiveInterval: true,
+    },
   },
 
   // BSC Chain Config (hackathon competition chain)
