@@ -1,11 +1,12 @@
-# BNB Hack: AI Trading Agent Edition — Track 2 Submission
+# BNB Hack: AI Trading Agent Edition — Submission
 
 ## Project
 
-**Name**: Early, Not Wrong — Conviction-Weighted Trading Agent
+**Name**: Early, Not Wrong — Conviction-Native Trading Agent
 **Tagline**: *Being early feels like being wrong. Until it doesn't.*
 
-**Track**: Track 2 — Strategy Skills
+**Track 1 (primary)**: Autonomous Trading Agents ($24K) — live PnL on BSC, ranked by total return with 30% max-drawdown gate
+**Track 2 (secondary)**: Strategy Skills ($6K) — the 6-factor conviction signal below is the strategy spec
 **Also targeting**: Best Use of TWAK ($2K), Best Use of Agent Hub ($2K)
 
 ---
@@ -15,49 +16,74 @@
 ### Architecture
 
 ```
-CMC Agent Hub ──► Conviction Engine ──► Risk Guardrails ──► TWAK Execution ──► Mantle Anchoring
+CMC Agent Hub ──► Conviction Engine ──► Bankroll-Aware Sizer ──► TWAK Execution ──► Mantle Anchoring
      (data)           (scoring)              (filters)           (swaps)            (proof)
 ```
 
-The agent is implemented as a standalone Node.js process running autonomously on a VPS. Each 4-hour cycle:
+The agent is implemented as a standalone Node.js process running autonomously on a VPS (self-hosted, not Pinata). Each 4-hour cycle:
 
-1. **Portfolio State** — Fetches real BNB balance via TWAK (`0.0416 BNB = $24.47`)
+1. **Portfolio State** — Fetches real BNB balance via TWAK (`bsc (BNB) Total: 0.0156 BNB ≈ $9.03`, plus 0.65 USDC and held tokens)
 2. **Market Data** — Pulls Fear & Greed Index, funding rates, and token prices from the CMC Pro REST API
-3. **Conviction Scoring** — Scores 149 eligible BEP-20 tokens using price momentum (24h/7d), volume signals, and market regime context
-4. **Liquidity Screening** — Checks DEX liquidity via TWAK swap quotes for up to 30 tokens, selecting top-3 with real liquidity
-5. **Adaptive Position Sizing** — Three safety layers: reduced concentration cap (15%), safety margin (0.9x), and rejection decay (0.8^n)
-6. **Risk Guardrails** — 8 checks: trading window, portfolio minimum, drawdown (25% hard stop), token allowlist, per-trade limit ($1K), daily limit (10), concentration (20%), conviction floor (60)
-7. **TWAK Execution** — Live swaps via Agent Wallet Mode (self-custody, autonomous signing)
-8. **Mantle Anchoring** — Analysis hash, conviction score, and archetype written to ERC-8004 registry
+3. **Conviction Scoring** — Scores 147 eligible BEP-20 tokens using a 6-factor signal (contrarian + RSI timing + quality + regime + holder growth − volatility penalty)
+4. **Liquidity Screening** — Checks DEX liquidity via TWAK swap quotes for the top 20 candidates, keeping up to top-2 with real liquidity
+5. **Bankroll-Aware Sizing** — Per-trade cap = `min(portfolio × 15%, (BNB − $5 reserve) × 50%)`. Entries skipped entirely when BNB < $10. Loop interval doubles to 8h when BNB < $25 to preserve anchor gas.
+6. **Risk Guardrails** — 8 checks: trading window, portfolio minimum, drawdown (25% hard stop), token allowlist, per-trade limit ($1K), daily limit (6), concentration (20%), conviction floor (58)
+7. **TWAK Execution** — Live swaps via Agent Wallet Mode (self-custody, autonomous signing). Pre-flight rechecks live BNB and refuses if the trade would breach the $5 reserve.
+8. **Mantle Anchoring** — Analysis hash, conviction score, and archetype written to ERC-8004 registry on Mantle Sepolia (every cycle, even when no trades execute)
+
+### Position Management ("The Soul")
+
+The agent embodies "Early, Not Wrong" through four exit tiers:
+- **HOLD** through ordinary drawdown (the default — patience is the strategy)
+- **EXIT_PARTIAL** at +50% gain — sell 33%, let the rest ride (capital recycling)
+- **EXIT_STOP** at −35% — thesis invalidated, cap the loss
+- **EXIT_TRAIL** at +100% peak → 30% give-back — lock the asymmetry
+
+When the EXIT_STOP swap reverts on a thin pool (we hit this on a $3 HOME position pre-fix), an **exit fallback ladder** kicks in: primary swap → 5% slippage → USDC pair → Telegram alert. Same shape on the **harvest ladder** for the self-funding loop (sell weakest 8+ cycle position → BNB direct → USDC intermediate → size probe → alert + cooldown).
+
+### Bankroll Discipline
+
+BNB is both the gas asset and the trade-value asset. A single careless trade can drain the wallet and starve the agent for the rest of the trading window. The new `AGENT_CONFIG.trading.bankroll` block enforces:
+- $5 non-spendable reserve (gas + emergency exit)
+- 50% per-trade cap on tradeable BNB (one trade can never consume more than half)
+- Entry-skip below $10 (focus cycles on exits + harvest)
+- Adaptive interval: 4h normally, 8h when BNB < $25
+
+Combined with the harvest ladder, the agent is **self-funding** within the trading window as long as positions are liquid enough to sell.
+
+### Startup Reconciliation
+
+On every restart, `restoreSnapshot()` cross-checks `state.heldPositions` against the live TWAK portfolio and drops ghost positions (in-memory entries with no on-chain balance). On the first post-deployment run, this pruned **13 stuck positions** that had been haunting the conviction ledger — including H, which had been down 55% with a permanently-reverting exit swap.
 
 ### On-Chain Evidence
 
 | Component | Address / Evidence | Network |
 |-----------|-------------------|---------|
 | **Agent wallet** | `0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a` | BSC Testnet |
-| **Compete registration** | Registered and open | BSC Testnet |
-| **TWAK swaps (latest cycle)** | 3/3 succeeded: BNB→SLX $3, BNB→AXS $3, BNB→BSB $3 | BSC Testnet |
+| **Compete registration** | Registered (`twak compete status` → `registered: true`, deadline 2026-06-25 00:00 UTC) | BSC Testnet |
+| **TWAK swaps** | 6 successful entries across live cycles (INJ, FET) | BSC Testnet |
 | **Mantle registry** | `0x81226e8894D334c790D9a972855592E6C4eeB15C` | Mantle Sepolia |
+| **Latest anchor tx** | `0x95710c98c50b7015e1ea407b25172436275c8e7baa1a05d4f4a81ab51ff9bb74` (block 40380360) | Mantle Sepolia |
 | **Agent card** | Published to Grove storage (`lens://3d290df5...`) | IPFS |
-| **Current portfolio** | $24.47 (pre-trade) → $15.45 (post 3 trades) | BSC Testnet |
-| **Total volume** | $9.00 (3 × $3.00) in Cycle #1 | BSC Testnet |
+| **Current portfolio** | $14.62 across 3 positions on BSC Testnet | BSC Testnet |
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `agent/index.ts` | Main loop orchestrator (all 8 steps) |
+| `agent/index.ts` | Main loop orchestrator (all 8 steps + bankroll + reconciliation) |
+| `agent/lib/config.ts` | `AGENT_CONFIG.trading.bankroll` block (reserve, entry-skip, max-trade-fraction, adaptive interval) |
 | `agent/lib/cmc-client.ts` | CMC Pro REST API data ingestion |
-| `agent/lib/conviction-engine.ts` | Token conviction scoring engine |
-| `agent/lib/twak-executor.ts` | TWAK CLI wrapper with DI for testing |
-| `agent/lib/risk-guardrails.ts` | 8 guardrail checks + adaptive sizing feedback |
-| `agent/src/server.ts` | HTTP server exposing /status, /trades, /conviction |
+| `agent/lib/conviction-signal.ts` | 6-factor token conviction scoring engine (pure functions) |
+| `agent/lib/twak-executor.ts` | TWAK CLI wrapper with DI for testing; column-aware portfolio parser |
+| `agent/lib/risk-guardrails.ts` | 8 guardrail checks; peak seeded only at end of cycle (no phantom drawdowns) |
+| `agent/src/server.ts` | Hono HTTP server exposing `/status`, `/trades`, `/conviction` on port 31777 |
 
 ---
 
 ## Originality
 
-### Why Conviction-Weighted Copy-Trading?
+### Why Conviction-Weighted Direct Execution?
 
 Most trading agents fall into one of three categories:
 
@@ -65,23 +91,35 @@ Most trading agents fall into one of three categories:
 2. **Copy-trading** — Mirror top wallets by volume. Copies noise and wash trading as much as signal.
 3. **LLM-prompted** — Ask an LLM "what should I trade?" with no structured risk framework.
 
-Our agent does something different: **it scores conviction as a behavioral metric, not a price prediction.**
+Our agent does something different: **it scores conviction as a behavioral metric, not a price prediction**, and then trades directly into tokens that exhibit strong behavioral signals — *not* into whatever top wallets happen to be moving.
 
-### The Conviction Signal
+### The 6-Factor Conviction Signal
 
 Instead of asking "which token will go up?", the agent asks "which tokens have the strongest behavioral conviction right now?":
 
-- **Momentum scoring** — 24h and 7d price trends weighted by volume
-- **Market regime context** — Fear & Greed, funding rates (negative = bullish), positive momentum ratio
-- **Liquidity-first** — Only tokens with real DEX liquidity are considered (no ghost markets)
-- **Adaptive sizing** — Trade size shrinks automatically after guardrail rejections, converging to a passing amount
+- **Contrarian (30)** — Rewards assets down 7d during fear (the "early, not wrong" thesis literalized)
+- **RSI timing (10)** — Synthesized RSI(14) from 7d return; bonus for oversold
+- **Quality (15)** — Market cap × liquidity filter (capped downside, room to run)
+- **Regime (20)** — Fear & Greed + funding rate composite (entering when market is fearful)
+- **Holder growth (10)** — On-chain holder base expansion via NodeReal JSON-RPC + CoinGecko fallback ("smart money accumulating")
+- **Volatility penalty** — Subtracted for erratic 7d price paths
+
+### Bankroll Awareness as a First-Class Concern
+
+Most trading agents treat capital as effectively infinite and size trades off portfolio value. Ours treats **BNB as the binding constraint** — it's both the gas asset and the trade-value asset. Per-trade sizing caps at `min(portfolio × 15%, (BNB − reserve) × 50%)` so a single trade can never consume more than half of what's available. Entries auto-skip below $10 BNB; the loop interval doubles to 8h below $25. **The agent manages its own runway.**
+
+### Self-Funding Harvest Ladder
+
+When BNB drops, the agent sells its weakest held position (≥8 cycles old) back into BNB. If the direct swap reverts (thin pool, tax token, or `execution reverted: 0xf4059071`), it falls back to a USDC intermediate, then to a size probe to diagnose tax tokens, and finally to a Telegram alert + 5-cycle cooldown. Same fallback shape on the exit ladder.
 
 ### Novel Contributions
 
-1. **Behavioral conviction as a trading signal** — Not price prediction, not volume copying, but conviction scoring
-2. **Adaptive position sizing with rejection feedback** — The agent learns from its own guardrail rejections, reducing position size exponentially (0.8^n) until trades pass
-3. **Full-stack autonomous loop** — CMC data → scoring → guardrails → TWAK execution → Mantle anchoring, all in one self-contained process
-4. **DI-based testing** — TWAK executor uses dependency injection (`execFileOverride`) enabling 24 unit tests without mocking Node.js built-in modules
+1. **Behavioral conviction as a trading signal** — Not price prediction, not volume copying, but conviction scoring across 6 factors
+2. **Bankroll-aware sizing** — Per-trade caps are derived from BNB availability, not portfolio value (portfolio value can lie; BNB is the binding constraint)
+3. **Self-funding with fallback ladder** — Single point of failure on harvest breaks the entire trading loop; we route through USDC when direct reverts
+4. **Reconciliation on startup** — Cross-checks in-memory positions against on-chain balances; drops ghosts that would otherwise haunt the ledger forever
+5. **Full-stack autonomous loop** — CMC data → scoring → bankroll → TWAK execution → Mantle anchoring, all in one self-contained process
+6. **DI-based testing** — TWAK executor uses dependency injection (`execFileOverride`) enabling 101 unit tests without mocking Node.js built-in modules
 
 ---
 
@@ -136,14 +174,28 @@ Run the agent and show its startup banner and health check:
 ║  EARLY, NOT WRONG — Trading Agent     ║
 ║  BNB Hack: AI Trading Agent Edition   ║
 ╚═══════════════════════════════════════╝
+
+Top-K: 2
+Interval: 240 minutes (×2 when BNB < $25)
+Max drawdown: 25%
+Eligible tokens: 147
+Default slippage: 100 bps
+Bankroll: reserve=$5, target=$25, max-trade-fraction=50%, entry-skip-below=$10
+[server] Running on port 31777
+
+── Startup Health Check ──
+[CMC] Connected via REST API
   TWAK:      ✓ (live)
   CMC MCP:   ✓ (connected)
   Wallet:    0xA1Dd482E...888a
+  Guardrails: ✓ (0/6 trades today)
   Mode:      LIVE
   Market:    BSC Testnet
+  Snapshot: restored N open position(s) from last cycle
+  [reconcile] All N positions confirmed on-chain (or: Pruned X ghost position(s))
 ```
 
-Demonstrates: TWAK live mode, CMC connected, wallet on-chain.
+Demonstrates: TWAK live mode, CMC connected, bankroll config surfaced, ghost-position reconciliation on restart.
 
 #### Step 2: GET /status — Agent Status Endpoint
 
@@ -156,116 +208,115 @@ Open a browser or curl to `http://<vps-ip>:31777/status`. Show this response:
     "hackathon": "BNB Hack: AI Trading Agent Edition",
     "status": "idle",
     "cycle": 1,
-    "totalTrades": 3,
-    "totalVolumeUsd": 9,
+    "lastRunAt": 1782305323826,
+    "nextRunAt": 1782319793869,
+    "totalTrades": 6,
+    "totalVolumeUsd": 16,
+    "errors": 0,
     "portfolio": {
-        "totalValueUsd": 15.45,
-        "positions": 2
+        "totalValueUsd": 14.62,
+        "positions": 3,
+        "chains": ["bsc"]
     },
     "guardrails": {
-        "tradesToday": 3,
-        "dailyLimit": 10,
+        "drawdownPercent": 0.4,
+        "peakValueUsd": 14.68,
+        "tradesToday": 0,
+        "dailyLimit": 6,
         "drawdownExceeded": false,
         "allOk": true
     }
 }
 ```
 
-Demonstrates: 3 trades executed, $9 volume, guardrails active.
+Demonstrates: live trading active, peak tracked at end-of-cycle (not phantom-flagged), guardrails reporting cleanly, $14.62 portfolio > $1 floor.
 
-#### Step 3: GET /trades — Trade History
-
-Open `http://<vps-ip>:31777/trades`. Show:
-
-```json
-{
-    "totalSessionTrades": 3,
-    "totalVolumeUsd": 9,
-    "recentTrades": [
-        {
-            "tokenIn": "BNB",
-            "tokenOut": "SLX",
-            "amountIn": "3",
-            "success": true
-        },
-        {
-            "tokenIn": "BNB",
-            "tokenOut": "AXS",
-            "amountIn": "3",
-            "success": true
-        },
-        {
-            "tokenIn": "BNB",
-            "tokenOut": "BSB",
-            "amountIn": "3",
-            "success": true
-        }
-    ]
-}
-```
-
-Demonstrates: All 3 swaps executed successfully via TWAK.
-
-#### Step 4: GET /conviction — Market Data & Scoring
+#### Step 3: GET /conviction — Market Data & Scoring
 
 Open `http://<vps-ip>:31777/conviction`. Show:
 
 ```json
 {
+    "regime": {
+        "score": 85,
+        "label": "DEEP FEAR — PRIME CONTRARIAN",
+        "fearGreedIndex": 20,
+        "fearLevel": "extreme-fear"
+    },
     "marketData": {
-        "fearGreedIndex": 21,
+        "fearGreedIndex": 20,
         "fearGreedLabel": "Extreme Fear",
-        "totalMarketCapUsd": 2.19e12,
-        "btcFundingRate": 0.00024,
-        "ethFundingRate": 0.0022,
+        "totalMarketCapUsd": 2.14e12,
+        "btcFundingRate": 0.0001,
+        "ethFundingRate": 0.0002,
         "tokensTracked": 145
     },
-    "portfolio": {
-        "totalValueUsd": 15.45,
-        "positions": [
-            {"symbol": "BNB", "valueUsd": 0.03},
-            {"symbol": "USD", "valueUsd": 15.42}
-        ]
+    "anchoring": {
+        "hash": "0x95710c98c50b7015e1ea407b25172436275c8e7baa1a05d4f4a81ab51ff9bb74",
+        "mode": "on-chain",
+        "blockNumber": 40380360,
+        "gasUsed": "190156"
     },
-    "anchoredHash": "0x81c0e2824bba827aa208f1a533118c6a635c3e4d5970525f860489eab7b42440",
-    "anchoredUrl": "https://explorer.sepolia.mantle.xyz/tx/0x81c0e2..."
+    "anchoredUrl": "https://explorer.sepolia.mantle.xyz/tx/0x95710c98..."
 }
 ```
 
-Demonstrates: CMC market data, Fear & Greed (Extreme Fear = contrarian opportunity), Mantle anchoring.
+Demonstrates: CMC market data, Fear & Greed (Deep Fear = strongest contrarian regime), 6-factor conviction scoring, Mantle anchoring on every cycle.
 
-#### Step 5: Terminal Output — Full Cycle
+#### Step 4: Terminal Output — Full Cycle
 
 Show the agent terminal log demonstrating the complete pipeline:
 
 ```
-CYCLE #1 — 2026-06-20T12:15:38.592Z
+═══════════════════════════════════════
+  CYCLE #1 — 2026-06-24T12:35:21.328Z
+═══════════════════════════════════════
+
+[1/8] Portfolio: $28.69 across 3 positions
 
 [1/6] Fetching market data from CMC Agent Hub...
-  Fear & Greed: 21/100 (Extreme Fear)
-  Top gainers: SLX +122.4%, AXS +22.8%, EDGE +22.4%
+  Fear & Greed: 20/100 (Extreme Fear)
+  Total Market Cap: $2.15T
+  BTC Funding Rate: 0.0041%
+  ETH Funding Rate: 0.0022%
+  Token prices: 145 tokens tracked
 
-[2/6] Scoring market regime and token conviction...
-  Regime score: 31/60 (MODERATE CONVICTION)
-  Top conviction tokens: SLX (76), AXS (72), BSB (70)
+[3/8] Scoring market regime + token conviction (contrarian)...
+  Regime: 85/100 — DEEP FEAR — PRIME CONTRARIAN (FGI=20)
+  Top conviction: INJ 72 [down 19% (early) · RSI 2 oversold · extreme fear regime · deep liquidity · -0.0% holders]
+                   FET 72 [down 15% (early) · RSI 2 oversold · extreme fear regime · deep liquidity · +0.4% holders]
 
-[3/6] Creating trade proposals...
-  Proposals: SLX $3 (76), AXS $3 (72), BSB $3 (70)
+[4/8] Managing open positions...
 
-[4/6] Checking risk guardrails...
-  Passed: SLX, AXS, BSB
+[5/8] Creating entry proposals...
+  Proposals: INJ $5 (score: 72), FET $5 (score: 72)
+  [bankroll] BNB=$33.04, tradeable=$28.04, per-trade cap=$14.02 → sized to $5.22
 
-[5/6] Executing 3 trades via TWAK...
-  → Swapping $3 BNB → SLX  ✓ Trade executed
-  → Swapping $3 BNB → AXS  ✓ Trade executed
-  → Swapping $3 BNB → BSB  ✓ Trade executed
-  3/3 trades succeeded
+[6/8] Checking risk guardrails... Passed: INJ, FET
+
+[7/8] Executing 2 entries via TWAK...
+  → Swapping $5 BNB → INJ (conviction: 72)
+    ✓ Trade executed — https://testnet.bscscan.com/tx/0x...
+  → Swapping $5 BNB → FET (conviction: 72)
+    ✓ Trade executed — https://testnet.bscscan.com/tx/0x...
+  2/2 trades succeeded
+
+[8/8] Anchoring conviction record to Mantle ERC-8004 registry...
+  Tx hash: 0xec817b92424fca9ead2bbffe1462a3f12709d79f98f032d6c18d04abaf37bc04
+  Block:   40380238
+  Anchored on-chain ✓
 
 ── Cycle #1 Summary ──
-  Trades:       3 succeeded, 0 failed
-  Total volume: $9.00
-  Portfolio:    $24.47 (drawdown: 0.0%)
+  Duration:     112.1s
+  Trades:       2 succeeded, 0 failed
+  Total volume: $10.00
+  Anchoring:    ✓ on-chain
+  Portfolio:    $X.XX (drawdown: 0.0%)
+
+Next cycle in 240 minutes (or 480 when BNB < $25 — adaptive)
 ```
+
+The bankroll line `[bankroll] BNB=$33.04, tradeable=$28.04, per-trade cap=$14.02 → sized to $5.22` is the new bankroll-aware sizer in action — it caps each trade at half the tradeable BNB, leaving the rest in reserve.
 
 ### Demo Video
 
@@ -287,12 +338,23 @@ Duration: ~30 seconds playback time.
 
 | Criterion | Evidence |
 |-----------|----------|
-| **Integration depth** | TWAK is the sole execution layer — swaps, quotes, balance, portfolio, history, registration, health check |
+| **Integration depth** | TWAK is the sole execution layer — swaps, quotes, balance, portfolio, history, registration, health check, compete status, search (token address resolution), liquidity checks |
 | **Self-custody** | Agent Wallet Mode (autonomous, pre-configured rules). Agent orchestrates, TWAK signs. Keys never leave the user's device. Full `executeSwap`, `getBalance`, `getPortfolio`, `getHistory` pipeline. |
-| **Autonomous execution** | Genuinely hands-off — the agent runs 24/7 on a VPS with tmux, executing cycles every 4 hours without human intervention |
-| **Guardrails** | Drawdown cap (25%), token allowlist, per-trade limits, concentration limits, slippage protection — all enforced before TWAK is called |
-| **x402 usage** | CMC data fetched via Pro REST API (API key) — x402 integration planned as stretch goal |
-| **Originality** | Conviction-weighted position sizing is a novel use of TWAK — not just naive swaps |
+| **Autonomous execution** | Genuinely hands-off — the agent runs 24/7 on a VPS under PM2, executing cycles every 4 hours without human intervention. Adaptive interval doubles to 8h when BNB < $25 to preserve anchor gas. |
+| **Guardrails** | Drawdown cap (25%), token allowlist (147 BEP-20), per-trade limits, concentration limits, slippage protection, **bankroll reserve ($5 non-spendable)**, **entry-skip below $10 BNB**, **50% per-trade cap on tradeable BNB** — all enforced before TWAK is called |
+| **x402 usage** | CMC data fetched via Pro REST API (API key). x402 integration planned as stretch goal. |
+| **Originality** | Conviction-weighted position sizing + bankroll-aware trade caps + harvest/exit fallback ladders are novel uses of TWAK — not just naive swaps. The reconciliation layer treats TWAK's portfolio output as the source of truth against which in-memory conviction state is verified on every restart. |
+
+### Robustness (Real-World Relevance)
+
+A trading agent that crashes on the first reorg, or worse, that holds a permanently-broken position forever because its exit swap reverts, isn't production-grade. We've shipped:
+
+- **PM2 process supervision** — restarts the agent on crash (9 prior restarts over 2 days; current uptime 2h+, status online)
+- **Harvest fallback ladder** — handles `execution reverted: 0xf4059071` and similar by routing through USDC intermediate or size-probing for tax tokens
+- **Exit fallback ladder** — same shape on stuck exits (5% slippage → USDC pair → alert)
+- **Startup reconciliation** — drops 13 ghost positions on the first post-fix restart, freeing the conviction ledger
+- **Pre-flight live BNB check** — refuses to start a trade that would breach the gas reserve (avoids burning gas on transactions that TWAK would reject anyway)
+- **State persistence** — `state.json` survives PM2 restarts so open positions aren't abandoned
 
 ### Best Use of Agent Hub ($2K)
 
@@ -310,16 +372,19 @@ The integration is non-trivial — it's the foundation of every trading decision
 
 ## Submission Checklist
 
-- [x] Agent running autonomously on VPS (24/7)
+- [x] Agent running autonomously on VPS (24/7) under PM2
 - [x] TWAK live mode (not simulator)
 - [x] CMC REST API connected
-- [x] Risk guardrails active and enforced
-- [x] Mantle anchoring per cycle
-- [x] Agent wallet registered for competition
+- [x] Risk guardrails active and enforced (8 checks)
+- [x] Bankroll management (reserve, entry-skip, adaptive interval)
+- [x] Harvest + exit fallback ladders
+- [x] Startup position reconciliation
+- [x] Mantle anchoring per cycle (even when no trades execute)
+- [x] Agent wallet registered for competition (`twak compete status` = `registered: true`)
 - [x] Adaptive position sizing implemented
-- [x] Unit tests (64 passing)
+- [x] Unit tests (101 passing)
 - [x] Source code on GitHub (thisyearnofear/earlynotwrong)
-- [x] Documentation (README, SOUL.md, HACKATHON_PLAN.md)
+- [x] Documentation (README, AGENTS.md, SOUL.md, HACKATHON_PLAN.md)
 - [x] Demo video recorded (asciinema: https://asciinema.org/a/lMVdIaBr9G2KK9Ni)
 - [ ] Submitted on DoraHacks
 

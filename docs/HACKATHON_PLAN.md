@@ -10,66 +10,62 @@
 
 ## North Star
 
-A **conviction-weighted copy-trader agent** deployed on Pinata Agents that:
+A **conviction-native autonomous trading agent** deployed on a self-hosted VPS that:
 
-1. Ingests wallet behavior data via **CMC AI Agent Hub** (funding rates, Fear & Greed, top-wallet flows)
-2. Scores wallet conviction using the **existing ENW conviction engine** (ported, not rewritten)
-3. Mirrors the trades of the top-K conviction wallets via **Trust Wallet Agent Kit (TWAK)**
-4. Operates autonomously within configurable guardrails (drawdown cap, allowlist, per-trade limits)
-5. Anchors its analysis to the **existing Mantle ERC-8004 registry** as verifiable proof-of-analysis
-6. Is hosted on **Pinata Agents** with a Routes-exposed API, Telegram channel, and scheduled task loop
+1. Ingests market data via **CMC AI Agent Hub** (Fear & Greed, funding rates, top-wallet flows)
+2. Scores tokens with a **6-factor conviction signal** (contrarian + RSI timing + quality + regime + holder growth − volatility penalty)
+3. Enters directly on tokens with the strongest behavioral conviction within configurable guardrails (drawdown cap, allowlist, per-trade limits, **bankroll caps**)
+4. Manages positions with **tiered exits** (HOLD / EXIT_PARTIAL / EXIT_STOP / EXIT_TRAIL) — the "early, not wrong" soul
+5. Anchors every cycle's analysis to the **existing Mantle ERC-8004 registry** as verifiable proof-of-analysis
+6. Is hosted as a **PM2-managed Node.js process** on a self-hosted VPS (Vultr `nuncio-vultr`), with Hono HTTP API + Telegram channel + scheduled task loop
 
-**Why copy-trading, not direct strategy execution?** Because copying conviction-weighted wallets directly maps ENW's existing core competency (identifying high-conviction traders) into a forward-actionable trading loop. The conviction engine already computes who has conviction — now we just mirror their behavior through a disciplined filter.
+**Why direct strategy execution, not copy-trading?** The ENW conviction engine was originally built for *wallet-level* analysis (who is high-conviction?). For BNB Hack, we evolved it to score *tokens* directly against the same 6-factor framework — the same behavioral primitives, applied to the asset rather than the holder. This trades off the proxy of "what smart money is doing" for the direct read of "where is the market fearful + liquid + quality + holder-expanding" — and lets us drop the copy-trader dependency on CMC wallet data that wasn't reliably available.
 
 ---
 
-## Architecture
+## Architecture (Final)
 
 ```
-                    ┌─────────────────────────────┐
-                    │      Pinata Agent (host)     │
-                    │                              │
-                    │  ┌───────────────────────┐  │
-  CMC Pro REST API ──►  │   Data Ingestion      │  │
-  (funding, F&G,   │  │   (CMC v1/v3/v5 REST)  │  │
-   top wallets)    │  └──────────┬────────────┘  │
-                    │             │               │
-                    │  ┌──────────▼────────────┐  │
-                    │  │   Conviction Engine   │  │
-                    │  │   (ported from ENW)   │  │
-                    │  │   - Score wallets     │  │
-                    │  │   - Rank by CI ×      │  │
-                    │  │     Ethos multiplier  │  │
-                    │  │   - Select top-K      │  │
-                    │  └──────────┬────────────┘  │
-                    │             │               │
-                    │  ┌──────────▼────────────┐  │
-                    │  │   Mirror Strategy     │  │
-                    │  │   - Risk filter       │  │
-                    │  │   - Token allowlist   │  │
-                    │  │   - Position sizing   │  │
-                    │  └──────────┬────────────┘  │
-                    │             │               │
-                    │  ┌──────────▼────────────┐  │
-                    │  │   TWAK Exec Layer     │  │
-                    │  │   - Swap (via x402)   │  │
-                    │  │   - Autonomous sign   │  │
-                    │  └──────────┬────────────┘  │
-                    │             │               │
-                    │  ┌──────────▼────────────┐  │
-                    │  │   Mantle Ancher       │  │
-                    │  │   - ERC-8004 registry │  │
-                    │  │   - @pinata/erc-8004  │  │
-                    │  └───────────────────────┘  │
-                    │                              │
-                    │  Routes: /api/status         │
-                    │          /api/trades         │
-                    │          /api/conviction     │
-                    │                              │
-                    │  Channels: Telegram          │
-                    │  Tasks: Every 4h (loop)      │
-                    └─────────────────────────────┘
+                    ┌─────────────────────────────────────┐
+                    │   VPS: nuncio-vultr (PM2-managed)    │
+                    │                                      │
+  CMC Pro REST API ──►  ┌──────────────────────────────┐  │
+  (F&G, funding,    │  │   Conviction Engine           │  │
+   token quotes)    │  │   (6 factors, pure functions)  │  │
+                    │  └──────────────┬─────────────────┘  │
+                    │                 │                    │
+                    │  ┌──────────────▼─────────────────┐  │
+                    │  │   Bankroll-Aware Sizer         │  │
+                    │  │   - $5 reserve (non-spendable) │  │
+                    │  │   - 50% per-trade cap          │  │
+                    │  │   - entry-skip < $10 BNB       │  │
+                    │  │   - adaptive interval (4h/8h)  │  │
+                    │  └──────────────┬─────────────────┘  │
+                    │                 │                    │
+                    │  ┌──────────────▼─────────────────┐  │
+                    │  │   Risk Guardrails              │  │
+                    │  │   8 checks + drawdown tracking │  │
+                    │  └──────────────┬─────────────────┘  │
+                    │                 │                    │
+                    │  ┌──────────────▼─────────────────┐  │
+                    │  │   TWAK Exec Layer              │  │
+                    │  │   swap / balance / portfolio   │  │
+                    │  │   harvest ladder (USDC hop)    │  │
+                    │  │   exit ladder (USDC fallback)  │  │
+                    │  └──────────────┬─────────────────┘  │
+                    │                 │                    │
+                    │  ┌──────────────▼─────────────────┐  │
+                    │  │   Mantle Ancher                │  │
+                    │  │   ERC-8004 registry on Sepolia │  │
+                    │  └────────────────────────────────┘  │
+                    │                                      │
+                    │  Hono HTTP: /status /trades /conviction │
+                    │  Channel:    Telegram cycle summaries  │
+                    │  Schedule:   4h loop (8h when BNB low) │
+                    └─────────────────────────────────────┘
 ```
+
+The original Pinata-Agent hosting plan was abandoned — we self-host on a Vultr VPS (Debian 12) under PM2. Routes are exposed on an exotic port (31777) rather than 3000 because 3000 is occupied by another service on the same machine.
 
 ---
 
@@ -311,16 +307,35 @@ If the BNB AI Agent SDK provides useful primitives (e.g., BSC RPC wrappers, toke
 
 ## Risk Register
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| CMC Agent Hub latency during trading week | Medium | Medium | Cache data locally with staleness tolerance; fall back to previous scores if data is stale < 1h |
-| TWAK signing failure / rate limits | Low | High | Implement retry with exponential backoff; skip trade if signing fails after 3 retries |
-| Conviction engine produces bad scores due to data gaps | Medium | Medium | Minimum data threshold: skip wallets with < 5 observable trades; log data quality metrics |
-| Portfolio drops below $1 (disqualification threshold) | Low | High | Auto-rebalance to maintain minimum position; agent alerts via Telegram if capital is critically low |
-| Drawdown hits 30% (disqualification) | Low | Very High | Hard stop at 25% — agent stops all trading and alerts manually. 30% is the disqual line, we trip at 25%. |
-| Pinata Agent free trial expires | Medium | Medium | 10-hour trial covers dev. Need to upgrade plan or self-host during trading week. Plan for this in Sprint 4. |
-| BSC network congestion | Low | Medium | Slippage tolerance auto-adjusts; trades that fail due to gas are retried once with higher gas |
-| Selected conviction wallets stop trading | Medium | Low | Main loop re-ranks every 4h — stale wallets naturally fall out of top-K as new wallets emerge |
+| Risk | Likelihood | Impact | Mitigation | Outcome |
+|------|-----------|--------|------------|---------|
+| CMC Agent Hub latency during trading week | Medium | Medium | Cache data locally with staleness tolerance; fall back to previous scores if data is stale < 1h | **Hit** — handled by `cmcClient` retry logic; falls back to neutral values on persistent failure |
+| TWAK signing failure / rate limits | Low | High | Implement retry with exponential backoff; skip trade if signing fails after 3 retries | **Hit** — `withRetry()` wraps all TWAK calls; harvest ladder routes around persistent reverts via USDC intermediate |
+| Conviction engine produces bad scores due to data gaps | Medium | Medium | Minimum data threshold: skip wallets with < 5 observable trades; log data quality metrics | **N/A** — direct strategy execution doesn't depend on wallet-level data quality |
+| **BNB exhaustion** (the binding constraint) | High | Very High | **Bankroll block** ($5 reserve, 50% per-trade cap, entry-skip < $10, adaptive interval). Harvest ladder with USDC fallback. Pre-flight live BNB check before each trade. | **Hit** — addressed; cycle#17 ran out of BNB and got stuck in "skipping all trades" loop. Bankroll fix + parser fix + reconciliation restored full trading |
+| Portfolio drops below $1 (disqualification threshold) | Low | Very High | **Bankroll management** + USDC on-hand as fallback capital | **Mitigated** — portfolio $14.62, well above $1 floor |
+| Drawdown hits 30% (disqualification) | Low | Very High | Hard stop at 25% — agent stops all trading and alerts manually. 30% is the disqual line, we trip at 25%. Peak tracked at end of cycle (post-trade) so deploying capital doesn't register as drawdown. | **Mitigated** — peak now correctly seeded; no false drawdowns |
+| Ghost positions in `state.heldPositions` (in-memory positions with no on-chain balance) | High | Medium | Startup reconciliation — cross-check held positions against live TWAK portfolio, drop ghosts | **Hit** — pruned 13 ghost positions on first post-fix restart |
+| Pinata Agent free trial expires | Medium | Medium | 10-hour trial covers dev. Need to upgrade plan or self-host during trading week. Plan for this in Sprint 4. | **Resolved** — abandoned Pinata, self-host on Vultr |
+| BSC network congestion | Low | Medium | Slippage tolerance auto-adjusts; trades that fail due to gas are retried once with higher gas | **Mitigated** — exit ladder retries at 5% slippage |
+| Selected conviction wallets stop trading | Medium | Low | Main loop re-ranks every 4h — stale wallets naturally fall out of top-K as new wallets emerge | **N/A** — direct strategy execution |
+
+---
+
+## What Shipped (vs. Plan)
+
+| Phase | Original Plan | Actual |
+|-------|---------------|--------|
+| Hosting | Pinata Agents | Self-hosted VPS (nuncio-vultr) under PM2 |
+| Conviction engine | Wallet-level (CI × Ethos multiplier) | **Token-level** — same 6-factor framework applied directly to assets |
+| Data sources | CMC + wallet flows | CMC only (wallet flows from CMC weren't reliable enough for the trading window) |
+| Execution | TWAK via Pinata x402 | TWAK direct (REST/CLI) |
+| Position management | HOLD / stop-loss only | **HOLD / EXIT_PARTIAL (+50%) / EXIT_STOP (−35%) / EXIT_TRAIL (+100% → −30%)** + **harvest ladder** + **exit ladder** |
+| Risk controls | Drawdown cap + allowlist | + **bankroll block** ($5 reserve, 50% per-trade cap, entry-skip < $10, adaptive interval) |
+| State management | SQLite Sync | JSON persistence (state.json); gitignored as runtime artifact |
+| Mantle anchoring | Every cycle | Every cycle (confirmed on-chain via Mantle Sepolia explorer) |
+| Telegram | Pinata channel | Direct bot integration (cycle summaries + error alerts) |
+| Reconciliation | n/a | **Startup cross-check** of heldPositions vs. live TWAK portfolio; drops ghosts |
 
 ---
 

@@ -976,12 +976,12 @@ function Dashboard({
               {
                 label: "GitHub Repository",
                 href: "https://github.com/thisyearnofear/earlynotwrong",
-                desc: "Full source code — 64 unit tests passing",
+                desc: "Full source code — 101 unit tests passing",
               },
               {
                 label: "BNB Hack Submission",
                 href: "https://dorahacks.io/hackathon/bnbhack-twt-cmc/detail",
-                desc: "Track 2 — Strategy Skills",
+                desc: "Track 1 (live PnL) + Track 2 (Strategy Skill)",
               },
               {
                 label: "Agent Wallet (BSC Testnet)",
