@@ -252,7 +252,12 @@ export class TwakExecutor {
       // AGENT_WALLET_KEY matches the secret declared in manifest.json
       agentAddress: config.agentAddress || process.env.AGENT_WALLET_KEY || "",
       simulator: config.simulator ?? !process.env.TWAK_ACCESS_ID,
-      testnet: config.testnet ?? true,
+      // Default to mainnet. `twak` swaps with --chain=bsc and `twak compete`
+      // both target BSC mainnet for the BNB Hack live PnL window. The old
+      // `?? true` default leaked the wrong network label into the Telegram
+      // startup banner ("BSC Testnet 🧪") even though every swap was mainnet.
+      // Override with TWAK_TESTNET=1 for explicit testnet runs.
+      testnet: config.testnet ?? process.env.TWAK_TESTNET === "1",
       defaultSlippageBps: config.defaultSlippageBps ?? AGENT_CONFIG.trading.defaultSlippageBps,
     };
 

@@ -722,6 +722,7 @@ async function harvestForBnb(): Promise<void> {
     );
     state.executedTrades.push(primary);
     state.totalTrades += 1;
+    state.totalGasSpentUsd += GAS_BUFFER_USD;
     guardrails.recordTrade(target.amountUsd, true);
     console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
     state.portfolio = await twakExecutor.getPortfolio();
@@ -760,6 +761,7 @@ async function harvestForBnb(): Promise<void> {
         );
         state.executedTrades.push(toUsdc, usdcToBnb);
         state.totalTrades += 2;
+        state.totalGasSpentUsd += GAS_BUFFER_USD * 2;
         guardrails.recordTrade(target.amountUsd, true);
         console.log(`  ✓ Harvested via USDC hop (${toUsdc.txHash?.slice(0, 10)} → ${usdcToBnb.txHash?.slice(0, 10)})`);
         state.portfolio = await twakExecutor.getPortfolio();
@@ -794,6 +796,7 @@ async function harvestForBnb(): Promise<void> {
     if (retry.success) {
       state.executedTrades.push(tinyTest, retry);
       state.totalTrades += 2;
+      state.totalGasSpentUsd += GAS_BUFFER_USD * 2;
       guardrails.recordTrade(1.5, true);
       // Reduce remaining position cost basis by what we sold (~$1.50)
       const idx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
@@ -1532,6 +1535,22 @@ async function restoreSnapshot(): Promise<void> {
       console.log(`  Snapshot: no open positions to restore`);
     }
 
+    // Restore cumulative gas + realized PnL so the Telegram summary doesn't
+    // report $0.00 gas after every pm2 restart. These are session-scoped in
+    // memory; without persistence the Net P&L line is overstated.
+    const gas = (persisted?.agent as { totalGasSpentUsd?: number } | undefined)?.totalGasSpentUsd;
+    if (typeof gas === "number" && Number.isFinite(gas) && gas >= 0) {
+      state.totalGasSpentUsd = gas;
+    }
+    const realized = (persisted?.agent as { realizedPnlUsd?: number } | undefined)?.realizedPnlUsd;
+    if (typeof realized === "number" && Number.isFinite(realized)) {
+      state.realizedPnlUsd = realized;
+    }
+    const totalTrades = (persisted?.agent as { totalTrades?: number } | undefined)?.totalTrades;
+    if (typeof totalTrades === "number" && Number.isFinite(totalTrades) && totalTrades > 0) {
+      state.totalTrades = totalTrades;
+    }
+
     // ── Reconcile with on-chain reality ──
     // state.json can drift from chain (positions sold off-chain, dust, etc).
     // We verify each restored position with a DIRECT on-chain balanceOf — NOT
@@ -1603,6 +1622,8 @@ function syncServerState(): void {
     nextRunAt: state.nextRunAt,
     totalTrades: state.totalTrades,
     totalVolumeUsd: state.totalVolumeUsd,
+    totalGasSpentUsd: state.totalGasSpentUsd,
+    realizedPnlUsd: state.realizedPnlUsd,
     errors: state.errors,
     marketData: state.marketData,
     executedTrades: state.executedTrades,
