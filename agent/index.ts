@@ -36,13 +36,9 @@ import {
 } from "./lib/onchain-portfolio.js";
 import { guardrails } from "./lib/risk-guardrails.js";
 
-import {
-  computeSubjectHash,
-  computeThesisHash,
-  getBscExplorerTxUrl,
-  createMantleWalletClient,
-  anchorToMantleContract,
-} from "./lib/mantle.js";
+import { computeSubjectHash, computeThesisHash, anchorAll } from "./lib/anchors/index.js";
+import type { AnchorResult } from "./lib/anchors/index.js";
+import { getBscExplorerTxUrl } from "./lib/explorers.js";
 import type { CmcMarketData } from "./lib/cmc-client.js";
 import type { SwapResult, TwakPortfolio } from "./lib/twak-executor.js";
 import type { GuardrailResult } from "./lib/risk-guardrails.js";
@@ -263,6 +259,11 @@ const state = {
     blockNumber?: number;
     gasUsed?: string;
   } | null,
+  /** Per-adapter anchor results for the most recent cycle. The orchestrator
+   *  populates one entry per enabled adapter (Mantle, Casper, …). The
+   *  legacy `anchoring` field above mirrors the first successful adapter so
+   *  existing Telegram/server displays keep working. */
+  anchorResults: [] as AnchorResult[],
 };
 
 /**
@@ -1126,7 +1127,7 @@ async function executeTrades(
     }
 
     if (result.success) {
-      console.log(`    ✓ Trade executed${result.txHash ? ` — ${getBscExplorerTxUrl(result.txHash, true)}` : ""}`);
+      console.log(`    ✓ Trade executed${result.txHash ? ` — ${getBscExplorerTxUrl(result.txHash)}` : ""}`);
       guardrails.recordTrade(proposal.amountInUsd, true);
       // NOTE: peak value is updated at the END of runCycle, not per-trade.
       // Updating mid-trade creates false drawdowns — converting BNB to a
@@ -1214,102 +1215,49 @@ async function anchorToMantle(): Promise<void> {
   console.log(`  Subject hash: ${subjectHash.slice(0, 18)}...`);
   console.log(`  Thesis hash:  ${thesisHash.slice(0, 18)}...`);
 
-  // Try to create a Mantle wallet client from the operator key.
-  // If the key is not set, we're in simulator mode — just log the payload.
-  const walletClient = createMantleWalletClient();
+  // Anchor across all enabled adapters (Mantle, Casper, …). The orchestrator
+  // never throws — it returns one AnchorResult per adapter, and we surface the
+  // first successful one as the legacy single-anchor `state.anchoring` slot
+  // so existing Telegram/server displays keep working without changes.
+  const results = await anchorAll({
+    subjectHash,
+    thesisHash,
+    convictionScore: regimeScore,
+    archetype: sentimentLabel,
+    timestamp: Date.now(),
+  });
+  state.anchorResults = results;
 
-  if (walletClient) {
-    console.log(`  Contract: ${AGENT_CONFIG.mantle.sepolia.registryAddress} on Mantle Sepolia`);
-    console.log(`  Wallet:   ${walletClient.account.address.slice(0, 10)}...${walletClient.account.address.slice(-4)}`);
-
-    // Retry loop: up to 3 total attempts (1 initial + 2 retries)
-    const MAX_RETRIES = 2;
-    let lastError: unknown;
-    let succeeded = false;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      if (attempt > 0) {
-        console.log(`  Retry #${attempt}/${MAX_RETRIES}...`);
-        // Brief back-off before retry: 1s, then 2s
-        await new Promise((r) => setTimeout(r, attempt * 1000));
-      }
-
-      try {
-        const result = await anchorToMantleContract(walletClient, {
-          subjectHash,
-          thesisHash,
-          convictionScore: regimeScore,
-          archetype: sentimentLabel,
-        });
-
-        if (result.status === "success") {
-          console.log(`  ✓ Transaction confirmed!`);
-          console.log(`  Tx hash:    ${result.txHash}`);
-          console.log(`  Block:      ${result.blockNumber.toString()}`);
-          console.log(`  Gas used:   ${result.gasUsed.toString()}`);
-          console.log(`  Explorer:   ${result.explorerUrl}`);
-          console.log(`  Anchored on-chain ✓`);
-
-          state.lastAnchoredHash = result.txHash;
-          state.anchoring = {
-            hash: result.txHash,
-            mode: "on-chain",
-            blockNumber: Number(result.blockNumber),
-            gasUsed: result.gasUsed.toString(),
-          };
-          succeeded = true;
-          break;
-        } else {
-          console.log(`  ⚠ Transaction reverted!`);
-          console.log(`  Tx hash:    ${result.txHash}`);
-          console.log(`  Block:      ${result.blockNumber.toString()}`);
-          console.log(`  Explorer:   ${result.explorerUrl}`);
-          console.log(`  Falling back to off-chain logging.`);
-
-          state.lastAnchoredHash = thesisHash;
-          state.anchoring = {
-            hash: result.txHash,
-            mode: "reverted",
-            blockNumber: Number(result.blockNumber),
-            gasUsed: result.gasUsed.toString(),
-          };
-          succeeded = true;
-          break;
-        }
-      } catch (err) {
-        lastError = err;
-        const message = err instanceof Error ? err.message : String(err);
-        console.log(`  ✗ Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${message}`);
-      }
+  for (const r of results) {
+    const label = r.adapter.padEnd(6);
+    if (r.status === "success") {
+      console.log(`  ✓ [${label}] tx ${r.txHash?.slice(0, 12)}… block ${r.blockNumber ?? "?"} gas ${r.gasUsed ?? "?"}`);
+      if (r.explorerUrl) console.log(`         ${r.explorerUrl}`);
+    } else if (r.status === "skipped") {
+      console.log(`  ○ [${label}] skipped — ${r.error ?? "not configured"}`);
+    } else {
+      console.log(`  ✗ [${label}] failed — ${r.error ?? "unknown"}`);
     }
+  }
 
-    if (!succeeded) {
-      const message = lastError instanceof Error ? lastError.message : String(lastError);
-      console.log(`  All ${MAX_RETRIES + 1} attempts failed. Last error: ${message}`);
-      console.log(`  Falling back to off-chain logging.`);
-
-      console.log(`  Off-chain thesis: ${thesisHash.slice(0, 18)}...`);
-      console.log(`  Score: ${regimeScore}/100 | Archetype: ${sentimentLabel}`);
-
-      state.lastAnchoredHash = thesisHash;
-      state.anchoring = {
-        hash: thesisHash,
-        mode: "off-chain",
-      };
-    }
+  // Promote the first success to the legacy `state.anchoring` slot. If
+  // nothing succeeded, fall back to off-chain mode (thesis-hash only).
+  const primary = results.find((r) => r.status === "success");
+  if (primary) {
+    state.lastAnchoredHash = primary.txHash ?? thesisHash;
+    state.anchoring = {
+      hash: primary.txHash ?? thesisHash,
+      mode: "on-chain",
+      blockNumber: primary.blockNumber,
+      gasUsed: primary.gasUsed,
+    };
   } else {
-    // Simulator mode — no operator key configured
-    console.log(`  ○ Simulator mode — no MANTLE_OPERATOR_KEY set`);
-    console.log(`  Anchoring payload (not submitted):`);
-    console.log(`    Registry: ${AGENT_CONFIG.mantle.sepolia.registryAddress}`);
-    console.log(`    Score:    ${regimeScore}/100 (${sentimentLabel})`);
-    console.log(`    Held:     ${heldCount} positions (${heldThroughDrawdown} weathered drawdown)`);
-    console.log(`    Thesis hash: ${thesisHash.slice(0, 18)}...`);
-
+    const anySkipped = results.every((r) => r.status === "skipped");
+    console.log(`  Anchored off-chain (thesis hash only) — ${anySkipped ? "no adapter configured" : "all adapters failed"}`);
     state.lastAnchoredHash = thesisHash;
     state.anchoring = {
       hash: thesisHash,
-      mode: "simulator",
+      mode: anySkipped ? "simulator" : "off-chain",
     };
   }
 }
@@ -1377,6 +1325,7 @@ async function runCycle(): Promise<void> {
   state.sentimentLabel = null;
   state.lastAnchoredHash = null;
   state.anchoring = null;
+  state.anchorResults = [];
 
   console.log(`\n═══════════════════════════════════════`);
   console.log(`  CYCLE #${state.cycle} — ${new Date().toISOString()}`);
@@ -1629,6 +1578,7 @@ function syncServerState(): void {
     executedTrades: state.executedTrades,
     lastAnchoredHash: state.lastAnchoredHash,
     anchoring: state.anchoring,
+    anchorResults: state.anchorResults,
     marketRegime: state.marketRegime,
     convictionSignals: state.convictionSignals,
     heldPositions: state.heldPositions,

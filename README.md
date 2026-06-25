@@ -31,6 +31,8 @@ npm run dev
 | [`SOUL.md`](./SOUL.md) | Design philosophy and architectural soul |
 | [`AGENTS.md`](./AGENTS.md) | Agent orchestration guide for AI agents |
 | [`docs/HACKATHON_PLAN.md`](./docs/HACKATHON_PLAN.md) | BNB Hack implementation plan |
+| [`docs/BNB_HACK_SUBMISSION.md`](./docs/BNB_HACK_SUBMISSION.md) | BNB Hack: AI Trading Agent Edition — submitted |
+| [`docs/CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md) | Casper Agentic Buildathon 2026 — submitted |
 | [`docs/SUBMISSION.md`](./docs/SUBMISSION.md) | Mantle Turing Test Hackathon submission |
 
 ---
@@ -248,6 +250,8 @@ This is the live, shipped surface area of the repo today.
 
 | Date | Milestone |
 |------|-----------|
+| Jun 26 | **Casper buildathon — cross-chain anchoring layer** — new `casper/` Odra workspace (Rust) implementing `ConvictionRegistry` with schema parity to the Mantle ERC-8004 contract. Agent now anchors to **both** chains every cycle via the new `lib/anchors/` adapter pattern; same `ConvictionRecord` shape, same hash, two settlement layers. Adapter abstraction means adding a third chain is one file. Dual-chain UI in `/agent` renders one explorer link per adapter. 130 TS tests + 4 Rust contract tests, all green. |
+| Jun 26 | **Telegram gas + network fixes** — `state.totalGasSpentUsd` was resetting to $0 on every pm2 restart (never persisted); harvest paths never recorded gas; TWAK testnet default leaked "BSC Testnet 🧪" into the startup banner. All three fixed in one commit; Net P&L is now honest. |
 | Jun 25 | **Defense in depth against fake tokens** — `selectBestTokenMatch` requires exact symbol + CMC reference-price ±50% sanity gate + market-cap tiebreak (was: "first result with a logo", which picked KaiChain when INJ was requested). New DexScreener pre-entry gate (pool ≥ $5k, 24h vol ≥ $100) short-circuits before TWAK is asked to route — caught the KAI honeypot pattern ($951 pool, $0 volume). Both gates required; transient outages fall through to TWAK alone so trading isn't frozen. |
 | Jun 25 | **Position cap + proactive harvest** — `maxOpenPositions: 8` (down from 25) for a meaningful per-position size on a ~$115 bankroll. Harvest now fires on **two triggers**: BNB below floor (largest mature first → max BNB per swap) OR over cap (smallest mature first → clean the tail, preserve strong positions). Self-converges toward the target. |
 | Jun 25 | **Harvest 95% sizing fix** — verified the `ExceedsBalance` / `SafeMath` reverts came from harvesting 100% of a position's ledger value. The router needs slack for routing fees + the on-chain-vs-ledger drift. Now harvests 95% of ledger value; reproduced the bug + fix with $13.78-of-$13.83 FET. |
@@ -266,7 +270,7 @@ This is the live, shipped surface area of the repo today.
 | Jun 20 | **Thesis realignment** — conviction-native strategy replacing momentum bot |
 | Jun 20 | **TWAK integration** — self-custody execution via Trust Wallet Agent Kit |
 
-**Current state** (Jun 25): Agent running live under pm2, cycling every 4 hours, trading on BSC mainnet, anchoring to Mantle, posting to Telegram. Portfolio ≈ $88 across 13 tradeable positions after pruning 4 illiquid honeypot positions ($46 paper value) discovered by the new audit script. Defense-in-depth resolver + DexScreener gate prevent any new fake-token entries. Harvest succeeded mid-cycle (MYX → BNB), restoring the self-funding loop. **120 unit tests** pass (added 19 today: 9 for the resolver, 7 for the DexScreener gate, 3 for on-chain portfolio valuation).
+**Current state** (Jun 26): Agent running live under pm2, cycling every 4 hours, trading on BSC mainnet. **Dual-chain anchoring** to Mantle Sepolia (ERC-8004 registry) AND Casper Testnet (Odra ConvictionRegistry) on every cycle — same hash, same record, two settlement layers. Portfolio ≈ $88 across 13 tradeable positions. **130 TS tests + 4 Rust contract tests** all passing. Submitted to **BNB Hack** (closed) and **Casper Buildathon** (closes Jun 30).
 
 ---
 

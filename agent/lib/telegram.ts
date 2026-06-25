@@ -9,7 +9,6 @@
  * Gracefully no-ops when env vars are not set (simulator mode).
  */
 
-import { getBscExplorerTxUrl } from "./mantle.js";
 import type { SwapResult } from "./twak-executor.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";

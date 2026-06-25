@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 .env.local
 .ops.md
+# Allow committed template files — values are placeholders, not secrets.
+!.env.example
+!agent/.env.example
 
 # vercel
 .vercel

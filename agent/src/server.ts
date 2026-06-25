@@ -17,7 +17,8 @@ import { cors } from "hono/cors";
 import { AGENT_CONFIG } from "../lib/config.js";
 import { twakExecutor } from "../lib/twak-executor.js";
 import { guardrails } from "../lib/risk-guardrails.js";
-import { getMantleExplorerTxUrl } from "../lib/mantle.js";
+import { getMantleExplorerTxUrl } from "../lib/explorers.js";
+import type { AnchorResult } from "../lib/anchors/types.js";
 import type { SwapResult, TwakPortfolio } from "../lib/twak-executor.js";
 import type { CmcMarketData } from "../lib/cmc-client.js";
 import type {
@@ -48,6 +49,10 @@ export interface AgentServerState {
     blockNumber?: number;
     gasUsed?: string;
   } | null;
+  /** Per-adapter anchor results (Mantle, Casper, …) for the most recent cycle.
+   *  Surfaces dual-chain anchoring on the frontend without breaking the legacy
+   *  single-anchor `anchoring` field above. */
+  anchorResults: AnchorResult[];
   // Conviction-native fields — the soul of the agent, surfaced on the dashboard.
   marketRegime: MarketRegime | null;
   convictionSignals: ConvictionSignal[];
@@ -74,6 +79,7 @@ let agentState: AgentServerState = {
   executedTrades: [],
   lastAnchoredHash: null,
   anchoring: null,
+  anchorResults: [],
   marketRegime: null,
   convictionSignals: [],
   heldPositions: [],
@@ -245,6 +251,7 @@ app.get("/conviction", async (c) => {
     },
 
     // ── On-chain conviction record ─────────────────────────────────────────
+    // Legacy single-anchor fields kept for backward-compatible clients.
     anchoredHash: agentState.anchoring?.hash ?? agentState.lastAnchoredHash,
     anchoredUrl: agentState.anchoring
       ? getMantleExplorerTxUrl(agentState.anchoring.hash)
@@ -252,6 +259,9 @@ app.get("/conviction", async (c) => {
         ? getMantleExplorerTxUrl(agentState.lastAnchoredHash)
         : null,
     anchoring: agentState.anchoring,
+    // Per-adapter results — the frontend renders one row per chain that
+    // attempted/succeeded this cycle. Each carries its own explorerUrl.
+    anchorResults: agentState.anchorResults,
   };
 
   return c.json(body);

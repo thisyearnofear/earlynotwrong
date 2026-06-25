@@ -179,6 +179,29 @@ export const AGENT_CONFIG = {
       registryAddress: "0x81226e8894D334c790D9a972855592E6C4eeB15C",
     },
   },
+
+  // Casper Network (Buildathon Qualification Round)
+  casper: {
+    testnet: {
+      // CSPR.cloud free-tier JSON-RPC endpoint. Authentication header is sent
+      // by the adapter via process.env.CSPR_CLOUD_TOKEN — never committed.
+      rpcUrl: "https://node.testnet.cspr.cloud/rpc",
+      chainName: "casper-test",
+      explorerUrl: "https://testnet.cspr.live",
+      // Populated post-deploy by `casper/scripts/deploy.ts`. Until then, the
+      // adapter reports `isAvailable() = false` and the orchestrator skips it.
+      registryHash: "",
+      // Default deploy payment amount in motes (1 CSPR = 1e9 motes). 5 CSPR
+      // is generous headroom for the anchor entry point; tune after live runs.
+      paymentMotes: "5000000000",
+    },
+  },
+
+  // Anchoring orchestration — which chains we publish conviction records to.
+  // Add an entry here + an adapter under `lib/anchors/` to extend to a new chain.
+  anchoring: {
+    adapters: ["mantle", "casper"] as readonly string[],
+  },
 } as const;
 
 export type AgentConfig = typeof AGENT_CONFIG;

@@ -123,6 +123,15 @@ interface ConvictionData {
   anchoredHash: string;
   anchoredUrl: string;
   anchoring: { hash: string; mode: string } | null;
+  /** Per-adapter anchor results — one entry per chain (Mantle, Casper). */
+  anchorResults?: Array<{
+    adapter: string;
+    status: "success" | "skipped" | "failed";
+    txHash?: string;
+    blockNumber?: number;
+    explorerUrl?: string;
+    error?: string;
+  }>;
 }
 
 // ─── Constants ───
@@ -137,14 +146,14 @@ const PIPELINE_STEPS = [
   { label: "Entries", icon: TrendingUp, desc: "Weakness + quality", color: "text-amber-400", bgGlow: "bg-amber-500/5" },
   { label: "Guardrails", icon: Shield, desc: "Risk limits", color: "text-impatience", bgGlow: "bg-red-500/5" },
   { label: "TWAK", icon: Zap, desc: "Self-custody swap", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
-  { label: "Mantle", icon: FileText, desc: "Conviction anchor", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
+  { label: "Anchor", icon: FileText, desc: "Mantle + Casper", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
 ];
 
 const HERO_STEPS = [
   { icon: Signal, label: "Reading the crowd", detail: "Fear & Greed · Funding rates · Token prices" },
   { icon: TrendingUp, label: "Scoring contrarian conviction", detail: "Quality assets down during fear — never chasing momentum" },
   { icon: Shield, label: "Holding through drawdown", detail: "Capping losses at −35% · Letting winners run past +100%" },
-  { icon: Zap, label: "Executing via TWAK", detail: "Self-custody · BSC Testnet · Agent Wallet Mode" },
+  { icon: Zap, label: "Executing via TWAK", detail: "Self-custody · BSC Mainnet · Agent Wallet Mode" },
 ];
 
 // ─── Helpers ───
@@ -904,24 +913,55 @@ function Dashboard({
                 </div>
               </>
             )}
-            {conviction?.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+            {conviction && ((conviction.anchorResults?.length ?? 0) > 0 ||
+              (conviction.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000")) && (
               <div className={cn(
-                "pt-2",
+                "pt-2 space-y-1.5",
                 conviction.marketData ? "border-t border-border/50" : "",
               )}>
-                <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted">
+                <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
                   <FileText className="w-3 h-3" />
-                  <span>Conviction anchored on Mantle:</span>
-                  <a
-                    href={conviction.anchoredUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-signal hover:underline truncate"
-                  >
-                    {conviction.anchoredHash.slice(0, 18)}...
-                    <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
-                  </a>
+                  <span>Conviction anchored</span>
                 </div>
+                {/* Multi-chain: render one row per adapter that ran this cycle. */}
+                {conviction.anchorResults && conviction.anchorResults.length > 0 ? (
+                  conviction.anchorResults.map((r) => (
+                    <div key={r.adapter} className="flex items-center gap-2 text-[10px] font-mono pl-5">
+                      <span className="w-4 text-center">
+                        {r.status === "success" ? "✓" : r.status === "skipped" ? "○" : "✗"}
+                      </span>
+                      <span className="capitalize text-foreground-muted w-14">{r.adapter}</span>
+                      {r.status === "success" && r.txHash ? (
+                        <a
+                          href={r.explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-signal hover:underline truncate"
+                        >
+                          {r.txHash.slice(0, 14)}…
+                          <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
+                        </a>
+                      ) : (
+                        <span className="text-foreground-muted truncate">{r.error ?? r.status}</span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  // Fallback: legacy single-anchor field (older agent versions).
+                  <div className="flex items-center gap-2 text-[10px] font-mono pl-5">
+                    <span className="w-4 text-center">✓</span>
+                    <span className="capitalize text-foreground-muted w-14">mantle</span>
+                    <a
+                      href={conviction.anchoredUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-signal hover:underline truncate"
+                    >
+                      {conviction.anchoredHash.slice(0, 14)}…
+                      <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -984,14 +1024,19 @@ function Dashboard({
                 desc: "Track 1 (live PnL) + Track 2 (Strategy Skill)",
               },
               {
-                label: "Agent Wallet (BSC Testnet)",
-                href: "https://testnet.bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a",
-                desc: "0xA1Dd482E...5888a · Registered on-chain",
+                label: "Agent Wallet (BSC Mainnet)",
+                href: "https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a",
+                desc: "0xA1Dd482E...5888a · Registered for BNB Hack live PnL",
               },
               {
                 label: "Mantle Registry",
                 href: "https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C",
                 desc: "ERC-8004 · Thesis anchored per cycle",
+              },
+              {
+                label: "Casper Registry",
+                href: "https://testnet.cspr.live",
+                desc: "ConvictionRegistry (Odra) · Casper Buildathon",
               },
             ].map((link, i) => (
               <a
