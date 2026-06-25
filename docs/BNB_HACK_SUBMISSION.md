@@ -43,29 +43,45 @@ When the EXIT_STOP swap reverts on a thin pool (we hit this on a $3 HOME positio
 
 ### Bankroll Discipline
 
-BNB is both the gas asset and the trade-value asset. A single careless trade can drain the wallet and starve the agent for the rest of the trading window. The new `AGENT_CONFIG.trading.bankroll` block enforces:
-- $5 non-spendable reserve (gas + emergency exit)
+BNB is both the gas asset and the trade-value asset. A single careless trade can drain the wallet and starve the agent for the rest of the trading window. `AGENT_CONFIG.trading.bankroll` enforces:
+- $2.5 non-spendable reserve (gas + emergency exit) — tight for the live competition window
 - 50% per-trade cap on tradeable BNB (one trade can never consume more than half)
-- Entry-skip below $10 (focus cycles on exits + harvest)
-- Adaptive interval: 4h normally, 8h when BNB < $25
+- Entry-skip below $4.5 BNB (focus cycles on harvest)
+- Harvest floor $6 — *above* the entry-skip so harvest fires whenever entries are blocked (no BNB dead zone)
+- Position cap of 8 — proactive harvest when over cap, picking the smallest mature position so the strong ones survive
+- Adaptive interval: 4h normally, slows when BNB target unmet
 
-Combined with the harvest ladder, the agent is **self-funding** within the trading window as long as positions are liquid enough to sell.
+Combined with the harvest ladder + 95% sizing, the agent is **self-funding** within the trading window — verified live on Jun 25 with a clean MYX → BNB harvest after the resolver/sizing fixes.
 
 ### Startup Reconciliation
 
-On every restart, `restoreSnapshot()` cross-checks `state.heldPositions` against the live TWAK portfolio and drops ghost positions (in-memory entries with no on-chain balance). On the first post-deployment run, this pruned **13 stuck positions** that had been haunting the conviction ledger — including H, which had been down 55% with a permanently-reverting exit swap.
+On every restart, `restoreSnapshot()` cross-checks `state.heldPositions` against the **live on-chain balances** (`balanceOf` via NodeReal RPC) and drops ghost positions only when the chain confirms zero. Earlier we relied on `twak wallet portfolio`, which only reports native + USDC and *not* BEP-20 holdings — so legitimate positions were being silently wiped as "ghosts" on every restart. The new reader (`agent/lib/onchain-portfolio.ts`) verifies real balances and prices each holding **by contract** (CoinGecko → DexScreener; never CMC-by-symbol, which once valued a fake "ETH" lookalike at real ETH's $1,567 and corrupted the drawdown peak).
+
+### Defense-in-Depth Against Fake Tokens
+
+A scam-lookalike resolution bug had been silently mis-routing entries (e.g. `twak search INJ` returning KaiChain because its CMC logo URL outranked the real Injective listing). Live wallet audit found four illiquid honeypot positions — KAI ($37.95 paper value, $951 DEX pool, $0 24h volume, swap reverts with `SafeMath: subtraction overflow`), plus NXPC, KITE, CYS. Defense now stacks six layers:
+
+| Layer | Where | Catches |
+|-------|-------|---------|
+| **1. Exact symbol + reference-price gate** | `selectBestTokenMatch` in `lib/twak-executor.ts` | INJ → KaiChain, ETH → 0x000008D2… (fake at $0.00001 vs ref $1500) |
+| **2. DexScreener pool depth** | `checkLiquidity` (new gate) | Pools < $5k, 24h volume < $100 |
+| **3. TWAK quote-only check** | existing | Router can't route it at all |
+| **4. 95% harvest sizing** | `harvestForBnb` in `index.ts` | `ExceedsBalance (0xf4059071)` reverts on 100%-of-balance swaps |
+| **5. Position cap (8)** | `AGENT_CONFIG.trading.maxOpenPositions` | Sub-$5 dust accumulating beyond a manageable count |
+| **6. Wallet audit + prune** | `agent/scripts/audit-holdings.mjs --prune` | Honeypots already in the wallet from pre-fix days |
+
+The first three gates fire **before** any BNB is committed; the bottom three keep the existing portfolio clean. Verified with 19 new unit tests (resolver pickers, DexScreener gate behaviour, on-chain valuation fallbacks).
 
 ### On-Chain Evidence
 
 | Component | Address / Evidence | Network |
 |-----------|-------------------|---------|
-| **Agent wallet** | `0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a` | BSC Testnet |
-| **Compete registration** | Registered (`twak compete status` → `registered: true`, deadline 2026-06-25 00:00 UTC) | BSC Testnet |
-| **TWAK swaps** | 6 successful entries across live cycles (INJ, FET) | BSC Testnet |
-| **Mantle registry** | `0x81226e8894D334c790D9a972855592E6C4eeB15C` | Mantle Sepolia |
-| **Latest anchor tx** | `0x95710c98c50b7015e1ea407b25172436275c8e7baa1a05d4f4a81ab51ff9bb74` (block 40380360) | Mantle Sepolia |
+| **Agent wallet** | `0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a` | BSC Mainnet |
+| **Compete registration** | Registered (`twak compete status` → `registered: true`, live PnL window Jun 22–28) | BSC Mainnet |
+| **TWAK swaps** | Multiple live entries (INJ, FET, RAVE, AXS, BSB, …) + first qualifying harvest trade Jun 25 (MYX → BNB) | BSC Mainnet |
+| **Mantle registry** | `0x81226e8894D334c790D9a972855592E6C4eeB15C` (anchored every cycle, even when no trades execute) | Mantle Sepolia |
 | **Agent card** | Published to Grove storage (`lens://3d290df5...`) | IPFS |
-| **Current portfolio** | $14.62 across 3 positions on BSC Testnet | BSC Testnet |
+| **Current portfolio** (Jun 25) | ≈$88 across 13 tradeable positions after pruning 4 illiquid honeypots ($46 paper value). Real BSC capital: BNB + USDC + 13 BEP-20s. | BSC Mainnet |
 
 ### Key Files
 
@@ -75,9 +91,13 @@ On every restart, `restoreSnapshot()` cross-checks `state.heldPositions` against
 | `agent/lib/config.ts` | `AGENT_CONFIG.trading.bankroll` block (reserve, entry-skip, max-trade-fraction, adaptive interval) |
 | `agent/lib/cmc-client.ts` | CMC Pro REST API data ingestion |
 | `agent/lib/conviction-signal.ts` | 6-factor token conviction scoring engine (pure functions) |
-| `agent/lib/twak-executor.ts` | TWAK CLI wrapper with DI for testing; column-aware portfolio parser |
+| `agent/lib/twak-executor.ts` | TWAK CLI wrapper with DI for testing; `selectBestTokenMatch` (exact-symbol + reference-price gate) + DexScreener pool-depth gate; column-aware portfolio parser |
+| `agent/lib/onchain-portfolio.ts` | `balanceOf`-based on-chain reader with layered pricing (CoinGecko → DexScreener, contract-only) — single source of truth for portfolio value across loop + API + guardrails |
 | `agent/lib/risk-guardrails.ts` | 8 guardrail checks; peak seeded only at end of cycle (no phantom drawdowns) |
-| `agent/src/server.ts` | Hono HTTP server exposing `/status`, `/trades`, `/conviction` on port 31777 |
+| `agent/src/server.ts` | Hono HTTP server exposing `/status`, `/trades`, `/conviction` on port 31777 — uses the same augmented portfolio as the cycle |
+| `agent/scripts/scan-holdings.mjs` | Discovers every BEP-20 the wallet holds via ERC-20 Transfer log scan; classifies each as bought-by-agent vs airdrop spam by transfer initiator |
+| `agent/scripts/recover-positions.mjs` | Re-adopts legit on-chain bought tokens into `state.json` (`--apply`); excludes airdrops and illiquid paper-pumps |
+| `agent/scripts/audit-holdings.mjs` | DexScreener-backed liquidity/legitimacy audit of held positions; `--prune` mode removes illiquid + no-pair entries from the ledger |
 
 ---
 
@@ -119,7 +139,7 @@ When BNB drops, the agent sells its weakest held position (≥8 cycles old) back
 3. **Self-funding with fallback ladder** — Single point of failure on harvest breaks the entire trading loop; we route through USDC when direct reverts
 4. **Reconciliation on startup** — Cross-checks in-memory positions against on-chain balances; drops ghosts that would otherwise haunt the ledger forever
 5. **Full-stack autonomous loop** — CMC data → scoring → bankroll → TWAK execution → Mantle anchoring, all in one self-contained process
-6. **DI-based testing** — TWAK executor uses dependency injection (`execFileOverride`) enabling 101 unit tests without mocking Node.js built-in modules
+6. **DI-based testing** — TWAK executor uses dependency injection (`execFileOverride`) + injectable DexScreener fetcher; 120 unit tests cover resolver, DexScreener gate, on-chain valuation, harvest logic, guardrails, and the full simulator path — no mocks of Node.js built-ins
 
 ---
 
@@ -341,7 +361,7 @@ Duration: ~30 seconds playback time.
 | **Integration depth** | TWAK is the sole execution layer — swaps, quotes, balance, portfolio, history, registration, health check, compete status, search (token address resolution), liquidity checks |
 | **Self-custody** | Agent Wallet Mode (autonomous, pre-configured rules). Agent orchestrates, TWAK signs. Keys never leave the user's device. Full `executeSwap`, `getBalance`, `getPortfolio`, `getHistory` pipeline. |
 | **Autonomous execution** | Genuinely hands-off — the agent runs 24/7 on a VPS under PM2, executing cycles every 4 hours without human intervention. Adaptive interval doubles to 8h when BNB < $25 to preserve anchor gas. |
-| **Guardrails** | Drawdown cap (25%), token allowlist (147 BEP-20), per-trade limits, concentration limits, slippage protection, **bankroll reserve ($5 non-spendable)**, **entry-skip below $10 BNB**, **50% per-trade cap on tradeable BNB** — all enforced before TWAK is called |
+| **Guardrails** | Drawdown cap (25%), token allowlist (147 BEP-20), per-trade limits, concentration limits, slippage protection, **bankroll reserve ($2.5 non-spendable)**, **entry-skip below $4.5 BNB**, **50% per-trade cap on tradeable BNB**, **position cap of 8**, **DexScreener pre-entry liquidity gate** — all enforced before TWAK is called |
 | **x402 usage** | CMC data fetched via Pro REST API (API key). x402 integration planned as stretch goal. |
 | **Originality** | Conviction-weighted position sizing + bankroll-aware trade caps + harvest/exit fallback ladders are novel uses of TWAK — not just naive swaps. The reconciliation layer treats TWAK's portfolio output as the source of truth against which in-memory conviction state is verified on every restart. |
 
@@ -382,7 +402,7 @@ The integration is non-trivial — it's the foundation of every trading decision
 - [x] Mantle anchoring per cycle (even when no trades execute)
 - [x] Agent wallet registered for competition (`twak compete status` = `registered: true`)
 - [x] Adaptive position sizing implemented
-- [x] Unit tests (101 passing)
+- [x] Unit tests (120 passing — resolver, DexScreener gate, on-chain portfolio, guardrails, simulator path)
 - [x] Source code on GitHub (thisyearnofear/earlynotwrong)
 - [x] Documentation (README, AGENTS.md, SOUL.md, HACKATHON_PLAN.md)
 - [x] Demo video recorded (asciinema: https://asciinema.org/a/lMVdIaBr9G2KK9Ni)

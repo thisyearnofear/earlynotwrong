@@ -47,8 +47,16 @@ export const AGENT_CONFIG = {
 
   // Agent Trading Parameters
   trading: {
-    // Max new conviction entries to open per cycle
-    topK: 2,
+    // Max new conviction entries to open per cycle.
+    // Tight-bankroll endgame (live window, ~$9 BSC): one quality entry per
+    // cycle conserves BNB so we always retain gas to exit/harvest.
+    topK: 1,
+
+    // Hard cap on total open positions in the ledger. With a ~$115 bankroll
+    // 5-10 positions averaging $10-$20 each is the right size: meaningful
+    // per-position stake, and exit gas (~$1.50/swap) stays under 10% of
+    // value. Above this, new entries defer until harvesting frees a slot.
+    maxOpenPositions: 8,
 
     // Cycle interval in minutes
     loopIntervalMinutes: 240,
@@ -90,19 +98,24 @@ export const AGENT_CONFIG = {
     bankroll: {
       // Never let BNB drop below this — strictly reserved for gas + emergency
       // exits. Trades are skipped when BNB < this + one trade cost.
-      minBnbReserveUsd: 5,
+      // Trading wallet only pays cheap BSC swap gas (Mantle anchoring uses a
+      // separate operator wallet), so a $2.5 reserve still covers many exits.
+      minBnbReserveUsd: 2.5,
       // When BNB is below this, slow down (double cycle interval) so we
-      // burn less Mantle anchor gas per day.
-      targetBnbUsd: 25,
+      // burn less Mantle anchor gas per day. Set below our live balance so
+      // cycles stay at the base 4h cadence through the trading window.
+      targetBnbUsd: 4,
       // Cap on a single trade as a fraction of TRADEABLE BNB (BNB - reserve).
       // 0.5 means one trade can use at most half of what we can afford to spend.
       maxTradeFractionOfBnb: 0.5,
       // When BNB is below this, skip new entries entirely — focus cycles on
-      // closing positions and harvesting back into BNB.
-      entrySkipBelowBnbUsd: 10,
-      // Trigger harvest when BNB drops below this. Lower than the entry
-      // skip floor so we have room to harvest and try again.
-      harvestMinBnbUsd: 8,
+      // closing positions and harvesting back into BNB. Lowered for the
+      // tight-bankroll live window so entries actually fire (~$8.66 BNB).
+      entrySkipBelowBnbUsd: 4.5,
+      // Trigger harvest ABOVE the entry-skip floor so harvest fires whenever
+      // we can't safely enter. Otherwise BNB sits in the dead zone (above
+      // harvest floor, below entry floor) and the agent does nothing.
+      harvestMinBnbUsd: 6,
       // When BNB is low, double the loop interval to save gas on anchoring.
       adaptiveInterval: true,
     },

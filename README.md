@@ -248,7 +248,12 @@ This is the live, shipped surface area of the repo today.
 
 | Date | Milestone |
 |------|-----------|
-| Jun 24 | **Conservative bankroll management** — `$5 reserve`, 50% per-trade cap on tradeable BNB, entry-skip below $10, adaptive interval (4h → 8h when BNB < $25). Cycle 4 self-throttled cleanly when BNB dropped below the floor. |
+| Jun 25 | **Defense in depth against fake tokens** — `selectBestTokenMatch` requires exact symbol + CMC reference-price ±50% sanity gate + market-cap tiebreak (was: "first result with a logo", which picked KaiChain when INJ was requested). New DexScreener pre-entry gate (pool ≥ $5k, 24h vol ≥ $100) short-circuits before TWAK is asked to route — caught the KAI honeypot pattern ($951 pool, $0 volume). Both gates required; transient outages fall through to TWAK alone so trading isn't frozen. |
+| Jun 25 | **Position cap + proactive harvest** — `maxOpenPositions: 8` (down from 25) for a meaningful per-position size on a ~$115 bankroll. Harvest now fires on **two triggers**: BNB below floor (largest mature first → max BNB per swap) OR over cap (smallest mature first → clean the tail, preserve strong positions). Self-converges toward the target. |
+| Jun 25 | **Harvest 95% sizing fix** — verified the `ExceedsBalance` / `SafeMath` reverts came from harvesting 100% of a position's ledger value. The router needs slack for routing fees + the on-chain-vs-ledger drift. Now harvests 95% of ledger value; reproduced the bug + fix with $13.78-of-$13.83 FET. |
+| Jun 25 | **On-chain portfolio reader** (`agent/lib/onchain-portfolio.ts`) — `balanceOf` for every held position, priced by **contract** via CoinGecko → DexScreener (never CMC-by-symbol; that's what valued a fake "ETH" at real ETH's $1,567 and corrupted the peak). Reconciliation now verifies via `balanceOf` and never wipes real positions as "ghosts". Peak/drawdown + `/status` + `/conviction` all read this single source of truth. |
+| Jun 25 | **Wallet audit + recovery tools** (`agent/scripts/`) — `scan-holdings.mjs` classifies every BEP-20 in the wallet as bought-by-agent vs airdrop spam (initiator check). `recover-positions.mjs` re-adopts the legit bought tokens into the ledger after the ghost-pruning bug. `audit-holdings.mjs` probes each holding's DexScreener pool + flags illiquid junk; pruned 4 honeypot/illiquid positions ($46 paper value) from the ledger. |
+| Jun 24 | **Conservative bankroll management** — `$5 reserve`, 50% per-trade cap on tradeable BNB, entry-skip below $10, adaptive interval (4h → 8h when BNB < $25). Cycle 4 self-throttled cleanly when BNB dropped below the floor. Reserve later tightened to $2.5 + entry-skip $4.5 + harvest floor $6 for the tight live-window endgame. |
 | Jun 24 | **Portfolio parser fix** — `parsePortfolioOutput` now reads the `$USD` column from TWAK's column-aligned output instead of the first numeric token (which was the on-chain balance). Regression test pinned. |
 | Jun 24 | **Startup reconciliation** — `restoreSnapshot()` drops ghost positions from `state.heldPositions` when they have no on-chain balance. Pruned 13 stuck positions on first run, freeing the conviction ledger. |
 | Jun 24 | **Harvest + exit fallback ladders** — primary → 5% slippage → USDC pair → Telegram alert. Handles `execution reverted: 0xf4059071` and similar. |
@@ -261,7 +266,7 @@ This is the live, shipped surface area of the repo today.
 | Jun 20 | **Thesis realignment** — conviction-native strategy replacing momentum bot |
 | Jun 20 | **TWAK integration** — self-custody execution via Trust Wallet Agent Kit |
 
-**Current state**: Agent running live under pm2, cycling every 4 hours (8h adaptive when BNB < $25), trading on BSC mainnet, anchoring to Mantle, posting to Telegram. 13 ghost positions pruned on the last restart; conviction ledger reconciled with on-chain reality. 3 positions held across BNB + USDC + INJ + FET (the latter two entered via bankroll-aware sizing on Jun 24).
+**Current state** (Jun 25): Agent running live under pm2, cycling every 4 hours, trading on BSC mainnet, anchoring to Mantle, posting to Telegram. Portfolio ≈ $88 across 13 tradeable positions after pruning 4 illiquid honeypot positions ($46 paper value) discovered by the new audit script. Defense-in-depth resolver + DexScreener gate prevent any new fake-token entries. Harvest succeeded mid-cycle (MYX → BNB), restoring the self-funding loop. **120 unit tests** pass (added 19 today: 9 for the resolver, 7 for the DexScreener gate, 3 for on-chain portfolio valuation).
 
 ---
 

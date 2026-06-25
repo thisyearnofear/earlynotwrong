@@ -44,6 +44,12 @@ next-env.d.ts
 
 .junie
 .qoder/
+.claude/
+
+# agent runtime state (contains live wallet portfolio/positions)
+agent/data/
+agent/dist/
+agent/data/state.json*.bak-*
 
 # Aleo / Leo
 /aleo/build/

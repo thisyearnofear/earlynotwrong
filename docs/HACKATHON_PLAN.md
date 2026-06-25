@@ -36,10 +36,19 @@ A **conviction-native autonomous trading agent** deployed on a self-hosted VPS t
                     │                 │                    │
                     │  ┌──────────────▼─────────────────┐  │
                     │  │   Bankroll-Aware Sizer         │  │
-                    │  │   - $5 reserve (non-spendable) │  │
+                    │  │   - $2.5 reserve (non-spend.)  │  │
                     │  │   - 50% per-trade cap          │  │
-                    │  │   - entry-skip < $10 BNB       │  │
-                    │  │   - adaptive interval (4h/8h)  │  │
+                    │  │   - entry-skip < $4.5 BNB      │  │
+                    │  │   - harvest fires < $6 BNB     │  │
+                    │  │     OR positions > 8 (cap)     │  │
+                    │  │   - 95% sizing on harvest      │  │
+                    │  └──────────────┬─────────────────┘  │
+                    │                 │                    │
+                    │  ┌──────────────▼─────────────────┐  │
+                    │  │   Anti-Fake-Token Gates        │  │
+                    │  │   1. Exact symbol + ref-price   │  │
+                    │  │   2. DexScreener pool ≥ $5k    │  │
+                    │  │   3. TWAK quote-only check     │  │
                     │  └──────────────┬─────────────────┘  │
                     │                 │                    │
                     │  ┌──────────────▼─────────────────┐  │

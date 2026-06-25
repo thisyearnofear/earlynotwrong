@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TwakExecutor } from "../lib/twak-executor.js";
+import { TwakExecutor, selectBestTokenMatch } from "../lib/twak-executor.js";
 
 // =============================================================================
 // Helper: mock callback-style execFile builder
@@ -78,7 +78,11 @@ function searchResults(results: { symbol: string; address: string; chain: string
     name: r.symbol === "SLX" ? "SLIMEX" : `${r.symbol} Token`,
     symbol: r.symbol, address: r.address, chain: r.chain, decimals: 18,
     logoUrl: r.hasCmcLogo ? "https://s2.coinmarketcap.com/static/img/coins/200x200/12345.png" : undefined,
+    // The CMC-listed entry has a real market cap; scam lookalikes don't.
+    // The resolver now uses marketCap as the tiebreaker (logoUrl is too easy
+    // to spoof; KaiChain abused that to outrank the real Injective listing).
     priceUsd: 1.0, priceChange24h: 0,
+    marketCapUsd: r.hasCmcLogo ? 1_000_000 : 0,
   })));
 }
 
@@ -219,6 +223,13 @@ describe("TwakExecutor — Token Address Resolution", () => {
 
   beforeEach(() => {
     TwakExecutor.resetCaches();
+    // Default: DexScreener gate is "passing" — these tests focus on the TWAK
+    // quote leg. The DexScreener-gate behaviour gets its own describe block.
+    TwakExecutor.setDexScreenerFetcher(async () => ({
+      liquidityUsd: 100_000,
+      volume24hUsd: 50_000,
+      pairCount: 1,
+    }));
     mock = createResponseQueue();
     executor = new TwakExecutor({
       simulator: false,
@@ -285,6 +296,88 @@ describe("TwakExecutor — Token Address Resolution", () => {
     queueError(mock.queue, "CLI not found");
 
     expect(await executor.checkLiquidity("SLX")).toBe(false);
+  });
+});
+
+// =============================================================================
+// DexScreener liquidity gate — defence against scam/honeypot tokens
+// =============================================================================
+
+describe("TwakExecutor — DexScreener liquidity gate", () => {
+  let mock: ReturnType<typeof createResponseQueue>;
+  let executor: TwakExecutor;
+  let dexCalls: string[];
+
+  const stubDex = (result: { liquidityUsd: number; volume24hUsd: number; pairCount: number } | null) => {
+    TwakExecutor.setDexScreenerFetcher(async (contract) => {
+      dexCalls.push(contract);
+      return result;
+    });
+  };
+
+  beforeEach(() => {
+    TwakExecutor.resetCaches();
+    dexCalls = [];
+    mock = createResponseQueue();
+    executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      execFileOverride: mock.execFileOverride,
+    });
+  });
+
+  it("rejects tokens with no DEX pair (scam signal)", async () => {
+    queueSearch(mock.queue, "SCAM", "0xDEADBEEF000000000000000000000000DEADBEEF");
+    stubDex({ liquidityUsd: 0, volume24hUsd: 0, pairCount: 0 });
+
+    expect(await executor.checkLiquidity("SCAM")).toBe(false);
+    // TWAK quote should NOT be called — we short-circuited at the DexScreener gate.
+    const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
+    expect(quoteCalls).toHaveLength(0);
+  });
+
+  it("rejects shallow pools (the KAI honeypot pattern: $951 pool)", async () => {
+    queueSearch(mock.queue, "KAI", "0x39Ae8EEFB05138f418Bb27659c21632Dc1DDAb10");
+    stubDex({ liquidityUsd: 951, volume24hUsd: 0, pairCount: 1 });
+
+    expect(await executor.checkLiquidity("KAI")).toBe(false);
+    const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
+    expect(quoteCalls).toHaveLength(0);
+  });
+
+  it("rejects tokens with $0 24h volume even if pool is deep (stale/abandoned)", async () => {
+    queueSearch(mock.queue, "DEAD", "0x000000000000000000000000000000000DEAD000");
+    stubDex({ liquidityUsd: 100_000, volume24hUsd: 0, pairCount: 1 });
+
+    expect(await executor.checkLiquidity("DEAD")).toBe(false);
+  });
+
+  it("accepts tokens with deep pool and active volume (passes both gates)", async () => {
+    queueSearch(mock.queue, "FET", "0x031b41e504677879370e9dbcf937283a8691fa7f");
+    stubDex({ liquidityUsd: 155_000, volume24hUsd: 53_000, pairCount: 3 });
+    queueQuote(mock.queue, "100.5");
+
+    expect(await executor.checkLiquidity("FET")).toBe(true);
+    expect(dexCalls).toHaveLength(1);
+    expect(dexCalls[0]).toBe("0x031b41e504677879370e9dbcf937283a8691fa7f");
+  });
+
+  it("falls through to TWAK quote if DexScreener errors (transient outage)", async () => {
+    queueSearch(mock.queue, "BSB", "0xa90bfBe73fDd56C9D0C25B40B0e29B05bA38EBbb");
+    stubDex(null); // outage
+    queueQuote(mock.queue, "100.5");
+
+    expect(await executor.checkLiquidity("BSB")).toBe(true);
+    const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
+    expect(quoteCalls).toHaveLength(1);
+  });
+
+  it("requires BOTH gates: deep pool passes DexScreener but TWAK rejects", async () => {
+    queueSearch(mock.queue, "REVERT", "0xa1B2c3D4e5F6789012345678901234567890ABcD");
+    stubDex({ liquidityUsd: 100_000, volume24hUsd: 50_000, pairCount: 1 });
+    queueEmptyQuote(mock.queue, "revert: insufficient output amount");
+
+    expect(await executor.checkLiquidity("REVERT")).toBe(false);
   });
 });
 
@@ -435,5 +528,76 @@ describe("TwakExecutor — Portfolio Parser", () => {
 
     // Total should sum to $38.68
     expect(portfolio.totalValueUsd).toBeCloseTo(38.68, 1);
+  });
+});
+
+// =============================================================================
+// selectBestTokenMatch — scam-lookalike rejection
+// =============================================================================
+
+describe("selectBestTokenMatch", () => {
+  it("rejects mismatched symbols (KaiChain when INJ was requested)", () => {
+    const results = [
+      { symbol: "KAI", name: "KaiChain", address: "0xKAI", priceUsd: 0.07, marketCapUsd: 5_000_000 },
+      { symbol: "INJ", name: "Injective", address: "0xINJ", priceUsd: 4.15, marketCapUsd: 500_000_000 },
+    ];
+    const best = selectBestTokenMatch(results, "INJ");
+    expect(best?.address).toBe("0xINJ");
+  });
+
+  it("returns null if no result has a matching symbol", () => {
+    const results = [{ symbol: "KAI", address: "0xKAI", priceUsd: 0.07 }];
+    expect(selectBestTokenMatch(results, "INJ")).toBeNull();
+  });
+
+  it("rejects scam lookalikes whose price is far off the reference (fake ETH)", () => {
+    const results = [
+      { symbol: "ETH", name: "Fake ETH", address: "0xFAKE", priceUsd: 0.00001, marketCapUsd: 1 },
+    ];
+    const best = selectBestTokenMatch(results, "ETH", 1500);
+    expect(best).toBeNull();
+  });
+
+  it("accepts a result whose price is near the reference price", () => {
+    const results = [
+      { symbol: "ETH", name: "Ethereum", address: "0xETH", priceUsd: 1480, marketCapUsd: 200_000_000_000 },
+    ];
+    const best = selectBestTokenMatch(results, "ETH", 1500);
+    expect(best?.address).toBe("0xETH");
+  });
+
+  it("prefers higher market cap among symbol-matching, priced candidates", () => {
+    const results = [
+      { symbol: "USDT", address: "0xFAKE_USDT", priceUsd: 1.0, marketCapUsd: 1 },
+      { symbol: "USDT", address: "0xREAL_USDT", priceUsd: 1.0, marketCapUsd: 80_000_000_000 },
+    ];
+    const best = selectBestTokenMatch(results, "USDT");
+    expect(best?.address).toBe("0xREAL_USDT");
+  });
+
+  it("rejects dead-price results (priceUsd ≤ 0)", () => {
+    const results = [
+      { symbol: "RAVE", address: "0xDEAD", priceUsd: 0 },
+      { symbol: "RAVE", address: "0xLIVE", priceUsd: 0.012 },
+    ];
+    const best = selectBestTokenMatch(results, "RAVE");
+    expect(best?.address).toBe("0xLIVE");
+  });
+
+  it("returns null for empty results", () => {
+    expect(selectBestTokenMatch([], "ANY")).toBeNull();
+  });
+
+  it("when a reference is supplied but no result is within ±50%, returns null", () => {
+    const results = [
+      { symbol: "BTC", address: "0xBTC", priceUsd: 100, marketCapUsd: 1 },
+    ];
+    // Real BTC ~$60k; the candidate at $100 is way off → reject.
+    expect(selectBestTokenMatch(results, "BTC", 60000)).toBeNull();
+  });
+
+  it("is case-insensitive for the requested symbol", () => {
+    const results = [{ symbol: "inj", address: "0xINJ", priceUsd: 4.15, marketCapUsd: 500_000_000 }];
+    expect(selectBestTokenMatch(results, "INJ")?.address).toBe("0xINJ");
   });
 });

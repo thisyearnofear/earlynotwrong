@@ -28,6 +28,12 @@ import "./lib/env-loader.js";
 import { AGENT_CONFIG } from "./lib/config.js";
 import { cmcClient } from "./lib/cmc-client.js";
 import { twakExecutor, TwakExecutor } from "./lib/twak-executor.js";
+import {
+  OnchainPortfolio,
+  valueHoldings,
+  fetchCoinGeckoPrices,
+  fetchDexScreenerPrices,
+} from "./lib/onchain-portfolio.js";
 import { guardrails } from "./lib/risk-guardrails.js";
 
 import {
@@ -124,76 +130,98 @@ function computeBankrollCap(bnbUsd: number): {
   return { tradeableBnb, maxByBnb, canTrade: true };
 }
 
-const COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain";
-
 /**
- * Augment the TWAK portfolio with CoinGecko prices for tokens TWAK can't price.
- * TWAK's portfolio parser only captures tokens with known USD values — hackathon
- * tokens and newer BEP-20s often show as $0. We estimate the token balance from
- * cost basis (amountUsd / entryPrice) and look up the current price via CoinGecko.
+ * Augment the TWAK portfolio with the REAL on-chain value of held BEP-20
+ * positions. TWAK's `wallet portfolio` only reports native BNB + USDC, so
+ * every hackathon token shows as $0 and the portfolio value is badly
+ * understated. We read live balances directly via balanceOf and price them
+ * through a layered, dependable fallback: CMC (this cycle's quotes) →
+ * CoinGecko (by contract) → DexScreener (by contract). A token none of them
+ * can price contributes $0 rather than a guess.
+ *
+ * Scope: only positions the agent actually tracks (`state.heldPositions`).
+ * Airdropped spam never enters the ledger, so it is never valued.
+ *
+ * Note on peak/drawdown safety: prices come purely from contract-keyed sources
+ * (never CMC-by-symbol), so a scam lookalike can't be valued at a famous
+ * asset's price and over-inflate the portfolio (which would permanently
+ * corrupt the high-water peak). A transient pricing gap only *understates*
+ * value for one cycle, which is self-correcting and cannot lower the peak
+ * (it ratchets up only).
  */
-async function augmentPortfolioWithCoinGecko(): Promise<void> {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  if (!apiKey || !state.portfolio || state.heldPositions.length === 0) return;
+async function augmentPortfolioOnchain(): Promise<void> {
+  if (!state.portfolio || state.heldPositions.length === 0) return;
+  const wallet = process.env.AGENT_WALLET_KEY || process.env.AGENT_WALLET_ADDRESS;
+  if (!wallet) return;
 
-  const addresses = TwakExecutor.getResolvedAddresses();
-  const twakPriced = new Set(
-    state.portfolio.positions
-      .filter((p) => p.valueUsd > 0.01)
-      .map((p) => p.symbol.toUpperCase())
-  );
-
-  // Collect unpriced positions with known contract addresses
-  const unpriced = state.heldPositions.filter(
-    (p) => !twakPriced.has(p.symbol.toUpperCase()) && addresses.has(p.symbol.toUpperCase())
-  );
-  if (unpriced.length === 0) return;
-
-  const contractList = unpriced
-    .map((p) => addresses.get(p.symbol.toUpperCase())!)
-    .filter((a, i, arr) => arr.indexOf(a) === i); // dedupe
+  // Resolve a contract for every held symbol. Use the session cache when
+  // available, otherwise resolve on demand (e.g. on the first cycle after a
+  // restart, before conviction scoring has populated the cache).
+  const cached = TwakExecutor.getResolvedAddresses();
+  const addressMap = new Map<string, string>();
+  for (const p of state.heldPositions) {
+    const sym = p.symbol.toUpperCase();
+    let c = cached.get(sym);
+    if (!c) c = (await twakExecutor.resolveAddress(p.symbol)) ?? undefined;
+    if (c) addressMap.set(sym, c);
+  }
+  if (addressMap.size === 0) return;
 
   try {
-    const url = `${COINGECKO_PRICE_URL}?contract_addresses=${contractList.join(",")}&vs_currencies=usd`;
-    const res = await fetch(url, { headers: { "x-cg-demo-api-key": apiKey } });
-    if (!res.ok) return;
-    const prices = (await res.json()) as Record<string, { usd?: number }>;
+    const onchain = new OnchainPortfolio();
+    const holdings = await onchain.getHoldings(addressMap, wallet);
+    if (holdings.length === 0) return;
 
+    // CONTRACT-BASED pricing only. We deliberately do NOT price held wallet
+    // tokens by CMC symbol: the agent's swaps sometimes land scam lookalikes
+    // that reuse a famous ticker (e.g. an "ETH" token at 0x000008D2… that is
+    // not Ether). Symbol pricing would value those at the real asset's price
+    // and massively inflate the portfolio. Contract-keyed sources price the
+    // ACTUAL token at that address: CoinGecko first, DexScreener as fallback.
+    const contracts = holdings.map((h) => h.contract);
+    const cg = await fetchCoinGeckoPrices(contracts);
+    const cgMissing = holdings.filter((h) => !(cg.get(h.contract) ?? 0)).map((h) => h.contract);
+    const dex = cgMissing.length ? await fetchDexScreenerPrices(cgMissing) : new Map<string, number>();
+
+    // Empty CMC map — pricing comes purely from contract-keyed sources.
+    const { positions, totalUsd } = valueHoldings(holdings, new Map(), cg, dex);
+
+    // The TWAK portfolio already counts native BNB (+ any USDC). Replace/insert
+    // the held-token rows with their real on-chain value and reconcile the total.
     let addedValue = 0;
-    for (const pos of unpriced) {
-      const addr = addresses.get(pos.symbol.toUpperCase())?.toLowerCase();
-      if (!addr || !prices[addr]?.usd) continue;
-
-      const currentPrice = prices[addr].usd!;
-      const tokenBalance = pos.entryPriceUsd > 0 ? pos.amountUsd / pos.entryPriceUsd : 0;
-      const currentValue = tokenBalance * currentPrice;
-
-      if (currentValue > 0.01) {
-        addedValue += currentValue;
-        // Add or update position in the TWAK portfolio
-        const existing = state.portfolio!.positions.find(
-          (p) => p.symbol.toUpperCase() === pos.symbol.toUpperCase()
-        );
-        if (existing) {
-          existing.valueUsd = currentValue;
-        } else {
-          state.portfolio!.positions.push({
-            token: pos.symbol,
-            symbol: pos.symbol,
-            balance: tokenBalance.toString(),
-            valueUsd: currentValue,
-            chain: "bsc",
-          });
-        }
+    const sources = new Set<string>();
+    for (const pos of positions) {
+      if (pos.valueUsd <= 0.01) continue;
+      sources.add(pos.priceSource);
+      const existing = state.portfolio!.positions.find(
+        (p) => p.symbol.toUpperCase() === pos.symbol.toUpperCase()
+      );
+      if (existing) {
+        addedValue += pos.valueUsd - (existing.valueUsd > 0.01 ? existing.valueUsd : 0);
+        existing.balance = pos.balance.toString();
+        existing.valueUsd = pos.valueUsd;
+      } else {
+        addedValue += pos.valueUsd;
+        state.portfolio!.positions.push({
+          token: pos.symbol,
+          symbol: pos.symbol,
+          balance: pos.balance.toString(),
+          valueUsd: pos.valueUsd,
+          chain: "bsc",
+        });
       }
     }
 
-    if (addedValue > 0) {
+    const pricedCount = positions.filter((p) => p.valueUsd > 0.01).length;
+    if (addedValue !== 0) {
       state.portfolio!.totalValueUsd += addedValue;
-      console.log(`  [coingecko] Augmented portfolio +$${addedValue.toFixed(2)} (${unpriced.length} tokens priced)`);
+      console.log(
+        `  [onchain] Valued ${pricedCount}/${holdings.length} held position(s) = $${totalUsd.toFixed(2)} ` +
+        `(${[...sources].join("+") || "none"}); portfolio → $${state.portfolio!.totalValueUsd.toFixed(2)}`
+      );
     }
   } catch {
-    // Non-fatal — TWAK value is still usable
+    // Non-fatal — TWAK value is still usable.
   }
 }
 
@@ -324,6 +352,14 @@ async function fetchMarketData(): Promise<void> {
   }
 
   state.marketData = marketData;
+
+  // Seed the resolver's reference prices so scam lookalikes (fake INJ, fake
+  // ETH at $0.00001) get rejected when off the legit CMC price by 2x or more.
+  TwakExecutor.setReferencePrices(
+    marketData.tokenPrices
+      .filter((t) => typeof t.price === "number" && t.price > 0)
+      .map((t) => [t.symbol, t.price] as [string, number]),
+  );
 }
 
 // =============================================================================
@@ -617,24 +653,45 @@ async function harvestForBnb(): Promise<void> {
   );
   const bnbValue = bnbPosition?.valueUsd ?? 0;
 
-  // Bankroll-aware threshold: trigger harvest when BNB falls below the
-  // configured floor (default $8). Higher than the gas reserve ($5) so we
-  // have room to actually run the harvest swap.
+  // Two triggers — harvest when EITHER:
+  //   1. BNB drops below floor — need gas/trading capital, OR
+  //   2. Position count exceeds the cap — proactively shrink toward target.
+  // Trigger 2 ensures the ledger converges to the cap even when BNB is fine
+  // (otherwise we'd be stuck at 14 positions blocking new entries forever).
   const HARVEST_FLOOR = AGENT_CONFIG.trading.bankroll.harvestMinBnbUsd;
-  if (bnbValue >= HARVEST_FLOOR) return;
+  const POSITION_CAP = AGENT_CONFIG.trading.maxOpenPositions;
+  const bnbLow = bnbValue < HARVEST_FLOOR;
+  const overCap = state.heldPositions.length > POSITION_CAP;
+  if (!bnbLow && !overCap) return;
 
+  // Skip dust — swapping a $0.08 position costs more in gas than it returns.
+  // We need a meaningful chunk of BNB to actually re-enable trading.
+  const MIN_HARVEST_USD = 1.0;
   const maturePositions = state.heldPositions
-    .filter((p) => p.cyclesHeld >= MIN_CYCLES_TO_HARVEST && !unharvestableTokens.has(p.symbol))
-    .sort((a, b) => a.amountUsd - b.amountUsd); // smallest first
+    .filter(
+      (p) =>
+        p.cyclesHeld >= MIN_CYCLES_TO_HARVEST &&
+        !unharvestableTokens.has(p.symbol) &&
+        p.amountUsd >= MIN_HARVEST_USD,
+    );
+
+  // When BNB-low: sell the largest mature position (maximum BNB per swap).
+  // When only over-cap: sell the smallest mature (clean up the tail first,
+  // preserve the strong positions). When both: BNB-low dominates.
+  maturePositions.sort((a, b) => (bnbLow ? b.amountUsd - a.amountUsd : a.amountUsd - b.amountUsd));
 
   if (maturePositions.length === 0) {
-    console.log(`  [harvest] BNB low ($${bnbValue.toFixed(2)}) but no mature positions (need ${MIN_CYCLES_TO_HARVEST}+ cycles)`);
+    const trigger = bnbLow ? `BNB low ($${bnbValue.toFixed(2)})` : `over cap (${state.heldPositions.length}/${POSITION_CAP})`;
+    console.log(`  [harvest] ${trigger} but no harvestable position (need ≥${MIN_CYCLES_TO_HARVEST} cycles held AND ≥$${MIN_HARVEST_USD})`);
     return;
   }
 
   const target = maturePositions[0];
-  console.log(`\n[4b/8] Harvesting for BNB (balance: $${bnbValue.toFixed(2)}, floor: $${HARVEST_FLOOR})...`);
-  console.log(`  Selling ${target.symbol} ($${target.amountUsd}) — held ${target.cyclesHeld} cycles, lowest conviction position`);
+  const trigger = bnbLow
+    ? `BNB low (balance: $${bnbValue.toFixed(2)}, floor: $${HARVEST_FLOOR})`
+    : `over cap (${state.heldPositions.length}/${POSITION_CAP})`;
+  console.log(`\n[4b/8] Harvesting — ${trigger}`);
+  console.log(`  Selling ${target.symbol} ($${target.amountUsd.toFixed(2)}) — held ${target.cyclesHeld} cycles, ${bnbLow ? "largest" : "smallest"} harvestable position`);
 
   // ── Fallback ladder ──
   // 1. Primary:  ${target.symbol} → BNB (deepest pools)
@@ -643,11 +700,19 @@ async function harvestForBnb(): Promise<void> {
   // 3. Fallback B: smaller test swap to diagnose amount-related reverts
   // 4. Final: Telegram alert + mark token un-harvestable for next cycles
 
+  // Sell 95% of the ledger value, not 100% — leaves slack for the small
+  // ledger-vs-on-chain-balance drift (rounding, price tick between the
+  // valuation snapshot and tx submission). Without this, the router reverts
+  // with ExceedsBalance (0xf4059071) on any harvest where the position's
+  // token balance is the precise basis. Verified: $2 of FET swapped fine,
+  // $13.78 = 100% of FET balance reverted on the same router/route.
+  const harvestAmountUsd = target.amountUsd * 0.95;
+
   // 1. Primary attempt
   const primary = await twakExecutor.executeSwap({
     tokenIn: target.symbol,
     tokenOut: "BNB",
-    amountIn: target.amountUsd.toString(),
+    amountIn: harvestAmountUsd.toFixed(4),
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
 
@@ -778,6 +843,15 @@ async function createTradeProposals(): Promise<Array<{
   const convictionSignals = state.convictionSignals;
   const portfolio = state.portfolio;
   const portfolioValue = portfolio?.totalValueUsd ?? AGENT_CONFIG.trading.maxPerTradeUsd * 3;
+
+  // Hard cap on total open positions. Above this we focus on harvesting,
+  // not entering — new conviction signals are deferred until a slot frees up.
+  if (state.heldPositions.length >= AGENT_CONFIG.trading.maxOpenPositions) {
+    console.log(
+      `  Position cap reached (${state.heldPositions.length}/${AGENT_CONFIG.trading.maxOpenPositions}). Skipping new entries — harvest first.`,
+    );
+    return [];
+  }
 
   // Don't double-buy positions we already hold — add to conviction, don't churn.
   const held = new Set(state.heldPositions.map((p) => p.symbol.toUpperCase()));
@@ -1308,8 +1382,8 @@ async function runCycle(): Promise<void> {
   try {
     // Step 1: Fetch portfolio from TWAK
     state.portfolio = await twakExecutor.getPortfolio();
-    // Augment with CoinGecko prices for tokens TWAK can't price
-    await augmentPortfolioWithCoinGecko();
+    // Augment with real on-chain value of held BEP-20s (TWAK can't see them)
+    await augmentPortfolioOnchain();
     console.log(`\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`);
 
     // Tick down per-token harvest cooldowns (one cycle elapsed since last tick)
@@ -1362,7 +1436,10 @@ async function runCycle(): Promise<void> {
     try {
       const postCyclePortfolio = await twakExecutor.getPortfolio();
       state.portfolio = postCyclePortfolio;
-      guardrails.updatePeakValue(postCyclePortfolio.totalValueUsd);
+      // Value held BEP-20s on-chain (contract-priced) so peak/drawdown track
+      // REAL portfolio value, not just the native BNB + USDC TWAK reports.
+      await augmentPortfolioOnchain();
+      guardrails.updatePeakValue(state.portfolio.totalValueUsd);
     } catch (err) {
       // If the refresh fails, fall back to the cached value rather than
       // throw — anchoring already succeeded, this is housekeeping.
@@ -1456,31 +1533,45 @@ async function restoreSnapshot(): Promise<void> {
     }
 
     // ── Reconcile with on-chain reality ──
-    // state.json can drift from TWAK (e.g., H at -55% that won't exit, or
-    // positions that were sold off-chain). Cross-check each restored
-    // position against the live TWAK portfolio and drop ghosts — positions
-    // that have no on-chain balance. This stops stuck positions from
-    // haunting the conviction ledger forever.
+    // state.json can drift from chain (positions sold off-chain, dust, etc).
+    // We verify each restored position with a DIRECT on-chain balanceOf — NOT
+    // TWAK's `wallet portfolio`, which only reports native BNB + USDC and would
+    // wrongly flag every BEP-20 as a ghost (this is what previously orphaned
+    // ~$100 of real positions). A position is only dropped when balanceOf == 0.
     if (state.heldPositions.length > 0 && AGENT_MODE === "live") {
       try {
-        const livePortfolio = await twakExecutor.getPortfolio();
-        const liveSymbols = new Set(
-          livePortfolio.positions
-            .filter((p) => parseFloat(p.balance) > 0 && p.valueUsd > 0.01)
-            .map((p) => p.symbol.toUpperCase())
-        );
-        const before = state.heldPositions.length;
-        state.heldPositions = state.heldPositions.filter((p) => {
-          const live = liveSymbols.has(p.symbol.toUpperCase());
-          if (!live) {
-            console.log(`  [reconcile] Dropping ghost position ${p.symbol} ($${p.amountUsd.toFixed(2)}) — no on-chain balance`);
-          }
-          return live;
-        });
-        if (state.heldPositions.length < before) {
-          console.log(`  [reconcile] Pruned ${before - state.heldPositions.length} ghost position(s); ${state.heldPositions.length} confirmed on-chain`);
+        const onchain = new OnchainPortfolio();
+        const addresses = TwakExecutor.getResolvedAddresses();
+        const wallet = process.env.AGENT_WALLET_KEY || process.env.AGENT_WALLET_ADDRESS;
+        if (!wallet) {
+          console.warn(`  [reconcile] No wallet address configured — skipping on-chain check, keeping all positions`);
         } else {
-          console.log(`  [reconcile] All ${state.heldPositions.length} positions confirmed on-chain`);
+          const before = state.heldPositions.length;
+          const kept: typeof state.heldPositions = [];
+          for (const p of state.heldPositions) {
+            // Resolve via the session cache, falling back to a live lookup
+            // (the cache is empty on the first cycle after a restart).
+            let contract = addresses.get(p.symbol.toUpperCase());
+            if (!contract) contract = (await twakExecutor.resolveAddress(p.symbol)) ?? undefined;
+            if (!contract) {
+              // Can't resolve a contract to verify — keep it rather than risk
+              // deleting a real position on a transient resolution miss.
+              kept.push(p);
+              continue;
+            }
+            const balance = await onchain.getBalance(contract, wallet);
+            if (balance > 0) {
+              kept.push(p);
+            } else {
+              console.log(`  [reconcile] Dropping ghost position ${p.symbol} ($${p.amountUsd.toFixed(2)}) — balanceOf == 0`);
+            }
+          }
+          state.heldPositions = kept;
+          if (state.heldPositions.length < before) {
+            console.log(`  [reconcile] Pruned ${before - state.heldPositions.length} ghost position(s); ${state.heldPositions.length} confirmed on-chain`);
+          } else {
+            console.log(`  [reconcile] All ${state.heldPositions.length} positions confirmed on-chain`);
+          }
         }
       } catch (err) {
         console.warn(`  [reconcile] On-chain check failed, keeping all positions:`, summarizeError(err));
@@ -1521,6 +1612,7 @@ function syncServerState(): void {
     convictionSignals: state.convictionSignals,
     heldPositions: state.heldPositions,
     positionVerdicts: state.positionVerdicts,
+    portfolio: state.portfolio,
   };
 
   setAgentState(agentSnapshot);

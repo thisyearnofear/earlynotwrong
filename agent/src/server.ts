@@ -18,7 +18,7 @@ import { AGENT_CONFIG } from "../lib/config.js";
 import { twakExecutor } from "../lib/twak-executor.js";
 import { guardrails } from "../lib/risk-guardrails.js";
 import { getMantleExplorerTxUrl } from "../lib/mantle.js";
-import type { SwapResult } from "../lib/twak-executor.js";
+import type { SwapResult, TwakPortfolio } from "../lib/twak-executor.js";
 import type { CmcMarketData } from "../lib/cmc-client.js";
 import type {
   ConvictionSignal,
@@ -53,6 +53,13 @@ export interface AgentServerState {
   convictionSignals: ConvictionSignal[];
   heldPositions: HeldPosition[];
   positionVerdicts: PositionVerdict[];
+  /**
+   * The loop's last portfolio snapshot, already augmented with the on-chain
+   * value of held BEP-20s. Endpoints prefer this over re-fetching the raw
+   * TWAK portfolio (which only sees native BNB + USDC and would understate
+   * value, faking a drawdown against the augmented peak).
+   */
+  portfolio: TwakPortfolio | null;
 }
 
 let agentState: AgentServerState = {
@@ -71,7 +78,16 @@ let agentState: AgentServerState = {
   convictionSignals: [],
   heldPositions: [],
   positionVerdicts: [],
+  portfolio: null,
 };
+
+/**
+ * Resolve the portfolio to report: prefer the loop's augmented snapshot, and
+ * only fall back to a raw TWAK fetch before the first cycle has populated it.
+ */
+async function resolvePortfolio(): Promise<TwakPortfolio> {
+  return agentState.portfolio ?? (await twakExecutor.getPortfolio());
+}
 
 /**
  * Update the shared state (called from index.ts after each cycle).
@@ -94,7 +110,7 @@ app.use("*", cors());
 // ===========================================================================
 
 app.get("/status", async (c) => {
-  const portfolio = await twakExecutor.getPortfolio();
+  const portfolio = await resolvePortfolio();
   const guardrailStatus = guardrails.getStatus(portfolio.totalValueUsd);
 
   const body = {
@@ -163,7 +179,7 @@ app.get("/trades", async (c) => {
 // ===========================================================================
 
 app.get("/conviction", async (c) => {
-  const portfolio = await twakExecutor.getPortfolio();
+  const portfolio = await resolvePortfolio();
   const guardrailStatus = guardrails.getStatus(portfolio.totalValueUsd);
 
   const body = {

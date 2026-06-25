@@ -147,6 +147,85 @@ interface TwakHealth {
   testnet: boolean;
 }
 
+export interface DexLiquidity {
+  liquidityUsd: number;
+  volume24hUsd: number;
+  pairCount: number;
+}
+
+// =============================================================================
+// Token resolution — scam-lookalike defence
+// =============================================================================
+
+interface TwakSearchResult {
+  symbol?: string;
+  name?: string;
+  address?: string;
+  priceUsd?: number;
+  logo?: string | null;
+  marketCapUsd?: number;
+}
+
+/**
+ * Pick the legit token from `twak search` results.
+ *
+ * `twak search` returns CMC-listed contracts plus a long tail of scam
+ * lookalikes (fake INJ, fake ETH at contract 0x000008D2…). The old code took
+ * the first result with a logo — which on INJ picked KaiChain because the real
+ * Injective listing had no logo. This picker is stricter:
+ *
+ * 1. Exact symbol match (case-insensitive) is required. A search for "INJ"
+ *    must return a token whose ticker is "INJ", not "KAI".
+ * 2. If a reference price (from CMC market data) is supplied, the result's
+ *    priceUsd must be within ~50% of it. Fake "ETH" at $0.00001 vs real
+ *    $1500 fails this hard.
+ * 3. Dead-price results (priceUsd ≤ 0) are rejected.
+ * 4. Among survivors, prefer the highest market cap; tie-break by highest
+ *    price — that's the canonical CMC-listed contract.
+ *
+ * Exported for unit testing. Pure: no I/O, no caches.
+ */
+export function selectBestTokenMatch(
+  results: TwakSearchResult[],
+  requestedSymbol: string,
+  referencePrice?: number,
+): TwakSearchResult | null {
+  const target = requestedSymbol.toUpperCase().trim();
+  if (!Array.isArray(results) || results.length === 0) return null;
+
+  const symbolMatches = results.filter(
+    (r) => typeof r.symbol === "string" && r.symbol.toUpperCase().trim() === target,
+  );
+  if (symbolMatches.length === 0) return null;
+
+  const priced = symbolMatches.filter(
+    (r) => typeof r.priceUsd === "number" && Number.isFinite(r.priceUsd) && (r.priceUsd as number) > 0,
+  );
+  if (priced.length === 0) return null;
+
+  const refOk = (r: TwakSearchResult): boolean => {
+    if (typeof referencePrice !== "number" || !Number.isFinite(referencePrice) || referencePrice <= 0) {
+      return true;
+    }
+    const p = r.priceUsd as number;
+    const ratio = p / referencePrice;
+    return ratio >= 0.5 && ratio <= 2.0;
+  };
+
+  const onReference = priced.filter(refOk);
+  const pool = onReference.length > 0 ? onReference : (typeof referencePrice === "number" ? [] : priced);
+  if (pool.length === 0) return null;
+
+  pool.sort((a, b) => {
+    const mcA = typeof a.marketCapUsd === "number" ? a.marketCapUsd : 0;
+    const mcB = typeof b.marketCapUsd === "number" ? b.marketCapUsd : 0;
+    if (mcA !== mcB) return mcB - mcA;
+    return (b.priceUsd ?? 0) - (a.priceUsd ?? 0);
+  });
+
+  return pool[0] ?? null;
+}
+
 // =============================================================================
 // TWAK Executor
 // =============================================================================
@@ -357,10 +436,29 @@ export class TwakExecutor {
   /** In-memory cache: symbol -> BEP-20 contract address (resolved via twak search). */
   private static tokenAddressCache = new Map<string, string>();
 
+  /**
+   * Reference prices (USD) for sanity-checking search results: SYMBOL -> price.
+   * Populated each cycle from CMC market data. Used by selectBestTokenMatch to
+   * reject scam lookalikes whose CMC-listed price diverges sharply from the
+   * legit token's market price (e.g. fake "ETH" at $0.00001 vs real $1500).
+   */
+  private static referencePrices = new Map<string, number>();
+
+  /** Seed reference prices from the market data fetched at cycle start. */
+  static setReferencePrices(prices: Iterable<[string, number]>): void {
+    TwakExecutor.referencePrices.clear();
+    for (const [symbol, price] of prices) {
+      if (typeof price === "number" && Number.isFinite(price) && price > 0) {
+        TwakExecutor.referencePrices.set(symbol.toUpperCase(), price);
+      }
+    }
+  }
+
   /** Clear all caches (for testing). */
   static resetCaches(): void {
     TwakExecutor.tokenAddressCache.clear();
     TwakExecutor.liquidityCache.clear();
+    TwakExecutor.referencePrices.clear();
   }
 
   /** Clear only the liquidity cache (for testing address cache isolation). */
@@ -499,21 +597,17 @@ export class TwakExecutor {
         return null;
       }
 
-      // BSC-only results, preferring CMC-listed tokens (legitimate projects)
-      const bscResults = results.filter((r: any) => r.chain === "bsc");
-      if (bscResults.length === 0) return null;
+      const reference = TwakExecutor.referencePrices.get(upper);
+      const best = selectBestTokenMatch(results, symbol, reference);
 
-      // Prefer CMC-listed tokens (have coinmarketcap logo URLs)
-      const cmcToken = bscResults.find((r: any) =>
-        r.logoUrl?.includes("coinmarketcap.com")
-      );
-      const bestMatch = cmcToken ?? bscResults[0];
+      if (!best?.address) {
+        console.log(`  [TWAK] No legitimate match for ${symbol} (rejected ${results.length} result(s) — symbol mismatch / dead price / off reference)`);
+        return null;
+      }
 
-      if (!bestMatch.address) return null;
-
-      TwakExecutor.tokenAddressCache.set(upper, bestMatch.address);
-      console.log(`  [TWAK] Resolved ${symbol} → ${bestMatch.address} (${bestMatch.name})`);
-      return bestMatch.address;
+      TwakExecutor.tokenAddressCache.set(upper, best.address);
+      console.log(`  [TWAK] Resolved ${symbol} → ${best.address} (${best.name}, $${(best.priceUsd ?? 0).toPrecision(4)})`);
+      return best.address;
     } catch (error) {
       console.warn(`  [TWAK] Failed to resolve token ${symbol}:`, error);
       return null;
@@ -521,11 +615,56 @@ export class TwakExecutor {
   }
 
   /**
-   * Check whether a token has sufficient DEX liquidity via TWAK.
-   * Runs `twak swap --usd 1 BNB <token> --quote-only` and checks for a valid quote.
-   * Results are cached for 1 hour to avoid redundant API calls.
+   * Minimum DEX pool depth (USD) required to consider a token tradeable.
+   * Tokens with shallow pools cause SafeMath/slippage reverts on swap; honeypot
+   * scams typically have tiny pools that look priceable on CMC but unswappable.
+   * KAI sat at $951 pool with $0 24h volume — exactly the pattern we now reject.
+   */
+  private static readonly MIN_DEX_LIQUIDITY_USD = 5_000;
+  private static readonly MIN_DEX_24H_VOLUME_USD = 100;
+
+  /** Override the DexScreener fetcher (for tests). */
+  private static dexScreenerFetcher: ((contract: string) => Promise<DexLiquidity | null>) | null = null;
+
+  static setDexScreenerFetcher(fetcher: ((contract: string) => Promise<DexLiquidity | null>) | null): void {
+    TwakExecutor.dexScreenerFetcher = fetcher;
+  }
+
+  /**
+   * Fetch real DEX pool depth + 24h volume for a BSC contract. This is the
+   * dependable "is this actually tradeable?" check — CMC can list prices for
+   * tokens whose only on-chain pool is $50, but DexScreener reflects what
+   * routers will actually see.
+   */
+  private static async fetchDexLiquidity(contract: string): Promise<DexLiquidity | null> {
+    if (TwakExecutor.dexScreenerFetcher) {
+      return TwakExecutor.dexScreenerFetcher(contract);
+    }
+    try {
+      const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${contract}`);
+      if (!r.ok) return null;
+      const j = await r.json() as { pairs?: Array<{ chainId?: string; liquidity?: { usd?: number }; volume?: { h24?: number } }> };
+      const pairs = (j.pairs ?? []).filter((p) => p.chainId === "bsc");
+      if (pairs.length === 0) return { liquidityUsd: 0, volume24hUsd: 0, pairCount: 0 };
+      const liquidityUsd = pairs.reduce((s, p) => s + (Number(p.liquidity?.usd) || 0), 0);
+      const volume24hUsd = Math.max(...pairs.map((p) => Number(p.volume?.h24) || 0));
+      return { liquidityUsd, volume24hUsd, pairCount: pairs.length };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check whether a token is tradeable via two independent signals:
+   *   1. DexScreener pool depth + 24h volume on BSC (the on-chain truth)
+   *   2. TWAK `swap --quote-only` returns a route (the router can quote it)
    *
-   * In simulator mode, always returns true (no real TWAK to check).
+   * Both must pass. DexScreener is the primary defence — KAI passed TWAK's
+   * quote check (a router will quote anything) but had a $951 pool with $0
+   * volume, and the actual swap reverted. The DexScreener gate catches that
+   * before we spend BNB on it.
+   *
+   * Results are cached for 1 hour. In simulator mode, always returns true.
    */
   async checkLiquidity(symbol: string): Promise<boolean> {
     const upper = symbol.toUpperCase();
@@ -546,6 +685,32 @@ export class TwakExecutor {
       if (resolved) tokenParam = resolved;
     }
 
+    // ── Gate 1: DexScreener pool depth ──
+    // Only runs if we have a contract address (not a bare symbol).
+    if (tokenParam.startsWith("0x") && tokenParam.length === 42) {
+      const dex = await TwakExecutor.fetchDexLiquidity(tokenParam);
+      // If the fetcher errored (null), we don't reject — let TWAK be the sole
+      // judge so a transient DexScreener outage doesn't freeze trading.
+      if (dex) {
+        if (dex.pairCount === 0) {
+          console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (no DEX pair on BSC)`);
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
+          return false;
+        }
+        if (dex.liquidityUsd < TwakExecutor.MIN_DEX_LIQUIDITY_USD) {
+          console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (pool $${dex.liquidityUsd.toFixed(0)} < $${TwakExecutor.MIN_DEX_LIQUIDITY_USD})`);
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
+          return false;
+        }
+        if (dex.volume24hUsd < TwakExecutor.MIN_DEX_24H_VOLUME_USD) {
+          console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (24h volume $${dex.volume24hUsd.toFixed(0)} < $${TwakExecutor.MIN_DEX_24H_VOLUME_USD})`);
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
+          return false;
+        }
+      }
+    }
+
+    // ── Gate 2: TWAK quote-only (router can actually route it) ──
     try {
       TwakExecutor.validateSafeInput("1", "amount");
       TwakExecutor.validateSafeInput(tokenParam, "tokenOut");
