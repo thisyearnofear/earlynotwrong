@@ -146,7 +146,7 @@ const PIPELINE_STEPS = [
   { label: "Entries", icon: TrendingUp, desc: "Weakness + quality", color: "text-amber-400", bgGlow: "bg-amber-500/5" },
   { label: "Guardrails", icon: Shield, desc: "Risk limits", color: "text-impatience", bgGlow: "bg-red-500/5" },
   { label: "TWAK", icon: Zap, desc: "Self-custody swap", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
-  { label: "Anchor", icon: FileText, desc: "Mantle + Casper", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
+  { label: "Anchor + Serve", icon: FileText, desc: "Casper MCP · Mantle", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
 ];
 
 const HERO_STEPS = [
@@ -154,6 +154,7 @@ const HERO_STEPS = [
   { icon: TrendingUp, label: "Scoring contrarian conviction", detail: "Quality assets down during fear — never chasing momentum" },
   { icon: Shield, label: "Holding through drawdown", detail: "Capping losses at −35% · Letting winners run past +100%" },
   { icon: Zap, label: "Executing via TWAK", detail: "Self-custody · BSC Mainnet · Agent Wallet Mode" },
+  { icon: Network, label: "Serving its reputation", detail: "Other AI agents query the record on Casper via MCP, paying per call through x402" },
 ];
 
 // ─── Helpers ───
@@ -475,6 +476,22 @@ function Dashboard({
       transition={{ duration: 0.4 }}
       className="space-y-6"
     >
+      {/* Row 0: Orientation — what cold visitors see first.
+          One sentence per beat: trading agent, dual-chain anchor, marketplace. */}
+      <div className="border-l-2 border-signal/40 pl-4 py-1">
+        <p className="text-sm text-foreground">
+          A conviction-weighted autonomous trading agent on BSC Mainnet.
+          Every cycle is signed and anchored to{" "}
+          <span className="text-signal">Casper Testnet + Mantle Sepolia</span>.
+        </p>
+        <p className="text-xs text-foreground-muted mt-1.5 leading-relaxed">
+          Other AI agents query the agent's verifiable track record over{" "}
+          <span className="font-mono">Model Context Protocol</span>, paying per
+          call through <span className="font-mono">x402</span> micropayments
+          on Casper — see the Reputation API panel below.
+        </p>
+      </div>
+
       {/* Row 1: Agent Status + Portfolio + Guardrails */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-surface/30 border-border/50">
@@ -594,7 +611,12 @@ function Dashboard({
         </Card>
       </div>
 
-      {/* Row 2: Conviction Signals (the thesis, visible) + Held Positions (the proof) */}
+      {/* Row 2: Agent Reputation API — Casper-native MCP + x402 marketplace.
+          Promoted above conviction signals so a 60-second visitor sees the
+          marketplace surface before anything else. */}
+      <ReputationApiCard />
+
+      {/* Row 3: Conviction Signals (the thesis, visible) + Held Positions (the proof) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="bg-surface/30 border-border/50">
           <CardHeader className="pb-2">
@@ -802,13 +824,16 @@ function Dashboard({
         </Card>
       </div>
 
-      {/* Row 3: Recent Trades + Market Data */}
+      {/* Row 4: Recent Activity + Market Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="bg-surface/30 border-border/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
               <BarChart3 className="w-3.5 h-3.5 text-patience" />
-              Recent Trades
+              {/* Title tracks content — trades fire during cycles, holdings persist
+                  between them; reading "Recent Trades" while seeing positions
+                  read like a bug. The umbrella title fits both. */}
+              {trades && trades.recentTrades.length > 0 ? "Recent Trades" : "Activity"}
               {trades && (
                 <span className="ml-auto text-foreground-dim text-[10px]">
                   {trades.totalSessionTrades} total · {formatCurrency(trades.totalVolumeUsd)} volume
@@ -964,7 +989,11 @@ function Dashboard({
                 </div>
                 {/* Multi-chain: render one row per adapter that ran this cycle. */}
                 {conviction.anchorResults && conviction.anchorResults.length > 0 ? (
-                  conviction.anchorResults.map((r) => (
+                  // Casper-first: this is the marketplace host; Mantle is the
+                  // EVM mirror. Symbolic but consistent with the story order.
+                  [...conviction.anchorResults]
+                    .sort((a, b) => (a.adapter === "casper" ? -1 : b.adapter === "casper" ? 1 : 0))
+                    .map((r) => (
                     <div key={r.adapter} className="flex items-center gap-2 text-[10px] font-mono pl-5">
                       <span className="w-4 text-center">
                         {r.status === "success" ? "✓" : r.status === "skipped" ? "○" : "✗"}
@@ -984,7 +1013,7 @@ function Dashboard({
                         <span className="text-foreground-muted truncate">{r.error ?? r.status}</span>
                       )}
                     </div>
-                  ))
+                  )) // end .map
                 ) : (
                   // Fallback: legacy single-anchor field (older agent versions).
                   <div className="flex items-center gap-2 text-[10px] font-mono pl-5">
@@ -1007,10 +1036,7 @@ function Dashboard({
         </Card>
       </div>
 
-      {/* Row 3.5: Agent Reputation API (Casper-native MCP + x402) */}
-      <ReputationApiCard />
-
-      {/* Row 4: Demo Video + Links */}
+      {/* Row 5: Demo Video + Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="bg-surface/30 border-border/50">
           <CardHeader className="pb-2">
@@ -1072,14 +1098,14 @@ function Dashboard({
                 desc: "0xA1Dd482E...5888a · Registered for BNB Hack live PnL",
               },
               {
-                label: "Mantle Registry",
-                href: "https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C",
-                desc: "ERC-8004 · Thesis anchored per cycle",
+                label: "Casper Registry (Marketplace host)",
+                href: "https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa",
+                desc: "ConvictionRegistry (Odra) · MCP + x402 paid queries",
               },
               {
-                label: "Casper Registry",
-                href: "https://testnet.cspr.live",
-                desc: "ConvictionRegistry (Odra) · Casper Buildathon",
+                label: "Mantle Registry (EVM mirror)",
+                href: "https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C",
+                desc: "ERC-8004 · Thesis anchored per cycle",
               },
             ].map((link, i) => (
               <a
@@ -1102,7 +1128,7 @@ function Dashboard({
         </Card>
       </div>
 
-      {/* Row 5: Pipeline Architecture (demoted — supports, doesn't lead) */}
+      {/* Row 6: Pipeline Architecture (demoted — supports, doesn't lead) */}
       <Card className="bg-surface/30 border-border/50">
         <CardHeader className="pb-2">
           <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
@@ -1134,9 +1160,32 @@ interface ReputationStats {
   byTool: Record<string, { calls: number; paidCalls: number; baseUnits: string }>;
 }
 
+/** Format Casper CEP-18 base units as CSPR. The Cep18x402 token uses 2
+ *  decimals (matches the cspr.cloud testnet asset), so 20 base units = 0.20 CSPR. */
+function formatCspr(baseUnits: string | undefined, decimals = 2): string {
+  if (!baseUnits) return "—";
+  // BigInt() instead of `0n` literals — root tsconfig target predates ES2020.
+  const n = BigInt(baseUnits);
+  if (n === BigInt(0)) return "0 CSPR";
+  const divisor = BigInt(10) ** BigInt(decimals);
+  const whole = n / divisor;
+  const fraction = n % divisor;
+  const fracStr = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fracStr ? `${whole}.${fracStr} CSPR` : `${whole} CSPR`;
+}
+
+const MCP_CONFIG_SNIPPET = `{
+  "mcpServers": {
+    "early-not-wrong": {
+      "url": "https://earlynotwrong.vercel.app/api/agent/proxy?endpoint=mcp"
+    }
+  }
+}`;
+
 function ReputationApiCard() {
   const [stats, setStats] = useState<ReputationStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let stale = false;
@@ -1185,9 +1234,9 @@ function ReputationApiCard() {
             </p>
           </div>
           <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
-            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Fees (base units)</p>
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Fees collected</p>
             <p className="text-2xl font-semibold tabular-nums text-patience">
-              {stats?.feesCollectedBaseUnits ?? "—"}
+              {formatCspr(stats?.feesCollectedBaseUnits)}
             </p>
           </div>
         </div>
@@ -1236,19 +1285,32 @@ function ReputationApiCard() {
           </table>
         </div>
 
-        {/* Claude Desktop integration hint */}
-        <details className="mt-4 text-[11px]">
-          <summary className="cursor-pointer text-foreground-muted hover:text-signal font-mono">
-            Add this MCP server to Claude Desktop
-          </summary>
-          <pre className="mt-2 p-3 rounded-lg bg-black/40 text-foreground-muted text-[10px] overflow-x-auto font-mono">{`{
-  "mcpServers": {
-    "early-not-wrong": {
-      "url": "https://earlynotwrong.vercel.app/api/agent/proxy?endpoint=mcp"
-    }
-  }
-}`}</pre>
-        </details>
+        {/* Claude Desktop integration — promoted inline (was a collapsed
+            <details>) since this is the single highest-conversion element
+            on the page: a passing developer can grab this and try it. */}
+        <div className="mt-4 rounded-lg border border-signal/30 bg-signal/5 p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-[11px] font-mono text-foreground">
+              <span className="text-signal">▸</span> Add this MCP server to your AI agent
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(MCP_CONFIG_SNIPPET).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+              className="text-[10px] font-mono px-2 py-1 rounded bg-surface/60 border border-border/50 hover:border-signal/40 text-foreground-muted hover:text-signal transition-colors"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <pre className="p-3 rounded bg-black/50 text-foreground-muted text-[10px] overflow-x-auto font-mono leading-relaxed">{MCP_CONFIG_SNIPPET}</pre>
+          <p className="text-[10px] text-foreground-muted mt-2 font-mono leading-relaxed">
+            Works with Claude Desktop, Cursor, Continue.dev — or any MCP-compatible client.
+          </p>
+        </div>
 
         {error && (
           <p className="mt-3 text-[10px] text-impatience font-mono">stats: {error}</p>
