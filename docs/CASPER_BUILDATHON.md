@@ -218,10 +218,69 @@ Total: 144 TS + 4 Rust, all passing.
   cover DeFi (an autonomous BSC trading agent whose reputation is the
   marketplaced asset). The architecture would support RWA reputation (anchor
   any structured data), but our live demo doesn't.
-- The full live x402 demo requires a CEP-18 token on testnet. The facilitator
-  flow is wired up correctly per the cspr.cloud spec; the asset hash + payTo
-  account hash come from env config. With a funded test token, settle is one
-  round trip.
+- For a client to settle a paid call end-to-end (not just receive the 402
+  challenge), the client needs a wallet holding the testnet `Cep18x402` token
+  to sign the transfer authorization. Our server-side flow is fully live —
+  see the curl below — but the demo currently shows the 402 challenge,
+  not a settled `X-PAYMENT-RESPONSE`. Reviewers with `Cep18x402` can complete
+  the loop against our live endpoint today.
+
+## Reproduce the Live 402 Challenge
+
+One command, against the live VPS — no setup, no wallet, no auth:
+
+```bash
+curl -sS -X POST http://144.202.117.160:31777/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_agent_reputation",
+      "arguments": {
+        "subjectHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"
+      }
+    }
+  }'
+```
+
+Returns a fully-populated `casper:casper-test` `PaymentRequirements`:
+
+```json
+{
+  "x402Version": 2,
+  "accepts": [{
+    "scheme":  "exact",
+    "network": "casper:casper-test",
+    "asset":   "9824d60dc3a5c44a20b9fd260a412437933835b52fc683d8ae36e4ec2114843e",
+    "payTo":   "23058a429ae31f0de556b5747546cc6d7817a559afe2657f297186dc509cd30a",
+    "amount":  "20",
+    "extra":   { "name": "Cep18x402", "symbol": "CSPR", "decimals": "2", "version": "1" }
+  }]
+}
+```
+
+To complete the round trip, a client constructs + signs a `Cep18x402`
+transfer authorization for 20 base units (0.20 CSPR) to that account hash,
+re-POSTs with `X-PAYMENT: <base64>`, and our middleware forwards to
+`cspr.cloud/settle` — which verifies and submits the on-chain CEP-18 transfer
+in one round trip. The `Cep18x402` token on testnet is the cspr.cloud-hosted
+canonical wrapper; no token deploy needed on our side.
+
+The free tier works without any of this — `get_latest_conviction` and
+`get_by_thesis` return real data from the live Casper contract immediately:
+
+```bash
+curl -sS -X POST http://144.202.117.160:31777/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_latest_conviction","arguments":{"subjectHash":"0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"}}}'
+```
+
+Returns the live anchored record (decoded from the Casper contract's CES
+event log, no gas).
 
 ## Links
 

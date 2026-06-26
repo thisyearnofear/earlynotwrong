@@ -5,12 +5,20 @@
 An autonomous on-chain trading agent that scores **behavioral conviction**
 (not price predictions), executes self-custody trades on BNB Smart Chain,
 and anchors a verifiable record of every decision to **two settlement
-chains** so its track record is portable, queryable, and trust-minimized.
+chains** — then exposes that record as a **reputation marketplace** so any
+other AI agent can query it via Model Context Protocol, paying per call
+via x402 micropayments on Casper.
 
 ```
 CMC Agent Hub ─► Conviction Engine ─► Risk Guardrails ─► TWAK Execution ─► Anchor Layer
    (data)         (6-factor contrarian)    (filters)       (BSC swaps)       ├─► Mantle (ERC-8004)
                                                                              └─► Casper (Odra)
+                                                                                    │
+                                                                          ┌─────────┴─────────┐
+                                                                          │  MCP server       │
+OTHER AGENTS ──────── MCP query ──────── x402 paid ─────────────────────► │  on the agent's   │
+(yield bots,                                                              │  Hono process     │
+ wallets, oracles)                                                        └───────────────────┘
 ```
 
 The companion Next.js dashboard surfaces the live agent's state, conviction
@@ -22,7 +30,10 @@ ZK-private reputation.
 
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
 - **Agent API** — `GET /status`, `/conviction`, `/trades` on port 31777
-- **Demo** — [asciinema replay](https://asciinema.org/a/18rHPpejG2Cl6xZE) (~30s)
+- **MCP reputation API** — `POST /mcp` (5 tools, free + x402-paid). See
+  [`docs/CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md#reproduce-the-live-402-challenge)
+  for the one-curl reproduction.
+- **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through)
 - **Latest dual-chain anchor** — verifiable on
   [Mantle Sepolia](https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C)
   and [Casper Testnet](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
@@ -74,9 +85,10 @@ penalty) and holds through ordinary drawdown by design.
 - **Risk Guardrails** — `agent/lib/risk-guardrails.ts` (drawdown, concentration, conviction floor, allowlist)
 - **TWAK Execution** — `agent/lib/twak-executor.ts` + scam-token defense (DexScreener pool depth + reference-price gate)
 - **On-Chain Portfolio** — `agent/lib/onchain-portfolio.ts` (`balanceOf` truth, contract-priced)
-- **Anchor Adapters** — `agent/lib/anchors/{mantle,casper,index}.ts` (one interface, N chains)
+- **Anchor Adapters** — `agent/lib/anchors/{mantle,casper,index}.ts` (one interface, N chains, read + write)
 - **Casper Contract** — `casper/src/conviction_registry.rs` (Odra/Rust)
-- **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent)
+- **MCP Server** — `agent/src/mcp/{server,tools,x402,pricing}.ts` (5 tools, x402 paywall, mounted on the existing Hono process)
+- **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent, surfaces MCP + x402 stats)
 
 ## Hackathons
 
