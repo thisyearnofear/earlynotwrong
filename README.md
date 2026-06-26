@@ -68,7 +68,7 @@ npm run --prefix agent dev
 | [`docs/BNB_HACK_SUBMISSION.md`](./docs/BNB_HACK_SUBMISSION.md) | BNB Hack: AI Trading Agent Edition submission (Jun 2026) |
 | [`docs/PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md) | Aleo ZK-proof selective disclosure model |
 | [`docs/SECURITY.md`](./docs/SECURITY.md) | Signed-voucher treasury + replay protection |
-| [`ROADMAP.md`](./ROADMAP.md) | Phase status (Aleo shipped, Mantle in flight) |
+| [`ROADMAP.md`](./ROADMAP.md) | Phase status — Aleo Testnet (v2) live, v3 deploy pending, Mantle ERC-8004 shipped |
 
 ## Core Thesis
 

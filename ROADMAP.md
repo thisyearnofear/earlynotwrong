@@ -58,16 +58,29 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 
 ## Active Development
 
-### Phase 5 - Aleo Privacy Integration (COMPLETED)
+### Phase 5 - Aleo Privacy Integration (PARTIAL)
+
+**Live on Aleo Testnet (v2):**
 - [x] Lean Foundation: Audit and consolidate lib modules
-- [x] Leo Smart Contract: Implement ZK-proof logic for CI metrics
+- [x] Leo Smart Contract: ZK-proof logic for CI metrics
+      ([`early_not_wrong_v2.aleo`](https://testnet.explorer.provable.com/program/early_not_wrong_v2.aleo))
 - [x] Shield Wallet: Frontend integration for private verification
-- [x] Selective Disclosure: Privacy-preserving archetype proofs
-- [x] Buildathon Rule #4: Integrated $USDCx and `credits.aleo` payments
-- [x] **Treasury Security**: Implemented 'Pull' model with signed vouchers (v3)
+- [x] Selective Disclosure: archetype + score + efficiency proofs working
+      end-to-end against v2 (the proof dialog had a `record=""` bug that
+      blocked this previously; fixed Jun 2026)
+- [x] **Treasury Security**: signed-voucher 'Pull' model written, hardened
+      with `crypto.randomBytes` nonces + per-process collision detection +
+      per-address cooldown on the rebate route
+
+**Written but not deployed yet:**
+- [ ] Deploy `early_not_wrong_v3.aleo` to Aleo **Testnet** — v3 adds the
+      `claim_rebate` entry point + `used_vouchers` replay-protection
+      mapping. The rebate UI is hidden behind `aleo.rebatesEnabled` until
+      this deploys; everything downstream (treasury route, voucher
+      signing, voucher-claim button) is wired and ready.
 
 ### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
-- [ ] Deploy `early_not_wrong_v3.aleo` to Aleo Mainnet
+- [ ] Deploy `early_not_wrong_v3.aleo` to Aleo Mainnet (after Testnet v3)
 - [ ] Partner with Aleo-based DeFi protocols for undercollateralized lending
 - [ ] Anonymous Reputation building for anonymous traders
 

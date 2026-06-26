@@ -76,6 +76,18 @@ export function AleoConvictionCard() {
         <CardDescription className="text-xs text-foreground-muted">
           Commit your conviction metrics to Aleo Testnet. Prove your archetype without revealing your wallet history.
         </CardDescription>
+        {/* Verifiable: link to the deployed program on the Aleo explorer.
+            Lets users (and skeptical reviewers) confirm what's actually
+            live before connecting a wallet. */}
+        <a
+          href={`${APP_CONFIG.chains.aleo.explorerUrl}/program/${APP_CONFIG.chains.aleo.programId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] font-mono text-signal/70 hover:text-signal inline-flex items-center gap-1 mt-1.5 transition-colors"
+        >
+          <ExternalLink className="w-2.5 h-2.5" />
+          {APP_CONFIG.chains.aleo.programId} on Aleo Testnet
+        </a>
       </CardHeader>
 
       <CardContent className="space-y-4">
