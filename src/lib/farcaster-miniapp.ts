@@ -1,9 +1,14 @@
 /**
  * Farcaster Mini App SDK integration
  * Handles SDK initialization, context, and actions
+ *
+ * Uses @farcaster/miniapp-sdk (the current name; the older @farcaster/frame-sdk
+ * was renamed when the protocol rebranded Frames → Mini Apps). The default
+ * export, sdk.context, and sdk.actions.{ready,close,composeCast,openUrl,
+ * viewProfile,addMiniApp} all carry over with the same shape.
  */
 
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 export interface MiniAppUser {
   fid: number;
