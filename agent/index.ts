@@ -17,7 +17,8 @@
  *   TWAK_HMAC_SECRET   — TWAK credentials for live execution
  *   AGENT_WALLET_KEY   — Agent wallet address
  *
- * See docs/HACKATHON_PLAN.md for the full architecture and sprint plan.
+ * See docs/BNB_HACK_SUBMISSION.md for the agent's full architecture and
+ * docs/CASPER_BUILDATHON.md for the cross-chain anchoring layer.
  */
 
 // Load .env FIRST. This module has no other imports; its body runs before
