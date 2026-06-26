@@ -186,20 +186,26 @@ export function AleoConvictionCard() {
             </Button>
           ) : (
             <div className="p-2.5 rounded-lg bg-signal/5 border border-signal/20 space-y-1.5">
-              <div className="flex justify-between items-center text-[9px] font-mono">
-                <span className="text-foreground-muted">PATIENCE REBATE:</span>
-                {!isRebateClaimed ? (
-                  <button 
-                    onClick={handleClaimRebate}
-                    disabled={isMinting || convictionMetrics.patienceTax > 1000}
-                    className="text-patience hover:underline cursor-pointer disabled:opacity-50"
-                  >
-                    CLAIM (0.2 USDCx)
-                  </button>
-                ) : (
-                  <span className="text-patience/50 italic">CLAIMED</span>
-                )}
-              </div>
+              {/* Rebate row hidden when the on-chain program doesn't expose
+                  claim_rebate (v2 doesn't; v3 does, but v3 isn't deployed yet).
+                  Showing a button that calls a missing entry point produces
+                  silent wallet errors — better to hide it cleanly. */}
+              {APP_CONFIG.chains.aleo.rebatesEnabled && (
+                <div className="flex justify-between items-center text-[9px] font-mono">
+                  <span className="text-foreground-muted">PATIENCE REBATE:</span>
+                  {!isRebateClaimed ? (
+                    <button
+                      onClick={handleClaimRebate}
+                      disabled={isMinting || convictionMetrics.patienceTax > 1000}
+                      className="text-patience hover:underline cursor-pointer disabled:opacity-50"
+                    >
+                      CLAIM (0.2 USDCx)
+                    </button>
+                  ) : (
+                    <span className="text-patience/50 italic">CLAIMED</span>
+                  )}
+                </div>
+              )}
               <div className="flex justify-between items-center text-[9px] font-mono">
                 <span className="text-foreground-muted">WHALE SIGNALS:</span>
                 <span className="text-signal">ACTIVE</span>

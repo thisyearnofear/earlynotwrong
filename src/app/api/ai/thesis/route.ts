@@ -1,5 +1,11 @@
 /**
- * Thesis AI Inference API
+ * Thesis AI Inference API.
+ *
+ * Pure LLM helper — generates a one-sentence thesis description from user
+ * intent + their conviction metrics. Has nothing to do with Aleo; it lived
+ * under /api/aleo/thesis historically because it powered the private-thesis
+ * composer, but the route name was misleading. Moved to /api/ai/thesis so
+ * the /api/aleo/* tree only holds actual Aleo-protocol calls.
  */
 
 import { NextRequest, NextResponse } from "next/server";

@@ -1,8 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { 
+import {
   initializeWasm
 } from "@provablehq/sdk/testnet.js";
 import { treasury } from "@/lib/aleo/treasury";
+
+/**
+ * Per-address rate limit. A full eligibility check would prove the user holds
+ * a ConvictionRecord meeting a threshold — but Aleo records are private
+ * (decryptable only by the owner), so the server can't read them. A proper
+ * gate requires the client to submit a ZK proof of ownership; that's a
+ * larger workstream. For now this is the best we can do without on-chain
+ * decrypt: throttle per-address to prevent voucher farming.
+ *
+ * Survives within the running Node process — for a multi-instance deploy
+ * this should move to Postgres / Redis.
+ */
+const REBATE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const lastIssuedAt = new Map<string, number>();
+
+function tooSoon(address: string): boolean {
+  const last = lastIssuedAt.get(address);
+  if (!last) return false;
+  return Date.now() - last < REBATE_COOLDOWN_MS;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,12 +43,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Per-address cooldown (basic anti-farming).
+    if (tooSoon(userAddress)) {
+      const remainingMs = REBATE_COOLDOWN_MS - (Date.now() - (lastIssuedAt.get(userAddress) ?? 0));
+      return NextResponse.json(
+        {
+          error: "Rebate cooldown active",
+          retryAfterSeconds: Math.ceil(remainingMs / 1000),
+        },
+        { status: 429 }
+      );
+    }
+
     // Initialize WASM for Aleo SDK
     await initializeWasm();
 
     // Generate signed voucher instead of executing on-chain transfer
     // This follows the 'Pull' model where the platform authorizes but the user executes.
     const voucher = await treasury.signVoucher(userAddress, Number(amount));
+    lastIssuedAt.set(userAddress, Date.now());
 
     return NextResponse.json({
       success: true,

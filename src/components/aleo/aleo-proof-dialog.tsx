@@ -21,13 +21,29 @@ interface AleoProofDialogProps {
   onClose: () => void;
 }
 
+/**
+ * Pull a numeric field out of an Aleo record plaintext, dropping the Leo type
+ * suffix (`85u32` → 85). Returns null if the field isn't present.
+ *
+ * Plaintext looks like:
+ *   { owner: aleo1..., score: 85u32, patience_tax: 100u64, archetype: 0u8, ... }
+ */
+function parseRecordField(plaintext: string, field: string): number | null {
+  const match = plaintext.match(new RegExp(`${field}:\\s*(\\d+)`));
+  return match ? Number(match[1]) : null;
+}
+
+const ARCHETYPE_LABELS = ["DIAMOND_HAND", "IRON_PILLAR", "PROFIT_PHANTOM", "EXIT_VOYAGER"];
+
 export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
-  const { 
-    verifyArchetype, 
+  const {
+    verifyArchetype,
     verifyScoreThreshold,
-    verifyEfficientTrading 
+    verifyEfficientTrading,
+    listConvictionRecords,
+    isAleoConnected,
   } = useAleoConviction();
-  
+
   const { convictionMetrics } = useAppStore();
   const [step, setStep] = useState<"select" | "proving" | "result">("select");
   const [proofType, setProofType] = useState<"archetype" | "score" | "efficiency" | null>(null);
@@ -40,13 +56,44 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
     message?: string;
   } | null>(null);
 
+  // The user's on-chain ConvictionRecord — fetched from the Shield wallet on
+  // dialog open. Without it, the verify_* calls have no record to prove
+  // against (the bug we replaced: `const record = ""`). null = not yet
+  // fetched; [] = wallet returned zero records.
+  const [records, setRecords] = useState<{ plaintext: string }[] | null>(null);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
+  const latestRecord = records && records.length > 0 ? records[0] : null;
+  const latestScore = latestRecord ? parseRecordField(latestRecord.plaintext, "score") : null;
+  const latestArchetype = latestRecord ? parseRecordField(latestRecord.plaintext, "archetype") : null;
+  const latestPatienceTax = latestRecord ? parseRecordField(latestRecord.plaintext, "patience_tax") : null;
+
   useEffect(() => {
-    if (isOpen) {
-      setStep("select");
-      setLastTxId(null);
-      setVerificationResult(null);
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    setStep("select");
+    setLastTxId(null);
+    setVerificationResult(null);
+    setRecordsError(null);
+    setRecords(null);
+
+    if (!isAleoConnected) return;
+    // Fetch records on open. If the wallet denies decryption, surface the
+    // error inline rather than letting the proof flow fail mid-transaction.
+    let stale = false;
+    (async () => {
+      try {
+        const list = await listConvictionRecords();
+        if (!stale) setRecords(list ?? []);
+      } catch (err) {
+        if (!stale) {
+          setRecordsError(err instanceof Error ? err.message : "Failed to load records");
+          setRecords([]);
+        }
+      }
+    })();
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, isAleoConnected, listConvictionRecords]);
 
   const handleVerifyOnBackend = async () => {
     if (!lastTxId) return;
@@ -62,27 +109,36 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
   };
 
   const handleGenerateProof = async (type: "archetype" | "score" | "efficiency") => {
+    if (!latestRecord) {
+      // Defensive — the proof buttons are disabled when there's no record,
+      // but if something slipped through we don't want to send `record=""`
+      // again (that was the bug — wallet adaptor returns "invalid input").
+      setRecordsError("No ConvictionRecord found in your Aleo wallet — mint one first.");
+      return;
+    }
+
     setProofType(type);
     setStep("proving");
 
     try {
-      let txId;
-      // Using a placeholder as record storage was removed
-      const record = ""; 
-      
+      // Pass the user's actual record plaintext to the verifier. The Leo
+      // function takes it as `input r0 as ConvictionRecord.record` — the
+      // wallet adaptor decodes the plaintext + computes the proof locally,
+      // then submits the transition to Aleo.
+      const recordInput = latestRecord.plaintext;
+      let txId: string | undefined;
+
       if (type === "archetype") {
-        const archetypeMap: Record<string, number> = {
-          "DIAMOND_HAND": 0,
-          "IRON_PILLAR": 1,
-          "PROFIT_PHANTOM": 2,
-          "EXIT_VOYAGER": 3
-        };
-        const val = archetypeMap[convictionMetrics?.archetype || "DIAMOND_HAND"] ?? 0;
-        txId = await verifyArchetype(record, val);
+        // Prove the record's archetype matches the score-derived label.
+        // We use the record's own archetype field so the proof always
+        // succeeds for the actual minted value (verify_archetype asserts
+        // equality; mismatched values panic on-chain).
+        const archetypeValue = latestArchetype ?? 0;
+        txId = await verifyArchetype(recordInput, archetypeValue);
       } else if (type === "score") {
-        txId = await verifyScoreThreshold(record, 80); // Prove score >= 80
+        txId = await verifyScoreThreshold(recordInput, 80); // Prove score >= 80
       } else if (type === "efficiency") {
-        txId = await verifyEfficientTrading(record, 1000); // Prove tax <= $1000
+        txId = await verifyEfficientTrading(recordInput, 1000); // Prove tax <= $1000
       }
 
       if (txId) {
@@ -110,41 +166,101 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
 
         {step === "select" && (
           <div className="space-y-4 py-4">
+            {/* Record context strip — shows what we're proving WITH. Without
+                a minted ConvictionRecord, every verify_* call would fail at
+                the wallet boundary, so we gate the proof buttons on this. */}
+            {records === null ? (
+              <div className="p-3 rounded-lg bg-surface/50 border border-border/50 text-[10px] font-mono text-foreground-muted">
+                <Loader2 className="w-3 h-3 inline mr-2 animate-spin" />
+                Loading your private records from the Shield wallet…
+              </div>
+            ) : records.length === 0 ? (
+              <div className="p-3 rounded-lg bg-impatience/10 border border-impatience/30 text-[11px] space-y-2">
+                <p className="font-bold text-impatience uppercase font-mono tracking-wider">
+                  <Lock className="w-3 h-3 inline mr-1" />
+                  No private record yet
+                </p>
+                <p className="text-foreground-muted leading-relaxed">
+                  Mint a Conviction Index record first — selective-disclosure proofs
+                  need an on-chain record to prove things about. Close this dialog
+                  and use the {`"MINT PRIVATE CI RECORD"`} button on the Private
+                  Proofs card.
+                </p>
+                {recordsError && (
+                  <p className="text-[10px] text-impatience/80 font-mono mt-1">
+                    {recordsError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-patience/5 border border-patience/30 text-[10px] font-mono">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-patience uppercase tracking-wider font-bold">
+                    Proving with your latest record
+                  </span>
+                  {records.length > 1 && (
+                    <span className="text-foreground-dim">
+                      {records.length} records · using newest
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-foreground">
+                  <div>
+                    <span className="text-foreground-muted">SCORE</span>
+                    <p className="text-sm font-bold">{latestScore ?? "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-foreground-muted">ARCHETYPE</span>
+                    <p className="text-sm font-bold">
+                      {latestArchetype !== null ? ARCHETYPE_LABELS[latestArchetype] ?? `#${latestArchetype}` : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-foreground-muted">PATIENCE TAX</span>
+                    <p className="text-sm font-bold">${latestPatienceTax ?? "—"}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-3">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
                 onClick={() => handleGenerateProof("archetype")}
+                disabled={!latestRecord}
               >
                 <div className="text-left">
                   <div className="text-sm font-bold">Prove Archetype</div>
-                  <div className="text-[10px] text-foreground-muted">Verify you are a &quot;{convictionMetrics?.archetype}&quot;</div>
+                  <div className="text-[10px] text-foreground-muted">
+                    Verify you are a &quot;{latestArchetype !== null ? ARCHETYPE_LABELS[latestArchetype] ?? convictionMetrics?.archetype : convictionMetrics?.archetype}&quot;
+                  </div>
                 </div>
                 <Zap className="w-4 h-4 text-signal" />
               </Button>
 
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
                 onClick={() => handleGenerateProof("score")}
-                disabled={(convictionMetrics?.score || 0) < 80}
+                disabled={!latestRecord || (latestScore ?? 0) < 80}
               >
                 <div className="text-left">
                   <div className="text-sm font-bold">Prove Elite Status</div>
-                  <div className="text-[10px] text-foreground-muted">Verify Conviction Score {">"} 80</div>
+                  <div className="text-[10px] text-foreground-muted">Verify Conviction Score {">="} 80</div>
                 </div>
                 <ShieldCheck className="w-4 h-4 text-patience" />
               </Button>
 
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
                 onClick={() => handleGenerateProof("efficiency")}
-                disabled={(convictionMetrics?.patienceTax || 0) > 1000}
+                disabled={!latestRecord || (latestPatienceTax ?? 9999) > 1000}
               >
                 <div className="text-left">
                   <div className="text-sm font-bold">Prove Trading Efficiency</div>
-                  <div className="text-[10px] text-foreground-muted">Verify Patience Tax {"<"} $1000</div>
+                  <div className="text-[10px] text-foreground-muted">Verify Patience Tax {"<="} $1000</div>
                 </div>
                 <Lock className="w-4 h-4 text-signal" />
               </Button>

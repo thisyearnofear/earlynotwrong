@@ -23,7 +23,7 @@ export const generateThesis = (metrics: ConvictionMetrics, positions: { tokenSym
  * Service to suggest thesis via AI inference
  */
 export async function getAIThesisSuggestion(intent: string, metrics: ConvictionMetrics): Promise<string> {
-  const response = await fetch("/api/aleo/thesis", {
+  const response = await fetch("/api/ai/thesis", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ intent, metrics }),

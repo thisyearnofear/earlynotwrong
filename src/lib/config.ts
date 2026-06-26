@@ -87,13 +87,25 @@ export const APP_CONFIG = {
       rpcUrl: `https://api.mainnet-beta.solana.com`,
     },
     aleo: {
-      network: "testnet3",
+      // network: "testnet" — Aleo's current network identifier. The repo had
+      // "testnet3" inherited from older SDK versions; the explorer API rejects
+      // anything but "testnet" now (verified via curl).
+      network: "testnet",
       apiUrl: "https://api.explorer.provable.com/v1",
       explorerUrl: "https://testnet.explorer.provable.com",
-      programId: "early_not_wrong_v3.aleo",
+      // programId: v2 is what's actually live on Aleo Testnet right now. v3
+      // (which adds claim_rebate + used_vouchers mapping) has never been
+      // deployed. v2 exposes everything the proof flow needs — issue_conviction,
+      // commit_thesis, verify_score_threshold, verify_archetype,
+      // verify_efficient_trading. Deploy v3 later only if we want the rebate
+      // feature back; the UI guards that path on `rebatesEnabled` below.
+      programId: "early_not_wrong_v2.aleo",
+      /** True only when programId is a v3+ deploy (has claim_rebate entry).
+       *  Used by AleoConvictionCard to show/hide the rebate button. */
+      rebatesEnabled: false,
       creditsProgramId: "credits.aleo",
       usdcProgramId: "usdcx_stablecoin.aleo",
-      treasuryAddress: "aleo1lsjcz7402z2zxuzznltcx4r37ys39w0gktxr3rmtce2kqqdwr5xq020tl2"
-    }
+      treasuryAddress: "aleo1lsjcz7402z2zxuzznltcx4r37ys39w0gktxr3rmtce2kqqdwr5xq020tl2",
+    },
   }
 };

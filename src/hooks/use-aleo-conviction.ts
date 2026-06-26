@@ -32,6 +32,31 @@ export function useAleoConviction() {
     }
   }, [requestRecords]);
 
+  /**
+   * Fetch the user's unspent ConvictionRecord plaintexts from their Aleo wallet.
+   * These records are what the verify_* functions take as input. Returns the
+   * list in wallet order (typically most-recent first); callers usually want
+   * `records[0]` — the latest minted record.
+   *
+   * Returns null when the wallet isn't connected. Returns [] when the wallet
+   * is connected but the user has no records yet (the proof dialog uses this
+   * to show a "mint a record first" CTA instead of a broken proof attempt).
+   */
+  const listConvictionRecords = useCallback(async (): Promise<{ plaintext: string }[] | null> => {
+    if (!requestRecords || !address) return null;
+    try {
+      // false = unspent only — we want a real record we can use as input.
+      const records = (await requestRecords(CONVICTION_PROGRAM_ID, false)) as { plaintext: string }[];
+      return records ?? [];
+    } catch (error) {
+      if (error instanceof Error && error.message?.includes("Decrypt permission denied")) {
+        console.warn("Aleo decryption permission denied — user needs to approve in wallet.");
+        return null;
+      }
+      throw error;
+    }
+  }, [requestRecords, address]);
+
   const executeWithMonitoring = useCallback(async (txOptions: TransactionOptions) => {
     if (!executeTransaction) throw new Error("Wallet not connected");
     
@@ -322,6 +347,7 @@ export function useAleoConviction() {
 
   return {
     mintConvictionRecord,
+    listConvictionRecords,
     verifyArchetype,
     verifyScoreThreshold,
     verifyEfficientTrading,
@@ -330,6 +356,6 @@ export function useAleoConviction() {
     claimPatienceRebate,
     isMinting,
     lastTxId,
-    isAleoConnected: !!address
+    isAleoConnected: !!address,
   };
 }
