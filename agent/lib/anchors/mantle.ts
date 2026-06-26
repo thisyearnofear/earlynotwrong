@@ -13,7 +13,8 @@
 import { createPublicClient, createWalletClient, defineChain, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { AGENT_CONFIG } from "../config.js";
-import type { AnchorAdapter, AnchorResult, ConvictionRecord } from "./types.js";
+import { getMantleExplorerTxUrl } from "../explorers.js";
+import type { AnchorAdapter, AnchorResult, AnchoredRecord, Bytes32Hex, ConvictionRecord } from "./types.js";
 
 // ── Chain + ABI ──
 
@@ -58,16 +59,40 @@ export const MANTLE_REGISTRY_ABI = [
       },
     ],
   },
+  // Auto-generated getter for the `mapping(bytes32 => ConvictionRecord) public convictionByThesis`
+  {
+    type: "function",
+    name: "convictionByThesis",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [
+      { name: "subjectHash", type: "bytes32" },
+      { name: "anchoredBy", type: "address" },
+      { name: "thesisHash", type: "bytes32" },
+      { name: "convictionScore", type: "uint256" },
+      { name: "archetype", type: "string" },
+      { name: "timestamp", type: "uint256" },
+      { name: "verified", type: "bool" },
+    ],
+  },
+  {
+    type: "event",
+    name: "ConvictionAnchored",
+    anonymous: false,
+    inputs: [
+      { name: "subjectHash", type: "bytes32", indexed: true },
+      { name: "anchoredBy", type: "address", indexed: true },
+      { name: "thesisHash", type: "bytes32", indexed: true },
+      { name: "convictionScore", type: "uint256", indexed: false },
+      { name: "archetype", type: "string", indexed: false },
+    ],
+  },
 ] as const;
 
 const publicClient = createPublicClient({
   chain: mantleSepoliaChain,
   transport: http(),
 });
-
-function getMantleExplorerTxUrl(txHash: string): string {
-  return `${AGENT_CONFIG.mantle.sepolia.explorerUrl}/tx/${txHash}`;
-}
 
 // ── Adapter ──
 
@@ -137,4 +162,107 @@ export class MantleAnchorAdapter implements AnchorAdapter {
       };
     }
   }
+
+  // ─── Read methods ─────────────────────────────────────────────────────────
+  //
+  // Mantle reads are free (view functions + event logs) — no operator key
+  // required. We expose them on the same adapter the agent uses to anchor
+  // so the MCP server has one stable surface for both writes and reads.
+
+  async getLatestConviction(subjectHash: Bytes32Hex): Promise<AnchoredRecord | null> {
+    const registry = AGENT_CONFIG.mantle.sepolia.registryAddress as `0x${string}`;
+    try {
+      const r = await publicClient.readContract({
+        address: registry,
+        abi: MANTLE_REGISTRY_ABI,
+        functionName: "getLatestConviction",
+        args: [subjectHash],
+      });
+      return tupleToRecord(r as MantleConvictionTuple);
+    } catch {
+      // The contract reverts when no record exists; treat that as "none".
+      return null;
+    }
+  }
+
+  async getByThesis(thesisHash: Bytes32Hex): Promise<AnchoredRecord | null> {
+    const registry = AGENT_CONFIG.mantle.sepolia.registryAddress as `0x${string}`;
+    try {
+      const r = await publicClient.readContract({
+        address: registry,
+        abi: MANTLE_REGISTRY_ABI,
+        functionName: "convictionByThesis",
+        args: [thesisHash],
+      });
+      // The auto-generated getter returns a flat tuple, not a struct.
+      const tuple = r as readonly [
+        `0x${string}`, `0x${string}`, `0x${string}`, bigint, string, bigint, boolean,
+      ];
+      if (tuple[5] === 0n) return null; // unset entry: timestamp == 0
+      return tupleToRecord({
+        subjectHash: tuple[0],
+        anchoredBy: tuple[1],
+        thesisHash: tuple[2],
+        convictionScore: tuple[3],
+        archetype: tuple[4],
+        timestamp: tuple[5],
+        verified: tuple[6],
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getSubjectHistory(subjectHash: Bytes32Hex): Promise<AnchoredRecord[]> {
+    const registry = AGENT_CONFIG.mantle.sepolia.registryAddress as `0x${string}`;
+    try {
+      // Walk the ConvictionAnchored event log. Topic 1 = subjectHash (indexed).
+      const logs = await publicClient.getLogs({
+        address: registry,
+        event: MANTLE_REGISTRY_ABI.find(
+          (e): e is typeof MANTLE_REGISTRY_ABI[number] & { type: "event" } =>
+            e.type === "event" && e.name === "ConvictionAnchored",
+        )!,
+        args: { subjectHash },
+        fromBlock: "earliest",
+      });
+      return logs.map((l) => ({
+        adapter: this.name,
+        subjectHash: l.args.subjectHash!,
+        thesisHash: l.args.thesisHash!,
+        convictionScore: Number(l.args.convictionScore ?? 0n),
+        archetype: l.args.archetype ?? "",
+        timestamp: 0, // not on the event; derive from block if needed
+        anchoredBy: l.args.anchoredBy ?? "",
+        txHash: l.transactionHash,
+        explorerUrl: l.transactionHash ? getMantleExplorerTxUrl(l.transactionHash) : undefined,
+      }));
+    } catch {
+      return [];
+    }
+  }
+}
+
+// ── Shared tuple → record conversion ──
+
+interface MantleConvictionTuple {
+  subjectHash: `0x${string}`;
+  anchoredBy: `0x${string}`;
+  thesisHash: `0x${string}`;
+  convictionScore: bigint;
+  archetype: string;
+  timestamp: bigint;
+  verified: boolean;
+}
+
+function tupleToRecord(t: MantleConvictionTuple): AnchoredRecord {
+  return {
+    adapter: "mantle",
+    subjectHash: t.subjectHash,
+    thesisHash: t.thesisHash,
+    convictionScore: Number(t.convictionScore),
+    archetype: t.archetype,
+    timestamp: Number(t.timestamp),
+    anchoredBy: t.anchoredBy,
+  };
 }

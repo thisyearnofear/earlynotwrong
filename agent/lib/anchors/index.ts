@@ -70,5 +70,51 @@ export async function anchorAll(record: ConvictionRecord): Promise<AnchorResult[
   return results;
 }
 
-export type { AnchorAdapter, AnchorResult, ConvictionRecord, Bytes32Hex } from "./types.js";
+// ─── Cross-chain read orchestration ──────────────────────────────────────────
+//
+// The MCP server's `cross_chain_lookup` tool — and any future paid read API —
+// fans out a query across every enabled adapter. Sequential on purpose:
+// per-chain timings stay clean in logs, and one slow RPC doesn't pile up
+// parallel sockets on the agent process.
+
+import type { AnchoredRecord, Bytes32Hex as Bytes32HexT } from "./types.js";
+
+export interface CrossChainLookup {
+  subjectHash: Bytes32HexT;
+  records: AnchoredRecord[];
+  byAdapter: Record<string, AnchoredRecord[]>;
+}
+
+export async function lookupSubjectCrossChain(subjectHash: Bytes32HexT): Promise<CrossChainLookup> {
+  const byAdapter: Record<string, AnchoredRecord[]> = {};
+  const all: AnchoredRecord[] = [];
+  for (const name of enabledAdapterNames()) {
+    const adapter = getAdapter(name);
+    if (!adapter) continue;
+    try {
+      const history = await adapter.getSubjectHistory(subjectHash);
+      byAdapter[name] = history;
+      all.push(...history);
+    } catch {
+      byAdapter[name] = [];
+    }
+  }
+  return { subjectHash, records: all, byAdapter };
+}
+
+export async function lookupLatestCrossChain(subjectHash: Bytes32HexT): Promise<Record<string, AnchoredRecord | null>> {
+  const out: Record<string, AnchoredRecord | null> = {};
+  for (const name of enabledAdapterNames()) {
+    const adapter = getAdapter(name);
+    if (!adapter) { out[name] = null; continue; }
+    try {
+      out[name] = await adapter.getLatestConviction(subjectHash);
+    } catch {
+      out[name] = null;
+    }
+  }
+  return out;
+}
+
+export type { AnchorAdapter, AnchorResult, AnchoredRecord, ConvictionRecord, Bytes32Hex } from "./types.js";
 export { computeSubjectHash, computeThesisHash } from "./hashes.js";

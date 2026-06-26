@@ -427,7 +427,7 @@ function ErrorState({
             Retry Connection
           </Button>
           <a
-            href="https://asciinema.org/a/18rHPpejG2Cl6xZE"
+            href="https://asciinema.org/a/ox0AlPA1AN7uwfWJ"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -1007,6 +1007,9 @@ function Dashboard({
         </Card>
       </div>
 
+      {/* Row 3.5: Agent Reputation API (Casper-native MCP + x402) */}
+      <ReputationApiCard />
+
       {/* Row 4: Demo Video + Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="bg-surface/30 border-border/50">
@@ -1021,7 +1024,7 @@ function Dashboard({
               {/* Inline asciinema embed — click play to watch in-place.
                   No autoplay (intrusive). Fallback link opens the player full-page. */}
               <iframe
-                src="https://asciinema.org/a/18rHPpejG2Cl6xZE/embed?preload=1&autoplay=0&speed=1&theme=monokai"
+                src="https://asciinema.org/a/ox0AlPA1AN7uwfWJ/embed?preload=1&autoplay=0&speed=1&theme=monokai"
                 title="Early, Not Wrong — live dual-chain anchoring demo"
                 className="w-full block"
                 style={{ height: 380, border: 0 }}
@@ -1032,7 +1035,7 @@ function Dashboard({
                   pm2 status · /status · /conviction.anchorResults (Mantle + Casper) · live log
                 </p>
                 <a
-                  href="https://asciinema.org/a/18rHPpejG2Cl6xZE"
+                  href="https://asciinema.org/a/ox0AlPA1AN7uwfWJ"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[11px] text-foreground-muted hover:text-signal inline-flex items-center gap-1 shrink-0"
@@ -1112,6 +1115,146 @@ function Dashboard({
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+// ─── Agent Reputation API panel ───
+//
+// Surfaces the live MCP + x402 stats: how many reputation queries the agent's
+// Casper-hosted registry has served, how many were paid, and the per-tool
+// pricing table. This is the buildathon's "hero" surface — the dual-anchor
+// is downstream of these queries; this panel is where the Casper-native
+// agent-economy story actually shows up in the UI.
+
+interface ReputationStats {
+  queriesServed: number;
+  paidQueries: number;
+  feesCollectedBaseUnits: string;
+  pricing: Record<string, { paid: boolean; amountBaseUnits: string; description: string }>;
+  byTool: Record<string, { calls: number; paidCalls: number; baseUnits: string }>;
+}
+
+function ReputationApiCard() {
+  const [stats, setStats] = useState<ReputationStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/agent/proxy?endpoint=reputation/stats");
+        if (!res.ok) throw new Error(`stats returned ${res.status}`);
+        const data = (await res.json()) as ReputationStats;
+        if (!stale) setStats(data);
+      } catch (e) {
+        if (!stale) setError(e instanceof Error ? e.message : "failed to load");
+      }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      stale = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  return (
+    <Card className="bg-surface/30 border-border/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+          <Network className="w-3.5 h-3.5 text-signal" />
+          Agent Reputation API
+          <span className="ml-auto text-[10px] text-foreground-dim">
+            Casper MCP · x402 paid
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Hero strip — three numbers + a one-liner explaining the surface. */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Queries served</p>
+            <p className="text-2xl font-semibold tabular-nums">
+              {stats?.queriesServed ?? "—"}
+            </p>
+          </div>
+          <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Paid</p>
+            <p className="text-2xl font-semibold tabular-nums text-signal">
+              {stats?.paidQueries ?? "—"}
+            </p>
+          </div>
+          <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Fees (base units)</p>
+            <p className="text-2xl font-semibold tabular-nums text-patience">
+              {stats?.feesCollectedBaseUnits ?? "—"}
+            </p>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-foreground-muted mb-3 leading-relaxed">
+          Other agents query this agent's verifiable reputation via an MCP server
+          hosted alongside the trading loop. Free tier covers fast point lookups;
+          paid tools settle via <span className="font-mono">x402</span> on Casper Testnet —
+          one signed CEP-18 transfer per call, the facilitator covers gas.
+        </p>
+
+        {/* Tools table */}
+        <div className="rounded-lg border border-border/40 overflow-hidden">
+          <table className="w-full text-[11px] font-mono">
+            <thead className="bg-surface/40 text-foreground-muted text-[10px] uppercase tracking-wider">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium">Tool</th>
+                <th className="text-left px-3 py-2 font-medium">Pricing</th>
+                <th className="text-right px-3 py-2 font-medium">Calls</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats &&
+                Object.entries(stats.pricing).map(([tool, p]) => {
+                  const called = stats.byTool[tool];
+                  return (
+                    <tr key={tool} className="border-t border-border/30">
+                      <td className="px-3 py-2 text-foreground">{tool}</td>
+                      <td className="px-3 py-2 text-foreground-muted">
+                        {p.paid ? (
+                          <span className="text-signal">{p.description}</span>
+                        ) : (
+                          <span>{p.description}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right text-foreground-muted tabular-nums">
+                        {called?.calls ?? 0}
+                        {called?.paidCalls ? (
+                          <span className="text-signal"> ({called.paidCalls} paid)</span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Claude Desktop integration hint */}
+        <details className="mt-4 text-[11px]">
+          <summary className="cursor-pointer text-foreground-muted hover:text-signal font-mono">
+            Add this MCP server to Claude Desktop
+          </summary>
+          <pre className="mt-2 p-3 rounded-lg bg-black/40 text-foreground-muted text-[10px] overflow-x-auto font-mono">{`{
+  "mcpServers": {
+    "early-not-wrong": {
+      "url": "https://earlynotwrong.vercel.app/api/agent/proxy?endpoint=mcp"
+    }
+  }
+}`}</pre>
+        </details>
+
+        {error && (
+          <p className="mt-3 text-[10px] text-impatience font-mono">stats: {error}</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

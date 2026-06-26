@@ -45,7 +45,7 @@ type RpcClient = RpcClientT;
 import { readFileSync } from "node:fs";
 import { AGENT_CONFIG } from "../config.js";
 import { getCasperExplorerTxUrl } from "../explorers.js";
-import type { AnchorAdapter, AnchorResult, ConvictionRecord } from "./types.js";
+import type { AnchorAdapter, AnchorResult, AnchoredRecord, Bytes32Hex, ConvictionRecord } from "./types.js";
 
 // =============================================================================
 // Internal helpers
@@ -224,4 +224,245 @@ export class CasperAnchorAdapter implements AnchorAdapter {
       };
     }
   }
+
+  // ─── Read methods ─────────────────────────────────────────────────────────
+  //
+  // The Odra contract emits Casper Event Standard (CES) events on every
+  // anchor — these are stored at the `__events` uref under numeric keys.
+  // Reading them is free (state queries cost no gas), and we get the full
+  // record without paying for entry-point execution.
+  //
+  // The records are indexed in-memory by subject and thesis hash, with a
+  // short TTL so concurrent MCP queries don't hammer the RPC.
+
+  async getSubjectHistory(subjectHash: Bytes32Hex): Promise<AnchoredRecord[]> {
+    const records = await this.loadAllAnchored();
+    const target = normalizeHex(subjectHash);
+    return records.filter((r) => normalizeHex(r.subjectHash) === target);
+  }
+
+  async getLatestConviction(subjectHash: Bytes32Hex): Promise<AnchoredRecord | null> {
+    const history = await this.getSubjectHistory(subjectHash);
+    return history.length > 0 ? history[history.length - 1]! : null;
+  }
+
+  async getByThesis(thesisHash: Bytes32Hex): Promise<AnchoredRecord | null> {
+    const records = await this.loadAllAnchored();
+    const target = normalizeHex(thesisHash);
+    return records.find((r) => normalizeHex(r.thesisHash) === target) ?? null;
+  }
+
+  private cachedRecords: { records: AnchoredRecord[]; expiresAt: number } | null = null;
+  private static readonly READ_CACHE_TTL_MS = 30_000;
+
+  /** Read all anchored records from the contract's event log, cached. */
+  private async loadAllAnchored(): Promise<AnchoredRecord[]> {
+    const now = Date.now();
+    if (this.cachedRecords && this.cachedRecords.expiresAt > now) {
+      return this.cachedRecords.records;
+    }
+    const records = await readAnchoredEvents();
+    this.cachedRecords = { records, expiresAt: now + CasperAnchorAdapter.READ_CACHE_TTL_MS };
+    return records;
+  }
+}
+
+// ─── CES event reading ───────────────────────────────────────────────────────
+//
+// Pure functions outside the adapter so they're testable and the read path
+// doesn't depend on the operator key (anonymous reads need only CSPR_CLOUD_TOKEN).
+
+interface ContractEventRefs {
+  eventsUref: string;
+  eventsLengthUref: string;
+}
+
+/** Find the __events and __events_length urefs for our deployed contract. */
+async function findContractEventUrefs(): Promise<ContractEventRefs | null> {
+  const token = process.env.CSPR_CLOUD_TOKEN;
+  const pkgHex = (process.env.CASPER_REGISTRY_HASH ?? AGENT_CONFIG.casper.testnet.registryHash).replace(/^0x/, "");
+  if (!token || !pkgHex) return null;
+
+  // Look up the latest contract entity under the package, then read its named keys.
+  const srh = await rpc("chain_get_state_root_hash", {}, token);
+  const pkg = await rpc("state_get_item", {
+    state_root_hash: srh.state_root_hash,
+    key: `hash-${pkgHex}`,
+    path: [],
+  }, token);
+  const entityHash: string | undefined = pkg.stored_value?.ContractPackage?.versions?.[0]?.contract_hash;
+  if (!entityHash) return null;
+
+  // The package returns `contract-<64hex>`; state_get_item needs `hash-<64hex>`.
+  const entityHex = entityHash.replace(/^contract-/, "").replace(/^hash-/, "");
+  const contract = await rpc("state_get_item", {
+    state_root_hash: srh.state_root_hash,
+    key: `hash-${entityHex}`,
+    path: [],
+  }, token);
+  const namedKeys: Array<{ name: string; key: string }> = contract.stored_value?.Contract?.named_keys ?? [];
+  const events = namedKeys.find((k) => k.name === "__events")?.key;
+  const eventsLen = namedKeys.find((k) => k.name === "__events_length")?.key;
+  if (!events || !eventsLen) return null;
+  return { eventsUref: events, eventsLengthUref: eventsLen };
+}
+
+async function readAnchoredEvents(): Promise<AnchoredRecord[]> {
+  const token = process.env.CSPR_CLOUD_TOKEN;
+  if (!token) return [];
+  const refs = await findContractEventUrefs();
+  if (!refs) return [];
+
+  const srh = (await rpc("chain_get_state_root_hash", {}, token)).state_root_hash;
+  // Read total event count.
+  const lenItem = await rpc("state_get_item", {
+    state_root_hash: srh,
+    key: refs.eventsLengthUref,
+    path: [],
+  }, token);
+  const lenHex: string = lenItem.stored_value?.CLValue?.bytes ?? "00000000";
+  const totalEvents = readU32LE(hexToUint8(lenHex));
+
+  // Read each event entry from the __events dictionary.
+  const out: AnchoredRecord[] = [];
+  for (let i = 0; i < totalEvents; i++) {
+    try {
+      const item = await rpc("state_get_dictionary_item", {
+        state_root_hash: srh,
+        dictionary_identifier: {
+          URef: { seed_uref: refs.eventsUref, dictionary_item_key: String(i) },
+        },
+      }, token);
+      // The stored CLValue is List<U8>. `bytes` carries the wrapped form
+      // (4-byte list length + payload); `parsed` is the unwrapped payload as
+      // an array of u8 integers. We use `parsed` directly — same as Casper's
+      // explorer does — so the decoder operates on the event payload itself.
+      const parsed = item.stored_value?.CLValue?.parsed;
+      if (!Array.isArray(parsed)) continue;
+      const payload = Uint8Array.from(parsed as number[]);
+      const decoded = decodeAnchoredEvent(payload);
+      if (decoded) out.push(decoded);
+    } catch {
+      // Skip malformed entries — keep going.
+    }
+  }
+  return out;
+}
+
+/** RPC helper — never throws on jsonrpc errors, returns the loose result envelope.
+ *  We use `any` here because JSON-RPC responses are inherently dynamic; the
+ *  call sites narrow as they walk known fields. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rpc(method: string, params: unknown, token: string): Promise<any> {
+  const r = await fetch(AGENT_CONFIG.casper.testnet.rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: token },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await r.json()) as any;
+  if (data?.error) throw new Error(data.error.message ?? "rpc error");
+  return data?.result ?? {};
+}
+
+/**
+ * Decode a CES-encoded event into an AnchoredRecord if it's a ConvictionAnchored
+ * event; return null for OperatorAuthorizationUpdated and other event types.
+ *
+ * Layout for ConvictionAnchored (matches the Rust #[odra::event] struct):
+ *   - String  event_name     (u32 LE length + UTF-8 bytes)
+ *   - Bytes   subject_hash   (u32 LE length + bytes)
+ *   - Address anchored_by    (1 byte tag + 32 bytes account hash)
+ *   - Bytes   thesis_hash    (u32 LE length + bytes)
+ *   - u8      conviction_score (1 byte)
+ *   - String  archetype      (u32 LE length + UTF-8 bytes)
+ *
+ * Note: the on-chain event does NOT carry the timestamp field (it's only in
+ * the stored ConvictionRecord struct, not the event). For reads, we set
+ * timestamp to 0 — callers that need it should query block headers.
+ */
+function decodeAnchoredEvent(bytes: Uint8Array): AnchoredRecord | null {
+  let off = 0;
+  const name = readString(bytes, off);
+  if (!name) return null;
+  off += 4 + name.value.length;
+  if (name.value !== "event_ConvictionAnchored") return null;
+
+  const subject = readBytes(bytes, off);
+  if (!subject) return null;
+  off += 4 + subject.value.length;
+
+  const addr = readAddress(bytes, off);
+  if (!addr) return null;
+  off += addr.consumed;
+
+  const thesis = readBytes(bytes, off);
+  if (!thesis) return null;
+  off += 4 + thesis.value.length;
+
+  if (off >= bytes.length) return null;
+  const score = bytes[off]!;
+  off += 1;
+
+  const archetype = readString(bytes, off);
+  if (!archetype) return null;
+
+  return {
+    adapter: "casper",
+    subjectHash: bytesToHex0x(subject.value),
+    thesisHash: bytesToHex0x(thesis.value),
+    convictionScore: score,
+    archetype: archetype.value,
+    timestamp: 0,
+    anchoredBy: addr.hex,
+    explorerUrl: undefined,
+  };
+}
+
+// ─── Byte primitives ─────────────────────────────────────────────────────────
+
+function readU32LE(bytes: Uint8Array, offset = 0): number {
+  return (bytes[offset]! | (bytes[offset + 1]! << 8) | (bytes[offset + 2]! << 16) | (bytes[offset + 3]! << 24)) >>> 0;
+}
+
+function readBytes(buf: Uint8Array, offset: number): { value: Uint8Array } | null {
+  if (offset + 4 > buf.length) return null;
+  const len = readU32LE(buf, offset);
+  if (offset + 4 + len > buf.length) return null;
+  return { value: buf.subarray(offset + 4, offset + 4 + len) };
+}
+
+function readString(buf: Uint8Array, offset: number): { value: string } | null {
+  const b = readBytes(buf, offset);
+  if (!b) return null;
+  return { value: new TextDecoder().decode(b.value) };
+}
+
+/** Casper Address: 1-byte variant tag + 32-byte hash. */
+function readAddress(buf: Uint8Array, offset: number): { hex: string; consumed: number } | null {
+  if (offset + 33 > buf.length) return null;
+  const tag = buf[offset]!;
+  const hash = buf.subarray(offset + 1, offset + 33);
+  return { hex: `${tag.toString(16).padStart(2, "0")}${bytesToHex(hash)}`, consumed: 33 };
+}
+
+function hexToUint8(hex: string): Uint8Array {
+  const s = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const out = new Uint8Array(s.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) out += bytes[i]!.toString(16).padStart(2, "0");
+  return out;
+}
+
+function bytesToHex0x(bytes: Uint8Array): Bytes32Hex {
+  return `0x${bytesToHex(bytes)}` as Bytes32Hex;
+}
+
+function normalizeHex(hex: string): string {
+  return hex.toLowerCase().replace(/^0x/, "");
 }

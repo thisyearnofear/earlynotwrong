@@ -50,9 +50,29 @@ export interface AnchorResult {
 }
 
 /**
+ * An anchored record once it has settled on-chain. Same shape as the input
+ * ConvictionRecord plus chain-side metadata (who anchored it, when it landed).
+ * Single source of truth for both write and read paths.
+ */
+export interface AnchoredRecord extends ConvictionRecord {
+  /** Adapter that holds this record ("mantle" | "casper" | …). */
+  adapter: string;
+  /** Account/wallet that submitted the anchor (hex/0x for EVM, hex for Casper). */
+  anchoredBy: string;
+  /** Tx/deploy hash if known. Optional because event logs don't always carry it. */
+  txHash?: string;
+  /** Public explorer URL pointing at the anchor tx or the contract record. */
+  explorerUrl?: string;
+}
+
+/**
  * One chain = one adapter. Implementations are stateless wrappers around a
  * chain-specific SDK; construction takes any required config (RPC, key) at
  * boot and the `anchor` call is what the agent loop invokes per cycle.
+ *
+ * The read methods are how the MCP server and any other downstream consumer
+ * pulls anchored records back out of the chain — no entry-point gas needed
+ * for either Mantle (view functions) or Casper (event/state queries).
  */
 export interface AnchorAdapter {
   /** Stable identifier used in logs, config, and AnchorResult.adapter. */
@@ -63,4 +83,11 @@ export interface AnchorAdapter {
    *  are surfaced via the returned AnchorResult so the orchestrator can
    *  continue to other adapters. */
   anchor(record: ConvictionRecord): Promise<AnchorResult>;
+  /** Read all records anchored for a subject, chronological. Returns empty
+   *  array if the subject has no anchors yet. */
+  getSubjectHistory(subjectHash: Bytes32Hex): Promise<AnchoredRecord[]>;
+  /** Read the most recent record for a subject, or null if none. */
+  getLatestConviction(subjectHash: Bytes32Hex): Promise<AnchoredRecord | null>;
+  /** Look up a record by its thesis hash, or null if not anchored on this chain. */
+  getByThesis(thesisHash: Bytes32Hex): Promise<AnchoredRecord | null>;
 }

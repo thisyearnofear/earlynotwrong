@@ -27,6 +27,9 @@ import type {
   MarketRegime,
   PositionVerdict,
 } from "../lib/conviction-signal.js";
+import { handleMcpRequest } from "./mcp/server.js";
+import { x402Middleware, x402Stats } from "./mcp/x402.js";
+import { PRICING } from "./mcp/pricing.js";
 
 // =============================================================================
 // Shared agent state — populated by index.ts before starting the server
@@ -110,6 +113,41 @@ const app = new Hono();
 
 // CORS for dashboard access
 app.use("*", cors());
+
+// ===========================================================================
+// MCP server — POST /mcp (Streamable HTTP transport)
+// ===========================================================================
+//
+// Exposes the agent's cross-chain reputation registry to any MCP-compatible
+// client. Mounted on the same Hono process so the agent isn't running two
+// HTTP servers — one boot, shared state. See src/mcp/server.ts.
+
+// x402 paywall gates paid tools; free tools and protocol messages
+// (initialize, tools/list) pass through. Stats are exposed at /reputation/stats.
+// Imported at module top so the middleware is registered BEFORE the first
+// request — a dynamic import was racing the test client.
+app.use("/mcp", x402Middleware());
+
+app.post("/mcp", (c) => handleMcpRequest(c.req.raw));
+
+// ===========================================================================
+// GET /reputation/stats — live MCP + x402 counters for the dashboard
+// ===========================================================================
+
+app.get("/reputation/stats", (c) =>
+  c.json({
+    queriesServed: x402Stats.queriesServed,
+    paidQueries: x402Stats.paidQueries,
+    feesCollectedBaseUnits: x402Stats.feesCollectedBaseUnits.toString(),
+    pricing: PRICING,
+    byTool: Object.fromEntries(
+      Array.from(x402Stats.byTool.entries()).map(([k, v]) => [
+        k,
+        { calls: v.calls, paidCalls: v.paidCalls, baseUnits: v.baseUnits.toString() },
+      ]),
+    ),
+  }),
+);
 
 // ===========================================================================
 // GET /status
