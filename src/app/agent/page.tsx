@@ -427,7 +427,7 @@ function ErrorState({
             Retry Connection
           </Button>
           <a
-            href="https://asciinema.org/a/lMVdIaBr9G2KK9Ni"
+            href="https://asciinema.org/a/18rHPpejG2Cl6xZE"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -857,9 +857,48 @@ function Dashboard({
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
-                <BarChart3 className="w-8 h-8 mb-2 opacity-40" />
-                <p className="text-xs font-mono">No trades yet this session</p>
+              // Empty state — trades are cycle-scoped, so between cycles this
+              // is usually empty even though positions are actively managed.
+              // Show what the agent is HOLDING (its current state) instead of
+              // a blank "no trades" message — same data the loop uses to
+              // decide whether to harvest, exit, or hold next cycle.
+              <div className="space-y-2">
+                <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider px-1">
+                  Holding (between cycles)
+                </p>
+                {conviction && conviction.heldPositions.length > 0 ? (
+                  conviction.heldPositions
+                    .slice()
+                    .sort((a, b) => b.amountUsd - a.amountUsd)
+                    .slice(0, 5)
+                    .map((p, i) => (
+                      <motion.div
+                        key={p.symbol}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-sm font-semibold text-patience">{p.symbol}</span>
+                          <span className="text-xs font-mono text-foreground-muted">
+                            ${p.amountUsd.toFixed(2)}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-foreground-dim font-mono">
+                          {p.cyclesHeld} cycle{p.cyclesHeld === 1 ? "" : "s"} held
+                        </span>
+                      </motion.div>
+                    ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-6 text-foreground-muted">
+                    <BarChart3 className="w-8 h-8 mb-2 opacity-40" />
+                    <p className="text-xs font-mono">No active positions</p>
+                  </div>
+                )}
+                <p className="text-[10px] font-mono text-foreground-dim text-center pt-1">
+                  Next cycle in ~4h · trades fire when conviction + bankroll align
+                </p>
               </div>
             )}
           </CardContent>
@@ -978,26 +1017,27 @@ function Dashboard({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg overflow-hidden border border-border/50 bg-surface/50">
-              <div className="p-6 text-center space-y-4">
-                <Network className="w-10 h-10 text-foreground-muted/40 mx-auto" />
-                <div>
-                  <p className="text-sm text-foreground font-medium mb-1">
-                    Terminal replay showing the live agent in action
-                  </p>
-                  <p className="text-xs text-foreground-muted">
-                    All three API endpoints · SSH → curl /status → /trades → /conviction
-                  </p>
-                </div>
+            <div className="rounded-lg overflow-hidden border border-border/50 bg-black">
+              {/* Inline asciinema embed — click play to watch in-place.
+                  No autoplay (intrusive). Fallback link opens the player full-page. */}
+              <iframe
+                src="https://asciinema.org/a/18rHPpejG2Cl6xZE/embed?preload=1&autoplay=0&speed=1&theme=monokai"
+                title="Early, Not Wrong — live dual-chain anchoring demo"
+                className="w-full block"
+                style={{ height: 380, border: 0 }}
+                allow="autoplay; fullscreen"
+              />
+              <div className="px-4 py-3 flex items-center justify-between gap-3 border-t border-border/50 bg-surface/40">
+                <p className="text-[11px] text-foreground-muted font-mono">
+                  pm2 status · /status · /conviction.anchorResults (Mantle + Casper) · live log
+                </p>
                 <a
-                  href="https://asciinema.org/a/lMVdIaBr9G2KK9Ni"
+                  href="https://asciinema.org/a/18rHPpejG2Cl6xZE"
                   target="_blank"
                   rel="noopener noreferrer"
+                  className="text-[11px] text-foreground-muted hover:text-signal inline-flex items-center gap-1 shrink-0"
                 >
-                  <Button variant="default" size="sm" className="rounded-full">
-                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                    Watch Demo (asciinema)
-                  </Button>
+                  Open full <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
             </div>
