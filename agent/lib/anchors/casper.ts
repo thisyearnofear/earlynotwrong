@@ -16,7 +16,19 @@
  * gracefully skips this adapter — Mantle keeps anchoring.
  */
 
-import {
+// casper-js-sdk ships pure CJS. Under Node's ESM runtime, named imports from
+// a CJS module require the package to expose them at the top level — and the
+// SDK's lib.node.js doesn't (verified: agent crashed at startup with
+// "does not provide an export named 'Args'"). Default-import-then-destructure
+// is the supported Node ESM ↔ CJS interop pattern.
+import casperSdk from "casper-js-sdk";
+import type {
+  CLValue as CLValueT,
+  PrivateKey as PrivateKeyT,
+  PublicKey as PublicKeyT,
+  RpcClient as RpcClientT,
+} from "casper-js-sdk";
+const {
   Args,
   CLTypeUInt8,
   CLValue,
@@ -24,9 +36,12 @@ import {
   HttpHandler,
   KeyAlgorithm,
   PrivateKey,
-  PublicKey,
   RpcClient,
-} from "casper-js-sdk";
+} = casperSdk;
+type CLValue = CLValueT;
+type PrivateKey = PrivateKeyT;
+type PublicKey = PublicKeyT;
+type RpcClient = RpcClientT;
 import { readFileSync } from "node:fs";
 import { AGENT_CONFIG } from "../config.js";
 import { getCasperExplorerTxUrl } from "../explorers.js";
@@ -35,6 +50,25 @@ import type { AnchorAdapter, AnchorResult, ConvictionRecord } from "./types.js";
 // =============================================================================
 // Internal helpers
 // =============================================================================
+
+/**
+ * Replace common typographic characters with ASCII equivalents.
+ *
+ * Verified live: an em-dash (U+2014) in the archetype string triggered
+ * `User error: 64649` inside the contract — likely Odra's String
+ * deserializer choking on multi-byte UTF-8. We keep the archetype human-
+ * readable on Mantle by sanitizing only at the Casper boundary.
+ */
+function sanitizeAscii(s: string): string {
+  return s
+    .replace(/[–—]/g, "-")  // en/em dashes
+    .replace(/[‘’]/g, "'")  // curly single quotes
+    .replace(/[“”]/g, '"')  // curly double quotes
+    .replace(/…/g, "...")        // ellipsis
+    // Drop anything else outside printable ASCII (safer than passing bytes
+    // the contract may panic on; archetype is descriptive, not load-bearing).
+    .replace(/[^\x20-\x7E]/g, "");
+}
 
 /**
  * Build a CLList<U8> from a 32-byte 0x-hex string.
@@ -135,7 +169,7 @@ export class CasperAnchorAdapter implements AnchorAdapter {
       subject_hash: hexToBytesArg(record.subjectHash),
       thesis_hash: hexToBytesArg(record.thesisHash),
       conviction_score: CLValue.newCLUint8(Math.min(100, Math.max(0, record.convictionScore))),
-      archetype: CLValue.newCLString(record.archetype),
+      archetype: CLValue.newCLString(sanitizeAscii(record.archetype)),
       timestamp: CLValue.newCLUint64(BigInt(record.timestamp)),
     });
 

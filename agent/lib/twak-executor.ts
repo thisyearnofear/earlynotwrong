@@ -809,11 +809,33 @@ export class TwakExecutor {
   private async liveBalance(token: string): Promise<BalanceEntry | null> {
     TwakExecutor.validateSafeInput(token, "token");
 
-    const { stdout } = await this.execFileAsync("twak", [
-      "balance",
-      token,
-      "--chain=bsc",
-    ], {
+    // TWAK CLI changed: `balance` now takes named flags
+    //   --address <wallet> --chain <chain> {--coin <slip44> | --token <contract>}
+    // (was: positional `balance <symbol> --chain=bsc`)
+    const wallet = this.config.agentAddress;
+    if (!wallet) return null;
+    TwakExecutor.validateSafeInput(wallet, "wallet");
+
+    const upper = token.toUpperCase();
+    const args = ["balance", "--address", wallet, "--chain", "bsc"];
+
+    if (upper === "BNB") {
+      // SLIP44 coin id 714 = BNB (native).
+      args.push("--coin", "714");
+    } else {
+      // Need a contract address for ERC-20 reads. Use the cached resolution if
+      // available, otherwise resolve on-the-fly.
+      let contract = this.resolveCachedToken(upper);
+      if (contract === upper) {
+        const resolved = await this.resolveTokenAddress(token);
+        if (!resolved) return null;
+        contract = resolved;
+      }
+      TwakExecutor.validateSafeInput(contract, "token-contract");
+      args.push("--token", contract);
+    }
+
+    const { stdout } = await this.execFileAsync("twak", args, {
       env: this.getEnv(),
       timeout: 10000,
     });

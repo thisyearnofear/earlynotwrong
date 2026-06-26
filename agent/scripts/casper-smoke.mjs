@@ -69,7 +69,7 @@ async function main() {
     subject_hash: bytesArg(subjectHash),
     thesis_hash: bytesArg(thesisHash),
     conviction_score: CLValue.newCLUint8(85),
-    archetype: CLValue.newCLString("SMOKE TEST"),
+    archetype: CLValue.newCLString("DEEP FEAR — PRIME CONTRARIAN"),
     timestamp: CLValue.newCLUint64(BigInt(Date.now())),
   });
 

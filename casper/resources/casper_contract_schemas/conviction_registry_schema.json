@@ -1,0 +1,298 @@
+{
+  "casper_contract_schema_version": 1,
+  "toolchain": "rustc 1.94.0-nightly (8d670b93d 2025-12-31)",
+  "authors": [],
+  "repository": null,
+  "homepage": null,
+  "contract_name": "ConvictionRegistry",
+  "contract_version": "0.1.0",
+  "types": [
+    {
+      "struct": {
+        "name": "ConvictionAnchored",
+        "description": null,
+        "members": [
+          {
+            "name": "subject_hash",
+            "description": null,
+            "ty": {
+              "List": "U8"
+            }
+          },
+          {
+            "name": "anchored_by",
+            "description": null,
+            "ty": "Key"
+          },
+          {
+            "name": "thesis_hash",
+            "description": null,
+            "ty": {
+              "List": "U8"
+            }
+          },
+          {
+            "name": "conviction_score",
+            "description": null,
+            "ty": "U8"
+          },
+          {
+            "name": "archetype",
+            "description": null,
+            "ty": "String"
+          }
+        ]
+      }
+    },
+    {
+      "struct": {
+        "name": "ConvictionRecord",
+        "description": null,
+        "members": [
+          {
+            "name": "subject_hash",
+            "description": null,
+            "ty": {
+              "List": "U8"
+            }
+          },
+          {
+            "name": "anchored_by",
+            "description": null,
+            "ty": "Key"
+          },
+          {
+            "name": "thesis_hash",
+            "description": null,
+            "ty": {
+              "List": "U8"
+            }
+          },
+          {
+            "name": "conviction_score",
+            "description": null,
+            "ty": "U8"
+          },
+          {
+            "name": "archetype",
+            "description": null,
+            "ty": "String"
+          },
+          {
+            "name": "timestamp",
+            "description": null,
+            "ty": "U64"
+          },
+          {
+            "name": "verified",
+            "description": null,
+            "ty": "Bool"
+          }
+        ]
+      }
+    },
+    {
+      "struct": {
+        "name": "OperatorAuthorizationUpdated",
+        "description": null,
+        "members": [
+          {
+            "name": "operator",
+            "description": null,
+            "ty": "Key"
+          },
+          {
+            "name": "authorized",
+            "description": null,
+            "ty": "Bool"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "entry_points": [
+    {
+      "name": "set_operator_authorization",
+      "description": "Owner-only: add or revoke an operator.",
+      "is_mutable": true,
+      "arguments": [
+        {
+          "name": "operator",
+          "description": null,
+          "ty": "Key",
+          "optional": false
+        },
+        {
+          "name": "authorized",
+          "description": null,
+          "ty": "Bool",
+          "optional": false
+        }
+      ],
+      "return_ty": "Unit",
+      "is_contract_context": true,
+      "access": "public"
+    },
+    {
+      "name": "anchor_conviction",
+      "description": "Anchor a new conviction record.",
+      "is_mutable": true,
+      "arguments": [
+        {
+          "name": "subject_hash",
+          "description": null,
+          "ty": {
+            "List": "U8"
+          },
+          "optional": false
+        },
+        {
+          "name": "thesis_hash",
+          "description": null,
+          "ty": {
+            "List": "U8"
+          },
+          "optional": false
+        },
+        {
+          "name": "conviction_score",
+          "description": null,
+          "ty": "U8",
+          "optional": false
+        },
+        {
+          "name": "archetype",
+          "description": null,
+          "ty": "String",
+          "optional": false
+        },
+        {
+          "name": "timestamp",
+          "description": null,
+          "ty": "U64",
+          "optional": false
+        }
+      ],
+      "return_ty": "Unit",
+      "is_contract_context": true,
+      "access": "public"
+    },
+    {
+      "name": "get_subject_history",
+      "description": "Read the full anchored history for a subject (chronological).",
+      "is_mutable": false,
+      "arguments": [
+        {
+          "name": "subject_hash",
+          "description": null,
+          "ty": {
+            "List": "U8"
+          },
+          "optional": false
+        }
+      ],
+      "return_ty": {
+        "List": "ConvictionRecord"
+      },
+      "is_contract_context": true,
+      "access": "public"
+    },
+    {
+      "name": "get_latest_conviction",
+      "description": "Read the most recent record for a subject, if any.",
+      "is_mutable": false,
+      "arguments": [
+        {
+          "name": "subject_hash",
+          "description": null,
+          "ty": {
+            "List": "U8"
+          },
+          "optional": false
+        }
+      ],
+      "return_ty": {
+        "Option": "ConvictionRecord"
+      },
+      "is_contract_context": true,
+      "access": "public"
+    },
+    {
+      "name": "get_by_thesis",
+      "description": "Read a record by its thesis hash. Returns None if no such record exists.",
+      "is_mutable": false,
+      "arguments": [
+        {
+          "name": "thesis_hash",
+          "description": null,
+          "ty": {
+            "List": "U8"
+          },
+          "optional": false
+        }
+      ],
+      "return_ty": {
+        "Option": "ConvictionRecord"
+      },
+      "is_contract_context": true,
+      "access": "public"
+    },
+    {
+      "name": "is_operator",
+      "description": "Whether an address can anchor.",
+      "is_mutable": false,
+      "arguments": [
+        {
+          "name": "operator",
+          "description": null,
+          "ty": "Key",
+          "optional": false
+        }
+      ],
+      "return_ty": "Bool",
+      "is_contract_context": true,
+      "access": "public"
+    }
+  ],
+  "events": [
+    {
+      "name": "ConvictionAnchored",
+      "ty": "ConvictionAnchored"
+    },
+    {
+      "name": "OperatorAuthorizationUpdated",
+      "ty": "OperatorAuthorizationUpdated"
+    }
+  ],
+  "call": {
+    "wasm_file_name": "ConvictionRegistry.wasm",
+    "description": "Deployer becomes owner + first authorized operator.",
+    "arguments": [
+      {
+        "name": "odra_cfg_package_hash_key_name",
+        "description": "The arg name for the package hash key name.",
+        "ty": "String",
+        "optional": false
+      },
+      {
+        "name": "odra_cfg_allow_key_override",
+        "description": "If true and the key specified in odra_cfg_package_hash_key_name already exists, it will be overwritten.",
+        "ty": "Bool",
+        "optional": false
+      },
+      {
+        "name": "odra_cfg_is_upgradable",
+        "description": "The arg name for the contract upgradeability setting.",
+        "ty": "Bool",
+        "optional": false
+      },
+      {
+        "name": "odra_cfg_is_upgrade",
+        "description": "The arg name for telling the installer that the contract is being upgraded.",
+        "ty": "Bool",
+        "optional": false
+      }
+    ]
+  }
+}
