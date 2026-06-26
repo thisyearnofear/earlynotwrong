@@ -270,7 +270,7 @@ This is the live, shipped surface area of the repo today.
 | Jun 20 | **Thesis realignment** — conviction-native strategy replacing momentum bot |
 | Jun 20 | **TWAK integration** — self-custody execution via Trust Wallet Agent Kit |
 
-**Current state** (Jun 26): Agent running live under pm2, cycling every 4 hours, trading on BSC mainnet. **Dual-chain anchoring** to Mantle Sepolia (ERC-8004 registry) AND Casper Testnet (Odra ConvictionRegistry) on every cycle — same hash, same record, two settlement layers. Portfolio ≈ $88 across 13 tradeable positions. **130 TS tests + 4 Rust contract tests** all passing. Submitted to **BNB Hack** (closed) and **Casper Buildathon** (closes Jun 30).
+**Current state** (Jun 26): Agent running live under pm2, cycling every 4 hours, trading on BSC mainnet. **Dual-chain anchoring** to Mantle Sepolia (ERC-8004 registry) AND Casper Testnet (Odra ConvictionRegistry at package `973e3c86…7afa`) — same hash, same record, two settlement layers. End-to-end verified on Casper testnet: smoke-test anchor tx `9ef36126…0bfd4` landed with 13 effects (storage writes + event emit). Portfolio ≈ $88 across 13 tradeable positions. **130 TS tests + 4 Rust contract tests** all passing. Submitted to **BNB Hack** (closed) and **Casper Buildathon** (closes Jun 30).
 
 ---
 

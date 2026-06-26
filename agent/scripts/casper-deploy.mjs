@@ -20,21 +20,26 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import {
+// casper-js-sdk ships CJS — default import + destructure works under ESM.
+import casperSdk from "casper-js-sdk";
+const {
   Args,
+  CLValue,
   HttpHandler,
   KeyAlgorithm,
   PrivateKey,
   RpcClient,
   SessionBuilder,
-} from "casper-js-sdk";
+} = casperSdk;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RPC_URL = "https://node.testnet.cspr.cloud/rpc";
 const CHAIN_NAME = "casper-test";
-// 200 CSPR (motes = 1e-9 CSPR). Generous headroom for the install — the
-// contract is ~280KB and storage init costs scale with map size.
-const DEPLOY_PAYMENT_MOTES = 200_000_000_000;
+// 1000 CSPR (motes = 1e-9 CSPR). 200 CSPR ran out of gas for our ~280KB
+// install — Casper's WASM execution cost scales with bytecode size and
+// our contract has more storage primitives than the flipper template.
+// Testnet faucet gives 5000 CSPR so we have plenty of headroom here.
+const DEPLOY_PAYMENT_MOTES = 500_000_000_000;
 const WASM_PATH = resolve(__dirname, "..", "..", "casper", "wasm", "ConvictionRegistry.wasm");
 
 function fail(msg) {
@@ -65,10 +70,23 @@ async function main() {
   const key = PrivateKey.fromPem(readFileSync(pemPath, "utf-8"), algo);
   console.log(`  Operator: ${key.publicKey.toHex()}`);
 
-  // Our `init` reads the caller from the environment, so no constructor args
-  // are needed. Future entry points that accept install-time config (e.g. a
-  // pre-authorized operator allowlist) would be passed here.
-  const runtimeArgs = Args.fromMap({});
+  // Odra's contract installer reads four `odra_cfg_*` args during install.
+  // `cargo odra` and the Livenet backend inject these automatically; we
+  // submit via the SDK directly so we set them here. Documented at
+  // https://odra.dev/docs/backends/casper#deploying-the-contract.
+  //
+  //  - package_hash_key_name: the named-key the package hash is stored under
+  //    (also the prefix for the contract's named keys).
+  //  - allow_key_override:    overwrite an existing named key with the same name.
+  //  - is_upgradable:         keep upgrade authority for the deployer.
+  //  - is_upgrade:            false = fresh install, true = re-deploy.
+  const PACKAGE_HASH_NAME = process.env.CASPER_PACKAGE_NAME || "conviction_registry";
+  const runtimeArgs = Args.fromMap({
+    odra_cfg_package_hash_key_name: CLValue.newCLString(PACKAGE_HASH_NAME),
+    odra_cfg_allow_key_override: CLValue.newCLValueBool(false),
+    odra_cfg_is_upgradable: CLValue.newCLValueBool(true),
+    odra_cfg_is_upgrade: CLValue.newCLValueBool(false),
+  });
 
   console.log(
     `Building install transaction — payment ${DEPLOY_PAYMENT_MOTES.toLocaleString()} motes (≈ ${(DEPLOY_PAYMENT_MOTES / 1e9).toFixed(0)} CSPR)`,

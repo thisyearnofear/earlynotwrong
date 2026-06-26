@@ -191,9 +191,11 @@ export const AGENT_CONFIG = {
       // Populated post-deploy by `casper/scripts/deploy.ts`. Until then, the
       // adapter reports `isAvailable() = false` and the orchestrator skips it.
       registryHash: "",
-      // Default deploy payment amount in motes (1 CSPR = 1e9 motes). 5 CSPR
-      // is generous headroom for the anchor entry point; tune after live runs.
-      paymentMotes: "5000000000",
+      // Payment for one anchor_conviction entry-point call, in motes
+      // (1 CSPR = 1e9 motes). 50 CSPR is the verified working amount —
+      // 5 CSPR was rejected as "Invalid transaction" (below testnet floor);
+      // 50 CSPR landed on-chain with 13 effects + event emission.
+      paymentMotes: "50000000000",
     },
   },
 

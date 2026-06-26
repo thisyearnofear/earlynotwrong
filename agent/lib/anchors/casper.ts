@@ -18,6 +18,7 @@
 
 import {
   Args,
+  CLTypeUInt8,
   CLValue,
   ContractCallBuilder,
   HttpHandler,
@@ -35,17 +36,24 @@ import type { AnchorAdapter, AnchorResult, ConvictionRecord } from "./types.js";
 // Internal helpers
 // =============================================================================
 
-/** 32-byte 0x-hex → Uint8Array of length 32 (for Bytes runtime args). */
-function hexToBytes32(hex: string): Uint8Array {
-  const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
-  if (stripped.length !== 64) {
-    throw new Error(`expected 32-byte hex, got ${stripped.length / 2} bytes`);
+/**
+ * Build a CLList<U8> from a 32-byte 0x-hex string.
+ *
+ * Odra's `casper_types::bytesrepr::Bytes` parameter type maps to CLType
+ * `List(U8)`. CLByteArray(N) is a DIFFERENT CLType (`ByteArray(N)`) and won't
+ * deserialize — verified on testnet: passing CLByteArray failed with
+ * `User error: 64647`; passing this List<U8> succeeded with 13 effects.
+ */
+function hexToBytesArg(hex: string): CLValue {
+  const s = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (s.length !== 64) {
+    throw new Error(`expected 32-byte hex, got ${s.length / 2} bytes`);
   }
-  const out = new Uint8Array(32);
+  const u8s: CLValue[] = [];
   for (let i = 0; i < 32; i++) {
-    out[i] = parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
+    u8s.push(CLValue.newCLUint8(parseInt(s.slice(i * 2, i * 2 + 2), 16)));
   }
-  return out;
+  return CLValue.newCLList(CLTypeUInt8, u8s);
 }
 
 /** Build the RPC client with the cspr.cloud auth header. */
@@ -124,8 +132,8 @@ export class CasperAnchorAdapter implements AnchorAdapter {
     // doesn't recompute them — the same hash means the same thing on every
     // chain the orchestrator publishes to.
     const args = Args.fromMap({
-      subject_hash: CLValue.newCLByteArray(hexToBytes32(record.subjectHash)),
-      thesis_hash: CLValue.newCLByteArray(hexToBytes32(record.thesisHash)),
+      subject_hash: hexToBytesArg(record.subjectHash),
+      thesis_hash: hexToBytesArg(record.thesisHash),
       conviction_score: CLValue.newCLUint8(Math.min(100, Math.max(0, record.convictionScore))),
       archetype: CLValue.newCLString(record.archetype),
       timestamp: CLValue.newCLUint64(BigInt(record.timestamp)),
@@ -134,9 +142,12 @@ export class CasperAnchorAdapter implements AnchorAdapter {
     // ── Build the call ──
     let transaction;
     try {
+      // byPackageHash resolves to the latest installed contract version
+      // under the package — survives in-place upgrades. byHash would expect
+      // an entity hash that changes per upgrade.
       transaction = new ContractCallBuilder()
         .from(callerPublicKey)
-        .byHash(contractHash)
+        .byPackageHash(contractHash)
         .entryPoint("anchor_conviction")
         .runtimeArgs(args)
         .chainName(AGENT_CONFIG.casper.testnet.chainName)

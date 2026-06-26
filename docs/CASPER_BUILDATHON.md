@@ -127,7 +127,7 @@ We chose the trading-agent application because it's where the reputation matters
 |-----------|-------|-----------|
 | Trading agent | VPS under pm2, 4h cycles, BSC mainnet | https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a |
 | Mantle anchor | Anchored every cycle (ERC-8004 registry) | https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C |
-| Casper anchor | Deployed to Casper Testnet via `agent/scripts/casper-deploy.mjs` | https://testnet.cspr.live (deploy hash + contract hash in repo README) |
+| Casper anchor | Package `973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa` (named `conviction_registry_v2`) deployed and verified on Casper Testnet | https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa |
 | Dashboard | `/agent` route on the Next.js app | proxies the agent's `/conviction` endpoint |
 
 ## How to Reproduce
@@ -176,4 +176,4 @@ Total: **130 TS tests + 4 Rust tests** all passing.
 - **GitHub**: https://github.com/thisyearnofear/earlynotwrong
 - **Live agent (BSC)**: 0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a
 - **Mantle registry**: 0x81226e8894D334c790D9a972855592E6C4eeB15C
-- **Casper registry**: see the latest CASPER_REGISTRY_HASH in `agent/.env.example`
+- **Casper registry (live)**: package hash `973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa` on Casper Testnet — view at https://testnet.cspr.live

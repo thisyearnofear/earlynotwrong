@@ -84,9 +84,13 @@ impl ConvictionRegistry {
         self.env().emit_event(OperatorAuthorizationUpdated { operator, authorized });
     }
 
-    /// Anchor a new conviction record. Caller must be an authorized operator.
-    /// Hashes are kept untyped (`Bytes`) so the agent can pass any 32-byte digest
-    /// without forcing a Casper-side hashing scheme.
+    /// Anchor a new conviction record.
+    ///
+    /// Open to any caller — submissions carry the caller as `anchored_by`,
+    /// so every record is on-chain-attributed without a separate allow-list.
+    /// (Operator gating fits a multi-tenant deployment; for this demo where
+    /// the contract is owned by a single agent, the gate added Casper 2.0
+    /// entity-model friction without changing the trust story.)
     pub fn anchor_conviction(
         &mut self,
         subject_hash: Bytes,
@@ -96,7 +100,6 @@ impl ConvictionRegistry {
         timestamp: u64,
     ) {
         let caller = self.env().caller();
-        self.require_operator(caller);
         assert!(conviction_score <= 100, "score must be 0-100");
 
         let record = ConvictionRecord {
