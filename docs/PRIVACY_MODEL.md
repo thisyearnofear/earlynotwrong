@@ -1,9 +1,12 @@
 # Early, Not Wrong: Privacy Model (Aleo x ZK)
 
-> **Current state (Jun 2026)**: Selective-disclosure proofs are live against
-> `early_not_wrong_v2.aleo` on Aleo Testnet. v3 (which adds the signed-voucher
-> rebate flow) is written and tested but not yet deployed — the rebate UI is
-> hidden behind a config flag until v3 lands on-chain.
+> **Current state (Jun 2026)**: `early_not_wrong_v3.aleo` is live on Aleo
+> Testnet (deploy tx
+> [`at1z0qfk…cyzsshsmsn`](https://testnet.explorer.provable.com/transaction/at1z0qfkzagq7tt0rmktfxadah2uga569tls6rfa96n5lrn5yadcyzsshsmsn)).
+> Selective-disclosure proofs (score / archetype / efficiency) AND the
+> signed-voucher patience-rebate flow are both wired end-to-end. Reentrancy
+> warnings flagged by the v4 compiler were fixed before deploy — checks and
+> state writes precede the cross-program transfer in the `Final` block.
 
 ## Problem: The Reputation Dilemma
 In traditional Web3, building a reputation as a "skilled trader" or "high-conviction holder" requires exposing your entire wallet history. This creates a trade-off:
@@ -15,7 +18,7 @@ In traditional Web3, building a reputation as a "skilled trader" or "high-convic
 
 ### 1. Private Metric Commitment
 When a user analyzes their Solana or Base wallet, we compute their **Conviction Index (CI)**. Instead of posting these metrics to a public ledger, the user "mints" a private **Aleo Record**.
-- **Program**: [`early_not_wrong_v2.aleo`](https://testnet.explorer.provable.com/program/early_not_wrong_v2.aleo) (live on Aleo Testnet)
+- **Program**: [`early_not_wrong_v3.aleo`](https://testnet.explorer.provable.com/program/early_not_wrong_v3.aleo) (live on Aleo Testnet)
 - **Record**: `ConvictionRecord`
 - **Fields (Encrypted)**: `score`, `patience_tax`, `archetype`, `timestamp`.
 
@@ -31,7 +34,10 @@ Once the record is in the user's Shield Wallet, they can generate **Zero-Knowled
 ### 3. Private Payments & Incentives
 Aleo's native private stablecoin support creates a circular privacy economy:
 - **Premium Alpha** ✅ live: users pay `0.5 credits` via `credits.aleo` to unlock advanced behavioral metrics (Whale Signals, Exit Maps).
-- **Patience Rebates** ⏳ pending v3 deploy: traders who prove high efficiency (low patience tax) via ZK-proofs can claim a `0.2 USDCx` rebate from our treasury, incentivizing disciplined trading. The `claim_rebate` entry point + `used_vouchers` replay-protection mapping live in `early_not_wrong_v3.aleo` — the contract is written and the off-chain signed-voucher treasury is hardened (`crypto.randomBytes` nonces, per-process collision detection, per-address rate limit), but v3 hasn't been deployed yet so the rebate button is currently hidden in the UI via the `aleo.rebatesEnabled` config flag.
+- **Patience Rebates** ✅ live (v3): traders who prove high efficiency (low patience tax) via ZK-proofs claim a `0.2 USDCx` rebate from our treasury, incentivizing disciplined trading. The flow:
+   1. Client requests a voucher via `POST /api/aleo/rebate` (per-address 1h cooldown).
+   2. Server signs `nonce_field` with the treasury's Aleo private key — `crypto.randomBytes(32)` for the nonce, per-process collision detection.
+   3. Client submits `claim_rebate(recipient, amount, nonce, sig)` to v3 on-chain. The contract verifies the treasury signature, marks the nonce in `used_vouchers` (replay-safe Checks-Effects-Interactions order), and finalizes the `credits.aleo::transfer_public` to the recipient.
 
 ### 4. Private Intent & Strategy (The "Strategist" Mode)
 To address the "how to trade" paradox on a public-ledger world, we introduce **Private Thesis Commitments**:

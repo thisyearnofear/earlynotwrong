@@ -54,11 +54,18 @@ program early_not_wrong_v3.aleo {
         let f: Final = credits.aleo::transfer_public(recipient, amount);
 
         return final {
-            // Await the external transfer to complete
-            f.run();
-            // Prevent replay attacks by ensuring this voucher hash hasn't been used
+            // Checks-Effects-Interactions: do the replay check + state write
+            // BEFORE the cross-program transfer. Aleo's credits.aleo doesn't
+            // expose attacker-controlled callbacks the way EVM does, so this
+            // wasn't immediately exploitable in the original order — but the
+            // pattern is what auditors expect, and the compiler warns either
+            // way (WCEI03713000 / 03713001). Cheaper to be right by default.
             assert(!used_vouchers.contains(message));
             used_vouchers.set(message, true);
+            // Now interact: run the external transfer. If it fails the whole
+            // transition reverts and the nonce write is rolled back, so a
+            // failed transfer still lets the user retry with the same voucher.
+            f.run();
         };
     }
 

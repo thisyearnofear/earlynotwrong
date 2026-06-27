@@ -58,26 +58,22 @@ The app was simplified to focus on core conviction analysis + privacy features. 
 
 ## Active Development
 
-### Phase 5 - Aleo Privacy Integration (PARTIAL)
+### Phase 5 - Aleo Privacy Integration (COMPLETED)
 
-**Live on Aleo Testnet (v2):**
+**Live on Aleo Testnet:**
 - [x] Lean Foundation: Audit and consolidate lib modules
 - [x] Leo Smart Contract: ZK-proof logic for CI metrics
-      ([`early_not_wrong_v2.aleo`](https://testnet.explorer.provable.com/program/early_not_wrong_v2.aleo))
+      ([`early_not_wrong_v3.aleo`](https://testnet.explorer.provable.com/program/early_not_wrong_v3.aleo) —
+      deploy tx [`at1z0qfk…cyzsshsmsn`](https://testnet.explorer.provable.com/transaction/at1z0qfkzagq7tt0rmktfxadah2uga569tls6rfa96n5lrn5yadcyzsshsmsn))
 - [x] Shield Wallet: Frontend integration for private verification
 - [x] Selective Disclosure: archetype + score + efficiency proofs working
-      end-to-end against v2 (the proof dialog had a `record=""` bug that
-      blocked this previously; fixed Jun 2026)
-- [x] **Treasury Security**: signed-voucher 'Pull' model written, hardened
-      with `crypto.randomBytes` nonces + per-process collision detection +
-      per-address cooldown on the rebate route
-
-**Written but not deployed yet:**
-- [ ] Deploy `early_not_wrong_v3.aleo` to Aleo **Testnet** — v3 adds the
-      `claim_rebate` entry point + `used_vouchers` replay-protection
-      mapping. The rebate UI is hidden behind `aleo.rebatesEnabled` until
-      this deploys; everything downstream (treasury route, voucher
-      signing, voucher-claim button) is wired and ready.
+      end-to-end (the proof dialog had a `record=""` bug that blocked
+      this previously; fixed Jun 2026)
+- [x] **Treasury Security**: signed-voucher 'Pull' model deployed —
+      `crypto.randomBytes` nonces + per-process collision detection +
+      per-address cooldown on the rebate route. Reentrancy-safe ordering
+      inside the v3 `Final {}` block (checks + state writes precede the
+      cross-program `credits.aleo::transfer_public`).
 
 ### Phase 6 - Mainnet Deployment & Ecosystem Expansion (UPCOMING)
 - [ ] Deploy `early_not_wrong_v3.aleo` to Aleo Mainnet (after Testnet v3)
