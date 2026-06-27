@@ -42,6 +42,14 @@ Aleo's native private stablecoin support creates a circular privacy economy:
 
   **Why two hops instead of signing on Vercel?** Vercel decrypts env vars into the process memory of every serverless invocation, plus any post-install npm dependency in the Next.js build has access via `process.env`. By moving signing to the VPS, the key stays in one long-lived process with file-level perms. A Vercel platform compromise (or a supply-chain attack in the build) can't leak it. The HMAC channel between Vercel and the VPS uses a 30-second replay window over `${timestamp}.${body}`.
 
+  **Transport: plain HTTP for testnet, TLS for mainnet.** The Vercel→VPS hop currently rides plain HTTP (`http://144.202.117.160:31777`). For the buildathon/testnet window this is acceptable because the security boundary is the HMAC, not the transport:
+  - **Forgery**: HMAC-SHA256 over `${timestamp}.${body}` with a 32-byte shared secret. An attacker on the wire can't mint a valid signature without the secret.
+  - **Tampering**: the request body is bound to the signature, so a MITM swapping recipient/amount fails the HMAC check.
+  - **Replay**: 30s replay window at the VPS + the on-chain `used_vouchers` mapping in `early_not_wrong_v3.aleo` (each `nonce_field` is single-use). Practical replay impact is zero.
+  - **What plain HTTP leaks**: voucher metadata (recipient address, amount) is visible to any on-path observer. The treasury key, the HMAC secret, and the signing capability are not.
+
+  Mainnet migration path: Cloudflare Tunnel (no port-443 conflict with the VPS's existing Traefik proxy, gives Vercel a stable `https://` origin without managing certs). Caddy/Let's Encrypt was ruled out because Coolify's Traefik already owns 443 on this VPS.
+
 ### 4. Private Intent & Strategy (The "Strategist" Mode)
 To address the "how to trade" paradox on a public-ledger world, we introduce **Private Thesis Commitments**:
 - **Commitment**: Traders hash their trade thesis (e.g., "$ETH target 5k due to EIP-XXXX") and commit it to Aleo as a `PrivateThesis` record.
