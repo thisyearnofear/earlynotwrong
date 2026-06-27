@@ -30,6 +30,7 @@ import type {
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware, x402Stats } from "./mcp/x402.js";
 import { PRICING } from "./mcp/pricing.js";
+import { aleoSignHmacMiddleware, handleSignVoucher } from "./aleo/sign-service.js";
 
 // =============================================================================
 // Shared agent state — populated by index.ts before starting the server
@@ -129,6 +130,22 @@ app.use("*", cors());
 app.use("/mcp", x402Middleware());
 
 app.post("/mcp", (c) => handleMcpRequest(c.req.raw));
+
+// ===========================================================================
+// POST /aleo/sign-voucher — Aleo treasury voucher signing
+// ===========================================================================
+//
+// The Aleo rebate flow needs ALEO_PRIVATE_KEY to sign vouchers. We host that
+// here (one process, one key, file-level perms) rather than on Vercel (where
+// the key would land in process memory of every serverless invocation + any
+// post-install npm dependency in our bundle).
+//
+// The Vercel rebate route is now a thin HMAC-authed proxy: it builds the
+// payload, signs `${timestamp}.${body}` with the shared secret, sends here.
+// We verify, sign with the Aleo key, return { nonce, signature }.
+
+app.use("/aleo/sign-voucher", aleoSignHmacMiddleware());
+app.post("/aleo/sign-voucher", handleSignVoucher);
 
 // ===========================================================================
 // GET /reputation/stats — live MCP + x402 counters for the dashboard

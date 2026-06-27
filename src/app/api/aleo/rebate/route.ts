@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  initializeWasm
-} from "@provablehq/sdk/testnet.js";
 import { treasury } from "@/lib/aleo/treasury";
 
 /**
@@ -55,11 +52,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Initialize WASM for Aleo SDK
-    await initializeWasm();
-
-    // Generate signed voucher instead of executing on-chain transfer
-    // This follows the 'Pull' model where the platform authorizes but the user executes.
+    // Voucher signing happens on the VPS via HMAC-authed call — see
+    // src/lib/aleo/treasury.ts. Vercel no longer holds ALEO_PRIVATE_KEY.
     const voucher = await treasury.signVoucher(userAddress, Number(amount));
     lastIssuedAt.set(userAddress, Date.now());
 

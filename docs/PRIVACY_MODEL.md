@@ -35,9 +35,12 @@ Once the record is in the user's Shield Wallet, they can generate **Zero-Knowled
 Aleo's native private stablecoin support creates a circular privacy economy:
 - **Premium Alpha** ✅ live: users pay `0.5 credits` via `credits.aleo` to unlock advanced behavioral metrics (Whale Signals, Exit Maps).
 - **Patience Rebates** ✅ live (v3): traders who prove high efficiency (low patience tax) via ZK-proofs claim a `0.2 USDCx` rebate from our treasury, incentivizing disciplined trading. The flow:
-   1. Client requests a voucher via `POST /api/aleo/rebate` (per-address 1h cooldown).
-   2. Server signs `nonce_field` with the treasury's Aleo private key — `crypto.randomBytes(32)` for the nonce, per-process collision detection.
-   3. Client submits `claim_rebate(recipient, amount, nonce, sig)` to v3 on-chain. The contract verifies the treasury signature, marks the nonce in `used_vouchers` (replay-safe Checks-Effects-Interactions order), and finalizes the `credits.aleo::transfer_public` to the recipient.
+   1. Client requests a voucher via `POST /api/aleo/rebate` on Vercel (per-address 1h cooldown).
+   2. The Vercel route is a thin HMAC-authed proxy — it forwards to the VPS sign service at `POST /aleo/sign-voucher`. The Aleo treasury key never lives on Vercel.
+   3. The VPS signs `nonce_field` with the treasury's Aleo private key — `crypto.randomBytes(32)` for the nonce, per-process collision detection — and returns `{ nonce, signature }`.
+   4. Client submits `claim_rebate(recipient, amount, nonce, sig)` to v3 on-chain. The contract verifies the treasury signature, marks the nonce in `used_vouchers` (replay-safe Checks-Effects-Interactions order), and finalizes the `credits.aleo::transfer_public` to the recipient.
+
+  **Why two hops instead of signing on Vercel?** Vercel decrypts env vars into the process memory of every serverless invocation, plus any post-install npm dependency in the Next.js build has access via `process.env`. By moving signing to the VPS, the key stays in one long-lived process with file-level perms. A Vercel platform compromise (or a supply-chain attack in the build) can't leak it. The HMAC channel between Vercel and the VPS uses a 30-second replay window over `${timestamp}.${body}`.
 
 ### 4. Private Intent & Strategy (The "Strategist" Mode)
 To address the "how to trade" paradox on a public-ledger world, we introduce **Private Thesis Commitments**:
