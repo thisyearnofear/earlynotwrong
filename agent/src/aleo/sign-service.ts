@@ -106,15 +106,17 @@ async function signVoucher(req: SignVoucherRequest): Promise<SignVoucherResponse
     throw new Error("invalid recipient address");
   }
 
-  // Lazy SDK load — Aleo SDK initializes a WASM runtime; doing it at module
-  // import would block agent startup for ~2s. We pay that cost on first
-  // voucher instead, then cache.
+  // Lazy SDK load — keeps agent startup fast on cold boot. (initializeWasm is
+  // deprecated in SDK 0.10.5+ — the runtime initializes itself on first use,
+  // and calling it now just prints a warning.)
   const sdk = await import("@provablehq/sdk/testnet.js");
-  await sdk.initializeWasm();
 
   const account = new sdk.Account({ privateKey });
-  const nonceStr = generateNonce();
-  const nonceField = sdk.Field.fromString(nonceStr);
+  // Field.fromString needs the `"field"` type suffix (verified live against
+  // SDK 0.10.5 — passing a bare decimal string throws "Failed to parse
+  // string"). The original frontend treasury had this bug; never caught
+  // because the rebate flow wasn't deployed end-to-end before now.
+  const nonceField = sdk.Field.fromString(`${generateNonce()}field`);
   const signature = account.sign(nonceField.toBytesLe());
 
   return {
@@ -140,8 +142,10 @@ export async function handleSignVoucher(c: Context): Promise<Response> {
     const out = await signVoucher(body);
     return c.json(out);
   } catch (err) {
+    // Log the actual cause to stderr so /pm2 logs surfaces it. The response
+    // body is still terse for the client.
+    console.error("[aleo/sign-voucher] error:", err);
     const message = err instanceof Error ? err.message : "internal error";
-    // Treat known input errors as 400; everything else 500.
     const code = message.includes("out of range") || message.includes("invalid recipient") ? 400 : 500;
     return c.json({ error: message }, code);
   }
