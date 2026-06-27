@@ -224,46 +224,80 @@ export function AleoProofDialog({ isOpen, onClose }: AleoProofDialogProps) {
             )}
 
             <div className="grid gap-3">
-              <Button
-                variant="outline"
-                className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
-                onClick={() => handleGenerateProof("archetype")}
-                disabled={!latestRecord}
-              >
-                <div className="text-left">
-                  <div className="text-sm font-bold">Prove Archetype</div>
-                  <div className="text-[10px] text-foreground-muted">
-                    Verify you are a &quot;{latestArchetype !== null ? ARCHETYPE_LABELS[latestArchetype] ?? convictionMetrics?.archetype : convictionMetrics?.archetype}&quot;
-                  </div>
-                </div>
-                <Zap className="w-4 h-4 text-signal" />
-              </Button>
+              {(() => {
+                const noRecordHint = "Mint a Conviction Index record first.";
+                const scoreIneligible = latestRecord !== null && (latestScore ?? 0) < 80;
+                const efficiencyIneligible =
+                  latestRecord !== null && (latestPatienceTax ?? 9999) > 1000;
+                const scoreHint = !latestRecord
+                  ? noRecordHint
+                  : scoreIneligible
+                    ? `Score must be ≥ 80 to prove elite status (yours: ${latestScore ?? "—"}).`
+                    : undefined;
+                const efficiencyHint = !latestRecord
+                  ? noRecordHint
+                  : efficiencyIneligible
+                    ? `Patience tax must be ≤ $1000 (yours: $${latestPatienceTax ?? "—"}).`
+                    : undefined;
+                const archetypeHint = !latestRecord ? noRecordHint : undefined;
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30 disabled:cursor-not-allowed"
+                      onClick={() => handleGenerateProof("archetype")}
+                      disabled={!latestRecord}
+                      title={archetypeHint}
+                    >
+                      <div className="text-left">
+                        <div className="text-sm font-bold">Prove Archetype</div>
+                        <div className="text-[10px] text-foreground-muted">
+                          Verify you are a &quot;{latestArchetype !== null ? ARCHETYPE_LABELS[latestArchetype] ?? convictionMetrics?.archetype : convictionMetrics?.archetype}&quot;
+                        </div>
+                      </div>
+                      <Zap className="w-4 h-4 text-signal" />
+                    </Button>
 
-              <Button
-                variant="outline"
-                className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
-                onClick={() => handleGenerateProof("score")}
-                disabled={!latestRecord || (latestScore ?? 0) < 80}
-              >
-                <div className="text-left">
-                  <div className="text-sm font-bold">Prove Elite Status</div>
-                  <div className="text-[10px] text-foreground-muted">Verify Conviction Score {">="} 80</div>
-                </div>
-                <ShieldCheck className="w-4 h-4 text-patience" />
-              </Button>
+                    <Button
+                      variant="outline"
+                      className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30 disabled:cursor-not-allowed"
+                      onClick={() => handleGenerateProof("score")}
+                      disabled={!latestRecord || scoreIneligible}
+                      title={scoreHint}
+                    >
+                      <div className="text-left">
+                        <div className="text-sm font-bold">Prove Elite Status</div>
+                        <div className="text-[10px] text-foreground-muted">
+                          Verify Conviction Score {">="} 80
+                          {scoreIneligible && (
+                            <span className="text-impatience/80 ml-1">· yours: {latestScore ?? "—"}</span>
+                          )}
+                        </div>
+                      </div>
+                      <ShieldCheck className="w-4 h-4 text-patience" />
+                    </Button>
 
-              <Button
-                variant="outline"
-                className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30"
-                onClick={() => handleGenerateProof("efficiency")}
-                disabled={!latestRecord || (latestPatienceTax ?? 9999) > 1000}
-              >
-                <div className="text-left">
-                  <div className="text-sm font-bold">Prove Trading Efficiency</div>
-                  <div className="text-[10px] text-foreground-muted">Verify Patience Tax {"<="} $1000</div>
-                </div>
-                <Lock className="w-4 h-4 text-signal" />
-              </Button>
+                    <Button
+                      variant="outline"
+                      className="flex items-center justify-between h-auto p-4 border-border/50 hover:border-signal/50 bg-surface/30 disabled:cursor-not-allowed"
+                      onClick={() => handleGenerateProof("efficiency")}
+                      disabled={!latestRecord || efficiencyIneligible}
+                      title={efficiencyHint}
+                    >
+                      <div className="text-left">
+                        <div className="text-sm font-bold">Prove Trading Efficiency</div>
+                        <div className="text-[10px] text-foreground-muted">
+                          Verify Patience Tax {"<="} $1000
+                          {efficiencyIneligible && (
+                            <span className="text-impatience/80 ml-1">· yours: ${latestPatienceTax ?? "—"}</span>
+                          )}
+                        </div>
+                      </div>
+                      <Lock className="w-4 h-4 text-signal" />
+                    </Button>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

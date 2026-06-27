@@ -332,9 +332,9 @@ export function useAleoConviction() {
         network: APP_CONFIG.chains.aleo.network
       };
 
-      await executeWithMonitoring(txOptions);
+      const txId = await executeWithMonitoring(txOptions);
       showToast("Rebate Claimed Successfully!", "success");
-      return true;
+      return txId;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Rebate failed";
       console.error("Aleo rebate claim failed:", error);

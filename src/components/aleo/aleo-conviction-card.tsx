@@ -21,7 +21,7 @@ export function AleoConvictionCard() {
   const { convictionMetrics, isAleoPremium, setWalletModalOpen } = useAppStore();
   const [isSuccess, setIsSuccess] = useState(false);
   const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
-  const [isRebateClaimed, setIsRebateClaimed] = useState(false);
+  const [rebateTxId, setRebateTxId] = useState<string | null>(null);
 
   if (!convictionMetrics) return null;
 
@@ -44,12 +44,19 @@ export function AleoConvictionCard() {
 
   const handleClaimRebate = async () => {
     try {
-      await claimPatienceRebate();
-      setIsRebateClaimed(true);
+      const txId = await claimPatienceRebate();
+      if (typeof txId === "string") setRebateTxId(txId);
     } catch (err) {
       console.error(err);
     }
   };
+
+  const rebateIneligible = convictionMetrics.patienceTax > 1000;
+  const rebateDisabledReason = rebateIneligible
+    ? `Patience tax must be ≤ $1000 to claim (yours: $${Math.round(convictionMetrics.patienceTax)})`
+    : isMinting
+      ? "Transaction in flight"
+      : undefined;
 
   return (
     <Card className="glass-panel border-signal/30 bg-signal/5 flex flex-col justify-between h-full relative overflow-hidden group">
@@ -88,6 +95,18 @@ export function AleoConvictionCard() {
           <ExternalLink className="w-2.5 h-2.5" />
           {APP_CONFIG.chains.aleo.programId} on Aleo Testnet
         </a>
+        <p className="text-[9px] font-mono text-foreground-muted/70 leading-snug mt-1.5">
+          Treasury key never touches Vercel — vouchers signed on a separate VPS over an
+          HMAC channel, nonces single-use on-chain.{" "}
+          <a
+            href="https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/PRIVACY_MODEL.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-signal/70 hover:text-signal underline-offset-2 hover:underline"
+          >
+            How it works
+          </a>
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -198,23 +217,31 @@ export function AleoConvictionCard() {
             </Button>
           ) : (
             <div className="p-2.5 rounded-lg bg-signal/5 border border-signal/20 space-y-1.5">
-              {/* Rebate row hidden when the on-chain program doesn't expose
-                  claim_rebate (v2 doesn't; v3 does, but v3 isn't deployed yet).
-                  Showing a button that calls a missing entry point produces
-                  silent wallet errors — better to hide it cleanly. */}
+              {/* Rebate row hidden by config when the on-chain program lacks a
+                  claim_rebate entry point (v2 didn't; v3 does). */}
               {APP_CONFIG.chains.aleo.rebatesEnabled && (
                 <div className="flex justify-between items-center text-[9px] font-mono">
                   <span className="text-foreground-muted">PATIENCE REBATE:</span>
-                  {!isRebateClaimed ? (
+                  {!rebateTxId ? (
                     <button
                       onClick={handleClaimRebate}
-                      disabled={isMinting || convictionMetrics.patienceTax > 1000}
-                      className="text-patience hover:underline cursor-pointer disabled:opacity-50"
+                      disabled={isMinting || rebateIneligible}
+                      title={rebateDisabledReason}
+                      className="text-patience hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      CLAIM (0.2 USDCx)
+                      CLAIM (0.2 CREDITS)
                     </button>
+                  ) : rebateTxId.startsWith("shield_") ? (
+                    <span className="text-patience/70 italic">PROPAGATING…</span>
                   ) : (
-                    <span className="text-patience/50 italic">CLAIMED</span>
+                    <a
+                      href={`${APP_CONFIG.chains.aleo.explorerUrl}/transaction/${rebateTxId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-patience/80 hover:text-patience underline-offset-2 hover:underline inline-flex items-center gap-1"
+                    >
+                      CLAIMED <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
                   )}
                 </div>
               )}

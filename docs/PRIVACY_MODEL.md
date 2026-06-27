@@ -34,7 +34,7 @@ Once the record is in the user's Shield Wallet, they can generate **Zero-Knowled
 ### 3. Private Payments & Incentives
 Aleo's native private stablecoin support creates a circular privacy economy:
 - **Premium Alpha** ✅ live: users pay `0.5 credits` via `credits.aleo` to unlock advanced behavioral metrics (Whale Signals, Exit Maps).
-- **Patience Rebates** ✅ live (v3): traders who prove high efficiency (low patience tax) via ZK-proofs claim a `0.2 USDCx` rebate from our treasury, incentivizing disciplined trading. The flow:
+- **Patience Rebates** ✅ live (v3): traders who prove high efficiency (low patience tax) via ZK-proofs claim a `0.2 credits` rebate from our treasury (`credits.aleo::transfer_public`), incentivizing disciplined trading. USDCx is the long-term target for mainnet once Aleo's private stablecoin program ships; testnet ships with native credits because the cross-program call is already wired. The flow:
    1. Client requests a voucher via `POST /api/aleo/rebate` on Vercel (per-address 1h cooldown).
    2. The Vercel route is a thin HMAC-authed proxy — it forwards to the VPS sign service at `POST /aleo/sign-voucher`. The Aleo treasury key never lives on Vercel.
    3. The VPS signs `nonce_field` with the treasury's Aleo private key — `crypto.randomBytes(32)` for the nonce, per-process collision detection — and returns `{ nonce, signature }`.
