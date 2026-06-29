@@ -274,7 +274,8 @@ After anchoring (step 8/8):
 |---------|--------|------|
 | Console | `[8b/8] Summary: ...` | Every cycle |
 | `/conviction` endpoint | `{ narrative: { summary, headline, ... } }` | HTTP GET |
-| Future: Telegram | Narrative in cycle summary | Planned |
+| Dashboard | Narrative card with headline + summary + source attribution | Every cycle (live) |
+| Telegram | Headline + news/macro counts in cycle summary | Every cycle (live) |
 
 ---
 

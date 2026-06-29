@@ -1598,6 +1598,13 @@ async function runCycle(): Promise<void> {
           holderCount: s.holderCount,
           holderGrowthPercent: s.holderGrowthPercent,
         })),
+      narrative: state.narrative ? {
+        headline: state.narrative.headline,
+        summary: state.narrative.summary,
+        newsCount: state.narrative.newsCount,
+        macroEventCount: state.narrative.macroEventCount,
+      } : null,
+      usedSodex: state.executedTrades.some(t => t.txHash?.startsWith("0xSODEX_")),
     }).catch(() => {});
   } catch (error) {
     state.status = "error";
@@ -1791,6 +1798,7 @@ async function main(): Promise<void> {
   sendStartup({
     twakMode: health.twakMode,
     cmcConnected: health.cmcConnected,
+    sosovalueConnected: health.sosovalueConnected,
     walletAddress: health.walletAddress,
     isTestnet: health.isTestnet,
     topK: AGENT_CONFIG.trading.topK,

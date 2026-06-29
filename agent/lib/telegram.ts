@@ -87,6 +87,15 @@ export async function sendCycleSummary(params: {
     holderCount: number | null;
     holderGrowthPercent: number | null;
   }>;
+  /** Market narrative generated from SoSoValue feeds + conviction data. */
+  narrative?: {
+    headline: string | null;
+    summary: string;
+    newsCount: number;
+    macroEventCount: number;
+  } | null;
+  /** Whether any trades used SoDEX execution this cycle. */
+  usedSodex?: boolean;
 }): Promise<void> {
   if (!isConfigured()) return;
 
@@ -118,18 +127,36 @@ export async function sendCycleSummary(params: {
     if (params.tradesFailed > 0) tradeParts.push(`❌${params.tradesFailed}`);
     let tradeLine = `Trades: ${tradeParts.join(" ")}`;
     if (params.totalVolumeUsd > 0) tradeLine += ` · vol $${params.totalVolumeUsd.toFixed(0)}`;
+    if (params.usedSodex) tradeLine += ` · SoDEX testnet`;
     if (gas > 0) tradeLine += ` · gas ~$${gas.toFixed(2)}`;
     msg1.push(tradeLine);
 
     for (const trade of params.executedTrades) {
       const icon = trade.success ? "✅" : "❌";
       const out = trade.amountOut ? `$${trade.amountOut}` : trade.success ? "✓" : "✗";
-      let line = `${icon} ${trade.tokenIn}→${trade.tokenOut} $${trade.amountIn}→${out}`;
+      const venue = trade.txHash?.startsWith("0xSODEX_") ? "SoDEX" : "TWAK";
+      let line = `${icon} [${venue}] ${trade.tokenIn}→${trade.tokenOut} $${trade.amountIn}→${out}`;
       if (trade.txHash) {
-        line += ` <a href="https://bscscan.com/tx/${trade.txHash}">tx</a>`;
+        const explorerUrl = trade.txHash.startsWith("0xSODEX_")
+          ? `https://testnet.sodex.dev/order/${trade.txHash.slice(8)}`
+          : `https://bscscan.com/tx/${trade.txHash}`;
+        line += ` <a href="${explorerUrl}">tx</a>`;
       }
       msg1.push(line);
     }
+  }
+
+  // ── Market Narrative (SoSoValue feeds + conviction) ──
+  if (params.narrative) {
+    msg1.push(``);
+    const n = params.narrative;
+    if (n.headline) {
+      msg1.push(`📰 ${escapeHtml(n.headline)}`);
+    }
+    const meta = [];
+    if (n.newsCount > 0) meta.push(`${n.newsCount} news items`);
+    if (n.macroEventCount > 0) meta.push(`${n.macroEventCount} macro events`);
+    if (meta.length > 0) msg1.push(`  ${meta.join(" · ")}`);
   }
 
   await sendMessage(msg1.join("\n"));
@@ -171,6 +198,7 @@ export async function sendCycleSummary(params: {
 export async function sendStartup(params: {
   twakMode: string;
   cmcConnected: boolean;
+  sosovalueConnected: boolean;
   walletAddress: string | null;
   isTestnet: boolean;
   topK: number;
@@ -184,6 +212,7 @@ export async function sendStartup(params: {
     ``,
     `TWAK: ${params.twakMode}`,
     `CMC: ${params.cmcConnected ? "✅ connected" : "❌ unavailable"}`,
+    `SoSoValue: ${params.sosovalueConnected ? "✅ connected" : "❌ offline — CMC fallback"}`,
     `Network: ${params.isTestnet ? "BSC Testnet 🧪" : "BSC Mainnet 🚀"}`,
     ``,
     `Top-K: ${params.topK}`,

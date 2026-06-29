@@ -120,6 +120,13 @@ interface ConvictionData {
     drawdownPercent: number;
     positions: Array<{ symbol: string; valueUsd: number }>;
   };
+  narrative: {
+    summary: string;
+    headline: string | null;
+    newsCount: number;
+    macroEventCount: number;
+    generatedAt: string;
+  } | null;
   anchoredHash: string;
   anchoredUrl: string;
   anchoring: { hash: string; mode: string } | null;
@@ -140,13 +147,13 @@ const REFRESH_INTERVAL = 30_000; // 30s
 
 const PIPELINE_STEPS = [
   { label: "Portfolio", icon: Globe, desc: "TWAK balance", color: "text-blue-400", bgGlow: "bg-blue-500/5" },
-  { label: "CMC Data", icon: Globe, desc: "FGI · Funding · Prices", color: "text-blue-400", bgGlow: "bg-blue-500/5" },
+  { label: "Data Sources", icon: Globe, desc: "SoSoValue · CMC · FGI", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
   { label: "Regime", icon: Signal, desc: "Contrarian 0–100", color: "text-signal", bgGlow: "bg-signal/5" },
   { label: "Positions", icon: Shield, desc: "Cap loss · Trail run", color: "text-emerald-400", bgGlow: "bg-emerald-500/5" },
   { label: "Entries", icon: TrendingUp, desc: "Weakness + quality", color: "text-amber-400", bgGlow: "bg-amber-500/5" },
   { label: "Guardrails", icon: Shield, desc: "Risk limits", color: "text-impatience", bgGlow: "bg-red-500/5" },
-  { label: "TWAK", icon: Zap, desc: "Self-custody swap", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
-  { label: "Anchor + Serve", icon: FileText, desc: "Casper MCP · Mantle", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
+  { label: "Execution", icon: Zap, desc: "SoDEX · TWAK", color: "text-purple-400", bgGlow: "bg-purple-500/5" },
+  { label: "Anchor + Narrate", icon: FileText, desc: "Mantle · Casper · Feeds", color: "text-cyan-400", bgGlow: "bg-cyan-500/5" },
 ];
 
 const HERO_STEPS = [
@@ -1035,6 +1042,41 @@ function Dashboard({
           </CardContent>
         </Card>
       </div>
+
+      {/* Row 4b: Market Narrative — SoSoValue feeds + conviction commentary */}
+      {conviction?.narrative && (
+        <Card className="bg-surface/30 border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-signal" />
+              Market Narrative
+              {conviction.narrative.newsCount > 0 && (
+                <span className="ml-auto text-foreground-dim text-[10px] font-mono">
+                  {conviction.narrative.newsCount} news · {conviction.narrative.macroEventCount} macro events
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {conviction.narrative.headline && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-surface/40 border border-border/40 mb-3">
+                <FileText className="w-4 h-4 text-signal shrink-0 mt-0.5" />
+                <p className="text-xs font-mono text-foreground-muted leading-relaxed">
+                  “{conviction.narrative.headline}”
+                </p>
+              </div>
+            )}
+            <p className="text-sm text-foreground leading-relaxed">
+              {conviction.narrative.summary}
+            </p>
+            <div className="flex items-center gap-3 mt-3 text-[10px] font-mono text-foreground-dim">
+              <span>Source: SoSoValue feeds + conviction data</span>
+              <span>·</span>
+              <span>Generated {new Date(conviction.narrative.generatedAt).toLocaleTimeString()}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Row 5: Demo Video + Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
