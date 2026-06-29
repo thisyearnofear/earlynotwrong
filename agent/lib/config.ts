@@ -199,6 +199,34 @@ export const AGENT_CONFIG = {
     },
   },
 
+  // SoDEX — on-chain orderbook on ValueChain (Buildathon integration bonus)
+  // Integrated alongside TWAK: SoDEX testnet preferred for new entries,
+  // TWAK fallback for tokens/pairs not on SoDEX or when SoDEX is unavailable.
+  // Testnet requires no access form — works directly.
+  sodex: {
+    testnet: {
+      baseUrl: "https://testnet-gw.sodex.dev/api/v1/spot",
+      chainId: 138565,
+    },
+    // Default API key name used in X-API-Key header
+    defaultApiKeyName: "enw-agent",
+  },
+
+  // SoSoValue API — on-chain financial data provider (Buildathon integration)
+  // Fetches market snapshots, klines, SSI index data, news feeds, and macro
+  // events. Used alongside CMC (composite: SoSoValue token prices preferred,
+  // CMC fills regime data gaps).
+  sosovalue: {
+    baseUrl: "https://openapi.sosovalue.com/openapi/v1",
+    // Toggle which modules are active
+    modules: {
+      marketData: true,    // Currency market snapshots (token pricing)
+      indices: true,       // SSI index data (regime + quality signals)
+      feeds: true,         // News feeds (AI market narrative, Phase 3)
+      macro: true,         // Macroeconomic events (regime context, Phase 3)
+    },
+  },
+
   // Anchoring orchestration — which chains we publish conviction records to.
   // Add an entry here + an adapter under `lib/anchors/` to extend to a new chain.
   anchoring: {

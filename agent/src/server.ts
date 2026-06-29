@@ -27,6 +27,7 @@ import type {
   MarketRegime,
   PositionVerdict,
 } from "../lib/conviction-signal.js";
+import type { MarketNarrative } from "../lib/market-narrative.js";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware, x402Stats } from "./mcp/x402.js";
 import { PRICING } from "./mcp/pricing.js";
@@ -60,6 +61,8 @@ export interface AgentServerState {
   // Conviction-native fields — the soul of the agent, surfaced on the dashboard.
   marketRegime: MarketRegime | null;
   convictionSignals: ConvictionSignal[];
+  /** Market narrative generated this cycle from SoSoValue feeds + conviction data. */
+  narrative: MarketNarrative | null;
   heldPositions: HeldPosition[];
   positionVerdicts: PositionVerdict[];
   /**
@@ -86,6 +89,7 @@ let agentState: AgentServerState = {
   anchorResults: [],
   marketRegime: null,
   convictionSignals: [],
+  narrative: null,
   heldPositions: [],
   positionVerdicts: [],
   portfolio: null,
@@ -304,6 +308,9 @@ app.get("/conviction", async (c) => {
         valueUsd: p.valueUsd,
       })),
     },
+
+    // ── Market narrative (SoSoValue feeds + conviction, Phase 3) ────────
+    narrative: agentState.narrative,
 
     // ── On-chain conviction record ─────────────────────────────────────────
     // Legacy single-anchor fields kept for backward-compatible clients.

@@ -93,7 +93,7 @@ export interface RiskGuardrails {
 }
 
 export interface MarketDataProvider {
-  name: "cmc" | "helius" | "birdeye";
+  name: "cmc" | "helius" | "birdeye" | "sosovalue";
   fetchTokenPrice(address: string): Promise<number>;
   fetchFearGreedIndex(): Promise<number>;
   fetchFundingRates(): Promise<Record<string, number>>;

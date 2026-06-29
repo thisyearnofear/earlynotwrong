@@ -28,6 +28,8 @@ import "./lib/env-loader.js";
 
 import { AGENT_CONFIG } from "./lib/config.js";
 import { cmcClient } from "./lib/cmc-client.js";
+import { sosovalueClient } from "./lib/sosovalue-client.js";
+import { sodexClient } from "./lib/sodex-client.js";
 import { twakExecutor, TwakExecutor } from "./lib/twak-executor.js";
 import {
   OnchainPortfolio,
@@ -72,6 +74,8 @@ import {
   recordHolderCount,
 } from "./lib/bscscan-client.js";
 import { computeHolderMetric } from "./lib/holder-growth.js";
+import { generateNarrative } from "./lib/market-narrative.js";
+import type { MarketNarrative } from "./lib/market-narrative.js";
 
 // Gas cost estimate per BSC swap (~$1.50 at current gas prices).
 // Used for pre-flight balance checks and PnL tracking.
@@ -260,6 +264,9 @@ const state = {
     blockNumber?: number;
     gasUsed?: string;
   } | null,
+  /** Market narrative generated this cycle (SoSoValue feeds + conviction). */
+  narrative: null as MarketNarrative | null,
+
   /** Per-adapter anchor results for the most recent cycle. The orchestrator
    *  populates one entry per enabled adapter (Mantle, Casper, …). The
    *  legacy `anchoring` field above mirrors the first successful adapter so
@@ -281,18 +288,21 @@ const concentrationRejectionCount = new Map<string, number>();
 async function startupCheck(): Promise<{
   twakMode: string;
   cmcConnected: boolean;
+  sosovalueConnected: boolean;
   walletAddress: string | null;
   isTestnet: boolean;
 }> {
   console.log("\n── Startup Health Check ──");
 
-  const [twakHealth, cmcHealth] = await Promise.all([
+  const [twakHealth, cmcHealth, ssvHealth] = await Promise.all([
     twakExecutor.healthCheck(),
     cmcClient.healthCheck(),
+    sosovalueClient.healthCheck(),
   ]);
 
-  console.log(`  TWAK:      ${twakHealth.available ? "✓" : "○"} (${twakHealth.mode})`);
-  console.log(`  CMC MCP:   ${cmcHealth ? "✓" : "○"} (${cmcHealth ? "connected" : "unavailable — using cached/stub data"})`);
+  console.log(`  TWAK:        ${twakHealth.available ? "✓" : "○"} (${twakHealth.mode})`);
+  console.log(`  CMC REST:    ${cmcHealth ? "✓" : "○"} (${cmcHealth ? "connected" : "unavailable — using cached/stub data"})`);
+  console.log(`  SoSoValue:   ${ssvHealth ? "✓" : "○"} (${ssvHealth ? "connected" : "offline — CMC fallback only"})`);
 
   if (twakHealth.agentAddress) {
     console.log(`  Wallet:    ${twakHealth.agentAddress.slice(0, 10)}...${twakHealth.agentAddress.slice(-4)}`);
@@ -306,6 +316,7 @@ async function startupCheck(): Promise<{
   return {
     twakMode: twakHealth.mode,
     cmcConnected: !!cmcHealth,
+    sosovalueConnected: !!ssvHealth,
     walletAddress: twakHealth.agentAddress ?? null,
     isTestnet: twakHealth.testnet,
   };
@@ -316,9 +327,51 @@ async function startupCheck(): Promise<{
 // =============================================================================
 
 async function fetchMarketData(): Promise<void> {
-  console.log("\n[1/6] Fetching market data from CMC Agent Hub...");
+  console.log("\n[1/6] Fetching market data (SoSoValue + CMC composite)...");
 
-  const marketData = await cmcClient.fetchMarketData();
+  // ── Composite data provider ──
+  // Try SoSoValue first for token prices (fresher data at 30s intervals),
+  // fall back to CMC for tokens not covered by SoSoValue.
+  // CMC always provides regime data (Fear & Greed, funding rates) which
+  // SoSoValue doesn't offer.
+  const [ssvData, cmcData] = await Promise.all([
+    sosovalueClient.fetchMarketData().catch(() => null),
+    cmcClient.fetchMarketData().catch(() => null),
+  ]);
+
+  // Merge: SoSoValue token prices preferred, CMC fills missing tokens
+  let tokenPrices = ssvData?.tokenPrices ?? [];
+  if (cmcData?.tokenPrices && ssvData) {
+    const ssvSymbols = new Set(tokenPrices.map((t) => t.symbol.toUpperCase()));
+    for (const cmcToken of cmcData.tokenPrices) {
+      if (!ssvSymbols.has(cmcToken.symbol.toUpperCase())) {
+        tokenPrices.push(cmcToken);
+      }
+    }
+  } else if (cmcData?.tokenPrices && !ssvData) {
+    tokenPrices = cmcData.tokenPrices;
+  }
+
+  const marketData = {
+    globalMetrics: cmcData?.globalMetrics ?? null,
+    derivatives: cmcData?.derivatives ?? null,
+    tokenPrices,
+    tokenHolders: cmcData?.tokenHolders ?? [],
+    trendingNarratives: cmcData?.trendingNarratives ?? [],
+  };
+
+  // ── Logging ──
+  const ssvCount = ssvData?.tokenPrices.length ?? 0;
+  const cmcCount = cmcData?.tokenPrices.length ?? 0;
+  const mergedCount = tokenPrices.length;
+  if (ssvCount > 0) {
+    console.log(`  Source: SoSoValue (${ssvCount} tokens) + CMC (${cmcCount} tokens) → ${mergedCount} merged`);
+  } else {
+    console.log(`  Source: CMC Agent Hub (${mergedCount} tokens)`);
+    if (ssvData === null) {
+      console.log(`  (SoSoValue unavailable — check SOSOVALUE_API_KEY)`);
+    }
+  }
 
   if (marketData.globalMetrics) {
     const fgi = marketData.globalMetrics.fearGreedIndex;
@@ -355,8 +408,8 @@ async function fetchMarketData(): Promise<void> {
 
   state.marketData = marketData;
 
-  // Seed the resolver's reference prices so scam lookalikes (fake INJ, fake
-  // ETH at $0.00001) get rejected when off the legit CMC price by 2x or more.
+  // Seed the resolver's reference prices from the composite data.
+  // Reference prices come from SoSoValue (preferred) or CMC (fallback).
   TwakExecutor.setReferencePrices(
     marketData.tokenPrices
       .filter((t) => typeof t.price === "number" && t.price > 0)
@@ -1019,10 +1072,37 @@ async function checkTradeGuardrails(
 // Main Loop - Step 7: Execute Entries
 // =============================================================================
 
+/**
+ * Convert a SoDEX OrderResult to a SwapResult for compatibility with the
+ * existing state tracking, Telegram summaries, and guardrail hooks.
+ */
+function sodexToSwapResult(
+  order: import("./lib/sodex-client.js").OrderResult,
+  tokenIn: string,
+  tokenOut: string,
+  amountInUsd: string,
+): SwapResult {
+  return {
+    success: order.success,
+    txHash: order.orderID ? `0xSODEX_${order.orderID}` : undefined,
+    tokenIn,
+    tokenOut,
+    amountIn: amountInUsd,
+    amountOut: order.filledQuantity || order.cummulativeQuoteQty || "0",
+    error: order.error,
+    timestamp: order.timestamp,
+  };
+}
+
 async function executeTrades(
   proposals: Array<{ tokenSymbol: string; convictionScore: number; amountInUsd: number }>
 ): Promise<SwapResult[]> {
-  console.log(`\n[7/8] Executing ${proposals.length} entries via TWAK...`);
+  // ── Execution venue preference ──
+  // SoDEX testnet (orderbook, ValueChain) preferred when configured.
+  // TWAK (AMM swap, BSC) is the universal fallback.
+  const sodexAvailable = sodexClient.isAvailable();
+  const venue = sodexAvailable ? "SoDEX testnet → TWAK fallback" : "TWAK";
+  console.log(`\n[7/8] Executing ${proposals.length} entries via ${venue}...`);
 
   // Pre-flight: check BNB balance before attempting any trades.
   // Each trade needs: trade amount (in BNB) + gas. Don't waste gas
@@ -1082,62 +1162,82 @@ async function executeTrades(
   const results: SwapResult[] = [];
 
   for (const proposal of proposals) {
-    console.log(`  → Swapping $${proposal.amountInUsd} BNB → ${proposal.tokenSymbol} (conviction: ${proposal.convictionScore})`);
+    const amountInStr = proposal.amountInUsd.toString();
+    console.log(`  → Buying $${amountInStr} ${proposal.tokenSymbol} (conviction: ${proposal.convictionScore})`);
 
-    // Retry loop: up to 3 total attempts (1 initial + 2 retries) on network errors
-    const MAX_RETRIES = 2;
     let result: SwapResult | null = null;
-    let lastError: unknown;
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      if (attempt > 0) {
-        console.log(`    Retry #${attempt}/${MAX_RETRIES}...`);
-        await new Promise((r) => setTimeout(r, attempt * 1000));
-      }
-
+    // ── Try SoDEX first (orderbook) when available ──
+    if (sodexAvailable) {
       try {
-        const swapResult = await twakExecutor.executeSwap({
-          tokenIn: "BNB",
-          tokenOut: proposal.tokenSymbol,
-          amountIn: proposal.amountInUsd.toString(),
-          slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
-        });
+        const symbol = `${proposal.tokenSymbol}USDC`;
+        console.log(`    [SoDEX] Market buy ${symbol} @ $${amountInStr}`);
+        const orderResult = await sodexClient.placeMarketBuy(symbol, amountInStr);
 
-        result = swapResult;
-        break;
+        if (orderResult.success) {
+          result = sodexToSwapResult(orderResult, "USDC", proposal.tokenSymbol, amountInStr);
+          console.log(`    ✓ [SoDEX] Order filled — ID: ${orderResult.orderID ?? "?"}, avg: ${orderResult.avgPrice ?? "?"}`);
+        } else {
+          console.log(`    ○ [SoDEX] Failed: ${orderResult.error} — falling back to TWAK`);
+        }
       } catch (err) {
-        lastError = err;
-        const message = err instanceof Error ? err.message : String(err);
-        console.log(`    ✗ Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${message}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`    ○ [SoDEX] Error: ${msg} — falling back to TWAK`);
       }
     }
 
-    // If all retries threw, synthesize a failure result
+    // ── Fall back to TWAK (AMM swap on BSC) ──
     if (!result) {
-      const message = lastError instanceof Error ? lastError.message : String(lastError);
-      console.log(`    ✗ All ${MAX_RETRIES + 1} attempts failed. Last error: ${message}`);
-      result = {
-        success: false,
-        error: `All retries exhausted: ${message}`,
-        tokenIn: "BNB",
-        tokenOut: proposal.tokenSymbol,
-        amountIn: proposal.amountInUsd.toString(),
-        amountOut: "0",
-        timestamp: Date.now(),
-      };
+      console.log(`    [TWAK] Swapping BNB → ${proposal.tokenSymbol}`);
+
+      // Retry loop: up to 3 total attempts
+      const MAX_RETRIES = 2;
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          console.log(`    Retry #${attempt}/${MAX_RETRIES}...`);
+          await new Promise((r) => setTimeout(r, attempt * 1000));
+        }
+
+        try {
+          const swapResult = await twakExecutor.executeSwap({
+            tokenIn: "BNB",
+            tokenOut: proposal.tokenSymbol,
+            amountIn: amountInStr,
+            slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
+          });
+
+          result = swapResult;
+          break;
+        } catch (err) {
+          lastError = err;
+          const message = err instanceof Error ? err.message : String(err);
+          console.log(`    ✗ Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${message}`);
+        }
+      }
+
+      if (!result) {
+        const message = lastError instanceof Error ? lastError.message : String(lastError);
+        console.log(`    ✗ All ${MAX_RETRIES + 1} TWAK attempts failed. Last error: ${message}`);
+        result = {
+          success: false,
+          error: `All retries exhausted: ${message}`,
+          tokenIn: sodexAvailable ? "SoDEX" : "BNB",
+          tokenOut: proposal.tokenSymbol,
+          amountIn: amountInStr,
+          amountOut: "0",
+          timestamp: Date.now(),
+        };
+      }
     }
 
     if (result.success) {
-      console.log(`    ✓ Trade executed${result.txHash ? ` — ${getBscExplorerTxUrl(result.txHash)}` : ""}`);
+      console.log(`    ✓ Trade executed${result.txHash ? ` — ${result.txHash.slice(0, 18)}...` : ""}`);
       guardrails.recordTrade(proposal.amountInUsd, true);
-      // NOTE: peak value is updated at the END of runCycle, not per-trade.
-      // Updating mid-trade creates false drawdowns — converting BNB to a
-      // new position shouldn't register as a 25%+ loss.
-
-      // Track gas cost (~$1.50 per BSC swap at current gas prices)
       state.totalGasSpentUsd += GAS_BUFFER_USD;
 
-      // Open a conviction position so we can hold it through drawdown next cycle.
+      // Open a conviction position
       const entryPriceUsd = priceMap.get(proposal.tokenSymbol.toUpperCase()) ?? 0;
       if (entryPriceUsd > 0) {
         state.heldPositions.push(
@@ -1264,6 +1364,61 @@ async function anchorToMantle(): Promise<void> {
 }
 
 // =============================================================================
+// Main Loop - Step 8b: Generate Market Narrative
+// =============================================================================
+
+/**
+ * Generate a natural-language market narrative from SoSoValue news feeds,
+ * macroeconomic events, and the agent's own conviction data.
+ *
+ * Non-blocking: if SoSoValue is unreachable or times out, the narrative
+ * stays null and the cycle continues without interruption.
+ */
+async function generateAndStoreNarrative(): Promise<void> {
+  const topSignals = [...state.convictionSignals]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((s) => {
+      // Find the 7d price change from market data for the narrative
+      const quote = state.marketData?.tokenPrices?.find(
+        (t) => t.symbol.toUpperCase() === s.symbol.toUpperCase()
+      );
+      return {
+        symbol: s.symbol,
+        score: s.score,
+        rationale: s.rationale,
+        percentChange7d: quote?.percentChange7d ?? 0,
+      };
+    });
+
+  console.log("\n[8b/8] Generating market narrative from SoSoValue feeds...");
+
+  try {
+    const narrative = await generateNarrative({
+      regime: state.marketRegime,
+      topSignals,
+      portfolioValueUsd: state.portfolio?.totalValueUsd ?? 0,
+      positionsHeld: state.heldPositions.length,
+      cycle: state.cycle,
+    });
+
+    state.narrative = narrative;
+
+    if (narrative.headline) {
+      console.log(`  Headline: ${narrative.headline}`);
+    }
+    if (narrative.newsCount > 0 || narrative.macroEventCount > 0) {
+      console.log(`  ${narrative.newsCount} news items · ${narrative.macroEventCount} macro events`);
+    }
+    console.log(`  Summary: ${narrative.summary}`);
+  } catch (err) {
+    // Non-fatal — narrative is a nice-to-have
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  [narrative] Generation skipped: ${msg}`);
+  }
+}
+
+// =============================================================================
 // Main Loop - Cycle Summary
 // =============================================================================
 
@@ -1327,6 +1482,7 @@ async function runCycle(): Promise<void> {
   state.lastAnchoredHash = null;
   state.anchoring = null;
   state.anchorResults = [];
+  state.narrative = null;
 
   console.log(`\n═══════════════════════════════════════`);
   console.log(`  CYCLE #${state.cycle} — ${new Date().toISOString()}`);
@@ -1378,6 +1534,9 @@ async function runCycle(): Promise<void> {
 
     // Step 8: Anchor conviction record to Mantle
     await anchorToMantle();
+
+    // Step 8b: Generate market narrative from SoSoValue feeds + macro events
+    await generateAndStoreNarrative();
 
     state.status = "idle";
     state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
@@ -1584,6 +1743,7 @@ function syncServerState(): void {
     convictionSignals: state.convictionSignals,
     heldPositions: state.heldPositions,
     positionVerdicts: state.positionVerdicts,
+    narrative: state.narrative,
     portfolio: state.portfolio,
   };
 

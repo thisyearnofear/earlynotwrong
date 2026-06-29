@@ -26,6 +26,37 @@ signals, dual-chain anchors, and (separately) lets users analyze their own
 Solana / Base wallet history through the same conviction lens with optional
 ZK-private reputation.
 
+In the **SoSoValue Buildathon** (Wave 3, Jun 29–Jul 8 2026), we enhanced the
+agent with three new capabilities: **SoSoValue API** as an additional market
+data source (token snapshots, SSI indices, news feeds, macro events),
+**SoDEX testnet execution** as an orderbook venue alongside TWAK, and an
+**AI market narrative generator** that produces natural-language market
+commentary from SoSoValue's feeds and conviction data.
+
+```
+SoSoValue API ──┬── Token snapshots ──► Price / RSI / Quality (30s refresh)
+                ├── SSI Indices ──────► Regime signal (index decline = fear)
+                ├── News feeds ───────► Market narrative generation
+                └── Macro events ────► Regime context (CPI, FOMC)
+                       │
+                  ┌────▼────┐
+                  │         │
+CMC MCP ─────────►  Conviction Engine  ◄──── On-Chain Holder Growth
+                  │         │
+                  └────┬────┘
+                       │
+                  SoDEX (testnet) │ TWAK (BSC)
+                  (orderbook,     │ (AMM swap,
+                   ValueChain)    │  universal fallback)
+                       │
+                  ┌────▼────┐
+                  │         │
+                  │ Anchor  │──► Mantle (ERC-8004)
+                  │ Layer   │──► Casper (Odra)
+                  │         │
+                  └─────────┘
+```
+
 ## Live
 
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
@@ -56,6 +87,24 @@ cp agent/.env.example agent/.env   # fill in values
 npm run --prefix agent dev
 ```
 
+### Quick Start — SoSoValue Buildathon Components
+
+```bash
+# 1. SoSoValue API access
+# Register at https://openapi.sosovalue.com → get API key
+# Then:
+echo "SOSOVALUE_API_KEY=your_key_here" >> agent/.env
+
+# 2. SoDEX testnet (no application needed — works directly)
+# Generate an EIP-712 signing key pair, then:
+echo "SODEX_API_KEY_PRIVATE=0x1234...5678" >> agent/.env
+echo "SODEX_API_KEY_NAME=enw-agent" >> agent/.env
+
+# 3. AI market narrative (optional — template mode works without these)
+echo "OPENAI_API_KEY=sk-..." >> agent/.env   # GPT-4o-mini
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
+```
+
 ## Key Documents
 
 | Document | What it covers |
@@ -66,6 +115,7 @@ npm run --prefix agent dev
 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) | ERC-8004 ConvictionRegistry on Mantle Sepolia |
 | [`docs/CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md) | Casper Odra ConvictionRegistry + dual-anchor adapter |
 | [`docs/BNB_HACK_SUBMISSION.md`](./docs/BNB_HACK_SUBMISSION.md) | BNB Hack: AI Trading Agent Edition submission (Jun 2026) |
+| [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) | **NEW** — SoSoValue API + SoDEX + AI narrative integration (Buildathon Wave 3) |
 | [`docs/PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md) | Aleo ZK-proof selective disclosure model |
 | [`docs/SECURITY.md`](./docs/SECURITY.md) | Signed-voucher treasury + replay protection |
 | [`ROADMAP.md`](./ROADMAP.md) | Phase status — Aleo Testnet v3 live (rebate + selective disclosure), Mantle ERC-8004 shipped |
@@ -81,6 +131,8 @@ penalty) and holds through ordinary drawdown by design.
 
 ## Architecture (One-Line Map)
 
+### Core Agent
+
 - **Conviction Engine** — `agent/lib/conviction-signal.ts` (pure functions)
 - **Risk Guardrails** — `agent/lib/risk-guardrails.ts` (drawdown, concentration, conviction floor, allowlist)
 - **TWAK Execution** — `agent/lib/twak-executor.ts` + scam-token defense (DexScreener pool depth + reference-price gate)
@@ -90,13 +142,21 @@ penalty) and holds through ordinary drawdown by design.
 - **MCP Server** — `agent/src/mcp/{server,tools,x402,pricing}.ts` (5 tools, x402 paywall, mounted on the existing Hono process)
 - **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent, surfaces MCP + x402 stats)
 
+### SoSoValue Buildathon Additions
+
+- **SoSoValue API Client** — `agent/lib/sosovalue-client.ts` (MarketDataProvider impl, 30s-refresh token snapshots, SSI index data, news feeds, macro events)
+- **SoDEX Signer + Client** — `agent/lib/sodex-signer.ts` (EIP-712 signing, nonce management) + `agent/lib/sodex-client.ts` (REST client, market order placement, balance queries)
+- **Market Narrative Generator** — `agent/lib/market-narrative.ts` (template-based + optional LLM-enhanced market commentary from SoSoValue feeds)
+- **Composite Data Provider** — `agent/index.ts` (SoSoValue token prices preferred, CMC fills gaps; SoDEX execution preferred, TWAK fallback)
+
 ## Hackathons
 
 | Event | Status | Doc |
 |-------|--------|-----|
 | BNB Hack: AI Trading Agent Edition | Submitted Jun 21 2026 | [`BNB_HACK_SUBMISSION.md`](./docs/BNB_HACK_SUBMISSION.md) |
-| Casper Agentic Buildathon 2026 | Submitting (deadline Jun 30) | [`CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md) |
+| Casper Agentic Buildathon 2026 | Submitted Jun 30 2026 | [`CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md) |
 | Mantle Turing Test 2026 | Window missed; anchoring shipped anyway | [`MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) |
+| **SoSoValue Buildathon** | **Wave 3 in progress (deadline Jul 8 2026)** | [`SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) |
 
 ## What This Is NOT
 
