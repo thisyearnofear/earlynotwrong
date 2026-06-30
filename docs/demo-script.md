@@ -195,7 +195,7 @@ alongside the agent's raw conviction data. Any frontend that renders the
 agent state can display this as a human-readable summary — dashboards,
 Telegram bots, or external JSON consumers."
 
-### 8. Technical Architecture for Judges (30 seconds)
+### 8. Technical Architecture (30 seconds)
 
 Highlight the key architectural decisions:
 
@@ -299,12 +299,12 @@ This document provides a step-by-step script for demonstrating the **Aleo-First 
 - **Second Step (Claim)**: Confirm the on-chain claim in the Shield Wallet.
 - **Technical Highlight**: "We use a 'Pull' model. The platform never holds your private keys or executes on your behalf. You use the signed voucher to claim your rebate directly from the `early_not_wrong_v3.aleo` contract."
 
-### 7. Technical Architecture for Judges (30 seconds)
+### 7. Technical Architecture (30 seconds)
 
 - Point to the **Leo Smart Contract** structure in the docs.
 - Mention the use of **`signature::verify`** for replay protection and security.
-- Highlight the **Provable SDK** integration for server-side voucher signing.
-- Mention the **USDCx** integration plan for private stablecoin payouts.
+- Highlight the **Provable SDK** integration for server-side voucher signing on the VPS — the treasury key never touches Vercel.
+- Mention the migration path to **USDCx** for private stablecoin payouts once Aleo's private stablecoin program ships; testnet runs on native `credits.aleo`.
 
 ## Key Talking Points
 
@@ -326,12 +326,12 @@ This document provides a step-by-step script for demonstrating the **Aleo-First 
 - **ZK-Undercollateralized Lending**: Prove creditworthiness via your Conviction Index.
 - **Institutional Compliance**: Selective disclosure for auditors without leaking strategies.
 
-## Technical Details (For Judges)
+## Technical Details
 
-- **Program ID**: `early_not_wrong_v3.aleo`
-- **Language**: Leo v4.0.0
+- **Program ID**: `early_not_wrong_v3.aleo` (live on Aleo Testnet)
+- **Language**: Leo v4.3.1
 - **Privacy Model**: Decoupled Data Layer (Public) and Reputation Layer (Aleo ZK).
-- **Security**: Signed Voucher model eliminates platform spending-key risk.
+- **Security**: Signed Voucher model eliminates platform spending-key risk; signing runs on the VPS over an HMAC-authed channel, never on Vercel.
 
 ## Conclusion
 

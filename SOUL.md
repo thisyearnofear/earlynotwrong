@@ -42,12 +42,12 @@ Scan phase → technical terminal (for power users). Results phase → score car
 - Toast for confirmations
 - Error panel with retry/cached-data paths instead of silent failure
 - Guardrails prevent trades before they happen (not after)
-- Drawdown stops at 25% (data-driven, before 30% disqualification)
+- Drawdown stops at 25% (data-driven, leaves headroom under any 30% hard limit)
 
 ## Architecture Soul
 
 ### The Agent Is the Product
-The trading agent is not a side feature — it's the core of the BNB Hack entry. The web app is its monitoring dashboard. This inverts the typical pattern (web app with a background job).
+The trading agent is not a side feature — it's the core of the project. The web app is its monitoring dashboard. This inverts the typical pattern (web app with a background job).
 
 ### REST API-First Data
 CMC Pro REST API is the primary data source. No scraping, no webhooks, no on-chain indexers for market data. An API key provides authenticated access to global metrics, Fear & Greed, token quotes, and derivatives data (funding rates, open interest).

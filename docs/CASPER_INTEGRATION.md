@@ -1,13 +1,13 @@
-# Casper Agentic Buildathon 2026 — Submission
+# Casper Integration — Reputation Marketplace + MCP / x402 Paywall
 
-**Project**: Early, Not Wrong — Agent Reputation Marketplace on Casper
-**Track**: Casper Innovation Track
-**Demo**: [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 live)
+**What this is**: Casper-hosted agent reputation registry, queryable by other AI agents via Model Context Protocol, paid per call via x402 CEP-18 micropayments.
+
 **Live dashboard**: https://earlynotwrong.vercel.app/agent (the "Agent Reputation API" panel)
+**Demo**: [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 live)
 
 ---
 
-## The Hero — What Casper Does Here
+## What Casper Does Here
 
 ```
 OTHER AGENTS  ──MCP query──►  Casper-hosted reputation registry  ──reads──►  ConvictionRegistry
@@ -17,13 +17,9 @@ OTHER AGENTS  ──MCP query──►  Casper-hosted reputation registry  ─�
                   Casper-native payment rail. Other chains can't do this.
 ```
 
-**Casper isn't a notarization mirror in this project — it's the marketplace
-for agent reputation.** Other AI agents query the registry via Model Context
-Protocol, pay per call via x402 CEP-18 micropayments, and get back verifiable
-reputation data the on-chain contract is the source of truth for.
+Casper isn't a notarization mirror — it's the marketplace for agent reputation. Other AI agents query the registry via Model Context Protocol, pay per call via x402 CEP-18 micropayments, and get back verifiable reputation data the on-chain contract is the source of truth for.
 
-This is a use of Casper that EVM **cannot replicate** without bolting on
-multiple separate services — Casper has it natively:
+This is a use of Casper that EVM **cannot replicate** without bolting on multiple separate services — Casper has it natively:
 
 ```
 Capability                    EVM (Mantle)        Casper
@@ -36,35 +32,9 @@ Agent-discoverable surface    via custom API      ✓  via MCP (standard)
 Facilitator pays the gas      ✗                   ✓
 ```
 
-## What's New for This Buildathon
-
-Everything in this list is net-new code, written for the buildathon, on top of
-an existing autonomous trading agent that lived before submission opened:
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `casper/src/conviction_registry.rs` | ~180 | Odra smart contract — anchor + read |
-| `agent/lib/anchors/casper.ts` | ~370 | Casper adapter: anchor writes + CES event reads (no gas) |
-| `agent/lib/anchors/mantle.ts` (read methods) | +95 | View functions + event log reads via viem |
-| `agent/lib/anchors/index.ts` (cross-chain) | +50 | `lookupSubjectCrossChain` orchestrator |
-| `agent/src/mcp/server.ts` | ~120 | MCP server with 5 tools, mounted on existing Hono |
-| `agent/src/mcp/tools.ts` | ~190 | Pure-function tool implementations over the adapter interface |
-| `agent/src/mcp/x402.ts` | ~200 | Paywall middleware — 402 challenge + facilitator settle |
-| `agent/src/mcp/pricing.ts` | ~50 | Per-tool pricing table |
-| `agent/scripts/casper-deploy.mjs` | ~100 | Odra contract install via SessionBuilder |
-| `agent/scripts/casper-transfer.mjs` | ~80 | Native CSPR transfer (operator → recipient) |
-| `src/app/agent/page.tsx` (Reputation API card) | +135 | Dashboard panel: live MCP + x402 stats |
-| `agent/__tests__/anchors.test.ts` | +150 | Adapter abstraction tests |
-| `agent/__tests__/mcp-tools.test.ts` | +200 | MCP tools + x402 middleware tests |
-
-Plus 14 new MCP-related tests (`vitest`, no Node.js built-ins mocked). Total
-agent test count: **144 passing** + 4 Rust contract tests.
-
 ## What the MCP Server Exposes
 
-Five tools registered via `@modelcontextprotocol/sdk@^1.29.0`, served at
-`POST /mcp` on the same Hono process that runs the trading agent — one HTTP
-boot, shared state.
+Five tools registered via `@modelcontextprotocol/sdk@^1.29.0`, served at `POST /mcp` on the same Hono process that runs the trading agent — one HTTP boot, shared state.
 
 ```
 Tool                       Paid?      Description
@@ -76,9 +46,7 @@ cross_chain_lookup         0.1 CSPR   Mantle + Casper side-by-side + sync flag
 get_agent_reputation       0.2 CSPR   Aggregate report (counts, mean, dual-chain)
 ```
 
-Free tier is for sanity checks — "is this agent live? what's its most recent
-thesis?". Paid tier is the actual marketplace surface — full history walks,
-cross-chain reconciliation, aggregate reputation scoring.
+Free tier is for sanity checks — "is this agent live? what's its most recent thesis?". Paid tier is the actual marketplace surface — full history walks, cross-chain reconciliation, aggregate reputation scoring.
 
 ## The x402 Paywall Flow
 
@@ -93,17 +61,11 @@ Client → POST /mcp + X-PAYMENT: <base64 PaymentPayload>
          ← HTTP 200 + tool result + X-PAYMENT-RESPONSE
 ```
 
-The cspr.cloud facilitator pays the on-chain CSPR gas — we don't fund swaps,
-the facilitator does. Clients pay via a signed CEP-18 transfer; we verify and
-submit through `/settle` in one round trip.
+The cspr.cloud facilitator pays the on-chain CSPR gas — we don't fund swaps, the facilitator does. Clients pay via a signed CEP-18 transfer; we verify and submit through `/settle` in one round trip.
 
 ## How Casper Reads Stay Free
 
-Odra contracts emit Casper Event Standard (CES) events. The CSPR.cloud RPC
-exposes these as a numbered dictionary under the contract's `__events` uref —
-each anchor is one event, readable via `state_get_dictionary_item` without
-gas. Our Casper adapter walks the log, decodes each event with a small
-bytesrepr-aware decoder, and caches the result for 30 seconds:
+Odra contracts emit Casper Event Standard (CES) events. The CSPR.cloud RPC exposes these as a numbered dictionary under the contract's `__events` uref — each anchor is one event, readable via `state_get_dictionary_item` without gas. Our Casper adapter walks the log, decodes each event with a small bytesrepr-aware decoder, and caches the result for 30 seconds:
 
 ```typescript
 // agent/lib/anchors/casper.ts:readAnchoredEvents
@@ -119,8 +81,65 @@ for (let i = 0; i < totalEvents; i++) {
 }
 ```
 
-3 records currently anchored on the live contract (1 live agent cycle + 2 smoke
-tests). MCP queries return them in 200-300 ms (cold) / <10 ms (cached).
+MCP queries return live records in 200-300 ms (cold) / <10 ms (cached).
+
+## Casper Toolkit Components Used
+
+```
+✅ Odra Framework v2.8.1            Smart contract (Rust → WASM, deployed Testnet)
+✅ CSPR.cloud RPC                    Node access (Authorization-header auth)
+✅ CSPR.cloud x402 Facilitator       Paywall settle (CEP-18 transfers + gas)
+✅ Model Context Protocol            @modelcontextprotocol/sdk v1.29 — tool surface
+✅ casper-js-sdk v5.0.12             SessionBuilder + ContractCallBuilder + reads
+✅ CSPR.live explorer                Verification UI
+```
+
+## Source Files
+
+| File | Purpose |
+|------|---------|
+| `casper/src/conviction_registry.rs` | Odra smart contract — anchor + read entry points |
+| `agent/lib/anchors/casper.ts` | Casper adapter: anchor writes + CES event reads (no gas) |
+| `agent/lib/anchors/mantle.ts` | EVM-side view functions + event log reads via viem |
+| `agent/lib/anchors/index.ts` | `lookupSubjectCrossChain` orchestrator |
+| `agent/src/mcp/server.ts` | MCP server with 5 tools, mounted on existing Hono |
+| `agent/src/mcp/tools.ts` | Pure-function tool implementations over the adapter interface |
+| `agent/src/mcp/x402.ts` | Paywall middleware — 402 challenge + facilitator settle |
+| `agent/src/mcp/pricing.ts` | Per-tool pricing table |
+| `agent/scripts/casper-deploy.mjs` | Odra contract install via SessionBuilder |
+| `agent/scripts/casper-transfer.mjs` | Native CSPR transfer (operator → recipient) |
+| `src/app/agent/page.tsx` | Dashboard "Reputation API" panel — live MCP + x402 stats |
+
+## How Other Agents Use This
+
+Any AI agent — a Claude Desktop client, a Cursor agent, a custom yield bot — adds our MCP server to their config:
+
+```json
+{
+  "mcpServers": {
+    "early-not-wrong": {
+      "url": "https://earlynotwrong.vercel.app/api/agent/proxy?endpoint=mcp"
+    }
+  }
+}
+```
+
+Then they can ask in natural language: *"What's the reputation of agent `0x4a93767…459a`?"* The client routes the request through MCP to our server, we read the contract, return the report. For paid tools, the client signs a CEP-18 payment; the facilitator settles it on Casper Testnet. The agent pays 0.1 CSPR to learn whether to trust another agent.
+
+This is the missing piece of the agent economy: agents need to verify each other's track records without trusting self-reported claims. We host that verification surface, on Casper, with native payment rails.
+
+## Architectural Reusability
+
+The MCP + x402 architecture is reusable for any agent that wants to publish verifiable reputation on Casper:
+
+- The `AnchorAdapter` interface (`agent/lib/anchors/types.ts`) is generic — any "subject → record" data fits it.
+- The MCP tools (`agent/src/mcp/tools.ts`) are pure functions over the adapter interface — fork-and-replace to publish different data types.
+- The x402 middleware (`agent/src/mcp/x402.ts`) is decoupled from MCP — works for any Hono route that needs paid gating.
+
+Future directions:
+- Open the `anchor_conviction` entry point to other agents (today it's permissionless on-chain, but our MCP only surfaces our own agent's records).
+- Add a discovery directory so agents can browse published reputations.
+- Implement CEP-18 token issuance for tier-based access (free read, paid search, premium feed).
 
 ## Live Evidence
 
@@ -134,96 +153,6 @@ tests). MCP queries return them in 200-300 ms (cold) / <10 ms (cached).
 | Live dashboard | https://earlynotwrong.vercel.app/agent — "Agent Reputation API" panel |
 | Operator account | `0202589fb59e1e2e9e67c22458be6cab3a78eb899901c0fc3e83368d791a4474e89a` |
 | Latest live anchor | https://testnet.cspr.live/deploy/d843b61bfecd94178f23381cfa6ea89db5f8e2164470edc7d05f083d5024efb1 |
-| Demo recording | https://asciinema.org/a/ox0AlPA1AN7uwfWJ (~30s) |
-
-## Casper AI Toolkit Components Used
-
-```
-✅ Odra Framework v2.8.1            Smart contract (Rust → WASM, deployed Testnet)
-✅ CSPR.cloud RPC                    Node access (Authorization-header auth)
-✅ CSPR.cloud x402 Facilitator       Paywall settle (CEP-18 transfers + gas)
-✅ Model Context Protocol            @modelcontextprotocol/sdk v1.29 — tool surface
-✅ casper-js-sdk v5.0.12             SessionBuilder + ContractCallBuilder + reads
-✅ CSPR.live explorer                Verification UI
-```
-
-4 of 5 explicit Toolkit components, used genuinely. We deliberately did not
-add CSPR.click AI Agent Skill because we already have a working
-casper-js-sdk integration — refactoring to use the Skill would be a step
-sideways, not forward.
-
-## How Other Agents Use This (the Marketplace Story)
-
-Any AI agent — a Claude Desktop client, a Cursor agent, a custom yield bot —
-adds our MCP server to their config:
-
-```json
-{
-  "mcpServers": {
-    "early-not-wrong": {
-      "url": "https://earlynotwrong.vercel.app/api/agent/proxy?endpoint=mcp"
-    }
-  }
-}
-```
-
-Then they can ask in natural language: *"What's the reputation of agent
-`0x4a93767…459a`?"* The Claude/Cursor/whatever client routes the request
-through MCP to our server, we read the contract, return the report. For paid
-tools, the client signs a CEP-18 payment; the facilitator settles it on
-Casper Testnet. The agent pays 0.1 CSPR to learn whether to trust another
-agent.
-
-This is the missing piece of the agent economy: agents need to verify each
-other's track records without trusting self-reported claims. We host that
-verification surface, on Casper, with native payment rails.
-
-## What Survives Beyond the Buildathon
-
-The MCP + x402 architecture is reusable for any agent that wants to publish
-verifiable reputation on Casper:
-
-- The `AnchorAdapter` interface (`agent/lib/anchors/types.ts`) is generic —
-  any "subject → record" data fits it
-- The MCP tools (`agent/src/mcp/tools.ts`) are pure functions over the
-  adapter interface — fork-and-replace to publish different data types
-- The x402 middleware (`agent/src/mcp/x402.ts`) is decoupled from MCP — works
-  for any Hono route that needs paid gating
-
-Post-buildathon roadmap:
-- Open the `anchor_conviction` entry point to other agents (today it's
-  permissionless on-chain, but our MCP only surfaces our own agent's records)
-- Add a discovery directory so agents can browse published reputations
-- Implement CEP-18 token issuance for tier-based access (free read, paid
-  search, premium feed)
-
-## Tests
-
-```
-agent/__tests__/mcp-tools.test.ts      14 tests — tools + x402 middleware
-agent/__tests__/anchors.test.ts        10 tests — adapter abstraction
-agent/__tests__/*.test.ts             120 tests — pre-existing trading agent
-casper/src/conviction_registry.rs       4 tests — Odra OdraVM tests
-
-Total: 144 TS + 4 Rust, all passing.
-```
-
-## Honest Caveats
-
-- The trading agent existed before the buildathon. The Casper reputation
-  marketplace — Odra contract, MCP server, x402 paywall, dual-chain reader,
-  dashboard panel, deploy + transfer scripts — is what's new. Every net-new
-  file is listed in the table above.
-- RWA is not our story. The buildathon mentions DeFi and RWA prominently; we
-  cover DeFi (an autonomous BSC trading agent whose reputation is the
-  marketplaced asset). The architecture would support RWA reputation (anchor
-  any structured data), but our live demo doesn't.
-- For a client to settle a paid call end-to-end (not just receive the 402
-  challenge), the client needs a wallet holding the testnet `Cep18x402` token
-  to sign the transfer authorization. Our server-side flow is fully live —
-  see the curl below — but the demo currently shows the 402 challenge,
-  not a settled `X-PAYMENT-RESPONSE`. Reviewers with `Cep18x402` can complete
-  the loop against our live endpoint today.
 
 ## Reproduce the Live 402 Challenge
 
@@ -262,15 +191,9 @@ Returns a fully-populated `casper:casper-test` `PaymentRequirements`:
 }
 ```
 
-To complete the round trip, a client constructs + signs a `Cep18x402`
-transfer authorization for 20 base units (0.20 CSPR) to that account hash,
-re-POSTs with `X-PAYMENT: <base64>`, and our middleware forwards to
-`cspr.cloud/settle` — which verifies and submits the on-chain CEP-18 transfer
-in one round trip. The `Cep18x402` token on testnet is the cspr.cloud-hosted
-canonical wrapper; no token deploy needed on our side.
+To complete the round trip, a client constructs + signs a `Cep18x402` transfer authorization for 20 base units (0.20 CSPR) to that account hash, re-POSTs with `X-PAYMENT: <base64>`, and our middleware forwards to `cspr.cloud/settle` — which verifies and submits the on-chain CEP-18 transfer in one round trip. The `Cep18x402` token on testnet is the cspr.cloud-hosted canonical wrapper; no token deploy needed on our side.
 
-The free tier works without any of this — `get_latest_conviction` and
-`get_by_thesis` return real data from the live Casper contract immediately:
+The free tier works without any of this — `get_latest_conviction` and `get_by_thesis` return real data from the live Casper contract immediately:
 
 ```bash
 curl -sS -X POST http://144.202.117.160:31777/mcp \
@@ -279,15 +202,17 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_latest_conviction","arguments":{"subjectHash":"0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"}}}'
 ```
 
-Returns the live anchored record (decoded from the Casper contract's CES
-event log, no gas).
+Returns the live anchored record (decoded from the Casper contract's CES event log, no gas).
+
+## Caveats
+
+For a client to settle a paid call end-to-end (not just receive the 402 challenge), the client needs a wallet holding the testnet `Cep18x402` token to sign the transfer authorization. The server-side flow is fully live — the curl above demonstrates the 402 challenge; the `X-PAYMENT-RESPONSE` round trip requires a client holding `Cep18x402`.
 
 ## Links
 
-- **Buildathon page**: https://dorahacks.io/hackathon/casper-agentic-2026
 - **GitHub**: https://github.com/thisyearnofear/earlynotwrong
-- **Live agent dashboard**: https://earlynotwrong.vercel.app/agent
+- **Live dashboard**: https://earlynotwrong.vercel.app/agent
 - **Casper contract**: https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa
 - **Demo recording**: https://asciinema.org/a/ox0AlPA1AN7uwfWJ
 - **Mantle integration (parallel chain)**: [`MANTLE_INTEGRATION.md`](./MANTLE_INTEGRATION.md)
-- **Trading agent (the source of records)**: [`BNB_HACK_SUBMISSION.md`](./BNB_HACK_SUBMISSION.md)
+- **Trading agent (the source of records)**: [`AGENT_DESIGN.md`](./AGENT_DESIGN.md)

@@ -11,7 +11,7 @@ agent/       — Autonomous trading agent (Node.js, TypeScript, Hono)
 src/         — Next.js web app (frontend + API routes)
 ```
 
-The **agent** is the primary focus for BNB Hack. The **web app** is the Conviction Analysis dashboard.
+The **agent** is the autonomous trading core; the **web app** is its monitoring dashboard and the Conviction Analysis surface for end users.
 
 ---
 
