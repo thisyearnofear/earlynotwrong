@@ -113,16 +113,19 @@ describe("cycle integration — one full pass under simulator", () => {
     });
     vi.spyOn(dataProviders.cmcClient, "fetchMarketData").mockResolvedValue(CMC_MARKET_FIXTURE);
 
-    // SoSoValue augmentations — SSI confirms fear, news is bullish on TWT.
+    // SoSoValue augmentations — SSI confirms fear (roi_7d -0.10 = -10%),
+    // featured news bullish on TWT via matchedCurrencies tag.
     vi.spyOn(dataProviders.sosovalueClient, "fetchIndexSnapshot").mockResolvedValue({
-      ticker: "BTCSSI",
-      name: "BTC SSI",
-      percent_change_7d: -10,
+      roi_7d: -0.10,
     } as any);
-    vi.spyOn(dataProviders.sosovalueClient, "fetchHotNews").mockResolvedValue([
-      { id: "1", title: "TWT looking strong", published_at: "", sentiment: "positive", related_currencies: ["TWT"] },
+    vi.spyOn(dataProviders.sosovalueClient, "fetchHotNews").mockResolvedValue([] as any);
+    vi.spyOn(dataProviders.sosovalueClient, "fetchFeaturedNews").mockResolvedValue([
+      {
+        id: "f1",
+        title: "TWT adoption milestone — partnership announced",
+        matchedCurrencies: [{ id: "x", fullName: "Trust Wallet Token", name: "TWT" }],
+      },
     ] as any);
-    vi.spyOn(dataProviders.sosovalueClient, "fetchFeaturedNews").mockResolvedValue([]);
     vi.spyOn(dataProviders.sosovalueClient, "fetchMacroEvents").mockResolvedValue([]);
 
     // Twak — simulator returns synthetic results. Force liquidity and balances.
@@ -207,9 +210,13 @@ describe("cycle integration — one full pass under simulator", () => {
 
   it("skips entries entirely when a high-impact macro event is within 4h", async () => {
     state.portfolio = SIMULATOR_PORTFOLIO as any;
-    const inThreeHours = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    // Real SoSoValue shape: `{date, events: string[]}` per day; impact inferred
+    // from event-name keywords. CPI today @ 12 UTC anchor.
+    const today = new Date().toISOString().slice(0, 10);
+    const nowAtTen = new Date(`${today}T10:00:00Z`);
+    vi.setSystemTime(nowAtTen);
     vi.spyOn(dataProviders.sosovalueClient, "fetchMacroEvents").mockResolvedValue([
-      { id: "cpi", name: "US CPI", date: inThreeHours, impact: "high" },
+      { date: today, events: ["US CPI YoY"] },
     ] as any);
 
     await fetchMarketData();
@@ -221,6 +228,7 @@ describe("cycle integration — one full pass under simulator", () => {
     expect(results.length).toBe(0);
     expect(state.heldPositions.length).toBe(0);
     expect(state.macroPause?.skipEntries).toBe(true);
-    expect(state.macroPause?.triggeringEvent?.name).toBe("US CPI");
+    expect(state.macroPause?.triggeringEvent?.name).toContain("CPI");
+    vi.useRealTimers();
   });
 });

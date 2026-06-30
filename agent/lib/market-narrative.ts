@@ -23,8 +23,20 @@
  */
 
 import { sosovalueClient } from "./data-providers.js";
-import type { SosovalueFeedItem, SosovalueMacroEvent } from "./data-providers.js";
+import { flattenMacroEvents } from "./sosovalue-signals.js";
+import type { MacroPauseEvent } from "./sosovalue-signals.js";
 import type { MarketRegime } from "./conviction-signal.js";
+
+/**
+ * A news item normalised for narrative composition. The live SoSoValue
+ * responses use snake_case (/news/hot) or camelCase (/news/featured) — we
+ * accept either and only require `title` for display.
+ */
+interface NarrativeNewsItem {
+  id: string;
+  title: string;
+  source?: string;
+}
 
 // =============================================================================
 // Types
@@ -100,59 +112,61 @@ export async function generateNarrative(
 // =============================================================================
 
 /**
- * Fetch up to 5 news items total from SoSoValue (hot + featured).
- * Returns an empty array if SoSoValue is unreachable.
+ * Fetch up to 5 news items total from SoSoValue (hot + featured), normalising
+ * the snake_case (/news/hot) and camelCase (/news/featured) variants into a
+ * single shape with a guaranteed title and id. Returns an empty array if
+ * SoSoValue is unreachable or returns no usable items.
  */
-async function fetchNewsHeadlines(): Promise<SosovalueFeedItem[]> {
+async function fetchNewsHeadlines(): Promise<NarrativeNewsItem[]> {
   try {
     const [hot, featured] = await Promise.all([
-      sosovalueClient.fetchHotNews(3).catch(() => [] as SosovalueFeedItem[]),
-      sosovalueClient.fetchFeaturedNews(3).catch(() => [] as SosovalueFeedItem[]),
+      sosovalueClient.fetchHotNews(3).catch(() => [] as unknown[]),
+      sosovalueClient.fetchFeaturedNews(3).catch(() => [] as unknown[]),
     ]);
 
-    // Merge, deduplicate by title, take top 5
     const seen = new Set<string>();
-    const merged: SosovalueFeedItem[] = [];
-    for (const item of [...hot, ...featured]) {
-      const key = item.title?.toLowerCase().trim() ?? item.id;
-      if (!seen.has(key) && item.title) {
-        seen.add(key);
-        merged.push(item);
-      }
+    const merged: NarrativeNewsItem[] = [];
+    for (const raw of [...hot, ...featured] as Array<Record<string, unknown>>) {
+      const title = typeof raw.title === "string" ? raw.title : "";
+      if (!title) continue;
+      const id = typeof raw.id === "string" || typeof raw.id === "number" ? String(raw.id) : title;
+      const key = title.toLowerCase().trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // /news/featured carries `author`; /news/hot has no source field.
+      const author = typeof raw.author === "string" ? raw.author : undefined;
+      merged.push({ id, title, source: author });
+      if (merged.length >= 5) break;
     }
-    return merged.slice(0, 5);
+    return merged;
   } catch {
     return [];
   }
 }
 
 /**
- * Fetch macro events for today and tomorrow.
- * Returns an empty array if SoSoValue is unreachable.
+ * Fetch the macro calendar from SoSoValue and keep high/medium-impact events
+ * within the next ~3 days. Impact is keyword-inferred from event names since
+ * the live API doesn't carry an impact tier. Returns an empty array if
+ * SoSoValue is unreachable.
  */
-async function fetchMacroEvents(): Promise<SosovalueMacroEvent[]> {
+async function fetchMacroEvents(): Promise<MacroPauseEvent[]> {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    // The macro endpoint returns the full upcoming calendar in one call; we
+    // flatten the daily groups via the shared helper from sosovalue-signals.
+    const raw = await sosovalueClient.fetchMacroEvents().catch(() => [] as unknown[]);
+    const flat = flattenMacroEvents(raw);
 
-    const [todayEvents, tomorrowEvents] = await Promise.all([
-      sosovalueClient.fetchMacroEvents(today).catch(() => [] as SosovalueMacroEvent[]),
-      sosovalueClient.fetchMacroEvents(tomorrow).catch(() => [] as SosovalueMacroEvent[]),
-    ]);
+    const now = Date.now();
+    const horizon = now + 3 * 86_400_000;
+    const upcoming = flat
+      .filter((e) => e.impact === "high" || e.impact === "medium")
+      .filter((e) => {
+        const t = Date.parse(e.date.includes("T") ? e.date : `${e.date}T12:00:00Z`);
+        return Number.isFinite(t) && t >= now && t <= horizon;
+      });
 
-    // Deduplicate by event ID and filter to high/medium impact
-    const seen = new Set<string>();
-    const merged: SosovalueMacroEvent[] = [];
-    for (const evt of [...todayEvents, ...tomorrowEvents]) {
-      const key = evt.id || `${evt.name}-${evt.date}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        if (evt.impact === "high" || evt.impact === "medium") {
-          merged.push(evt);
-        }
-      }
-    }
-    return merged.slice(0, 3);
+    return upcoming.slice(0, 3);
   } catch {
     return [];
   }
@@ -168,8 +182,8 @@ async function fetchMacroEvents(): Promise<SosovalueMacroEvent[]> {
  */
 function composeSummary(
   context: NarrativeContext,
-  news: SosovalueFeedItem[],
-  macroEvents: SosovalueMacroEvent[],
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
 ): string {
   const parts: string[] = [];
 
@@ -240,16 +254,15 @@ function describeTopSignals(
   return `Top conviction: ${top.symbol} scores ${top.score}/100 (${dir}, ${scoreDetail}).${extraText}`;
 }
 
-function describeNews(item: SosovalueFeedItem): string {
+function describeNews(item: NarrativeNewsItem): string {
   const source = item.source ? ` [${item.source}]` : "";
   return `Headline: "${item.title}"${source}`;
 }
 
-function describeMacroEvents(events: SosovalueMacroEvent[]): string {
+function describeMacroEvents(events: MacroPauseEvent[]): string {
   const lines = events.map((e) => {
     const impact = e.impact === "high" ? "🔴" : e.impact === "medium" ? "🟡" : "";
-    const forecast = e.forecast ? ` (forecast: ${e.forecast})` : "";
-    return `${impact} ${e.name}${forecast}`;
+    return `${impact} ${e.name}`;
   });
   return `Upcoming: ${lines.join(" · ")}.`;
 }
@@ -305,8 +318,8 @@ export async function generateLLMNarrative(
  */
 function buildLLMPrompt(
   context: NarrativeContext,
-  news: SosovalueFeedItem[],
-  macroEvents: SosovalueMacroEvent[],
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
 ): string {
   const regime = context.regime;
   const signals = context.topSignals.slice(0, 5);
@@ -318,7 +331,7 @@ function buildLLMPrompt(
     `- Market regime: ${regime?.label ?? "unknown"} (score: ${regime?.score ?? 50}/100, FGI: ${regime?.fearGreedIndex ?? "N/A"})`,
     ...signals.map((s) => `- ${s.symbol}: ${s.score}/100 conviction, ${s.rationale}`),
     ...news.map((n) => `- News: ${n.title}${n.source ? ` (${n.source})` : ""}`),
-    ...macroEvents.map((e) => `- Macro: ${e.name} (${e.date}, impact: ${e.impact ?? "unknown"})${e.forecast ? `, forecast: ${e.forecast}` : ""}`),
+    ...macroEvents.map((e) => `- Macro: ${e.name} (${e.date}, impact: ${e.impact})`),
     "",
     "Write a natural, insight-driven narrative that explains what's happening in markets right now.",
   ].join("\n");
@@ -329,8 +342,8 @@ function buildLLMPrompt(
  */
 async function callOpenAI(
   prompt: string,
-  news: SosovalueFeedItem[],
-  macroEvents: SosovalueMacroEvent[],
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
 ): Promise<MarketNarrative> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -368,8 +381,8 @@ async function callOpenAI(
  */
 async function callAnthropic(
   prompt: string,
-  news: SosovalueFeedItem[],
-  macroEvents: SosovalueMacroEvent[],
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
 ): Promise<MarketNarrative> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

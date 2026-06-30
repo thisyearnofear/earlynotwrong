@@ -331,8 +331,7 @@ app.get("/conviction", async (c) => {
             ? {
                 name: agentState.macroPause.triggeringEvent.name,
                 date: agentState.macroPause.triggeringEvent.date,
-                impact: agentState.macroPause.triggeringEvent.impact ?? null,
-                forecast: agentState.macroPause.triggeringEvent.forecast ?? null,
+                impact: agentState.macroPause.triggeringEvent.impact,
               }
             : null,
         }

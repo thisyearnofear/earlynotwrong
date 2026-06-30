@@ -135,9 +135,12 @@ export async function analyzeConviction(): Promise<{
 
   // SoSoValue augmentations — SSI index regime confirmation + per-symbol
   // news sentiment. Both degrade silently if SoSoValue is offline.
+  // News keyword-extraction needs the eligible-token universe so common
+  // 3-letter English words (USD, AND, FOR) can't false-match as tickers.
+  const tickerUniverse = new Set(AGENT_CONFIG.competition.eligibleTokens.map((s) => s.toUpperCase()));
   const [ssi, newsSignal] = await Promise.all([
     fetchSsiRegimeSignal(),
-    fetchNewsSentimentSignal(),
+    fetchNewsSentimentSignal(tickerUniverse),
   ]);
   const ssiConfirmation = ssi.indicesRead > 0 ? ssi.confirmation : null;
 

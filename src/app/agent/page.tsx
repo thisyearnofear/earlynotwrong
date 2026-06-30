@@ -144,8 +144,7 @@ interface ConvictionData {
     triggeringEvent: {
       name: string;
       date: string;
-      impact: string | null;
-      forecast: string | null;
+      impact: "high" | "medium" | "low";
     } | null;
   } | null;
   anchoredHash: string;
@@ -798,7 +797,7 @@ function Dashboard({
                 )}
                 title={
                   conviction.macroPause.triggeringEvent
-                    ? `${conviction.macroPause.triggeringEvent.name} · ${conviction.macroPause.triggeringEvent.date}${conviction.macroPause.triggeringEvent.forecast ? ` · forecast ${conviction.macroPause.triggeringEvent.forecast}` : ""}`
+                    ? `${conviction.macroPause.triggeringEvent.name} · ${conviction.macroPause.triggeringEvent.date} · ${conviction.macroPause.triggeringEvent.impact} impact`
                     : undefined
                 }
               >
