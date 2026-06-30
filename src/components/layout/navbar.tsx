@@ -6,6 +6,7 @@ import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Activity, Menu, X } from "lucide-react";
+import { NavSettingsMenu } from "@/components/layout/nav-settings-menu";
 import {
   Dialog,
   DialogContent,
@@ -166,57 +167,11 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Aleo Network Status */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-signal/5 border border-signal/20">
-              <div className={cn(
-                "w-1.5 h-1.5 rounded-full shadow-[0_0_8px_var(--signal)]",
-                isAleoConnected ? "bg-signal animate-pulse" : "bg-signal/30"
-              )} />
-              <span className={cn(
-                "text-[9px] font-mono uppercase font-bold tracking-widest",
-                isAleoConnected ? "text-signal" : "text-signal/50"
-              )}>
-                {isAleoConnected ? "Aleo Connected" : "Aleo"}
-              </span>
-            </div>
-
-            {/* Showcase Mode Toggle (Demo Mode) */}
-            <div className="hidden md:flex items-center gap-2 pr-2 border-r border-border">
-              <span className="text-[10px] font-mono text-foreground-muted uppercase tracking-tighter">Demo</span>
-              <button
-                onClick={() => toggleShowcaseMode()}
-                className={cn(
-                  "relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-                  isShowcaseMode ? "bg-signal" : "bg-surface"
-                )}
-              >
-                <span
-                  className={cn(
-                    "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform",
-                    isShowcaseMode ? "translate-x-5" : "translate-x-0.5"
-                  )}
-                />
-              </button>
-            </div>
-
-            {/* Mantle Mode Toggle (Desktop) */}
-            <div className="hidden md:flex items-center gap-2 pr-2 border-r border-border">
-              <span className="text-[10px] font-mono text-[#65b3ae] uppercase tracking-tighter">Mantle</span>
-              <button
-                onClick={() => useAppStore.getState().setMantleState({ isMantleMode: !mantle.isMantleMode })}
-                className={cn(
-                  "relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-                  mantle.isMantleMode ? "bg-[#65b3ae]" : "bg-surface"
-                )}
-              >
-                <span
-                  className={cn(
-                    "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform",
-                    mantle.isMantleMode ? "translate-x-5" : "translate-x-0.5"
-                  )}
-                />
-              </button>
-            </div>
+            {/* Chain status + feature toggles consolidated:
+                · Per-chain connection lights live on the WalletConnect button (●●●).
+                · Demo / Mantle modes live in <NavSettingsMenu/>.
+                The standalone Aleo pill + inline Demo/Mantle switches were
+                removed to declutter the nav. */}
 
             {/* Ethos Status Badge - Desktop */}
             {(currentScore > 0 || isShowcaseMode) && (
@@ -334,6 +289,8 @@ export function Navbar() {
                 <Moon className="w-5 h-5" />
               )}
             </Button>
+
+            <NavSettingsMenu className="hidden md:inline-flex" />
 
             <WalletConnect className="h-10 px-3 hidden sm:flex" />
 

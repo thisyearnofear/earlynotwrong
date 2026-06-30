@@ -73,6 +73,19 @@ export function WalletConnect({ className }: { className?: string }) {
 
   const hasAnyConnection = isEvmConnected || isSolanaConnected || isAleoConnected;
   const isAnyConnecting = isEvmConnecting || isSolanaConnecting || isAleoConnecting;
+  // Three colour-coded dots — one per supported chain — make the
+  // multi-chain state legible without opening the modal.
+  const chainDots: Array<{ key: string; on: boolean; cls: string; label: string }> = [
+    { key: "evm", on: isEvmConnected, cls: "bg-blue-500", label: "Base / EVM" },
+    { key: "aleo", on: isAleoConnected, cls: "bg-signal", label: "Aleo" },
+    { key: "sol", on: isSolanaConnected, cls: "bg-purple-500", label: "Solana" },
+  ];
+  const connectedCount = chainDots.filter((d) => d.on).length;
+  const primaryAddressShort = isAleoConnected
+    ? aleoAddressShort
+    : isEvmConnected
+      ? evmAddressShort
+      : solanaAddressShort;
 
   // Render nothing on server to prevent mismatch
   if (!isClient) {
@@ -98,15 +111,25 @@ export function WalletConnect({ className }: { className?: string }) {
         >
           {hasAnyConnection ? (
             <span className="flex items-center gap-2">
-              <span className={cn(
-                "w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_currentColor]",
-                isAleoConnected ? "bg-signal text-signal" : "bg-patience text-patience"
-              )} />
-              {isAleoConnected 
-                ? aleoAddressShort 
-                : isEvmConnected 
-                ? evmAddressShort 
-                : solanaAddressShort}
+              <span
+                className="flex items-center gap-0.5"
+                title={`${connectedCount} of 3 chains connected`}
+                aria-label={`${connectedCount} of 3 chains connected`}
+              >
+                {chainDots.map((d) => (
+                  <span
+                    key={d.key}
+                    className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      d.on
+                        ? `${d.cls} shadow-[0_0_6px_currentColor]`
+                        : "bg-foreground-dim/30",
+                    )}
+                    title={`${d.label}: ${d.on ? "connected" : "off"}`}
+                  />
+                ))}
+              </span>
+              <span>{primaryAddressShort}</span>
             </span>
           ) : (
             <span className="flex items-center gap-2">
