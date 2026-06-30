@@ -21,43 +21,13 @@
  * docs/CASPER_BUILDATHON.md for the cross-chain anchoring layer.
  */
 
-// Load .env FIRST. This block runs before any sibling module reads
-// process.env — guaranteeing CMC_API_KEY, TWAK_*, and
-// MANTLE_OPERATOR_KEY are available at module-construction time.
-//
-// Walks up from dist/, dist/lib/, or dist/src/ to find .env.
-// Silent on missing .env — simulator mode doesn't need it.
-import { existsSync, readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-try {
-  const here = dirname(fileURLToPath(import.meta.url));
-  let envPath: string | undefined;
-  let dir = here;
-  for (let i = 0; i < 5; i++) {
-    const candidate = resolve(dir, ".env");
-    if (existsSync(candidate)) {
-      envPath = candidate;
-      break;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  if (envPath) {
-    for (const raw of readFileSync(envPath, "utf-8").split("\n")) {
-      const line = raw.trim();
-      if (!line || line.startsWith("#")) continue;
-      const eq = line.indexOf("=");
-      if (eq < 0) continue;
-      const key = line.slice(0, eq).trim();
-      const val = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
-      if (!process.env[key]) process.env[key] = val;
-    }
-  }
-} catch {
-  // Silent — missing .env is fine in simulator mode.
-}
+// Load .env into process.env BEFORE any other module evaluates. This side-
+// effect import MUST be the first one in this file — ESM hoists all imports
+// before any top-level code, so the previous inline loader was actually
+// running AFTER singletons (cmcClient, sosovalueClient, twakExecutor, …)
+// had already captured process.env. Keys present only in .env (not in pm2's
+// parent env) were silently missed. See lib/env-bootstrap.ts for details.
+import "./lib/env-bootstrap.js";
 
 import { state, getBnbUsd, tickUnharvestableCooldowns } from "./lib/agent-state.js";
 import {
