@@ -55,6 +55,11 @@ async function sendMessage(text: string): Promise<void> {
 
 /**
  * Send a formatted cycle summary to Telegram.
+ *
+ * Splits into 3 structured messages for readability:
+ *   1. Cycle header + regime scoring
+ *   2. Conviction signals + trades + market narrative
+ *   3. Portfolio + P&L + anchoring
  */
 export async function sendCycleSummary(params: {
   cycle: number;
@@ -102,67 +107,88 @@ export async function sendCycleSummary(params: {
   const displayStatus = params.status === "idle" ? "completed" : params.status;
   const gas = params.gasSpentThisCycle ?? 0;
 
-  // ── Message 1: Trading Update (regime + signals + trades) ──
+  // =========================================================================
+  // Message 1 — Cycle Header + Regime
+  // =========================================================================
   const msg1: string[] = [
-    `📊 <b>Cycle #${params.cycle}</b> — ${params.duration} — ${displayStatus}`,
+    `📊 <b>Cycle #${params.cycle}</b> — <code>${params.duration}</code> — ${displayStatus}`,
+    `───`,
   ];
 
+  // Regime box
   if (params.regimeScore !== null && params.sentimentLabel) {
-    msg1.push(`${params.regimeScore}/100 — ${params.sentimentLabel}`);
+    const fgiLine = params.regimeScore >= 60 ? "🟢" : params.regimeScore <= 30 ? "🔴" : "🟡";
+    msg1.push(`${fgiLine} Regime: <b>${params.regimeScore}/100</b> — ${params.sentimentLabel}`);
+    msg1.push(`   Drawdown: <code>${params.drawdownPercent.toFixed(1)}%</code>`);
   }
 
+  await sendMessage(msg1.join("\n"));
+
+  // =========================================================================
+  // Message 2 — Signals + Trades + Narrative
+  // =========================================================================
+  const msg2: string[] = [`📈 <b>Signals &amp; Trades</b>`];
+
+  // Top signals in a code block
   if (params.topSignals && params.topSignals.length > 0) {
-    msg1.push(``);
-    const sigLines = params.topSignals.slice(0, 3).map((s) => {
-      const h = s.holderCount != null ? ` · ${s.holderCount.toLocaleString()} holders` : "";
-      return `  ${s.symbol} ${s.score}/100${h}`;
-    });
-    msg1.push(...sigLines);
+    msg2.push(``);
+    msg2.push(`<pre>${params.topSignals.slice(0, 5).map((s) => {
+      const h = s.holderCount != null
+        ? `  ${s.holderCount.toLocaleString().padStart(9)} holders`
+        : "";
+      const scoreStr = s.score.toString().padStart(3);
+      return `${s.symbol.padEnd(7)} ${scoreStr}/100${h}`;
+    }).join("\n")}</pre>`);
   }
 
-  if (params.tradesSucceeded > 0 || params.tradesFailed > 0) {
-    msg1.push(``);
+  // Per-trade lines in a code block
+  if (params.executedTrades.length > 0) {
+    msg2.push(``);
     const tradeParts: string[] = [];
     if (params.tradesSucceeded > 0) tradeParts.push(`✅${params.tradesSucceeded}`);
     if (params.tradesFailed > 0) tradeParts.push(`❌${params.tradesFailed}`);
     let tradeLine = `Trades: ${tradeParts.join(" ")}`;
-    if (params.totalVolumeUsd > 0) tradeLine += ` · vol $${params.totalVolumeUsd.toFixed(0)}`;
-    if (params.usedSodex) tradeLine += ` · SoDEX testnet`;
-    if (gas > 0) tradeLine += ` · gas ~$${gas.toFixed(2)}`;
-    msg1.push(tradeLine);
+    if (params.totalVolumeUsd > 0) tradeLine += ` · vol <code>$${params.totalVolumeUsd.toFixed(0)}</code>`;
+    if (params.usedSodex) tradeLine += ` · SoDEX`;
+    if (gas > 0) tradeLine += ` · gas <code>~$${gas.toFixed(2)}</code>`;
+    msg2.push(tradeLine);
 
-    for (const trade of params.executedTrades) {
+    const tradeLines = params.executedTrades.map((trade) => {
       const icon = trade.success ? "✅" : "❌";
       const out = trade.amountOut ? `$${trade.amountOut}` : trade.success ? "✓" : "✗";
       const venue = trade.txHash?.startsWith("0xSODEX_") ? "SoDEX" : "TWAK";
-      let line = `${icon} [${venue}] ${trade.tokenIn}→${trade.tokenOut} $${trade.amountIn}→${out}`;
+      let line = `${icon} [<code>${venue}</code>] ${trade.tokenIn}→${trade.tokenOut} <code>$${trade.amountIn}→${out}</code>`;
       if (trade.txHash) {
         const explorerUrl = trade.txHash.startsWith("0xSODEX_")
           ? `https://testnet.sodex.dev/order/${trade.txHash.slice(8)}`
           : `https://bscscan.com/tx/${trade.txHash}`;
         line += ` <a href="${explorerUrl}">tx</a>`;
       }
-      msg1.push(line);
-    }
+      return line;
+    });
+    msg2.push(`<pre>${tradeLines.join("\n")}</pre>`);
   }
 
-  // ── Market Narrative (SoSoValue feeds + conviction) ──
+  // Market narrative
   if (params.narrative) {
-    msg1.push(``);
+    msg2.push(``);
     const n = params.narrative;
     if (n.headline) {
-      msg1.push(`📰 ${escapeHtml(n.headline)}`);
+      msg2.push(`📰 <b>Headline</b>`);
+      msg2.push(`<pre>${escapeHtml(n.headline)}</pre>`);
     }
     const meta = [];
-    if (n.newsCount > 0) meta.push(`${n.newsCount} news items`);
-    if (n.macroEventCount > 0) meta.push(`${n.macroEventCount} macro events`);
-    if (meta.length > 0) msg1.push(`  ${meta.join(" · ")}`);
+    if (n.newsCount > 0) meta.push(`<code>${n.newsCount} news</code>`);
+    if (n.macroEventCount > 0) meta.push(`<code>${n.macroEventCount} macro events</code>`);
+    if (meta.length > 0) msg2.push(`  Sources: ${meta.join(" · ")}`);
   }
 
-  await sendMessage(msg1.join("\n"));
+  await sendMessage(msg2.join("\n"));
 
-  // ── Message 2: Portfolio + PnL + Anchoring ──
-  const msg2: string[] = [`💰 <b>Portfolio</b>`];
+  // =========================================================================
+  // Message 3 — Portfolio + P&L + Anchoring
+  // =========================================================================
+  const msg3: string[] = [`💰 <b>Portfolio &amp; P&amp;L</b>`];
 
   const invested = params.positionLedgerUsd ?? 0;
   const realized = params.realizedPnl ?? 0;
@@ -171,25 +197,25 @@ export async function sendCycleSummary(params: {
   const netPnl = unrealized + realized - totalGas;
   const pnlSign = netPnl >= 0 ? "+" : "";
 
-  msg2.push(`  Invested: $${invested.toFixed(2)} (${params.positionsHeld ?? 0} positions)`);
-  msg2.push(`  On-chain: $${params.portfolioValueUsd.toFixed(2)}`);
-  msg2.push(`  Gas spent: $${totalGas.toFixed(2)}`);
-  if (realized !== 0) msg2.push(`  Realized: ${realized >= 0 ? "+" : ""}$${realized.toFixed(2)}`);
-  msg2.push(`  <b>Net P&L: ${pnlSign}$${netPnl.toFixed(2)}</b>`);
+  msg3.push(`<pre>Invested:    $${invested.toFixed(2).padStart(9)} (${params.positionsHeld ?? 0} pos)`);
+  msg3.push(`On-chain:    $${params.portfolioValueUsd.toFixed(2).padStart(9)}`);
+  msg3.push(`Gas spent:   $${totalGas.toFixed(2).padStart(9)}`);
+  if (realized !== 0) msg3.push(`Realized:    ${realized >= 0 ? "+" : ""}$${realized.toFixed(2).padStart(8)}`);
+  msg3.push(`<b>Net P&amp;L:    ${pnlSign}$${netPnl.toFixed(2).padStart(8)}</b></pre>`);
 
   if (params.anchoring) {
-    const modeIcon = params.anchoring.mode === "on-chain" ? "⚓" : "🔄";
-    let anchorLine = `${modeIcon} ${params.anchoring.mode}`;
-    if (params.anchoring.blockNumber) anchorLine += ` · block ${params.anchoring.blockNumber}`;
+    const modeIcon = params.anchoring.mode === "on-chain" ? "⚓" : params.anchoring.mode === "simulator" ? "🔄" : "⚠";
+    let anchorLine = `${modeIcon} <b>Anchor</b>: ${params.anchoring.mode}`;
+    if (params.anchoring.blockNumber) anchorLine += ` · block <code>${params.anchoring.blockNumber}</code>`;
     if (params.anchoring.hash) {
       anchorLine += ` · <a href="https://explorer.sepolia.mantle.xyz/tx/${params.anchoring.hash}">verify</a>`;
     }
-    msg2.push(anchorLine);
+    msg3.push(anchorLine);
   }
 
-  msg2.push(`<i><a href="https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a">0xA1Dd...888a</a> · BSC Mainnet</i>`);
+  msg3.push(`<i>👛 <a href="https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a">0xA1Dd...888a</a> · BSC Mainnet</i>`);
 
-  await sendMessage(msg2.join("\n"));
+  await sendMessage(msg3.join("\n"));
 }
 
 /**
@@ -222,6 +248,72 @@ export async function sendStartup(params: {
 
   if (params.walletAddress) {
     lines.push(`Wallet: ${params.walletAddress.slice(0, 10)}...${params.walletAddress.slice(-4)}`);
+  }
+
+  await sendMessage(lines.join("\n"));
+}
+
+/**
+ * Send a position-exit alert. One message per closed (or partially closed)
+ * position so judges can see live decisions in the Telegram timeline.
+ */
+export async function sendExitAlert(params: {
+  cycle: number;
+  symbol: string;
+  action: "EXIT_STOP" | "EXIT_TRAIL" | "EXIT_PARTIAL";
+  reason: string;
+  pnlPercent: number;
+  amountUsd: number;
+  sellFraction: number;
+  txHash?: string;
+}): Promise<void> {
+  if (!isConfigured()) return;
+
+  const icon =
+    params.action === "EXIT_STOP" ? "🛑" :
+    params.action === "EXIT_TRAIL" ? "🎯" :
+    "✂️";
+  const pnlSign = params.pnlPercent >= 0 ? "+" : "";
+  const fractionLabel = params.sellFraction >= 0.99 ? "full exit" : `${Math.round(params.sellFraction * 100)}% of position`;
+
+  const lines: string[] = [
+    `${icon} <b>${params.action.replace("EXIT_", "")}</b> ${escapeHtml(params.symbol)} — cycle #${params.cycle}`,
+    `<code>${pnlSign}${params.pnlPercent.toFixed(1)}% PnL · $${params.amountUsd.toFixed(2)} ${fractionLabel}</code>`,
+    `<i>${escapeHtml(params.reason)}</i>`,
+  ];
+  if (params.txHash) {
+    const url = params.txHash.startsWith("0xSODEX_")
+      ? `https://testnet.sodex.dev/order/${params.txHash.slice(8)}`
+      : `https://bscscan.com/tx/${params.txHash}`;
+    lines.push(`<a href="${url}">tx</a>`);
+  }
+
+  await sendMessage(lines.join("\n"));
+}
+
+/**
+ * Send a guardrail-block alert. Fired when one or more proposals are rejected
+ * so judges can see the risk system catching trades before execution.
+ */
+export async function sendGuardrailBlocked(params: {
+  cycle: number;
+  rejected: Array<{ tokenSymbol: string; reason: string }>;
+  blockedAll?: boolean;
+}): Promise<void> {
+  if (!isConfigured()) return;
+  if (params.rejected.length === 0) return;
+
+  const lines: string[] = [
+    `🛡️ <b>Guardrail ${params.blockedAll ? "halt" : "rejections"}</b> — cycle #${params.cycle}`,
+  ];
+  lines.push(
+    `<pre>${params.rejected
+      .slice(0, 6)
+      .map((r) => `${r.tokenSymbol.padEnd(8)} ${escapeHtml(r.reason).slice(0, 80)}`)
+      .join("\n")}</pre>`,
+  );
+  if (params.rejected.length > 6) {
+    lines.push(`<i>…and ${params.rejected.length - 6} more</i>`);
   }
 
   await sendMessage(lines.join("\n"));

@@ -44,7 +44,7 @@ type PublicKey = PublicKeyT;
 type RpcClient = RpcClientT;
 import { readFileSync } from "node:fs";
 import { AGENT_CONFIG } from "../config.js";
-import { getCasperExplorerTxUrl } from "../explorers.js";
+import { getCasperExplorerTxUrl } from "../config.js";
 import type { AnchorAdapter, AnchorResult, AnchoredRecord, Bytes32Hex, ConvictionRecord } from "./types.js";
 
 // =============================================================================

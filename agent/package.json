@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "docs": "typedoc",
+    "docs:serve": "npx serve docs/api",
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {

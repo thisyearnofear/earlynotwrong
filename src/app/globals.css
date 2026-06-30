@@ -126,6 +126,9 @@ body {
         scrollbar-width: none;
     }
 
+    /* Hide default details disclosure triangle */
+    details > summary::-webkit-details-marker { display: none; }
+
     /* Touch-friendly tap targets */
     .touch-target {
         min-height: 44px;

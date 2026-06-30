@@ -228,9 +228,56 @@ export default function Home() {
             layout
             className="text-base md:text-lg text-foreground-muted max-w-2xl leading-relaxed"
           >
-            An agentic on-chain behavioral analysis tool. We audit your trading
-            history to distinguish between bad timing and bad thesis.
+            A conviction-native trading agent and a behavioral wallet analyzer.
+            Two tools, one framework: conviction is tested not when you're
+            wrong — it's tested when you're{" "}
+            <span className="text-foreground font-semibold">early</span>.
           </motion.p>
+
+          {/* ── Product Entry — two paths, one conviction framework ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+            className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg pt-2"
+          >
+            <Link
+              href="/agent"
+              className="group flex flex-col gap-2 p-4 rounded-lg border border-border/40 bg-surface/30 hover:border-signal/40 hover:bg-surface/50 transition-all text-left"
+            >
+              <Activity className="w-5 h-5 text-signal" />
+              <span className="text-sm font-semibold text-foreground group-hover:text-signal transition-colors">
+                Trading Agent
+              </span>
+              <span className="text-[10px] font-mono text-foreground-muted leading-relaxed">
+                An autonomous agent that scores conviction, manages positions,
+                and anchors every decision on-chain.
+              </span>
+              <span className="text-[10px] font-mono text-signal mt-auto">
+                Visit Dashboard →
+              </span>
+            </Link>
+
+            <button
+              onClick={() => {
+                document.getElementById("analyzer-section")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="group flex flex-col gap-2 p-4 rounded-lg border border-border/40 bg-surface/30 hover:border-signal/40 hover:bg-surface/50 transition-all text-left cursor-pointer"
+            >
+              <TrendingUp className="w-5 h-5 text-signal" />
+              <span className="text-sm font-semibold text-foreground group-hover:text-signal transition-colors">
+                Wallet Analyzer
+              </span>
+              <span className="text-[10px] font-mono text-foreground-muted leading-relaxed">
+                Audit any wallet's trading behavior — patience tax, upside
+                capture, and your conviction archetype.
+              </span>
+              <span className="text-[10px] font-mono text-signal mt-auto">
+                Start Analysis →
+              </span>
+            </button>
+          </motion.div>
 
           {/* Action Buttons - Hide during analysis, show after scan for new scan option */}
           <AnimatePresence>
@@ -462,7 +509,7 @@ export default function Home() {
                   </div>
 
                   <div className="flex flex-col items-center gap-6 w-full max-w-lg mt-4">
-                    <div className="w-full space-y-3">
+                    <div id="analyzer-section" className="w-full space-y-3">
                       <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest text-center">
                         Analyze any public profile
                       </p>

@@ -17,10 +17,10 @@ import { cors } from "hono/cors";
 import { AGENT_CONFIG } from "../lib/config.js";
 import { twakExecutor } from "../lib/twak-executor.js";
 import { guardrails } from "../lib/risk-guardrails.js";
-import { getMantleExplorerTxUrl } from "../lib/explorers.js";
+import { getMantleExplorerTxUrl } from "../lib/config.js";
 import type { AnchorResult } from "../lib/anchors/types.js";
 import type { SwapResult, TwakPortfolio } from "../lib/twak-executor.js";
-import type { CmcMarketData } from "../lib/cmc-client.js";
+import type { CmcMarketData } from "../lib/data-providers.js";
 import type {
   ConvictionSignal,
   HeldPosition,
@@ -28,6 +28,7 @@ import type {
   PositionVerdict,
 } from "../lib/conviction-signal.js";
 import type { MarketNarrative } from "../lib/market-narrative.js";
+import type { MacroPauseSignal } from "../lib/sosovalue-signals.js";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware, x402Stats } from "./mcp/x402.js";
 import { PRICING } from "./mcp/pricing.js";
@@ -63,6 +64,8 @@ export interface AgentServerState {
   convictionSignals: ConvictionSignal[];
   /** Market narrative generated this cycle from SoSoValue feeds + conviction data. */
   narrative: MarketNarrative | null;
+  /** Macro event pause state — drives entry sizing this cycle. */
+  macroPause: MacroPauseSignal | null;
   heldPositions: HeldPosition[];
   positionVerdicts: PositionVerdict[];
   /**
@@ -90,6 +93,7 @@ let agentState: AgentServerState = {
   marketRegime: null,
   convictionSignals: [],
   narrative: null,
+  macroPause: null,
   heldPositions: [],
   positionVerdicts: [],
   portfolio: null,
@@ -274,6 +278,7 @@ app.get("/conviction", async (c) => {
         breakdown: s.breakdown,
         holderCount: s.holderCount,
         holderGrowthPercent: s.holderGrowthPercent,
+        newsSentiment: s.newsSentiment,
         rationale: s.rationale,
       })),
 
@@ -311,6 +316,27 @@ app.get("/conviction", async (c) => {
 
     // ── Market narrative (SoSoValue feeds + conviction, Phase 3) ────────
     narrative: agentState.narrative,
+
+    // ── Macro event pause state (SoSoValue macro calendar) ─────────────
+    // Surfaces high-impact macro events that are sizing-down or skipping
+    // entries this cycle. clear=true means no pause active.
+    macroPause: agentState.macroPause
+      ? {
+          clear: agentState.macroPause.clear,
+          skipEntries: agentState.macroPause.skipEntries,
+          sizeMultiplier: agentState.macroPause.sizeMultiplier,
+          hoursUntilNext: agentState.macroPause.hoursUntilNext,
+          reason: agentState.macroPause.reason,
+          triggeringEvent: agentState.macroPause.triggeringEvent
+            ? {
+                name: agentState.macroPause.triggeringEvent.name,
+                date: agentState.macroPause.triggeringEvent.date,
+                impact: agentState.macroPause.triggeringEvent.impact ?? null,
+                forecast: agentState.macroPause.triggeringEvent.forecast ?? null,
+              }
+            : null,
+        }
+      : null,
 
     // ── On-chain conviction record ─────────────────────────────────────────
     // Legacy single-anchor fields kept for backward-compatible clients.

@@ -35,9 +35,12 @@ commentary from SoSoValue's feeds and conviction data.
 
 ```
 SoSoValue API ──┬── Token snapshots ──► Price / RSI / Quality (30s refresh)
-                ├── SSI Indices ──────► Regime signal (index decline = fear)
-                ├── News feeds ───────► Market narrative generation
-                └── Macro events ────► Regime context (CPI, FOMC)
+                ├── SSI Indices ──────► Regime confirmation (BTCSSI/ETHSSI 7d Δ
+                │                       reweights FGI + funding)
+                ├── News feeds ───────► (a) Market narrative + (b) per-symbol
+                │                       sentiment → ±10pp conviction
+                └── Macro events ────► Trade-size pause (high-impact <12h:
+                                          halve size; <4h: skip entries)
                        │
                   ┌────▼────┐
                   │         │
@@ -144,10 +147,10 @@ penalty) and holds through ordinary drawdown by design.
 
 ### SoSoValue Buildathon Additions
 
-- **SoSoValue API Client** — `agent/lib/sosovalue-client.ts` (MarketDataProvider impl, 30s-refresh token snapshots, SSI index data, news feeds, macro events)
-- **SoDEX Signer + Client** — `agent/lib/sodex-signer.ts` (EIP-712 signing, nonce management) + `agent/lib/sodex-client.ts` (REST client, market order placement, balance queries)
+- **Composite Data Provider** — `agent/lib/data-providers.ts` (`SosovalueClient` + `CmcClient` in one module — 30s-refresh token snapshots, SSI indices, news feeds, macro events; SoSoValue token prices preferred, CMC fills regime gaps)
+- **SoDEX Client + EIP-712 Signing** — `agent/lib/dex-trading.ts` (`SodexClient`, nonce manager, signed market orders, balances) — ValueChain testnet, TWAK fallback on miss
+- **SoSoValue Trading Signals** — `agent/lib/sosovalue-signals.ts` (SSI index regime confirmation → `scoreMarketRegime`; high-impact macro event pause → trade sizing; per-symbol news sentiment → `scoreTokenConviction`)
 - **Market Narrative Generator** — `agent/lib/market-narrative.ts` (template-based + optional LLM-enhanced market commentary from SoSoValue feeds)
-- **Composite Data Provider** — `agent/index.ts` (SoSoValue token prices preferred, CMC fills gaps; SoDEX execution preferred, TWAK fallback)
 
 ## Hackathons
 

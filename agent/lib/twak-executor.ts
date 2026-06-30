@@ -21,7 +21,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { AGENT_CONFIG } from "./config.js";
-import { isEligibleToken } from "./constants.js";
+import { isEligibleToken } from "./config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -224,6 +224,37 @@ export function selectBestTokenMatch(
   });
 
   return pool[0] ?? null;
+}
+
+/**
+ * Extract a USD-denominated swap fee/gas cost from TWAK CLI output.
+ *
+ * TWAK prints fee info in several formats over time — we accept any of:
+ *   "gas: $0.42"
+ *   "gas cost: $0.42"
+ *   "fee: 0.42 USD"
+ *   "Network fee: $0.42"
+ *   "total fee: $0.42"
+ *
+ * Returns null when nothing matches (caller falls back to GAS_BUFFER_USD).
+ * Exported for unit testing.
+ */
+export function parseSwapFeeUsd(output: string): number | null {
+  if (!output) return null;
+  const patterns = [
+    /(?:gas(?:\s*cost)?|network\s*fee|total\s*fee|fee)\s*[:\-]?\s*\$\s*([\d.]+)/i,
+    /(?:gas(?:\s*cost)?|network\s*fee|total\s*fee|fee)\s*[:\-]?\s*([\d.]+)\s*(?:USD|usd)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = output.match(pattern);
+    if (match && match[1]) {
+      const parsed = parseFloat(match[1]);
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed < 1000) {
+        return parsed;
+      }
+    }
+  }
+  return null;
 }
 
 // =============================================================================
@@ -1026,6 +1057,7 @@ export class TwakExecutor {
   private parseSwapOutput(output: string, request: SwapRequest): SwapResult {
     const txHashMatch = output.match(/(?:tx|transaction|hash)[:\s]+(0x[a-fA-F0-9]{64})/i);
     const amountOutMatch = output.match(/(?:amountOut|received|output)[:\s]+([\d.]+)/i);
+    const feeUsd = parseSwapFeeUsd(output);
 
     return {
       success: true,
@@ -1037,6 +1069,7 @@ export class TwakExecutor {
       tokenOut: request.tokenOut,
       amountIn: request.amountIn,
       amountOut: amountOutMatch?.[1],
+      feeUsd: feeUsd ?? undefined,
       timestamp: Date.now(),
     };
   }

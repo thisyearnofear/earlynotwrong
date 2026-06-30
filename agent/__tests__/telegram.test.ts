@@ -85,6 +85,7 @@ describe("Telegram module", () => {
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
     mockFetch.mockResolvedValueOnce({ ok: true });
     mockFetch.mockResolvedValueOnce({ ok: true });
+    mockFetch.mockResolvedValueOnce({ ok: true });
 
     const { sendCycleSummary } = await import("../lib/telegram.js");
     await sendCycleSummary({
@@ -113,15 +114,17 @@ describe("Telegram module", () => {
       errors: [],
     });
 
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    // Message 1: Trading update
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // Message 1: Cycle Header + Regime
     const msg1 = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(msg1.text).toContain("Cycle #5");
-    expect(msg1.text).toContain("USDC→ETH");
-    // Message 2: Portfolio + PnL
+    // Message 2: Signals + Trades + Narrative
     const msg2 = JSON.parse(mockFetch.mock.calls[1][1].body);
-    expect(msg2.text).toContain("Portfolio");
-    expect(msg2.text).toContain("on-chain");
+    expect(msg2.text).toContain("USDC→ETH");
+    // Message 3: Portfolio + P&L + Anchoring
+    const msg3 = JSON.parse(mockFetch.mock.calls[2][1].body);
+    expect(msg3.text).toContain("Portfolio");
+    expect(msg3.text).toContain("on-chain");
   });
 
   // =========================================================================

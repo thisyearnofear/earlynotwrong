@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeHolderMetric,
   holderGrowthFraction,
-} from "../lib/holder-growth.js";
-import type { HolderCache } from "../lib/bscscan-client.js";
+} from "../lib/holders.js";
+import type { HolderCache } from "../lib/holders.js";
 
 function makeCache(snapshots: { symbol: string; count: number; ageDays: number }[]): HolderCache {
   const now = Date.now();

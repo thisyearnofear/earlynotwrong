@@ -62,3 +62,6 @@ agent/data/state.json*.bak-*
 *.avm
 .zencoder
 .zenflow
+
+# agent typedoc output
+agent/docs/api/

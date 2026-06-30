@@ -22,8 +22,8 @@
  *   - /macro/events (macroeconomic calendar)
  */
 
-import { sosovalueClient } from "./sosovalue-client.js";
-import type { SosovalueFeedItem, SosovalueMacroEvent } from "./sosovalue-client.js";
+import { sosovalueClient } from "./data-providers.js";
+import type { SosovalueFeedItem, SosovalueMacroEvent } from "./data-providers.js";
 import type { MarketRegime } from "./conviction-signal.js";
 
 // =============================================================================

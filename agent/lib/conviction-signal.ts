@@ -16,12 +16,12 @@
  */
 
 import { AGENT_CONFIG } from "./config.js";
-import { holderGrowthFraction } from "./holder-growth.js";
+import { holderGrowthFraction } from "./holders.js";
 import type {
   TokenQuote,
   GlobalMetrics,
   DerivativesMetrics,
-} from "./cmc-client.js";
+} from "./data-providers.js";
 
 // =============================================================================
 // Market Regime (contrarian)
@@ -42,6 +42,8 @@ export interface MarketRegime {
   label: string;
   fearGreedIndex: number | null;
   fearLevel: FearLevel;
+  /** SSI index confirmation in [−1, +1]. >0 = indices corroborate fear. null when unavailable. */
+  ssiConfirmation: number | null;
 }
 
 function classifyFear(fgi: number | null): FearLevel {
@@ -61,7 +63,8 @@ function classifyFear(fgi: number | null): FearLevel {
  */
 export function scoreMarketRegime(
   global: GlobalMetrics | null,
-  derivatives: DerivativesMetrics | null
+  derivatives: DerivativesMetrics | null,
+  ssiConfirmation: number | null = null,
 ): MarketRegime {
   const fgi = global?.fearGreedIndex ?? null;
 
@@ -88,7 +91,19 @@ export function scoreMarketRegime(
       15;
   }
 
-  const score = Math.round(fgiContrarian * 0.7 + fundingContrarian * 0.3);
+  // SoSoValue SSI index confirmation in [−1, +1] is mapped onto the same
+  // 0–100 contrarian axis (50 = neutral). When indices contradict the FGI
+  // signal it pulls the regime back toward neutral instead of agreeing
+  // blindly with sentiment.
+  const ssiContrarian =
+    ssiConfirmation === null ? 50 : Math.round(50 + ssiConfirmation * 50);
+
+  // Reweight: 55% FGI · 25% funding · 20% SSI when SSI is available; otherwise
+  // fall back to the original 70/30 split so behaviour is unchanged offline.
+  const score =
+    ssiConfirmation === null
+      ? Math.round(fgiContrarian * 0.7 + fundingContrarian * 0.3)
+      : Math.round(fgiContrarian * 0.55 + fundingContrarian * 0.25 + ssiContrarian * 0.2);
 
   const label =
     score >= 80 ? "DEEP FEAR — PRIME CONTRARIAN" :
@@ -97,7 +112,13 @@ export function scoreMarketRegime(
     score >= 30 ? "GREED — CAUTION" :
     "EUPHORIA — DEFENSIVE";
 
-  return { score, label, fearGreedIndex: fgi, fearLevel: classifyFear(fgi) };
+  return {
+    score,
+    label,
+    fearGreedIndex: fgi,
+    fearLevel: classifyFear(fgi),
+    ssiConfirmation,
+  };
 }
 
 // =============================================================================
@@ -117,11 +138,15 @@ export interface ConvictionSignal {
     holders: number;
     /** Subtracted from the bonus total. Large value = erratic price path. */
     volatilityPenalty: number;
+    /** SoSoValue news sentiment adjustment (signed, ±newsMax). */
+    news: number;
   };
   /** Holder count from BscScan, or null if unavailable. */
   holderCount: number | null;
   /** Holder growth % over the lookback window, or null if history too short. */
   holderGrowthPercent: number | null;
+  /** Net news sentiment in [−1, +1], or null if no related news in this cycle. */
+  newsSentiment: number | null;
   /** Human-readable "why" for logs and the dashboard. */
   rationale: string;
 }
@@ -247,7 +272,8 @@ function qualityFraction(token: TokenQuote): number {
 export function scoreTokenConviction(
   token: TokenQuote,
   regime: MarketRegime,
-  holderMetric?: { count: number; growthPercent: number | null }
+  holderMetric?: { count: number; growthPercent: number | null },
+  newsSentiment?: number | null,
 ): ConvictionSignal {
   const w = AGENT_CONFIG.signal;
 
@@ -267,8 +293,15 @@ export function scoreTokenConviction(
     volatilityPenaltyFraction(token.percentChange7d, token.percentChange24h) *
     w.volatilityPenaltyMax;
 
+  // News sentiment is a signed adjustment in ±w.newsMax. We treat absent
+  // coverage (null) as 0 so quiet tokens neither benefit nor get penalised.
+  const newsAdj =
+    newsSentiment == null
+      ? 0
+      : Math.max(-1, Math.min(1, newsSentiment)) * w.newsMax;
+
   const raw =
-    contrarian + rsiBonus + quality + regimeComponent + holderBonus - volPenalty;
+    contrarian + rsiBonus + quality + regimeComponent + holderBonus - volPenalty + newsAdj;
   const score = Math.round(Math.max(0, Math.min(100, raw)));
 
   const dip = token.percentChange7d;
@@ -284,9 +317,15 @@ export function scoreTokenConviction(
     holderMetric.growthPercent <= -3 ? ` · ${holderMetric.growthPercent.toFixed(1)}% holders (fading)` :
     ` · ${holderMetric.growthPercent >= 0 ? "+" : ""}${holderMetric.growthPercent.toFixed(1)}% holders`;
   const volText = volPenalty >= w.volatilityPenaltyMax * 0.5 ? ` · erratic path (−${Math.round(volPenalty)})` : "";
+  const newsText =
+    newsSentiment == null || Math.abs(newsAdj) < 1
+      ? ""
+      : newsAdj > 0
+        ? ` · news ${newsAdj > 0 ? "+" : ""}${Math.round(newsAdj)}`
+        : ` · news ${Math.round(newsAdj)}`;
   const rationale = `${dipText}${rsiText} · ${regime.fearLevel.replace("-", " ")} regime · ${
     quality >= w.quality * 0.6 ? "deep" : quality >= w.quality * 0.3 ? "ok" : "thin"
-  } liquidity${holderText}${volText}`;
+  } liquidity${holderText}${volText}${newsText}`;
 
   return {
     symbol: token.symbol,
@@ -298,9 +337,11 @@ export function scoreTokenConviction(
       regime: Math.round(regimeComponent),
       holders: Math.round(holderBonus),
       volatilityPenalty: Math.round(volPenalty),
+      news: Math.round(newsAdj),
     },
     holderCount: holderMetric?.count ?? null,
     holderGrowthPercent: holderMetric?.growthPercent ?? null,
+    newsSentiment: newsSentiment ?? null,
     rationale,
   };
 }

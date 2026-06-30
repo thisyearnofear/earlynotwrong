@@ -1,0 +1,40 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Early, Not Wrong — Trading Agent",
+  "entryPoints": [
+    "index.ts",
+    "lib/**/*.ts",
+    "src/**/*.ts"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "docs/api",
+  "plugin": [],
+  "theme": "default",
+  "includeVersion": true,
+  "excludePrivate": false,
+  "excludeProtected": false,
+  "excludeExternals": true,
+  "excludeInternal": false,
+  "excludeNotDocumented": false,
+  "readme": "none",
+  "gitRevision": "main",
+  "searchInComments": true,
+  "preserveLinkText": true,
+  "validation": {
+    "notExported": false,
+    "invalidLink": true,
+    "notDocumented": false
+  },
+  "categorizeByGroup": true,
+  "defaultCategory": "Core",
+  "sort": ["source-order"],
+  "visibilityFilters": {},
+  "exclude": [
+    "node_modules",
+    "dist",
+    "__tests__",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "scripts/**/*"
+  ]
+}

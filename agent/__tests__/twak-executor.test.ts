@@ -9,7 +9,34 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TwakExecutor, selectBestTokenMatch } from "../lib/twak-executor.js";
+import { TwakExecutor, selectBestTokenMatch, parseSwapFeeUsd } from "../lib/twak-executor.js";
+
+describe("parseSwapFeeUsd — TWAK output gas extraction", () => {
+  it("parses 'gas: $0.42'", () => {
+    expect(parseSwapFeeUsd("Swap complete. gas: $0.42 paid")).toBe(0.42);
+  });
+  it("parses 'gas cost: $1.23'", () => {
+    expect(parseSwapFeeUsd("tx confirmed\ngas cost: $1.23")).toBe(1.23);
+  });
+  it("parses 'fee: 0.55 USD'", () => {
+    expect(parseSwapFeeUsd("fee: 0.55 USD")).toBe(0.55);
+  });
+  it("parses 'Network fee: $2.10'", () => {
+    expect(parseSwapFeeUsd("Network fee: $2.10")).toBe(2.10);
+  });
+  it("returns null when no gas info present", () => {
+    expect(parseSwapFeeUsd("Hash: 0xabc Amount out: 1.5")).toBeNull();
+  });
+  it("returns null for empty input", () => {
+    expect(parseSwapFeeUsd("")).toBeNull();
+  });
+  it("rejects implausible values (>= $1000)", () => {
+    expect(parseSwapFeeUsd("gas: $1500.00")).toBeNull();
+  });
+  it("accepts integer-only values", () => {
+    expect(parseSwapFeeUsd("fee: $1")).toBe(1);
+  });
+});
 
 // =============================================================================
 // Helper: mock callback-style execFile builder

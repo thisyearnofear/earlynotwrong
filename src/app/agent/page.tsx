@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { cn } from "@/lib/utils";
 import {
@@ -74,6 +75,8 @@ interface ConvictionData {
     label: string;
     fearGreedIndex: number | null;
     fearLevel: string;
+    /** SoSoValue SSI index confirmation in [−1, +1], or null when offline. */
+    ssiConfirmation: number | null;
   } | null;
   marketData: {
     fearGreedIndex: number;
@@ -93,9 +96,13 @@ interface ConvictionData {
       regime: number;
       holders: number;
       volatilityPenalty: number;
+      /** SoSoValue news sentiment adjustment (signed, ±10pp). */
+      news: number;
     };
     holderCount: number | null;
     holderGrowthPercent: number | null;
+    /** Net news sentiment in [−1, +1], or null if no related news in this cycle. */
+    newsSentiment: number | null;
     rationale: string;
   }>;
   heldPositions: Array<{
@@ -126,6 +133,20 @@ interface ConvictionData {
     newsCount: number;
     macroEventCount: number;
     generatedAt: string;
+  } | null;
+  /** Macro event pause from SoSoValue calendar — drives entry sizing this cycle. */
+  macroPause: {
+    clear: boolean;
+    skipEntries: boolean;
+    sizeMultiplier: number;
+    hoursUntilNext: number | null;
+    reason: string;
+    triggeringEvent: {
+      name: string;
+      date: string;
+      impact: string | null;
+      forecast: string | null;
+    } | null;
   } | null;
   anchoredHash: string;
   anchoredUrl: string;
@@ -358,30 +379,44 @@ function LoadingStory() {
           ))}
         </motion.div>
 
-        {/* Pipeline Preview */}
+        {/* 3-Step Progress for longer loads */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: visibleStep >= HERO_STEPS.length ? 1 : 0 }}
           transition={{ duration: 0.6 }}
-          className="mt-12 text-left"
+          className="mt-10 max-w-sm mx-auto w-full"
         >
-          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-foreground-muted mb-4">
-            <Zap className="w-3.5 h-3.5 text-signal" />
-            Pipeline Architecture
+          <div className="flex items-center gap-0 w-full">
+            {[
+              { label: "Connect", done: true },
+              { label: "Fetch", done: true },
+              { label: "Signals", done: false },
+            ].map((step, i) => (
+              <div key={i} className="flex items-center flex-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "w-2 h-2 rounded-full transition-colors",
+                      step.done ? "bg-signal shadow-[0_0_6px_var(--signal)]" : "bg-foreground-dim/30",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "text-[10px] font-mono uppercase tracking-wider transition-colors",
+                      step.done ? "text-foreground-muted" : "text-foreground-dim/50",
+                    )}
+                  >
+                    {step.label}
+                  </span>
+                </div>
+                {i < 2 && (
+                  <div className="flex-1 h-px mx-3 bg-gradient-to-r from-signal/40 to-foreground-dim/10" />
+                )}
+              </div>
+            ))}
           </div>
-          <PipelineGrid />
-        </motion.div>
-
-        {/* Retry / manual refresh */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: visibleStep >= HERO_STEPS.length + 1 ? 1 : 0 }}
-          transition={{ duration: 0.6 }}
-          className="mt-6"
-        >
-          <p className="text-[10px] text-foreground-muted font-mono">
-            Taking longer than expected?{" "}
-            <span className="text-signal">The agent connects to live market data on every cycle.</span>
+          <p className="text-[10px] text-foreground-muted/50 font-mono text-center mt-3">
+            Loading on-chain portfolio and market data…
           </p>
         </motion.div>
       </motion.div>
@@ -485,11 +520,21 @@ function Dashboard({
     >
       {/* Row 0: Orientation — what cold visitors see first.
           One sentence per beat: trading agent, dual-chain anchor, marketplace. */}
-      <div className="border-l-2 border-signal/40 pl-4 py-1">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0, duration: 0.4 }}
+        className="border-l-2 border-signal/40 pl-4 py-1"
+      >
         <p className="text-sm text-foreground">
           A conviction-weighted autonomous trading agent on BSC Mainnet.
           Every cycle is signed and anchored to{" "}
           <span className="text-signal">Casper Testnet + Mantle Sepolia</span>.
+        </p>
+        <p className="text-[10px] font-mono text-foreground-dim mt-1">
+          Live from{" "}
+          <span className="text-foreground-muted">144.202.117.160:31777</span> ·{" "}
+          ~4h cycles: data → score → manage → execute → anchor → narrate
         </p>
         <p className="text-xs text-foreground-muted mt-1.5 leading-relaxed">
           Other AI agents query the agent's verifiable track record over{" "}
@@ -497,139 +542,178 @@ function Dashboard({
           call through <span className="font-mono">x402</span> micropayments
           on Casper — see the Reputation API panel below.
         </p>
-      </div>
+      </motion.div>
 
       {/* Row 1: Agent Status + Portfolio + Guardrails */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-signal" />
-              Agent Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-3">
-              <StatusDot ok={status.status === "idle"} />
-              <span className="text-lg font-semibold capitalize">{status.status}</span>
-              {status.status === "running" && (
-                <span className="text-xs font-mono text-signal animate-pulse">
-                  RUNNING...
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05, duration: 0.4 }}
+        className="grid grid-cols-1 md:grid-cols-3 gap-4"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-signal" />
+                Agent Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <StatusDot ok={status.status === "idle"} />
+                <span className="text-lg font-semibold capitalize">{status.status}</span>
+                {status.status === "running" && (
+                  <span className="text-xs font-mono text-signal animate-pulse">
+                    RUNNING...
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div>
+                  <span className="text-foreground-muted">Version</span>
+                  <p className="text-foreground">{status.version}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Cycle</span>
+                  <p className="text-foreground">#{status.cycle}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Last Run</span>
+                  <p className="text-foreground">{formatTime(status.lastRunAt)}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Next Run</span>
+                  <p className="text-foreground">{formatTime(status.nextRunAt)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <DollarSign className="w-3.5 h-3.5 text-patience" />
+                Portfolio
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-2xl sm:text-3xl font-bold tabular-nums text-foreground">
+                {formatCurrency(status.portfolio.totalValueUsd)}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div>
+                  <span className="text-foreground-muted">Positions</span>
+                  <p className="text-foreground">{status.portfolio.positions}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Chains</span>
+                  <p className="text-foreground">{status.portfolio.chains.join(", ")}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Volume (total)</span>
+                  <p className="text-patience">{formatCurrency(status.totalVolumeUsd)}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Errors</span>
+                  <p className={cn(status.errors > 0 ? "text-impatience" : "text-patience")}>
+                    {status.errors}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.11, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-impatience" />
+                Guardrails
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <StatusDot ok={status.guardrails.allOk} />
+                <span className={cn(
+                  "text-lg font-semibold",
+                  status.guardrails.allOk ? "text-patience" : "text-impatience",
+                )}>
+                  {status.guardrails.allOk ? "All Systems Nominal" : "Limit Breached"}
                 </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div>
-                <span className="text-foreground-muted">Version</span>
-                <p className="text-foreground">{status.version}</p>
               </div>
-              <div>
-                <span className="text-foreground-muted">Cycle</span>
-                <p className="text-foreground">#{status.cycle}</p>
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div>
+                  <span className="text-foreground-muted">Drawdown</span>
+                  <p className={cn(
+                    status.guardrails.drawdownExceeded ? "text-impatience" : "text-patience"
+                  )}>
+                    {status.guardrails.drawdownPercent.toFixed(1)}%
+                  </p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Peak Value</span>
+                  <p className="text-foreground">{formatCurrency(status.guardrails.peakValueUsd)}</p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Today's Trades</span>
+                  <p className={cn(
+                    status.guardrails.tradesToday >= status.guardrails.dailyLimit
+                      ? "text-impatience"
+                      : "text-patience"
+                  )}>
+                    {status.guardrails.tradesToday}/{status.guardrails.dailyLimit}
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="text-foreground-muted">Last Run</span>
-                <p className="text-foreground">{formatTime(status.lastRunAt)}</p>
-              </div>
-              <div>
-                <span className="text-foreground-muted">Next Run</span>
-                <p className="text-foreground">{formatTime(status.nextRunAt)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <DollarSign className="w-3.5 h-3.5 text-patience" />
-              Portfolio
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="text-2xl sm:text-3xl font-bold tabular-nums text-foreground">
-              {formatCurrency(status.portfolio.totalValueUsd)}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div>
-                <span className="text-foreground-muted">Positions</span>
-                <p className="text-foreground">{status.portfolio.positions}</p>
-              </div>
-              <div>
-                <span className="text-foreground-muted">Chains</span>
-                <p className="text-foreground">{status.portfolio.chains.join(", ")}</p>
-              </div>
-              <div>
-                <span className="text-foreground-muted">Volume (total)</span>
-                <p className="text-patience">{formatCurrency(status.totalVolumeUsd)}</p>
-              </div>
-              <div>
-                <span className="text-foreground-muted">Errors</span>
-                <p className={cn(status.errors > 0 ? "text-impatience" : "text-patience")}>
-                  {status.errors}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-impatience" />
-              Guardrails
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-3">
-              <StatusDot ok={status.guardrails.allOk} />
-              <span className={cn(
-                "text-lg font-semibold",
-                status.guardrails.allOk ? "text-patience" : "text-impatience",
-              )}>
-                {status.guardrails.allOk ? "All Systems Nominal" : "Limit Breached"}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div>
-                <span className="text-foreground-muted">Drawdown</span>
-                <p className={cn(
-                  status.guardrails.drawdownExceeded ? "text-impatience" : "text-patience"
-                )}>
-                  {status.guardrails.drawdownPercent.toFixed(1)}%
-                </p>
-              </div>
-              <div>
-                <span className="text-foreground-muted">Peak Value</span>
-                <p className="text-foreground">{formatCurrency(status.guardrails.peakValueUsd)}</p>
-              </div>
-              <div>
-                <span className="text-foreground-muted">Today's Trades</span>
-                <p className={cn(
-                  status.guardrails.tradesToday >= status.guardrails.dailyLimit
-                    ? "text-impatience"
-                    : "text-patience"
-                )}>
-                  {status.guardrails.tradesToday}/{status.guardrails.dailyLimit}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
 
       {/* Row 2: Agent Reputation API — Casper-native MCP + x402 marketplace.
           Promoted above conviction signals so a 60-second visitor sees the
           marketplace surface before anything else. */}
-      <ReputationApiCard />
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.14, duration: 0.4 }}
+      >
+        <ReputationApiCard />
+      </motion.div>
 
       {/* Row 3: Conviction Signals (the thesis, visible) + Held Positions (the proof) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Signal className="w-3.5 h-3.5 text-signal" />
-              Conviction Signals
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.22, duration: 0.4 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.22, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <Signal className="w-3.5 h-3.5 text-signal" />
+                Conviction Signals
               {conviction?.regime && (
                 <span className="ml-auto flex items-center gap-1.5 text-[10px]">
                   <span className="font-mono text-foreground-dim">Regime</span>
@@ -657,6 +741,30 @@ function Dashboard({
                     </p>
                     <p className="text-[10px] font-mono text-foreground-dim mt-0.5">
                       FGI {conviction.regime.fearGreedIndex ?? "—"} · {conviction.regime.fearLevel}
+                      {conviction.regime.ssiConfirmation != null && (
+                        <>
+                          {" · "}
+                          <span
+                            className={cn(
+                              conviction.regime.ssiConfirmation > 0.2
+                                ? "text-patience"
+                                : conviction.regime.ssiConfirmation < -0.2
+                                  ? "text-impatience"
+                                  : "text-foreground-dim",
+                            )}
+                            title="SoSoValue SSI index 7d move — confirms or contradicts the contrarian fear regime"
+                          >
+                            SSI{" "}
+                            {conviction.regime.ssiConfirmation > 0
+                              ? "confirms"
+                              : conviction.regime.ssiConfirmation < 0
+                                ? "contradicts"
+                                : "neutral"}{" "}
+                            ({conviction.regime.ssiConfirmation > 0 ? "+" : ""}
+                            {conviction.regime.ssiConfirmation.toFixed(2)})
+                          </span>
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="text-3xl font-bold tabular-nums text-signal">
@@ -675,6 +783,33 @@ function Dashboard({
                     )}
                   />
                 </div>
+              </div>
+            )}
+
+            {conviction?.macroPause && !conviction.macroPause.clear && (
+              <div
+                className={cn(
+                  "p-2.5 rounded-lg border text-[10px] font-mono",
+                  conviction.macroPause.skipEntries
+                    ? "bg-impatience/10 border-impatience/30 text-impatience"
+                    : conviction.macroPause.sizeMultiplier < 1
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                      : "bg-surface/40 border-border/40 text-foreground-muted",
+                )}
+                title={
+                  conviction.macroPause.triggeringEvent
+                    ? `${conviction.macroPause.triggeringEvent.name} · ${conviction.macroPause.triggeringEvent.date}${conviction.macroPause.triggeringEvent.forecast ? ` · forecast ${conviction.macroPause.triggeringEvent.forecast}` : ""}`
+                    : undefined
+                }
+              >
+                <span className="uppercase tracking-wider">
+                  {conviction.macroPause.skipEntries
+                    ? "⏸ Entries paused"
+                    : conviction.macroPause.sizeMultiplier < 1
+                      ? "⚠ Sizing halved"
+                      : "👀 Macro watch"}
+                </span>{" "}
+                <span className="text-foreground-dim">— {conviction.macroPause.reason}</span>
               </div>
             )}
 
@@ -705,6 +840,15 @@ function Dashboard({
                         )}
                         {s.breakdown.volatilityPenalty > 0 && (
                           <span>· vol <span className="text-impatience">−{s.breakdown.volatilityPenalty}</span></span>
+                        )}
+                        {s.breakdown.news !== 0 && (
+                          <span title="SoSoValue news sentiment adjustment">
+                            · news{" "}
+                            <span className={s.breakdown.news > 0 ? "text-emerald-400" : "text-impatience"}>
+                              {s.breakdown.news > 0 ? "+" : ""}
+                              {s.breakdown.news}
+                            </span>
+                          </span>
                         )}
                       </div>
                       {s.holderCount != null && (
@@ -740,12 +884,18 @@ function Dashboard({
             )}
           </CardContent>
         </Card>
+        </motion.div>
 
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-patience" />
-              Conviction Ledger
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.26, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-patience" />
+                Conviction Ledger
               {conviction && (
                 <span className="ml-auto text-foreground-dim text-[10px] font-mono">
                   {conviction.heldPositions.length} held ·{" "}
@@ -829,258 +979,319 @@ function Dashboard({
             )}
           </CardContent>
         </Card>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* Row 4: Recent Activity + Market Data */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <BarChart3 className="w-3.5 h-3.5 text-patience" />
-              {/* Title tracks content — trades fire during cycles, holdings persist
-                  between them; reading "Recent Trades" while seeing positions
-                  read like a bug. The umbrella title fits both. */}
-              {trades && trades.recentTrades.length > 0 ? "Recent Trades" : "Activity"}
-              {trades && (
-                <span className="ml-auto text-foreground-dim text-[10px]">
-                  {trades.totalSessionTrades} total · {formatCurrency(trades.totalVolumeUsd)} volume
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {trades && trades.recentTrades.length > 0 ? (
-              <div className="space-y-2">
-                {trades.recentTrades.map((trade, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40 hover:border-signal/20 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex items-center gap-1 text-sm font-semibold">
-                        <span className="text-impatience">{trade.tokenIn}</span>
-                        <ChevronRight className="w-3 h-3 text-foreground-muted shrink-0" />
-                        <span className="text-patience">{trade.tokenOut}</span>
-                      </div>
-                      <span className="text-xs font-mono text-foreground-muted">
-                        ${trade.amountIn}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {trade.success ? (
-                        <span className="flex items-center gap-1 text-xs text-patience">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Executed
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-xs text-impatience">
-                          <XCircle className="w-3 h-3" />
-                          Failed
-                        </span>
-                      )}
-                      <span className="text-[10px] text-foreground-dim font-mono">
-                        {formatTime(trade.timestamp)}
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              // Empty state — trades are cycle-scoped, so between cycles this
-              // is usually empty even though positions are actively managed.
-              // Show what the agent is HOLDING (its current state) instead of
-              // a blank "no trades" message — same data the loop uses to
-              // decide whether to harvest, exit, or hold next cycle.
-              <div className="space-y-2">
-                <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider px-1">
-                  Holding (between cycles)
-                </p>
-                {conviction && conviction.heldPositions.length > 0 ? (
-                  conviction.heldPositions
-                    .slice()
-                    .sort((a, b) => b.amountUsd - a.amountUsd)
-                    .slice(0, 5)
-                    .map((p, i) => (
-                      <motion.div
-                        key={p.symbol}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-sm font-semibold text-patience">{p.symbol}</span>
-                          <span className="text-xs font-mono text-foreground-muted">
-                            ${p.amountUsd.toFixed(2)}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-foreground-dim font-mono">
-                          {p.cyclesHeld} cycle{p.cyclesHeld === 1 ? "" : "s"} held
-                        </span>
-                      </motion.div>
-                    ))
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-6 text-foreground-muted">
-                    <BarChart3 className="w-8 h-8 mb-2 opacity-40" />
-                    <p className="text-xs font-mono">No active positions</p>
-                  </div>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.30, duration: 0.4 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.30, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <BarChart3 className="w-3.5 h-3.5 text-patience" />
+                {/* Title tracks content — trades fire during cycles, holdings persist
+                    between them; reading "Recent Trades" while seeing positions
+                    read like a bug. The umbrella title fits both. */}
+                {trades && trades.recentTrades.length > 0 ? "Recent Trades" : "Activity"}
+                {trades && (
+                  <span className="ml-auto text-foreground-dim text-[10px]">
+                    {trades.totalSessionTrades} total · {formatCurrency(trades.totalVolumeUsd)} volume
+                  </span>
                 )}
-                <p className="text-[10px] font-mono text-foreground-dim text-center pt-1">
-                  Next cycle in ~4h · trades fire when conviction + bankroll align
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {trades && trades.recentTrades.length > 0 ? (
+                <div className="space-y-2">
+                  {trades.recentTrades.map((trade, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40 hover:border-signal/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-1 text-sm font-semibold">
+                          <span className="text-impatience">{trade.tokenIn}</span>
+                          <ChevronRight className="w-3 h-3 text-foreground-muted shrink-0" />
+                          <span className="text-patience">{trade.tokenOut}</span>
+                        </div>
+                        <span className="text-xs font-mono text-foreground-muted">
+                          ${trade.amountIn}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {trade.success ? (
+                          <span className="flex items-center gap-1 text-xs text-patience">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Executed
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-impatience">
+                            <XCircle className="w-3 h-3" />
+                            Failed
+                          </span>
+                        )}
+                        <span className="text-[10px] text-foreground-dim font-mono">
+                          {formatTime(trade.timestamp)}
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                // Empty state — trades are cycle-scoped, so between cycles this
+                // is usually empty even though positions are actively managed.
+                // Show what the agent is HOLDING (its current state) instead of
+                // a blank "no trades" message — same data the loop uses to
+                // decide whether to harvest, exit, or hold next cycle.
+                <div className="space-y-2">
+                  <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider px-1">
+                    Holding (between cycles)
+                  </p>
+                  {conviction && conviction.heldPositions.length > 0 ? (
+                    conviction.heldPositions
+                      .slice()
+                      .sort((a, b) => b.amountUsd - a.amountUsd)
+                      .slice(0, 5)
+                      .map((p, i) => (
+                        <motion.div
+                          key={p.symbol}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          className="flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border/40"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-sm font-semibold text-patience">{p.symbol}</span>
+                            <span className="text-xs font-mono text-foreground-muted">
+                              ${p.amountUsd.toFixed(2)}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-foreground-dim font-mono">
+                            {p.cyclesHeld} cycle{p.cyclesHeld === 1 ? "" : "s"} held
+                          </span>
+                        </motion.div>
+                      ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-6 text-foreground-muted">
+                      <BarChart3 className="w-8 h-8 mb-2 opacity-40" />
+                      <p className="text-xs font-mono">No active positions</p>
+                    </div>
+                  )}
+                  <p className="text-[10px] font-mono text-foreground-dim text-center pt-1">
+                    Next cycle in ~4h · trades fire when conviction + bankroll align
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Globe className="w-3.5 h-3.5 text-signal" />
-              Market Data
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {conviction?.marketData && (
-              <>
-                <div className="flex items-center gap-4 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold tabular-nums">{conviction.marketData.fearGreedIndex}</span>
-                    <span className={cn(
-                      "text-xs font-mono px-2 py-0.5 rounded-full",
-                      conviction.marketData.fearGreedIndex <= 25
-                        ? "bg-impatience/10 text-impatience border border-impatience/20"
-                        : conviction.marketData.fearGreedIndex >= 75
-                        ? "bg-patience/10 text-patience border border-patience/20"
-                        : "bg-amber-500/10 text-amber-400 border border-amber-500/20",
-                    )}>
-                      {conviction.marketData.fearGreedLabel}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.34, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <Globe className="w-3.5 h-3.5 text-signal" />
+                Market Data
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {conviction?.marketData ? (
+                <>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold tabular-nums">{conviction.marketData.fearGreedIndex}</span>
+                      <span className={cn(
+                        "text-xs font-mono px-2 py-0.5 rounded-full",
+                        conviction.marketData.fearGreedIndex <= 25
+                          ? "bg-impatience/10 text-impatience border border-impatience/20"
+                          : conviction.marketData.fearGreedIndex >= 75
+                          ? "bg-patience/10 text-patience border border-patience/20"
+                          : "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+                      )}>
+                        {conviction.marketData.fearGreedLabel}
+                      </span>
+                    </div>
+                    <span className="text-xs text-foreground-muted font-mono">
+                      Fear & Greed Index
                     </span>
                   </div>
-                  <span className="text-xs text-foreground-muted font-mono">
-                    Fear & Greed Index
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                  <div>
-                    <span className="text-foreground-muted">Market Cap</span>
-                    <p className="text-foreground">{formatCompact(conviction.marketData.totalMarketCapUsd)}</p>
-                  </div>
-                  <div>
-                    <span className="text-foreground-muted">Tokens Tracked</span>
-                    <p className="text-foreground">{conviction.marketData.tokensTracked}</p>
-                  </div>
-                  <div>
-                    <span className="text-foreground-muted">BTC Funding</span>
-                    <p className="text-foreground">{(conviction.marketData.btcFundingRate * 100).toFixed(4)}%</p>
-                  </div>
-                  <div>
-                    <span className="text-foreground-muted">ETH Funding</span>
-                    <p className="text-foreground">{(conviction.marketData.ethFundingRate * 100).toFixed(4)}%</p>
-                  </div>
-                </div>
-              </>
-            )}
-            {conviction && ((conviction.anchorResults?.length ?? 0) > 0 ||
-              (conviction.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000")) && (
-              <div className={cn(
-                "pt-2 space-y-1.5",
-                conviction.marketData ? "border-t border-border/50" : "",
-              )}>
-                <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
-                  <FileText className="w-3 h-3" />
-                  <span>Conviction anchored</span>
-                </div>
-                {/* Multi-chain: render one row per adapter that ran this cycle. */}
-                {conviction.anchorResults && conviction.anchorResults.length > 0 ? (
-                  // Casper-first: this is the marketplace host; Mantle is the
-                  // EVM mirror. Symbolic but consistent with the story order.
-                  [...conviction.anchorResults]
-                    .sort((a, b) => (a.adapter === "casper" ? -1 : b.adapter === "casper" ? 1 : 0))
-                    .map((r) => (
-                    <div key={r.adapter} className="flex items-center gap-2 text-[10px] font-mono pl-5">
-                      <span className="w-4 text-center">
-                        {r.status === "success" ? "✓" : r.status === "skipped" ? "○" : "✗"}
-                      </span>
-                      <span className="capitalize text-foreground-muted w-14">{r.adapter}</span>
-                      {r.status === "success" && r.txHash ? (
-                        <a
-                          href={r.explorerUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-signal hover:underline truncate"
-                        >
-                          {r.txHash.slice(0, 14)}…
-                          <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
-                        </a>
-                      ) : (
-                        <span className="text-foreground-muted truncate">{r.error ?? r.status}</span>
-                      )}
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-foreground-muted">Market Cap</span>
+                      <p className="text-foreground">{formatCompact(conviction.marketData.totalMarketCapUsd)}</p>
                     </div>
-                  )) // end .map
-                ) : (
-                  // Fallback: legacy single-anchor field (older agent versions).
-                  <div className="flex items-center gap-2 text-[10px] font-mono pl-5">
-                    <span className="w-4 text-center">✓</span>
-                    <span className="capitalize text-foreground-muted w-14">mantle</span>
-                    <a
-                      href={conviction.anchoredUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-signal hover:underline truncate"
-                    >
-                      {conviction.anchoredHash.slice(0, 14)}…
-                      <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
-                    </a>
+                    <div>
+                      <span className="text-foreground-muted">Tokens Tracked</span>
+                      <p className="text-foreground">{conviction.marketData.tokensTracked}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">BTC Funding</span>
+                      <p className="text-foreground">{(conviction.marketData.btcFundingRate * 100).toFixed(4)}%</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">ETH Funding</span>
+                      <p className="text-foreground">{(conviction.marketData.ethFundingRate * 100).toFixed(4)}%</p>
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                </>
+              ) : conviction ? (
+                <div className="py-2 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-8 w-16" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-6 w-20" />
+                    <Skeleton className="h-6 w-16" />
+                    <Skeleton className="h-6 w-24" />
+                  </div>
+                </div>
+              ) : null}
+              {conviction && ((conviction.anchorResults?.length ?? 0) > 0 ||
+                (conviction.anchoredHash && conviction.anchoredHash !== "0x0000000000000000000000000000000000000000000000000000000000000000")) && (
+                <div className={cn(
+                  "pt-2 space-y-1.5",
+                  conviction.marketData ? "border-t border-border/50" : "",
+                )}>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+                    <FileText className="w-3 h-3" />
+                    <span>Conviction anchored</span>
+                  </div>
+                  {/* Multi-chain: render one row per adapter that ran this cycle. */}
+                  {conviction.anchorResults && conviction.anchorResults.length > 0 ? (
+                    // Casper-first: this is the marketplace host; Mantle is the
+                    // EVM mirror. Symbolic but consistent with the story order.
+                    [...conviction.anchorResults]
+                      .sort((a, b) => (a.adapter === "casper" ? -1 : b.adapter === "casper" ? 1 : 0))
+                      .map((r) => (
+                      <div key={r.adapter} className="flex items-center gap-2 text-[10px] font-mono pl-5">
+                        <span className="w-4 text-center">
+                          {r.status === "success" ? "✓" : r.status === "skipped" ? "○" : "✗"}
+                        </span>
+                        <span className="capitalize text-foreground-muted w-14">{r.adapter}</span>
+                        {r.status === "success" && r.txHash ? (
+                          <a
+                            href={r.explorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-signal hover:underline truncate"
+                          >
+                            {r.txHash.slice(0, 14)}…
+                            <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
+                          </a>
+                        ) : (
+                          <span className="text-foreground-muted truncate">{r.error ?? r.status}</span>
+                        )}
+                      </div>
+                    )) // end .map
+                  ) : (
+                    // Fallback: legacy single-anchor field (older agent versions).
+                    <div className="flex items-center gap-2 text-[10px] font-mono pl-5">
+                      <span className="w-4 text-center">✓</span>
+                      <span className="capitalize text-foreground-muted w-14">mantle</span>
+                      <a
+                        href={conviction.anchoredUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-signal hover:underline truncate"
+                      >
+                        {conviction.anchoredHash.slice(0, 14)}…
+                        <ExternalLink className="w-2.5 h-2.5 inline ml-0.5" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
 
       {/* Row 4b: Market Narrative — SoSoValue feeds + conviction commentary */}
-      {conviction?.narrative && (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.38, duration: 0.4 }}
+      >
         <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-signal" />
-              Market Narrative
-              {conviction.narrative.newsCount > 0 && (
-                <span className="ml-auto text-foreground-dim text-[10px] font-mono">
-                  {conviction.narrative.newsCount} news · {conviction.narrative.macroEventCount} macro events
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {conviction.narrative.headline && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-surface/40 border border-border/40 mb-3">
-                <FileText className="w-4 h-4 text-signal shrink-0 mt-0.5" />
-                <p className="text-xs font-mono text-foreground-muted leading-relaxed">
-                  “{conviction.narrative.headline}”
-                </p>
-              </div>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-signal" />
+            Market Narrative
+            {conviction?.narrative && conviction.narrative.newsCount > 0 && (
+              <span className="ml-auto text-foreground-dim text-[10px] font-mono">
+                {conviction.narrative.newsCount} news · {conviction.narrative.macroEventCount} macro events
+              </span>
             )}
-            <p className="text-sm text-foreground leading-relaxed">
-              {conviction.narrative.summary}
-            </p>
-            <div className="flex items-center gap-3 mt-3 text-[10px] font-mono text-foreground-dim">
-              <span>Source: SoSoValue feeds + conviction data</span>
-              <span>·</span>
-              <span>Generated {new Date(conviction.narrative.generatedAt).toLocaleTimeString()}</span>
-            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {conviction?.narrative ? (
+            <>
+              {conviction.narrative.headline && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-surface/40 border border-border/40 mb-3">
+                  <FileText className="w-4 h-4 text-signal shrink-0 mt-0.5" />
+                  <p className="text-xs font-mono text-foreground-muted leading-relaxed">
+                    "{conviction.narrative.headline}"
+                  </p>
+                </div>
+              )}
+              <p className="text-sm text-foreground leading-relaxed">
+                {conviction.narrative.summary}
+              </p>
+              <div className="flex items-center gap-3 mt-3 text-[10px] font-mono text-foreground-dim">
+                <span>Source: SoSoValue feeds + conviction data</span>
+                <span>·</span>
+                <span>Generated {new Date(conviction.narrative.generatedAt).toLocaleTimeString()}</span>
+              </div>
+            </>
+          ) : (
+            <div className="py-4 space-y-3">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-5/6" />
+              <div className="flex items-center gap-2 pt-1">
+                <Skeleton className="h-2 w-24" />
+                <Skeleton className="h-2 w-16" />
+              </div>
+              <p className="text-[10px] text-foreground-dim/50 font-mono pt-1">
+                Narrative fetches alongside agent data — will populate after the next cycle.
+              </p>
+            </div>            )}
           </CardContent>
         </Card>
-      )}
+      </motion.div>
 
       {/* Row 5: Demo Video + Links */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="bg-surface/30 border-border/50">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.44, duration: 0.4 }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.44, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-signal" />
@@ -1115,14 +1326,35 @@ function Dashboard({
           </CardContent>
         </Card>
 
-        <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <ExternalLink className="w-3.5 h-3.5 text-signal" />
-              Resources
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.48, duration: 0.35 }}
+        >
+        {/* Resources — collapsed by default, shows count of links when closed */}
+        <details className="group">
+          <summary
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border/50",
+              "bg-surface/40 p-3",
+              "text-xs font-mono uppercase tracking-wider",
+              "text-foreground-muted hover:text-signal hover:border-signal/20 cursor-pointer",
+              "select-none list-none transition-colors"
+            )}
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-signal shrink-0" />
+            <span>Resources</span>
+            <span className="text-[10px] text-foreground-dim font-normal normal-case">5 links</span>
+            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case group-open:hidden">
+              Click to expand
+            </span>
+            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case hidden group-open:inline">
+              Collapse
+            </span>
+          </summary>
+          <div className="mt-1 space-y-1">
             {[
               {
                 label: "GitHub Repository",
@@ -1166,22 +1398,43 @@ function Dashboard({
                 <ExternalLink className="w-3.5 h-3.5 text-foreground-muted group-hover:text-signal shrink-0 ml-2" />
               </a>
             ))}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </details>
+        </motion.div>
+      </motion.div>
 
-      {/* Row 6: Pipeline Architecture (demoted — supports, doesn't lead) */}
-      <Card className="bg-surface/30 border-border/50">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-signal" />
-            Pipeline Architecture
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PipelineGrid />
-        </CardContent>
-      </Card>
+      {/* Row 6: Pipeline Architecture (collapsed by default) */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.52, duration: 0.4 }}
+      >
+      <details className="group">
+        <summary
+          className={cn(
+            "flex items-center gap-2 text-xs font-mono uppercase tracking-wider",
+            "text-foreground-muted hover:text-signal cursor-pointer",
+            "select-none list-none transition-colors"
+          )}
+        >
+          <Zap className="w-3.5 h-3.5 text-signal" />
+          Pipeline Architecture
+          <span className="ml-auto text-[10px] text-foreground-dim group-open:hidden">
+            Click to expand
+          </span>
+          <span className="ml-auto text-[10px] text-foreground-dim hidden group-open:inline">
+            Collapse
+          </span>
+        </summary>
+        <div className="mt-3">
+          <Card className="bg-surface/30 border-border/50">
+            <CardContent className="pt-4">
+              <PipelineGrid />
+            </CardContent>
+          </Card>
+        </div>
+      </details>
+      </motion.div>
     </motion.div>
   );
 }

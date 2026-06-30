@@ -13,7 +13,7 @@
 import { createPublicClient, createWalletClient, defineChain, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { AGENT_CONFIG } from "../config.js";
-import { getMantleExplorerTxUrl } from "../explorers.js";
+import { getMantleExplorerTxUrl } from "../config.js";
 import type { AnchorAdapter, AnchorResult, AnchoredRecord, Bytes32Hex, ConvictionRecord } from "./types.js";
 
 // ── Chain + ABI ──

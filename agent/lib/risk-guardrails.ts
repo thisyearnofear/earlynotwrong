@@ -18,7 +18,7 @@
  */
 
 import { AGENT_CONFIG } from "./config.js";
-import { isEligibleToken } from "./constants.js";
+import { isEligibleToken } from "./config.js";
 
 
 // =============================================================================

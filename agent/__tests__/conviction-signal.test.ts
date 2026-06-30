@@ -8,7 +8,7 @@ import {
   synthesizeRsi7d,
   volatilityPenaltyFraction,
 } from "../lib/conviction-signal.js";
-import type { TokenQuote } from "../lib/cmc-client.js";
+import type { TokenQuote } from "../lib/data-providers.js";
 
 const makeQuote = (overrides: Partial<TokenQuote> = {}): TokenQuote => ({
   symbol: "TWT",
