@@ -1,0 +1,412 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="02-thesis"
+    data-start="0"
+    data-duration="9.427"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Dim dashboard background (30% opacity) -->
+    <img
+      id="02-thesis-bg"
+      src="capture/screenshots/scroll-035.png"
+      alt=""
+      class="bg-img"
+    />
+    <div class="bg-veil"></div>
+
+    <!-- Headline block (left ~60%) -->
+    <div class="headline">
+      <div class="line-eyebrow" id="02-thesis-eyebrow">MOST TRADING AGENTS</div>
+
+      <!-- Sub-shape A: fixed-line token swap.
+           Two tokens (PREDICT/SCORE and PRICES/CONVICTION) live in the SAME
+           position, fade-swapped at hard cuts driven by GSAP onUpdate. -->
+      <div class="line-main">
+        <span class="token-wrap" id="02-thesis-tok1-wrap">
+          <span class="token tok-base" id="02-thesis-tok1-predict">PREDICT</span>
+          <span class="token tok-replace" id="02-thesis-tok1-score">SCORE</span>
+        </span>
+        <span class="space">&nbsp;</span>
+        <span class="token-wrap" id="02-thesis-tok2-wrap">
+          <span class="token tok-base" id="02-thesis-tok2-prices">PRICES.</span>
+          <span class="token tok-replace cyan" id="02-thesis-tok2-conviction">CONVICTION.</span>
+        </span>
+        <!-- Strikethrough rule drawn left-to-right across the OLD tokens.
+             Stays visible after the swap; lives behind the new (cyan) word. -->
+        <span class="strike" id="02-thesis-strike"></span>
+      </div>
+
+      <!-- Greyed echo of the old claim, post-swap -->
+      <div class="line-echo" id="02-thesis-echo">
+        <span class="echo-text">PREDICT PRICES.</span>
+        <span class="echo-strike"></span>
+      </div>
+    </div>
+
+    <!-- Six-factor breakdown ladder (right ~36%) -->
+    <ul class="ladder" id="02-thesis-ladder">
+      <li class="row" id="02-thesis-row-1">
+        <span class="tick"></span><span class="label">CONTRARIAN</span>
+      </li>
+      <li class="row" id="02-thesis-row-2">
+        <span class="tick"></span><span class="label">RSI</span>
+      </li>
+      <li class="row" id="02-thesis-row-3">
+        <span class="tick"></span><span class="label">QUALITY</span>
+      </li>
+      <li class="row" id="02-thesis-row-4">
+        <span class="tick"></span><span class="label">REGIME</span>
+      </li>
+      <li class="row" id="02-thesis-row-5">
+        <span class="tick"></span><span class="label">HOLDERS</span>
+      </li>
+      <li class="row" id="02-thesis-row-6">
+        <span class="tick" id="02-thesis-tick-news"></span><span class="label">NEWS</span>
+      </li>
+    </ul>
+
+    <style>
+      /* @font-face — only fonts that ship as files in capture/assets/fonts/.
+         frame.md names "DM Sans" but no DM Sans files are present; the
+         project ships Geist + Geist Mono, so we use those (display + mono). */
+      @font-face {
+        font-family: "Geist";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url("capture/assets/fonts/53b9e256198e5412-s.0-wfv7uh4i7h9.woff2")
+          format("woff2");
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+        src: url("capture/assets/fonts/4fa387ec64143e14-s.0wkzw~je483f-.woff2")
+          format("woff2");
+      }
+
+      /* Style the frame root via #root (NEVER a class on the data-comp-id elt) */
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #0a0a0a;
+        color: #ededed;
+        font-family: "Geist", sans-serif;
+        overflow: hidden;
+        container-type: size;
+      }
+
+      /* Background image + 30% dim veil */
+      #root .bg-img {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        object-fit: cover;
+        opacity: 0.3;
+        filter: grayscale(0.4) blur(2px);
+        z-index: 0;
+        will-change: opacity;
+      }
+      #root .bg-veil {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          180deg,
+          rgba(10, 10, 10, 0.55) 0%,
+          rgba(10, 10, 10, 0.7) 60%,
+          rgba(10, 10, 10, 0.85) 100%
+        );
+        z-index: 1;
+      }
+
+      /* Headline (left 60%) — anchored high, all content above y=900 */
+      #root .headline {
+        position: absolute;
+        left: 96px;
+        top: 220px;
+        width: 1100px;
+        z-index: 3;
+      }
+      #root .line-eyebrow {
+        font-family: "Geist", sans-serif;
+        font-weight: 500;
+        font-size: 44px;
+        letter-spacing: 0.06em;
+        color: #949494;
+        margin-bottom: 28px;
+      }
+      #root .line-main {
+        position: relative;
+        font-family: "Geist", sans-serif;
+        font-weight: 700;
+        font-size: 130px;
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+        color: #ededed;
+        white-space: nowrap;
+      }
+      #root .token-wrap {
+        position: relative;
+        display: inline-block;
+        vertical-align: baseline;
+      }
+      #root .token {
+        display: inline-block;
+        will-change: opacity, transform;
+      }
+      /* Stack the replacement on top of the base so the swap is in-place. */
+      #root .tok-replace {
+        position: absolute;
+        left: 0;
+        top: 0;
+        opacity: 0;
+      }
+      #root .cyan {
+        color: #22d3ee;
+      }
+      #root .space {
+        display: inline-block;
+        width: 0.32em;
+      }
+      /* Strike-through rule, drawn left-to-right across the full headline.
+         Sits between the eyebrow and the new (replacement) tokens. */
+      #root .strike {
+        position: absolute;
+        left: 0;
+        top: 60%;
+        height: 3px;
+        width: 100%;
+        background: #22d3ee;
+        transform-origin: left center;
+        transform: scaleX(0);
+        z-index: 2;
+        pointer-events: none;
+        will-change: transform, opacity;
+      }
+
+      /* Greyed echo of the old claim — appears post-swap, beneath the main line */
+      #root .line-echo {
+        position: relative;
+        display: inline-block;
+        margin-top: 18px;
+        font-family: "Geist", sans-serif;
+        font-weight: 500;
+        font-size: 42px;
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+        color: #656565;
+        opacity: 0;
+        will-change: opacity;
+      }
+      #root .echo-text {
+        position: relative;
+      }
+      #root .echo-strike {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 52%;
+        height: 2px;
+        background: rgba(148, 148, 148, 0.7);
+      }
+
+      /* Ladder (right 36%) — six rows, anchored high */
+      #root .ladder {
+        position: absolute;
+        right: 96px;
+        top: 280px;
+        width: 540px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        z-index: 3;
+      }
+      #root .row {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 18px 0;
+        border-bottom: 1px solid rgba(34, 211, 238, 0.12);
+        opacity: 0;
+        will-change: opacity, transform;
+      }
+      #root .row:last-child {
+        border-bottom: none;
+      }
+      #root .tick {
+        flex: 0 0 auto;
+        width: 4px;
+        height: 28px;
+        background: #22d3ee;
+        border-radius: 2px;
+        box-shadow: 0 0 0px rgba(34, 211, 238, 0);
+        will-change: box-shadow, transform;
+      }
+      #root .label {
+        font-family: "Geist Mono", monospace;
+        font-weight: 500;
+        font-size: 22px;
+        letter-spacing: 0.08em;
+        color: #949494;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // ----- Element handles -----
+        var bgImg = document.getElementById("02-thesis-bg");
+        var eyebrow = document.getElementById("02-thesis-eyebrow");
+        var lineMain = document.querySelector("#root .line-main");
+        var tok1Predict = document.getElementById("02-thesis-tok1-predict");
+        var tok1Score = document.getElementById("02-thesis-tok1-score");
+        var tok2Prices = document.getElementById("02-thesis-tok2-prices");
+        var tok2Conviction = document.getElementById("02-thesis-tok2-conviction");
+        var strike = document.getElementById("02-thesis-strike");
+        var echo = document.getElementById("02-thesis-echo");
+        var tickNews = document.getElementById("02-thesis-tick-news");
+        var rows = [
+          document.getElementById("02-thesis-row-1"),
+          document.getElementById("02-thesis-row-2"),
+          document.getElementById("02-thesis-row-3"),
+          document.getElementById("02-thesis-row-4"),
+          document.getElementById("02-thesis-row-5"),
+          document.getElementById("02-thesis-row-6"),
+        ];
+
+        // ============================================================
+        // Scene 1 (0.0 – 1.6s) — "MOST TRADING AGENTS / PREDICT PRICES."
+        // VO: "Most trading agents predict prices."
+        // ============================================================
+
+        // Background fades in subtly behind everything.
+        tl.fromTo(
+          bgImg,
+          { opacity: 0 },
+          { opacity: 0.3, duration: 0.6, ease: "power2.out" },
+          0
+        );
+
+        // Eyebrow lands first.
+        tl.fromTo(
+          eyebrow,
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+          0.1
+        );
+
+        // Main line "PREDICT PRICES." rises into place.
+        tl.fromTo(
+          lineMain,
+          { opacity: 0, y: 22 },
+          { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+          0.45
+        );
+
+        // ============================================================
+        // Scene 2 (1.6 – 3.4s) — strike + in-place token swap
+        // VO: "Early, Not Wrong scores conviction —"
+        // ============================================================
+
+        // Cyan strikethrough draws left-to-right across the headline.
+        tl.fromTo(
+          strike,
+          { scaleX: 0, opacity: 1 },
+          { scaleX: 1, duration: 0.55, ease: "power3.inOut" },
+          1.7
+        );
+
+        // Hard-cut token swaps on the spoken words.
+        // Each pair: base out (instant), replacement in (instant) — discrete.
+        // PREDICT -> SCORE lands on "scores"
+        tl.to(tok1Predict, { opacity: 0, duration: 0.001 }, 2.55);
+        tl.to(tok1Score, { opacity: 1, duration: 0.001 }, 2.55);
+
+        // PRICES -> CONVICTION lands on "conviction"
+        tl.to(tok2Prices, { opacity: 0, duration: 0.001 }, 2.95);
+        tl.to(tok2Conviction, { opacity: 1, duration: 0.001 }, 2.95);
+
+        // Tiny settle pulse on the new line after the swap.
+        tl.fromTo(
+          tok2Conviction,
+          { scale: 1.0 },
+          { scale: 1.0, duration: 0.001 },
+          2.95
+        );
+
+        // After the swap, fade the strike out to leave the affirmative line clean.
+        tl.to(
+          strike,
+          { opacity: 0, duration: 0.4, ease: "power2.out" },
+          3.05
+        );
+
+        // ============================================================
+        // Scene 3 (3.4 – 6.0s) — affirmative read; old claim echoes below
+        // VO: "— the willingness to hold quality assets through fear."
+        // ============================================================
+
+        tl.fromTo(
+          echo,
+          { opacity: 0, y: 6 },
+          { opacity: 0.7, y: 0, duration: 0.55, ease: "power2.out" },
+          3.5
+        );
+
+        // ============================================================
+        // Scene 4 (6.0 – 9.427s) — six-row breakdown reveals to the VO tail.
+        // Stagger 0.4s; final NEWS tick glows on land. Held-read final.
+        // ============================================================
+
+        var rowStart = 6.0;
+        var stagger = 0.4;
+        for (var i = 0; i < rows.length; i++) {
+          tl.fromTo(
+            rows[i],
+            { opacity: 0, x: 18 },
+            { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" },
+            rowStart + i * stagger
+          );
+        }
+
+        // NEWS tick glow as it lands (last row at 6.0 + 5*0.4 = 8.0s).
+        var newsAt = rowStart + (rows.length - 1) * stagger; // 8.0s
+        tl.fromTo(
+          tickNews,
+          {
+            boxShadow: "0 0 0px rgba(34,211,238,0)",
+            scale: 1,
+          },
+          {
+            boxShadow: "0 0 24px rgba(34,211,238,0.85)",
+            scale: 1.08,
+            duration: 0.35,
+            ease: "power2.out",
+          },
+          newsAt + 0.15
+        );
+        tl.to(
+          tickNews,
+          {
+            boxShadow: "0 0 10px rgba(34,211,238,0.45)",
+            scale: 1.0,
+            duration: 0.6,
+            ease: "power2.inOut",
+          },
+          newsAt + 0.5
+        );
+
+        // Held read to the end (no exit — non-final frame).
+        window.__timelines["02-thesis"] = tl;
+      })();
+    </script>
+  </div>
+</template>

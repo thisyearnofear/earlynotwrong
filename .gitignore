@@ -65,3 +65,36 @@ agent/data/state.json*.bak-*
 
 # agent typedoc output
 agent/docs/api/
+
+# HyperFrames video projects under videos/<name>/.
+# Track only the source-of-truth files (STORYBOARD.md, SCRIPT.md, frame.md,
+# index.html, compositions/, hyperframes.json, package.json, meta.json).
+# Everything else here is a build artifact, generated metadata, or a large
+# binary — regeneratable from the source files above.
+videos/*/node_modules/
+videos/*/dist/
+videos/*/.hyperframes/
+videos/*/renders/
+videos/*/capture/
+videos/*/assets/
+videos/*/audio.log
+videos/*/audio_meta.json
+videos/*/audio_engine_meta.json
+videos/*/audio_request.json
+# Auto-generated boilerplate from `hyperframes init` / `hyperframes capture`
+# — identical generic docs, not project-specific.
+videos/*/AGENTS.md
+videos/*/CLAUDE.md
+videos/*/capture/AGENTS.md
+videos/*/capture/CLAUDE.md
+videos/*/capture/.cursorrules
+
+# Local agent session telemetry — unrelated to repo contents.
+.kimchi/
+
+# Rendered demo binaries — large, regeneratable, host externally (YouTube /
+# Vercel / asciinema) and link from the README rather than committing.
+docs/demo-*.mp4
+docs/demo-*.gif
+docs/demo-*.webm
+demo.cast

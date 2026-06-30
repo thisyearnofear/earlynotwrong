@@ -1,0 +1,626 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="04-execution"
+    data-start="0"
+    data-duration="7.848"
+    data-width="1920"
+    data-height="1080"
+  >
+    <!-- Background dim layer -->
+    <div class="bg-fill"></div>
+
+    <!-- Eyebrow heading -->
+    <div id="eyebrow" class="eyebrow clip" data-start="0" data-duration="7.848" data-track-index="1">
+      EXECUTION · SIGNALS → ON-CHAIN TRADES
+    </div>
+
+    <!-- ============================================================
+         TOP HALF — PIPE DIAGRAM (5 stations)
+         SOSOVALUE → CONVICTION → GUARDRAILS → SODEX → TWAK
+         ============================================================ -->
+    <div id="pipe-wrap" class="pipe-wrap clip" data-start="0" data-duration="7.848" data-track-index="2">
+      <!-- SVG: connectors + traveling dot -->
+      <svg class="pipe-svg" viewBox="0 0 1720 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+        <!-- 5 stations spaced across viewBox width 1720; station centers at x = 110, 510, 910, 1310, 1610 (last narrower for SODEX→TWAK pair) -->
+        <!-- Actually use: 110, 470, 830, 1190, 1550 — even 360px spacing -->
+        <line id="conn-1" class="connector" x1="186" y1="100" x2="394" y2="100" />
+        <line id="conn-2" class="connector" x1="546" y1="100" x2="754" y2="100" />
+        <line id="conn-3" class="connector" x1="906" y1="100" x2="1114" y2="100" />
+        <line id="conn-4" class="connector" x1="1266" y1="100" x2="1474" y2="100" />
+
+        <!-- SODEX preferred ring (drawn around station 4) -->
+        <circle id="preferred-ring" cx="1190" cy="100" r="92" />
+
+        <!-- Traveling dot — positioned via GSAP -->
+        <circle id="travel-dot" cx="110" cy="100" r="9" />
+      </svg>
+
+      <!-- Stations as positioned divs over the SVG -->
+      <div class="stations">
+        <div class="station" id="station-1" style="left: 110px;">
+          <div class="station-chip">SOSOVALUE</div>
+          <div class="station-sub">SIGNALS</div>
+        </div>
+        <div class="station" id="station-2" style="left: 470px;">
+          <div class="station-chip">CONVICTION</div>
+          <div class="station-sub">0–100 SCORE</div>
+        </div>
+        <div class="station" id="station-3" style="left: 830px;">
+          <div class="station-chip">GUARDRAILS</div>
+          <div class="station-sub">MACRO · RISK</div>
+        </div>
+        <div class="station" id="station-4" style="left: 1190px;">
+          <div class="station-chip">SODEX</div>
+          <div class="station-sub">TESTNET</div>
+          <div class="preferred-label">PREFERRED</div>
+        </div>
+        <div class="station" id="station-5" style="left: 1550px;">
+          <div class="station-chip">TWAK</div>
+          <div class="station-sub">BSC MAINNET</div>
+        </div>
+      </div>
+
+      <!-- Fallback arrow from SODEX to TWAK with label -->
+      <div id="fallback-arrow" class="fallback-arrow">
+        <svg viewBox="0 0 360 80" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+          <path id="fallback-path" d="M 20 20 Q 180 70 340 20" />
+          <path id="fallback-arrowhead" d="M 332 14 L 344 22 L 336 32" />
+        </svg>
+        <div class="fallback-label">FALLBACK · BSC MAINNET</div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         BOTTOM HALF — TERMINAL
+         ============================================================ -->
+    <div id="terminal" class="terminal clip" data-start="0" data-duration="7.848" data-track-index="3">
+      <div class="terminal-chrome">
+        <span class="term-dot dot-red"></span>
+        <span class="term-dot dot-amber"></span>
+        <span class="term-dot dot-green"></span>
+        <span class="terminal-title">~/agent · cycle 7</span>
+      </div>
+
+      <div class="terminal-body">
+        <!-- Prompt + caret always visible -->
+        <div class="term-line term-prompt-line">
+          <span class="term-prompt">~/agent $</span>
+          <span class="term-caret" id="term-caret">_</span>
+        </div>
+
+        <!-- Line 1: executing -->
+        <div class="term-line term-line-1">
+          <span class="term-text" id="line-1-text"></span>
+        </div>
+
+        <!-- Line 2: trade executed -->
+        <div class="term-line term-line-2">
+          <span class="term-text" id="line-2-text"></span>
+          <span class="term-check" id="term-check">&#10003;</span>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("capture/assets/fonts/53b9e256198e5412-s.0-wfv7uh4i7h9.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "GeistMono";
+        src: url("capture/assets/fonts/4fa387ec64143e14-s.0wkzw~je483f-.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      /* fall-back family alias for DM Sans Mono -> DM Mono (same shipper) */
+      @font-face {
+        font-family: "DM Sans Mono";
+        src: local("DM Mono"), local("DM Sans Mono");
+        font-display: swap;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #0a0a0a;
+        overflow: hidden;
+        font-family: "Geist", sans-serif;
+        color: #ededed;
+      }
+
+      .bg-fill {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 35%, rgba(34, 211, 238, 0.04) 0%, transparent 60%),
+          #0a0a0a;
+      }
+
+      /* ---------- Eyebrow ---------- */
+      .eyebrow {
+        position: absolute;
+        left: 96px;
+        top: 60px;
+        font-family: "GeistMono", "DM Sans Mono", monospace;
+        font-size: 18px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        color: #22d3ee;
+        opacity: 0;
+        text-transform: uppercase;
+      }
+
+      /* ============================================================
+         PIPE DIAGRAM
+         ============================================================ */
+      .pipe-wrap {
+        position: absolute;
+        left: 96px;
+        top: 140px;
+        width: 1728px;
+        height: 320px;
+      }
+
+      .pipe-svg {
+        position: absolute;
+        left: 0;
+        top: 70px;
+        width: 1728px;
+        height: 180px;
+        overflow: visible;
+      }
+
+      .connector {
+        stroke: rgba(34, 211, 238, 0.18);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        fill: none;
+      }
+
+      #travel-dot {
+        fill: #059669;
+        filter: drop-shadow(0 0 14px rgba(5, 150, 105, 0.85));
+        opacity: 0;
+      }
+
+      #preferred-ring {
+        fill: none;
+        stroke: #22d3ee;
+        stroke-width: 1.6;
+        opacity: 0;
+      }
+
+      .stations {
+        position: absolute;
+        inset: 0;
+      }
+
+      .station {
+        position: absolute;
+        top: 92px;
+        transform: translateX(-50%);
+        width: 180px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .station-chip {
+        font-family: "Geist", sans-serif;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: #ededed;
+        opacity: 0.35;
+        padding: 10px 18px;
+        border: 1.5px solid rgba(34, 211, 238, 0.2);
+        border-radius: 100px;
+        background: rgba(34, 211, 238, 0.04);
+        white-space: nowrap;
+      }
+
+      .station-sub {
+        font-family: "GeistMono", "DM Sans Mono", monospace;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        color: #656565;
+        text-transform: uppercase;
+        opacity: 0.5;
+      }
+
+      .preferred-label {
+        margin-top: 2px;
+        font-family: "GeistMono", "DM Sans Mono", monospace;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.2em;
+        color: #22d3ee;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      /* Fallback arrow from SODEX (station 4) to TWAK (station 5) */
+      .fallback-arrow {
+        position: absolute;
+        left: 1010px; /* 1190 - 180 */
+        top: 200px;
+        width: 540px;
+        height: 90px;
+        opacity: 0;
+      }
+
+      .fallback-arrow svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+
+      #fallback-path,
+      #fallback-arrowhead {
+        fill: none;
+        stroke: #22d3ee;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 0.85;
+      }
+
+      .fallback-label {
+        position: absolute;
+        left: 50%;
+        top: 48px;
+        transform: translateX(-50%);
+        font-family: "GeistMono", "DM Sans Mono", monospace;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        color: #22d3ee;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      /* ============================================================
+         TERMINAL
+         ============================================================ */
+      .terminal {
+        position: absolute;
+        left: 240px;
+        top: 540px;
+        width: 1440px;
+        height: 320px;
+        background: rgba(10, 10, 10, 0.92);
+        border: 1px solid rgba(34, 211, 238, 0.22);
+        border-radius: 12px;
+        overflow: hidden;
+        opacity: 0;
+      }
+
+      .terminal-chrome {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 22px;
+        border-bottom: 1px solid rgba(34, 211, 238, 0.12);
+        background: rgba(34, 211, 238, 0.03);
+      }
+
+      .term-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        opacity: 0.55;
+      }
+      .dot-red {
+        background: #dc2626;
+      }
+      .dot-amber {
+        background: #d97706;
+      }
+      .dot-green {
+        background: #059669;
+      }
+
+      .terminal-title {
+        margin-left: 14px;
+        font-family: "GeistMono", "DM Sans Mono", monospace;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        color: #949494;
+      }
+
+      .terminal-body {
+        padding: 26px 32px;
+        display: block;
+      }
+
+      .term-line {
+        display: block;
+        margin-bottom: 14px;
+        font-family: "GeistMono", "DM Sans Mono", monospace;
+        font-size: 22px;
+        font-weight: 500;
+        line-height: 1.4;
+        white-space: nowrap;
+      }
+
+      .term-prompt {
+        color: #22d3ee;
+        margin-right: 12px;
+      }
+
+      .term-caret {
+        display: inline-block;
+        color: #22d3ee;
+        opacity: 1;
+        width: 12px;
+      }
+
+      .term-text {
+        color: #ededed;
+      }
+
+      .term-check {
+        display: inline-block;
+        margin-left: 14px;
+        color: #059669;
+        font-weight: 700;
+        font-size: 22px;
+        opacity: 0;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // Station X centers (in pipe SVG viewBox coordinates, viewBox = 0..1720 wide)
+        // SVG width = 1728px, viewBox width = 1720 → ~1:1
+        var STATION_X = [110, 470, 830, 1190, 1550];
+
+        // --- Terminal line discrete sequences (driven via onUpdate) ---
+        var LINE_1_FULL = "[7/8] Executing 1 entry via SoDEX -> TWAK fallback...";
+        var LINE_2_PREFIX = "[OK] Trade executed - ";
+        var LINE_2_HASH = "0xc810ed3f2adcc3b2...";
+        var LINE_2_SUFFIX = "";
+
+        var line1El = document.getElementById("line-1-text");
+        var line2El = document.getElementById("line-2-text");
+        var caretEl = document.getElementById("term-caret");
+
+        // Helper — render line-2 with hash colored cyan
+        function setLine2(chars) {
+          // chars counts characters typed total across prefix+hash+suffix
+          var prefixLen = LINE_2_PREFIX.length;
+          var hashLen = LINE_2_HASH.length;
+          if (chars <= 0) {
+            line2El.innerHTML = "";
+            return;
+          }
+          if (chars <= prefixLen) {
+            line2El.textContent = LINE_2_PREFIX.substring(0, chars);
+            return;
+          }
+          var hashChars = Math.min(chars - prefixLen, hashLen);
+          var hashStr = LINE_2_HASH.substring(0, hashChars);
+          line2El.innerHTML =
+            '<span style="color:#ededed">' +
+            LINE_2_PREFIX +
+            "</span>" +
+            '<span style="color:#22d3ee">' +
+            hashStr +
+            "</span>";
+        }
+
+        var tl = gsap.timeline({ paused: true });
+
+        // ===============================================================
+        // SCENE 1 (0.0–2.0s): pipe stations dim, terminal outline present
+        // ===============================================================
+
+        // Eyebrow fades in immediately
+        tl.fromTo(
+          "#eyebrow",
+          { opacity: 0, y: -6 },
+          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+          0.1,
+        );
+
+        // Terminal frame fades in
+        tl.fromTo(
+          "#terminal",
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" },
+          0.3,
+        );
+
+        // Pipe stations + connectors arrive (dim baseline)
+        tl.fromTo(
+          "#pipe-wrap",
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+          0.2,
+        );
+
+        // ===============================================================
+        // SCENE 2 (2.0–4.5s): dot traverses 5 stations on VO "Signals drive trades"
+        // ===============================================================
+
+        // Dot ignites at SOSOVALUE
+        tl.fromTo(
+          "#travel-dot",
+          { opacity: 0, attr: { cx: STATION_X[0], r: 12 } },
+          { opacity: 1, attr: { r: 9 }, duration: 0.25, ease: "power2.out" },
+          2.0,
+        );
+
+        // Per-station traversal — each segment 0.42s — fade station to full white as dot arrives
+        var SEG_DUR = 0.42;
+        var dotStarts = [2.0, 2.25, 2.75, 3.25, 3.75]; // when dot is AT station i
+        // Animate cx through station positions sequentially
+        tl.to(
+          "#travel-dot",
+          { attr: { cx: STATION_X[1] }, duration: SEG_DUR, ease: "power2.inOut" },
+          2.25,
+        );
+        tl.to(
+          "#travel-dot",
+          { attr: { cx: STATION_X[2] }, duration: SEG_DUR, ease: "power2.inOut" },
+          2.75,
+        );
+        tl.to(
+          "#travel-dot",
+          { attr: { cx: STATION_X[3] }, duration: SEG_DUR, ease: "power2.inOut" },
+          3.25,
+        );
+        tl.to(
+          "#travel-dot",
+          { attr: { cx: STATION_X[4] }, duration: SEG_DUR, ease: "power2.inOut" },
+          3.75,
+        );
+
+        // Station chips light to full white as dot lands
+        var stationChips = [
+          "#station-1 .station-chip",
+          "#station-2 .station-chip",
+          "#station-3 .station-chip",
+          "#station-4 .station-chip",
+          "#station-5 .station-chip",
+        ];
+        var stationSubs = [
+          "#station-1 .station-sub",
+          "#station-2 .station-sub",
+          "#station-3 .station-sub",
+          "#station-4 .station-sub",
+          "#station-5 .station-sub",
+        ];
+        for (var i = 0; i < 5; i++) {
+          tl.to(
+            stationChips[i],
+            {
+              opacity: 1,
+              borderColor: "rgba(34,211,238,0.55)",
+              backgroundColor: "rgba(34,211,238,0.08)",
+              duration: 0.35,
+              ease: "power2.out",
+            },
+            dotStarts[i],
+          );
+          tl.to(
+            stationSubs[i],
+            { opacity: 1, duration: 0.35, ease: "power2.out" },
+            dotStarts[i] + 0.05,
+          );
+        }
+
+        // Connectors brighten as dot passes
+        var connectors = ["#conn-1", "#conn-2", "#conn-3", "#conn-4"];
+        for (var c = 0; c < 4; c++) {
+          tl.to(
+            connectors[c],
+            { stroke: "#22d3ee", duration: 0.35, ease: "power2.out" },
+            2.25 + c * 0.5,
+          );
+        }
+
+        // Dot fades out at end of traversal
+        tl.to("#travel-dot", { opacity: 0, duration: 0.35, ease: "power1.out" }, 4.2);
+
+        // ===============================================================
+        // SCENE 3 (4.5–7.848s): SoDEX preferred ring, fallback arrow, terminal types
+        // ===============================================================
+
+        // PREFERRED ring around SODEX (station 4)
+        tl.fromTo(
+          "#preferred-ring",
+          { opacity: 0, attr: { r: 64 } },
+          { opacity: 0.7, attr: { r: 78 }, duration: 0.55, ease: "power2.out" },
+          4.5,
+        );
+        tl.fromTo(
+          "#station-4 .preferred-label",
+          { opacity: 0, y: 4 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+          4.65,
+        );
+
+        // Fallback arrow drops in
+        tl.fromTo(
+          "#fallback-arrow",
+          { opacity: 0, y: -8 },
+          { opacity: 1, y: 0, duration: 0.55, ease: "power2.out" },
+          4.8,
+        );
+
+        // ----- Terminal typing: line 1 (continuous slice) -----
+        var line1Driver = { v: 0 };
+        tl.to(
+          line1Driver,
+          {
+            v: LINE_1_FULL.length,
+            duration: 1.3,
+            ease: "none",
+            onUpdate: function () {
+              line1El.textContent = LINE_1_FULL.substring(0, Math.floor(line1Driver.v));
+            },
+          },
+          4.7,
+        );
+
+        // ----- Terminal typing: line 2 (with hash in cyan) -----
+        var line2TotalChars = LINE_2_PREFIX.length + LINE_2_HASH.length;
+        var line2Driver = { v: 0 };
+        tl.to(
+          line2Driver,
+          {
+            v: line2TotalChars,
+            duration: 1.4,
+            ease: "none",
+            onUpdate: function () {
+              setLine2(Math.floor(line2Driver.v));
+            },
+          },
+          6.15,
+        );
+
+        // Green checkmark lands at end of line 2
+        tl.fromTo(
+          "#term-check",
+          { opacity: 0, scale: 0.6 },
+          { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(2)" },
+          7.5,
+        );
+
+        // ----- Caret blink (deterministic via sin driver) -----
+        var blinkDriver = { p: 0 };
+        tl.to(
+          blinkDriver,
+          {
+            p: Math.PI * 2 * 11, // ~11 blink cycles across 7.848s -> ~0.71s/cycle
+            duration: 7.848,
+            ease: "none",
+            onUpdate: function () {
+              caretEl.style.opacity = Math.sin(blinkDriver.p) > 0 ? "1" : "0";
+            },
+          },
+          0,
+        );
+
+        window.__timelines["04-execution"] = tl;
+      })();
+    </script>
+  </div>
+</template>

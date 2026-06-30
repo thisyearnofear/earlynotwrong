@@ -1,0 +1,836 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="03-sosovalue"
+    data-start="0"
+    data-duration="22.756"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("capture/assets/fonts/53b9e256198e5412-s.0-wfv7uh4i7h9.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "GeistMono";
+        src: url("capture/assets/fonts/4fa387ec64143e14-s.0wkzw~je483f-.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      /* ───────── Fonts ───────── */
+      /* ───────── Root ───────── */
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0A0A0A;
+        font-family: "Geist", sans-serif;
+        color: #EDEDED;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Full-bleed background fill (not on root itself) */
+      .bg-fill {
+        position: absolute;
+        inset: 0;
+        background: #0A0A0A;
+        z-index: 0;
+      }
+
+      /* Dashboard screenshot ghost — dim 25% / blur 8px */
+      .dashboard-ghost {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background-image: url("capture/screenshots/scroll-069.png");
+        background-size: cover;
+        background-position: center;
+        opacity: 0;
+        filter: blur(8px) saturate(0.6);
+        pointer-events: none;
+      }
+      /* Vignette over the dashboard to keep the right column readable */
+      .vignette {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        background:
+          radial-gradient(ellipse at 65% 50%, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.85) 60%, rgba(10,10,10,0.95) 100%);
+        pointer-events: none;
+      }
+
+      /* ───────── Heading (upper-left) ───────── */
+      .heading-block {
+        position: absolute;
+        top: 72px;
+        left: 88px;
+        z-index: 10;
+        width: 720px;
+      }
+      .heading-eyebrow {
+        font-family: "GeistMono", monospace;
+        font-size: 22px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #22D3EE;
+        opacity: 0;
+      }
+      .heading-title {
+        margin-top: 24px;
+        font-family: "Geist", sans-serif;
+        font-size: 64px;
+        line-height: 1.05;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #EDEDED;
+      }
+      .heading-title .typed { opacity: 1; }
+      .heading-rule {
+        margin-top: 28px;
+        width: 0;
+        height: 2px;
+        background: #22D3EE;
+      }
+      .heading-sub {
+        margin-top: 22px;
+        font-family: "GeistMono", monospace;
+        font-size: 18px;
+        font-weight: 400;
+        letter-spacing: 0.06em;
+        color: #949494;
+        opacity: 0;
+      }
+      .heading-sub .accent { color: #22D3EE; }
+      .scene-counter {
+        position: absolute;
+        bottom: 56px;
+        left: 88px;
+        z-index: 10;
+        font-family: "GeistMono", monospace;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.15em;
+        color: #656565;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      /* ───────── Card column (right 55%) ───────── */
+      .card-column {
+        position: absolute;
+        top: 72px;
+        left: 880px;
+        width: 952px;       /* right 55% of 1920 (approx, with margin) */
+        height: 820px;      /* sits well above y=900 keep-out */
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .card {
+        position: relative;
+        flex: 1 1 0;
+        min-height: 0;
+        padding: 26px 32px 24px;
+        border: 1.5px solid rgba(34, 211, 238, 0.22);
+        border-radius: 14px;
+        background: rgba(34, 211, 238, 0.035);
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+      .card.placeholder {
+        opacity: 0;
+        border-style: dashed;
+        border-color: rgba(34, 211, 238, 0.18);
+      }
+      /* Ghost placeholders that pre-mark the right-column slots */
+      .ghost-slot {
+        position: absolute;
+        left: 880px;
+        width: 952px;
+        height: 261px;
+        border: 1.5px dashed rgba(34, 211, 238, 0.14);
+        border-radius: 14px;
+        opacity: 0;
+        z-index: 5;
+        pointer-events: none;
+      }
+      .ghost-slot.g1 { top: 72px; }
+      .ghost-slot.g2 { top: 351px; }
+      .ghost-slot.g3 { top: 630px; }
+
+      .card .eyebrow {
+        font-family: "GeistMono", monospace;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #22D3EE;
+      }
+      .card.amber .eyebrow { color: #d97706; }
+      .card .eyebrow .num {
+        color: #656565;
+        margin-right: 14px;
+      }
+
+      .card .title {
+        margin-top: 8px;
+        font-family: "Geist", sans-serif;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #EDEDED;
+        line-height: 1.15;
+      }
+
+      .card .body {
+        margin-top: 12px;
+        font-family: "Geist", sans-serif;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 1.5;
+        color: #949494;
+      }
+
+      /* — Card 1: SSI Index Confirmation — */
+      .ssi-tickers {
+        margin-top: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        font-family: "GeistMono", monospace;
+        font-size: 21px;
+        font-weight: 500;
+        color: #EDEDED;
+        letter-spacing: 0.02em;
+      }
+      .ssi-tickers .dot {
+        color: #22D3EE;
+        opacity: 0.45;
+        margin: 0 2px;
+      }
+      .ssi-tickers .ticker {
+        opacity: 0;
+      }
+      .ssi-meta {
+        margin-top: 18px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        flex-wrap: wrap;
+      }
+      .sparkline-wrap {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .sparkline-svg {
+        width: 140px;
+        height: 36px;
+        display: block;
+      }
+      .sparkline-svg .path {
+        fill: none;
+        stroke: #22D3EE;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .roi-figure {
+        font-family: "GeistMono", monospace;
+        font-size: 22px;
+        font-weight: 500;
+        color: #22D3EE;
+        letter-spacing: -0.01em;
+      }
+      .ssi-label {
+        font-family: "GeistMono", monospace;
+        font-size: 14px;
+        font-weight: 400;
+        color: #949494;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .ssi-label .v { color: #EDEDED; }
+
+      /* — Card 2: News Sentiment — */
+      .endpoint-row {
+        margin-top: 14px;
+        font-family: "GeistMono", monospace;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 1.6;
+        letter-spacing: 0.01em;
+        opacity: 0;
+      }
+      .endpoint-row .arrow { color: #656565; margin: 0 8px; }
+      .endpoint-row .path { color: #22D3EE; }
+      .endpoint-row.muted .path { color: #949494; }
+      .endpoint-row .extract { color: #656565; }
+
+      .symbol-chips {
+        margin-top: 18px;
+        display: flex;
+        gap: 12px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 8px 16px;
+        border: 1.5px solid rgba(34, 211, 238, 0.25);
+        border-radius: 100px;
+        background: rgba(34, 211, 238, 0.06);
+        font-family: "GeistMono", monospace;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        opacity: 0;
+      }
+      .chip .sym { color: #EDEDED; }
+      .chip .delta { color: #22D3EE; font-weight: 500; }
+      .chip .delta.neg { color: #dc2626; }
+      .chip .delta.pos { color: #059669; }
+
+      /* — Card 3: Macro Pause — */
+      .calendar-row {
+        margin-top: 12px;
+        display: flex;
+        gap: 12px;
+      }
+      .cal-cell {
+        flex: 1 1 0;
+        padding: 12px 14px;
+        border: 1.5px solid rgba(217, 119, 6, 0.18);
+        border-radius: 10px;
+        background: rgba(217, 119, 6, 0.04);
+        opacity: 0;
+      }
+      .cal-cell.glow {
+        border-color: rgba(217, 119, 6, 0.55);
+        background: rgba(217, 119, 6, 0.12);
+      }
+      .cal-day {
+        font-family: "GeistMono", monospace;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #949494;
+      }
+      .cal-event {
+        margin-top: 4px;
+        font-family: "Geist", sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        color: #EDEDED;
+      }
+      .cal-cell.glow .cal-event { color: #d97706; }
+      .cal-time {
+        margin-top: 2px;
+        font-family: "GeistMono", monospace;
+        font-size: 12px;
+        font-weight: 400;
+        color: #656565;
+      }
+
+      .rule-chips {
+        margin-top: 14px;
+        display: flex;
+        gap: 12px;
+      }
+      .rule-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 16px;
+        border: 1.5px solid rgba(217, 119, 6, 0.32);
+        border-radius: 100px;
+        background: rgba(217, 119, 6, 0.06);
+        font-family: "GeistMono", monospace;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #d97706;
+        opacity: 0;
+      }
+      .rule-chip.pulse {
+        border-color: rgba(217, 119, 6, 0.7);
+      }
+      .rule-chip .gap { color: #949494; }
+
+      /* Ambient bloom for the active card — sits behind each card */
+      .card .bloom {
+        position: absolute;
+        inset: -40px -60px;
+        background: radial-gradient(ellipse at center, rgba(34, 211, 238, 0.18) 0%, rgba(34, 211, 238, 0) 70%);
+        opacity: 0;
+        z-index: -1;
+        pointer-events: none;
+        will-change: opacity;
+      }
+      .card.amber .bloom {
+        background: radial-gradient(ellipse at center, rgba(217, 119, 6, 0.22) 0%, rgba(217, 119, 6, 0) 70%);
+      }
+
+      /* Cursor caret for the heading typing */
+      .caret {
+        display: inline-block;
+        width: 12px;
+        height: 22px;
+        background: #22D3EE;
+        margin-left: 4px;
+        vertical-align: -3px;
+        opacity: 0;
+      }
+    </style>
+
+    <div class="bg-fill"></div>
+
+    <!-- Dashboard ghost behind everything -->
+    <div
+      id="dash-ghost"
+      class="dashboard-ghost clip"
+      data-start="0"
+      data-duration="22.756"
+      data-track-index="1"
+    ></div>
+
+    <div
+      class="vignette clip"
+      data-start="0"
+      data-duration="22.756"
+      data-track-index="2"
+    ></div>
+
+    <!-- Heading column (left) -->
+    <div
+      class="heading-block clip"
+      data-start="0"
+      data-duration="22.756"
+      data-track-index="3"
+    >
+      <div class="heading-eyebrow" id="head-eyebrow">SoSoValue → Trade Decisions</div>
+      <div class="heading-title">
+        <span id="head-title-text"></span><span id="head-caret" class="caret"></span>
+      </div>
+      <div class="heading-rule" id="head-rule"></div>
+      <div class="heading-sub" id="head-sub">
+        Every cycle: <span class="accent">read</span> · <span class="accent">score</span> · <span class="accent">gate</span>
+      </div>
+    </div>
+
+    <!-- Ghost slot pre-marks (1.5px dashed cyan borders that show up empty before each card lands) -->
+    <div id="ghost1" class="ghost-slot g1 clip" data-start="0" data-duration="22.756" data-track-index="7"></div>
+    <div id="ghost2" class="ghost-slot g2 clip" data-start="0" data-duration="22.756" data-track-index="8"></div>
+    <div id="ghost3" class="ghost-slot g3 clip" data-start="0" data-duration="22.756" data-track-index="9"></div>
+
+    <!-- Cards stack (right column) -->
+    <div
+      class="card-column clip"
+      data-start="0"
+      data-duration="22.756"
+      data-track-index="5"
+    >
+      <!-- ───── CARD 1: SSI INDEX CONFIRMATION ───── -->
+      <div class="card" id="card1">
+        <div class="bloom" id="bloom1"></div>
+        <div class="eyebrow"><span class="num">01</span>SSI INDEX CONFIRMATION</div>
+        <div class="title">Regime-confirming SSI baskets</div>
+        <div class="ssi-tickers" id="ssi-tickers">
+          <span class="ticker" data-i="0">ssiMAG7</span>
+          <span class="dot">·</span>
+          <span class="ticker" data-i="1">ssiLayer1</span>
+          <span class="dot">·</span>
+          <span class="ticker" data-i="2">ssiAI</span>
+          <span class="dot">·</span>
+          <span class="ticker" data-i="3">ssiMeme</span>
+        </div>
+        <div class="ssi-meta" id="ssi-meta">
+          <div class="sparkline-wrap">
+            <svg class="sparkline-svg" viewBox="0 0 140 36" preserveAspectRatio="none">
+              <path
+                id="spark-path"
+                class="path"
+                d="M 2 12 L 16 14 L 30 10 L 44 18 L 58 16 L 72 22 L 86 26 L 100 24 L 114 30 L 128 28 L 138 32"
+                stroke-dasharray="200"
+                stroke-dashoffset="200"
+              />
+            </svg>
+            <span class="roi-figure">−3.7%</span>
+          </div>
+          <div class="ssi-label">regime score: <span class="v">78/100</span> · FGI <span class="v">17</span></div>
+        </div>
+      </div>
+
+      <!-- ───── CARD 2: NEWS SENTIMENT ───── -->
+      <div class="card" id="card2">
+        <div class="bloom" id="bloom2"></div>
+        <div class="eyebrow"><span class="num">02</span>NEWS SENTIMENT</div>
+        <div class="title">Per-symbol news component (±10pp)</div>
+        <div class="endpoint-row" id="ep1">
+          <span class="path">/news/featured</span><span class="arrow">→</span><span class="extract">matchedCurrencies[]</span>
+        </div>
+        <div class="endpoint-row muted" id="ep2">
+          <span class="path">/news/hot</span><span class="arrow">→</span><span class="extract">keyword-extract title</span>
+        </div>
+        <div class="symbol-chips" id="sym-chips">
+          <span class="chip"><span class="sym">BTC</span><span class="delta neg">−1</span></span>
+          <span class="chip"><span class="sym">ETH</span><span class="delta pos">+1</span></span>
+          <span class="chip"><span class="sym">DOGE</span><span class="delta pos">+1</span></span>
+        </div>
+      </div>
+
+      <!-- ───── CARD 3: MACRO PAUSE ───── -->
+      <div class="card amber" id="card3">
+        <div class="bloom" id="bloom3"></div>
+        <div class="eyebrow"><span class="num">03</span>MACRO PAUSE</div>
+        <div class="title">Trade-time gating on CPI · FOMC · NFP</div>
+        <div class="calendar-row" id="cal-row">
+          <div class="cal-cell" data-i="0">
+            <div class="cal-day">Today</div>
+            <div class="cal-event">FOMC Minutes</div>
+            <div class="cal-time">18:00 UTC</div>
+          </div>
+          <div class="cal-cell glow" data-i="1">
+            <div class="cal-day">Today + 3h</div>
+            <div class="cal-event">CPI · HIGH</div>
+            <div class="cal-time">12:30 UTC</div>
+          </div>
+          <div class="cal-cell" data-i="2">
+            <div class="cal-day">Tomorrow</div>
+            <div class="cal-event">NFP Release</div>
+            <div class="cal-time">12:30 UTC</div>
+          </div>
+        </div>
+        <div class="rule-chips" id="rule-chips">
+          <span class="rule-chip pulse">&lt; 4h<span class="gap"> · </span>SKIP ENTRIES</span>
+          <span class="rule-chip">&lt; 12h<span class="gap"> · </span>HALVE SIZE</span>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="scene-counter clip"
+      id="scene-counter"
+      data-start="0"
+      data-duration="22.756"
+      data-track-index="6"
+    >
+      Frame 03 / 06 — SoSoValue signals
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+
+        // ───────────── Phase 1: heading + ghost slots (0.0 – 2.5s) ─────────────
+
+        // Eyebrow types in via discrete slice
+        const eyebrowFull = "SoSoValue → Trade Decisions";
+        const eyebrowEl = document.getElementById("head-eyebrow");
+        const eyebrowLen = { v: 0 };
+        eyebrowEl.textContent = "";
+        eyebrowEl.style.opacity = 1;
+        tl.to(
+          eyebrowLen,
+          {
+            v: eyebrowFull.length,
+            duration: 1.2,
+            ease: "none",
+            onUpdate: () => {
+              eyebrowEl.textContent = eyebrowFull.substring(0, Math.floor(eyebrowLen.v));
+            },
+          },
+          0.15,
+        );
+
+        // Title types in (white display)
+        const titleFull = "Three signals.\nOne cycle.";
+        const titleEl = document.getElementById("head-title-text");
+        const titleLen = { v: 0 };
+        tl.to(
+          titleLen,
+          {
+            v: titleFull.length,
+            duration: 1.0,
+            ease: "none",
+            onUpdate: () => {
+              titleEl.innerHTML = titleFull
+                .substring(0, Math.floor(titleLen.v))
+                .replace(/\n/g, "<br>");
+            },
+          },
+          0.55,
+        );
+
+        // Caret blink across the entire scene
+        const caretEl = document.getElementById("head-caret");
+        const caretPhase = { p: 0 };
+        tl.fromTo(caretEl, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, 0.4);
+        tl.to(
+          caretPhase,
+          {
+            p: Math.PI * 2 * 18,
+            duration: 22.0,
+            ease: "none",
+            onUpdate: () => {
+              caretEl.style.opacity = Math.sin(caretPhase.p) > 0 ? "1" : "0.15";
+            },
+          },
+          0.6,
+        );
+
+        // Cyan rule draws in below the title
+        tl.fromTo("#head-rule", { width: 0 }, { width: 160, duration: 0.7, ease: "power3.out" }, 1.6);
+
+        // Sub line fades in
+        tl.fromTo("#head-sub", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 1.9);
+
+        // Dashboard ghost fades in to its 0.22 hold (25% from brief, slightly tamed by vignette)
+        tl.fromTo("#dash-ghost", { opacity: 0 }, { opacity: 0.22, duration: 1.6, ease: "power2.out" }, 0.4);
+
+        // Ghost slots brighten up to dashed cyan placeholders
+        tl.fromTo(
+          [".ghost-slot.g1", ".ghost-slot.g2", ".ghost-slot.g3"],
+          { opacity: 0 },
+          { opacity: 1, duration: 0.5, ease: "power2.out", stagger: 0.12 },
+          1.1,
+        );
+
+        // Scene counter fades in at the bottom-left
+        tl.fromTo("#scene-counter", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power2.out" }, 1.4);
+
+        // ───────────── Phase 2: CARD 1 — SSI INDEX CONFIRMATION (2.5 – 9.0s) ─────────────
+
+        // Card 1 slides from right and settles
+        tl.fromTo(
+          "#card1",
+          { opacity: 0, x: 80, scale: 0.985 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.7, ease: "power3.out" },
+          2.6,
+        );
+        // Bloom blooms in behind card 1
+        tl.fromTo(
+          "#bloom1",
+          { opacity: 0, scale: 0.92 },
+          { opacity: 1, scale: 1, duration: 0.9, ease: "power2.out" },
+          2.8,
+        );
+        // Fade the ghost-slot #1 down as the real card lands
+        tl.to("#ghost1", { opacity: 0, duration: 0.4, ease: "power2.out" }, 2.9);
+
+        // Tickers stagger in (one per ssiX, paced ~0.18s)
+        const tickers = document.querySelectorAll("#ssi-tickers .ticker");
+        tickers.forEach((el, i) => {
+          tl.fromTo(
+            el,
+            { opacity: 0, y: 6 },
+            { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+            3.3 + i * 0.18,
+          );
+        });
+
+        // Sparkline draws in, ROI figure + label fade in alongside
+        tl.fromTo(
+          "#spark-path",
+          { strokeDashoffset: 200 },
+          { strokeDashoffset: 0, duration: 1.1, ease: "power2.out" },
+          5.0,
+        );
+        tl.fromTo(
+          "#ssi-meta .roi-figure",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.5, ease: "power2.out" },
+          5.4,
+        );
+        tl.fromTo(
+          "#ssi-meta .ssi-label",
+          { opacity: 0, y: 6 },
+          { opacity: 1, y: 0, duration: 0.55, ease: "power2.out" },
+          5.7,
+        );
+
+        // Bounded ambient breathe on card 1 bloom — runs through Card 2 + 3 hold
+        const breathe1 = { p: 0 };
+        tl.to(
+          breathe1,
+          {
+            p: Math.PI * 2 * 3.5,
+            duration: 15.6,
+            ease: "none",
+            onUpdate: () => {
+              const s = Math.sin(breathe1.p);
+              const el = document.getElementById("bloom1");
+              if (el) {
+                el.style.opacity = String(0.65 + s * 0.08);
+              }
+            },
+          },
+          7.0,
+        );
+
+        // ───────────── Phase 3: CARD 2 — NEWS SENTIMENT (9.0 – 15.5s) ─────────────
+
+        tl.fromTo(
+          "#card2",
+          { opacity: 0, x: 80, scale: 0.985 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.7, ease: "power3.out" },
+          9.1,
+        );
+        tl.fromTo(
+          "#bloom2",
+          { opacity: 0, scale: 0.92 },
+          { opacity: 1, scale: 1, duration: 0.9, ease: "power2.out" },
+          9.3,
+        );
+        tl.to("#ghost2", { opacity: 0, duration: 0.4, ease: "power2.out" }, 9.4);
+
+        // Endpoint row 1 (cyan path)
+        tl.fromTo(
+          "#ep1",
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          9.9,
+        );
+        // Endpoint row 2 (muted path)
+        tl.fromTo(
+          "#ep2",
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          10.6,
+        );
+        // Symbol chips stagger in
+        const chips = document.querySelectorAll("#sym-chips .chip");
+        chips.forEach((el, i) => {
+          tl.fromTo(
+            el,
+            { opacity: 0, y: 8, scale: 0.96 },
+            { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "power3.out" },
+            12.2 + i * 0.25,
+          );
+        });
+
+        // Bounded breathe on card 2
+        const breathe2 = { p: 0 };
+        tl.to(
+          breathe2,
+          {
+            p: Math.PI * 2 * 2.6,
+            duration: 9.5,
+            ease: "none",
+            onUpdate: () => {
+              const s = Math.sin(breathe2.p);
+              const el = document.getElementById("bloom2");
+              if (el) {
+                el.style.opacity = String(0.62 + s * 0.08);
+              }
+            },
+          },
+          13.0,
+        );
+
+        // ───────────── Phase 4: CARD 3 — MACRO PAUSE (15.5 – 22.0s) ─────────────
+
+        tl.fromTo(
+          "#card3",
+          { opacity: 0, x: 80, scale: 0.985 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.7, ease: "power3.out" },
+          15.6,
+        );
+        tl.fromTo(
+          "#bloom3",
+          { opacity: 0, scale: 0.92 },
+          { opacity: 1, scale: 1, duration: 0.9, ease: "power2.out" },
+          15.8,
+        );
+        tl.to("#ghost3", { opacity: 0, duration: 0.4, ease: "power2.out" }, 15.9);
+
+        // Calendar cells stagger in
+        const calCells = document.querySelectorAll("#cal-row .cal-cell");
+        calCells.forEach((el, i) => {
+          tl.fromTo(
+            el,
+            { opacity: 0, y: 8 },
+            { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" },
+            16.4 + i * 0.18,
+          );
+        });
+
+        // Rule chips: < 4h: SKIP ENTRIES (lands first, then pulses)
+        const ruleChips = document.querySelectorAll("#rule-chips .rule-chip");
+        ruleChips.forEach((el, i) => {
+          tl.fromTo(
+            el,
+            { opacity: 0, y: 8, scale: 0.96 },
+            { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power3.out" },
+            17.6 + i * 0.4,
+          );
+        });
+
+        // Amber pulse on "SKIP ENTRIES" chip — single bloom-and-settle (no yoyo)
+        tl.fromTo(
+          "#rule-chips .rule-chip.pulse",
+          { boxShadow: "0 0 0px rgba(217,119,6,0.0)" },
+          {
+            boxShadow: "0 0 28px rgba(217,119,6,0.55)",
+            duration: 0.5,
+            ease: "power2.out",
+          },
+          18.3,
+        );
+        tl.to(
+          "#rule-chips .rule-chip.pulse",
+          {
+            boxShadow: "0 0 14px rgba(217,119,6,0.22)",
+            duration: 0.7,
+            ease: "power2.inOut",
+          },
+          18.8,
+        );
+
+        // Amber bloom breathe on card 3 — bounded breathe through the hold
+        const breathe3 = { p: 0 };
+        tl.to(
+          breathe3,
+          {
+            p: Math.PI * 2 * 1.6,
+            duration: 6.2,
+            ease: "none",
+            onUpdate: () => {
+              const s = Math.sin(breathe3.p);
+              const el = document.getElementById("bloom3");
+              if (el) {
+                el.style.opacity = String(0.72 + s * 0.10);
+              }
+            },
+          },
+          16.5,
+        );
+
+        // ───────────── Phase 5: held read (22.0 – 22.756s) ─────────────
+
+        // A tiny sub-pixel composition settle: drift the heading-rule a hair to
+        // keep the held read alive without crossing the keep-out.
+        tl.to("#head-rule", { width: 168, duration: 0.6, ease: "power2.inOut" }, 22.0);
+
+        // Final tail: hold motionless. Caret keeps blinking via the long sin
+        // tween from Phase 1.
+
+        window.__timelines["03-sosovalue"] = tl;
+      })();
+    </script>
+  </div>
+</template>

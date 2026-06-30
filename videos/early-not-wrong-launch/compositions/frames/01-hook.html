@@ -1,0 +1,239 @@
+<template>
+  <div
+    id="root"
+    data-composition-id="01-hook"
+    data-start="0"
+    data-duration="3.994"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      /* Fonts that actually ship in capture/assets/fonts (no DM Sans file → use Geist family).
+         Paths are relative to the assembled project root. */
+      @font-face {
+        font-family: "Geist";
+        src: url("capture/assets/fonts/53b9e256198e5412-s.0-wfv7uh4i7h9.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "GeistMono";
+        src: url("capture/assets/fonts/4fa387ec64143e14-s.0wkzw~je483f-.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+
+      /* Root must be sized; style via id (NEVER class). */
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #0a0a0a;
+        font-family: "Geist", system-ui, sans-serif;
+        color: #ededed;
+        overflow: hidden;
+      }
+
+      /* Full-bleed background sits behind everything as a child of root (root-bg drop rule). */
+      #hook-bg {
+        position: absolute;
+        inset: 0;
+        background: #0a0a0a;
+      }
+
+      /* Supporting wordmark — small, dim, upper-left. */
+      #hook-wordmark {
+        position: absolute;
+        top: 56px;
+        left: 56px;
+        font-family: "Geist", system-ui, sans-serif;
+        font-weight: 700;
+        font-size: 18px;
+        letter-spacing: 0.28em;
+        color: #ededed;
+        opacity: 0.4;
+        text-transform: uppercase;
+      }
+
+      /* Centered hero block — uses inset+margin centering so GSAP can animate x/y without conflict.
+         Width is the type measure (~70% of 1920 = 1344px); height is auto, content stack centered.
+         We center the block horizontally via left/right:0 + margin:auto; vertical via top + translate
+         is replaced by absolute top calculated to a fixed pixel anchor (no CSS transform). */
+      #hook-stack {
+        position: absolute;
+        top: 380px; /* visually centers the two-line block + rule + sub above 83% keep-out (y<=900) */
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: 1344px; /* ~70% of 1920 */
+        display: block;
+        text-align: center;
+      }
+
+      /* Main hero line: 7.5cqw of 1920 ≈ 144px. Use px (root is fixed 1920×1080). */
+      #hook-line1 {
+        font-family: "Geist", system-ui, sans-serif;
+        font-weight: 700;
+        font-size: 144px;
+        line-height: 1.04;
+        letter-spacing: -0.025em;
+        color: #ededed;
+        text-transform: uppercase;
+        display: block;
+        will-change: transform, opacity;
+      }
+
+      /* Cyan rule — drawn left-to-right; uses scaleX from a left transform-origin. */
+      #hook-rule {
+        position: relative;
+        display: block;
+        margin: 56px auto 28px;
+        width: 60px;
+        height: 2px;
+        background: #22d3ee;
+        transform-origin: left center;
+        /* No CSS transition — GSAP only. */
+      }
+
+      /* Sub line container — words revealed individually. */
+      #hook-line2 {
+        font-family: "GeistMono", ui-monospace, monospace;
+        font-weight: 500;
+        font-size: 62px; /* ~3.2cqw of 1920 */
+        line-height: 1.15;
+        letter-spacing: 0.02em;
+        color: #22d3ee;
+        text-transform: uppercase;
+        display: block;
+      }
+      .hook-word {
+        display: inline-block;
+        opacity: 0;
+        will-change: transform, opacity;
+        margin: 0 0.18em;
+      }
+
+      /* Glow halo behind the cyan rule for Scene 4 beat — opacity-only animation. */
+      #hook-rule-glow {
+        position: absolute;
+        top: -8px;
+        left: -10px;
+        width: 80px;
+        height: 18px;
+        border-radius: 9px;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(34, 211, 238, 0.55) 0%,
+          rgba(34, 211, 238, 0) 70%
+        );
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+
+    <!-- Background plate (full-bleed child of root, not the root itself) -->
+    <div id="hook-bg" class="clip" data-start="0" data-duration="3.994" data-track-index="0"></div>
+
+    <!-- Supporting wordmark — appears for the full shot (dim, upper-left) -->
+    <div
+      id="hook-wordmark"
+      class="clip"
+      data-start="0"
+      data-duration="3.994"
+      data-track-index="1"
+    >
+      EARLY, NOT WRONG
+    </div>
+
+    <!-- Centered hero stack -->
+    <div
+      id="hook-stack"
+      class="clip"
+      data-start="0"
+      data-duration="3.994"
+      data-track-index="2"
+    >
+      <div id="hook-line1">BEING EARLY FEELS LIKE BEING WRONG.</div>
+
+      <div id="hook-rule">
+        <div id="hook-rule-glow"></div>
+      </div>
+
+      <div id="hook-line2">
+        <span class="hook-word" data-w="0">UNTIL</span><span class="hook-word" data-w="1">IT</span
+        ><span class="hook-word" data-w="2">DOESN&rsquo;T.</span>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+
+        // SCENE 1 (0.0–1.2s): supporting wordmark fades in; hero line slides up 8px and fades in.
+        tl.fromTo(
+          "#hook-wordmark",
+          { opacity: 0 },
+          { opacity: 0.4, duration: 0.6, ease: "power2.out" },
+          0.0
+        );
+
+        tl.fromTo(
+          "#hook-line1",
+          { y: 8, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.85, ease: "power3.out" },
+          0.1
+        );
+
+        // SCENE 2 (1.2–2.6s): hero line holds dead still. Nothing to do (no front-loaded clutter).
+
+        // SCENE 3 (2.6–3.5s): cyan rule draws in left→right, then "UNTIL IT DOESN'T." words reveal
+        // word-by-word paced to the spoken cue.
+        tl.fromTo(
+          "#hook-rule",
+          { scaleX: 0, opacity: 1 },
+          { scaleX: 1, duration: 0.45, ease: "power3.out" },
+          2.6
+        );
+
+        // Word-by-word reveal — three words across ~0.6s (paced to VO "UNTIL IT DOESN'T").
+        tl.fromTo(
+          ".hook-word[data-w='0']",
+          { y: 6, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.22, ease: "power2.out" },
+          2.95
+        );
+        tl.fromTo(
+          ".hook-word[data-w='1']",
+          { y: 6, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.22, ease: "power2.out" },
+          3.12
+        );
+        tl.fromTo(
+          ".hook-word[data-w='2']",
+          { y: 6, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.28, ease: "power2.out" },
+          3.32
+        );
+
+        // SCENE 4 (3.5–3.99s): cyan rule glows a single beat (0.0 → 0.55 → 0 on the halo),
+        // and the rule's own opacity nudges 1.0 → 0.85 → 1.0 to read as a settle. No exits.
+        tl.fromTo(
+          "#hook-rule-glow",
+          { opacity: 0 },
+          { opacity: 0.55, duration: 0.18, ease: "power2.out" },
+          3.5
+        );
+        tl.to(
+          "#hook-rule-glow",
+          { opacity: 0, duration: 0.26, ease: "power2.in" },
+          3.7
+        );
+
+        window.__timelines["01-hook"] = tl;
+      })();
+    </script>
+  </div>
+</template>
