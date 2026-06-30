@@ -2,7 +2,7 @@
 
 Mantle Sepolia is one of two settlement chains that the agent anchors its
 conviction analyses to every cycle. The other is Casper Testnet
-(see [`CASPER_BUILDATHON.md`](./CASPER_BUILDATHON.md)). Same record, same
+(see [`CASPER_INTEGRATION.md`](./CASPER_INTEGRATION.md)). Same record, same
 hash, two chains — adding a third is one new file under `agent/lib/anchors/`.
 
 ## What gets anchored
@@ -99,6 +99,6 @@ The returned tuple matches the `ConvictionRecord` struct above.
 
 ## Related
 
-- [`CASPER_BUILDATHON.md`](./CASPER_BUILDATHON.md) — the parallel Casper adapter
-- [`BNB_HACK_SUBMISSION.md`](./BNB_HACK_SUBMISSION.md) — the trading agent that produces these records
+- [`CASPER_INTEGRATION.md`](./CASPER_INTEGRATION.md) — the parallel Casper adapter
+- [`AGENT_DESIGN.md`](./AGENT_DESIGN.md) — the trading agent that produces these records
 - [`PRIVACY_MODEL.md`](./PRIVACY_MODEL.md) — Aleo ZK layer for private conviction credentials

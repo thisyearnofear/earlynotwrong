@@ -26,12 +26,11 @@ signals, dual-chain anchors, and (separately) lets users analyze their own
 Solana / Base wallet history through the same conviction lens with optional
 ZK-private reputation.
 
-In the **SoSoValue Buildathon** (Wave 3, Jun 29–Jul 8 2026), we enhanced the
-agent with three new capabilities: **SoSoValue API** as an additional market
-data source (token snapshots, SSI indices, news feeds, macro events),
-**SoDEX testnet execution** as an orderbook venue alongside TWAK, and an
-**AI market narrative generator** that produces natural-language market
-commentary from SoSoValue's feeds and conviction data.
+A second data pipeline runs alongside CMC: **SoSoValue API** for token
+snapshots, SSI indices, news feeds, and macro events; **SoDEX** as a testnet
+orderbook execution venue alongside TWAK; and an **AI market narrative
+generator** that produces natural-language commentary from SoSoValue's feeds
+and the conviction state.
 
 ```
 SoSoValue API ──┬── Token snapshots ──► Price / RSI / Quality (30s refresh)
@@ -65,7 +64,7 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
 - **Agent API** — `GET /status`, `/conviction`, `/trades` on port 31777
 - **MCP reputation API** — `POST /mcp` (5 tools, free + x402-paid). See
-  [`docs/CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md#reproduce-the-live-402-challenge)
+  [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md#reproduce-the-live-402-challenge)
   for the one-curl reproduction.
 - **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through)
 - **Latest dual-chain anchor** — verifiable on
@@ -90,7 +89,7 @@ cp agent/.env.example agent/.env   # fill in values
 npm run --prefix agent dev
 ```
 
-### Quick Start — SoSoValue Buildathon Components
+### Quick Start — SoSoValue + SoDEX Pipeline
 
 ```bash
 # 1. SoSoValue API access
@@ -115,11 +114,11 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
 | [`SOUL.md`](./SOUL.md) | Design philosophy and architectural soul |
 | [`AGENTS.md`](./AGENTS.md) | Agent orchestration guide |
 | [`docs/CORE_PRINCIPLES.md`](./docs/CORE_PRINCIPLES.md) | Enhancement First, DRY, Consolidation — governs every change |
+| [`docs/AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md) | BSC trading agent: 6-factor signal, bankroll discipline, 6-layer scam-token defense |
 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) | ERC-8004 ConvictionRegistry on Mantle Sepolia |
-| [`docs/CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md) | Casper Odra ConvictionRegistry + dual-anchor adapter |
-| [`docs/BNB_HACK_SUBMISSION.md`](./docs/BNB_HACK_SUBMISSION.md) | BNB Hack: AI Trading Agent Edition submission (Jun 2026) |
-| [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) | **NEW** — SoSoValue API + SoDEX + AI narrative integration (Buildathon Wave 3) |
-| [`docs/PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md) | Aleo ZK-proof selective disclosure model |
+| [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) | Casper Odra registry + MCP server + x402 reputation paywall |
+| [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) | SoSoValue API + SoDEX + AI narrative pipeline |
+| [`docs/PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md) | Aleo ZK-proof selective disclosure + signed-voucher rebate flow |
 | [`docs/SECURITY.md`](./docs/SECURITY.md) | Signed-voucher treasury + replay protection |
 | [`ROADMAP.md`](./ROADMAP.md) | Phase status — Aleo Testnet v3 live (rebate + selective disclosure), Mantle ERC-8004 shipped |
 
@@ -145,21 +144,36 @@ penalty) and holds through ordinary drawdown by design.
 - **MCP Server** — `agent/src/mcp/{server,tools,x402,pricing}.ts` (5 tools, x402 paywall, mounted on the existing Hono process)
 - **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent, surfaces MCP + x402 stats)
 
-### SoSoValue Buildathon Additions
+### SoSoValue + SoDEX Pipeline
 
 - **Composite Data Provider** — `agent/lib/data-providers.ts` (`SosovalueClient` + `CmcClient` in one module — 30s-refresh token snapshots, SSI indices, news feeds, macro events; SoSoValue token prices preferred, CMC fills regime gaps)
 - **SoDEX Client + EIP-712 Signing** — `agent/lib/dex-trading.ts` (`SodexClient`, nonce manager, signed market orders, balances) — ValueChain testnet, TWAK fallback on miss
 - **SoSoValue Trading Signals** — `agent/lib/sosovalue-signals.ts` (SSI index regime confirmation → `scoreMarketRegime`; high-impact macro event pause → trade sizing; per-symbol news sentiment → `scoreTokenConviction`)
 - **Market Narrative Generator** — `agent/lib/market-narrative.ts` (template-based + optional LLM-enhanced market commentary from SoSoValue feeds)
 
-## Hackathons
+## Origins
 
-| Event | Status | Doc |
-|-------|--------|-----|
-| BNB Hack: AI Trading Agent Edition | Submitted Jun 21 2026 | [`BNB_HACK_SUBMISSION.md`](./docs/BNB_HACK_SUBMISSION.md) |
-| Casper Agentic Buildathon 2026 | Submitted Jun 30 2026 | [`CASPER_BUILDATHON.md`](./docs/CASPER_BUILDATHON.md) |
-| Mantle Turing Test 2026 | Window missed; anchoring shipped anyway | [`MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) |
-| **SoSoValue Buildathon** | **Wave 3 in progress (deadline Jul 8 2026)** | [`SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) |
+This project was built across several hackathons during 2026, each contributing
+a specific layer of the architecture:
+
+- **BNB Hack: AI Trading Agent Edition** (Jun 2026) — the live BSC trading
+  agent, 6-factor conviction signal, and bankroll discipline.
+  See [`AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md).
+- **Mantle Turing Test 2026** — ERC-8004 ConvictionRegistry anchoring.
+  See [`MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md).
+- **Casper Agentic Buildathon 2026** (Jun 2026) — Odra-based reputation
+  registry, the MCP server, and the x402 paywall for paid reputation queries.
+  See [`CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md).
+- **Aleo Privacy Buildathon 2026** — `early_not_wrong_v3.aleo` for ZK
+  selective disclosure + signed-voucher patience rebates.
+  See [`PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md).
+- **SoSoValue Buildathon 2026** (Wave 3, deadline Jul 8 2026) — SoSoValue
+  market data, SoDEX execution, AI narrative generator.
+  See [`SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md).
+- **Superteam Brasil Solana AI Kit bounty** (Jun 2026) — the four-gate
+  pre-trade safety pattern, extracted to a standalone skill:
+  [solana-safe-trade-skill](https://github.com/thisyearnofear/solana-safe-trade-skill).
+  Vendored back into the agent at `agent/lib/solana-safety.ts`.
 
 ## What This Is NOT
 

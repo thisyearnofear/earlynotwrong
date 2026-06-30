@@ -67,5 +67,3 @@ To address the "how to trade" paradox on a public-ledger world, we introduce **P
 - **Privacy by Default**: Unlike EVM-based privacy solutions, data is hidden unless explicitly disclosed.
 - **Composability**: Private reputation can be used as a "ZK-Credential" for other Aleo-based DeFi protocols (e.g., undercollateralized lending based on conviction).
 
----
-*Built for the Aleo Privacy Buildathon 2026*

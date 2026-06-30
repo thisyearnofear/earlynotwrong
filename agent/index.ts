@@ -17,8 +17,8 @@
  *   TWAK_HMAC_SECRET   — TWAK credentials for live execution
  *   AGENT_WALLET_KEY   — Agent wallet address
  *
- * See docs/BNB_HACK_SUBMISSION.md for the agent's full architecture and
- * docs/CASPER_BUILDATHON.md for the cross-chain anchoring layer.
+ * See docs/AGENT_DESIGN.md for the agent's full architecture and
+ * docs/CASPER_INTEGRATION.md for the cross-chain anchoring layer.
  */
 
 // Load .env into process.env BEFORE any other module evaluates. This side-
