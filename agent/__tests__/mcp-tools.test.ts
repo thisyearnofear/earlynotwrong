@@ -31,16 +31,19 @@ describe("PRICING config", () => {
   });
 });
 
-// ─── x402 helpers (pure parts) ───────────────────────────────────────────────
+// ─── Shared payment stats (used by x402 and CAP) ─────────────────────────────
 
-import { x402Stats } from "../src/mcp/x402.js";
+import { paymentStats } from "../src/payment-stats.js";
 
-describe("x402Stats", () => {
-  it("starts at zero", () => {
+describe("paymentStats", () => {
+  it("starts at zero for both providers", () => {
     // Other test files may run first; reset by reading + asserting non-negative.
-    expect(x402Stats.queriesServed).toBeGreaterThanOrEqual(0);
-    expect(x402Stats.paidQueries).toBeGreaterThanOrEqual(0);
-    expect(x402Stats.feesCollectedBaseUnits).toBeGreaterThanOrEqual(0n);
+    expect(paymentStats.queriesServed).toBeGreaterThanOrEqual(0);
+    expect(paymentStats.paidQueries).toBeGreaterThanOrEqual(0);
+    expect(paymentStats.feesCollectedBaseUnits.x402).toBeGreaterThanOrEqual(0n);
+    expect(paymentStats.feesCollectedBaseUnits.cap).toBeGreaterThanOrEqual(0n);
+    expect(paymentStats.byProvider.x402.queriesServed).toBeGreaterThanOrEqual(0);
+    expect(paymentStats.byProvider.cap.queriesServed).toBeGreaterThanOrEqual(0);
   });
 });
 

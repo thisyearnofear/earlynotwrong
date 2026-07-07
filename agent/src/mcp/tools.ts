@@ -1,11 +1,11 @@
 /**
- * MCP tool implementations.
+ * Reputation tool implementations — shared by the MCP server and the CROO
+ * CAP adapter.
  *
- * Pure functions over the AnchorAdapter interface. The MCP server (server.ts)
- * is the transport; this file is what each tool actually does. Decoupled so
- * the tools can be unit-tested in isolation with stub adapters, and so the
- * x402 paywall middleware (server.ts) can wrap them without coupling to MCP
- * protocol concerns.
+ * These are pure functions over the AnchorAdapter interface, intentionally
+ * decoupled from any transport protocol. The MCP server (`server.ts`) and the
+ * CAP handler (`../cap/server.ts`) both call these functions; payment is
+ * enforced by each transport's own middleware before the tool runs.
  *
  * The tools read from the SAME adapters the agent writes through — single
  * source of truth across the read and write paths.

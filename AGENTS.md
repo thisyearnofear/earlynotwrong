@@ -22,8 +22,10 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | File / Module | Purpose |
 |---------------|---------|
 | `agent/index.ts` | Startup, main loop orchestrator (`.env` inline loader, `runCycle()`, `restoreSnapshot()`) |
-| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/mcp`) |
+| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
 | `agent/src/mcp/` | MCP server + x402 paywall — exposes cross-chain conviction data to AI agents |
+| `agent/src/cap/` | CROO Agent Protocol adapter — reputation services settled in USDC on Base |
+| `agent/src/payment-stats.ts` | Shared A2A payment counters for x402 and CAP |
 | `agent/lib/config.ts` | Single config object (`AGENT_CONFIG`), competition constants, block-explorer URL builders |
 | `agent/lib/agent-state.ts` | Shared mutable state (`state`), 10 type interfaces, helper maps, utility functions |
 | `agent/lib/cycle-runner.ts` | All 8 pipeline steps + helpers (`closePosition`, `finalizeExit`, `printCycleSummary`) |
@@ -50,7 +52,9 @@ index.ts
   └─ data-providers.ts ─┤
   └─ errors.ts ─────────┤
   └─ telegram.ts ───────┤ (all leaf modules)
-  └─ persistence.ts ────┘
+  └─ persistence.ts ────┤
+  └─ cap/client.ts ─────┤
+  └─ payment-stats.ts ──┘
   └─ (src/ imports)
 
 cycle-runner.ts
@@ -107,7 +111,9 @@ cycle-runner.ts
 - **Bankroll management**: BNB reserve + adaptive interval doubling (4h → 8h) when BNB drops below `targetBnbUsd`.
 - **Position reconciliation**: at startup, `restoreSnapshot()` cross-checks `state.heldPositions` against live TWAK portfolio and drops ghost positions.
 - **Portfolio parser**: Reads `$USD` column from TWAK's column-aligned output. Covered by regression test in `__tests__/twak-executor.test.ts`.
-- **Agent-to-agent (A2A)**: MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 5 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`.
+- **Agent-to-agent (A2A)**:
+  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 5 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`.
+  - CROO CAP client connects to the CROO network via WebSocket and advertises 4 reputation services (`reputation-latest`, `reputation-history`, `reputation-cross-chain`, `reputation-agent`) settled in USDC on Base.
 
 ### Important Conventions
 

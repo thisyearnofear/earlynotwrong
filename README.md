@@ -6,19 +6,21 @@ An autonomous on-chain trading agent that scores **behavioral conviction**
 (not price predictions), executes self-custody trades on BNB Smart Chain,
 and anchors a verifiable record of every decision to **two settlement
 chains** — then exposes that record as a **reputation marketplace** so any
-other AI agent can query it via Model Context Protocol, paying per call
-via x402 micropayments on Casper.
+other AI agent can hire it. Other agents query the record via **Model
+Context Protocol** with x402 micropayments on Casper, or through the
+**CROO Agent Protocol (CAP)** with USDC settlement on Base.
 
 ```
 CMC Agent Hub ─► Conviction Engine ─► Risk Guardrails ─► TWAK Execution ─► Anchor Layer
    (data)         (6-factor contrarian)    (filters)       (BSC swaps)       ├─► Mantle (ERC-8004)
                                                                              └─► Casper (Odra)
                                                                                     │
-                                                                          ┌─────────┴─────────┐
-                                                                          │  MCP server       │
-OTHER AGENTS ──────── MCP query ──────── x402 paid ─────────────────────► │  on the agent's   │
-(yield bots,                                                              │  Hono process     │
- wallets, oracles)                                                        └───────────────────┘
+                                                                          ┌─────────┴─────────────────────┐
+                                                                          │  Reputation server            │
+                                                                          │  (on the agent's Hono process)│
+OTHER AGENTS ──────── MCP query ──────── x402 paid ─────────────────────► │  • /mcp (Casper x402)           │
+(yield bots,                                                              │  • CAP WebSocket (USDC/Base)    │
+ wallets, oracles)                                                        └─────────────────────────────────┘
 ```
 
 The companion Next.js dashboard surfaces the live agent's state, conviction
@@ -61,11 +63,22 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 
 ## Live
 
+> **Casper Agentic Buildathon 2026 submission:** the Casper-native reputation
+> marketplace layer — Odra contract, MCP server, and x402 paywall. Full narrative
+> in [`SUBMISSION.md`](./SUBMISSION.md).
+>
+> **CROO Hackathon submission:** the same reputation marketplace is now callable
+> through the CROO Agent Protocol, settling in USDC on Base. See
+> [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md).
+
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
 - **Agent API** — `GET /status`, `/conviction`, `/trades` on port 31777
 - **MCP reputation API** — `POST /mcp` (5 tools, free + x402-paid). See
   [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md#reproduce-the-live-402-challenge)
   for the one-curl reproduction.
+- **CAP reputation API** — listed on the CROO Agent Store; runtime connects via
+  the `@croo-network/sdk` WebSocket and accepts USDC orders.
+- **CAP status endpoint** — `GET /cap/status` on port 31777
 - **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through)
 - **Latest dual-chain anchor** — verifiable on
   [Mantle Sepolia](https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C)
@@ -107,6 +120,32 @@ echo "OPENAI_API_KEY=sk-..." >> agent/.env   # GPT-4o-mini
 echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
 ```
 
+### Quick Start — CROO Agent Protocol (CAP)
+
+```bash
+# 1. Create your agent + services on https://agent.croo.network
+#    Service IDs must match the keys in agent/src/cap/pricing.ts:
+#    • reputation-latest
+#    • reputation-history
+#    • reputation-cross-chain
+#    • reputation-agent
+#
+# 2. Copy the SDK key from the CROO dashboard
+echo "CROO_SDK_KEY=croo_sk_..." >> agent/.env
+#
+# 3. (Optional) Override default CROO endpoints
+echo "CROO_API_URL=https://api.croo.network" >> agent/.env
+echo "CROO_WS_URL=wss://api.croo.network/ws" >> agent/.env
+```
+
+When the agent starts it will connect to CROO via WebSocket and accept
+incoming reputation orders. Payment settles on-chain in USDC on Base.
+
+> **Current status**: CAP code is implemented and the CROO wallet has been
+> generated (`0x5d3d23679DFb6b01107b50A840b3c2EbB45AeE2C`). Once you receive
+> the `CROO_SDK_KEY` from the Store, add it to `agent/.env` and restart the
+> agent to activate the live CAP connection.
+
 ## Key Documents
 
 | Document | What it covers |
@@ -117,6 +156,7 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
 | [`docs/AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md) | BSC trading agent: 6-factor signal, bankroll discipline, 6-layer scam-token defense |
 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) | ERC-8004 ConvictionRegistry on Mantle Sepolia |
 | [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) | Casper Odra registry + MCP server + x402 reputation paywall |
+| [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md) | CROO Agent Protocol integration — CAP services, USDC settlement, SDK methods |
 | [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) | SoSoValue API + SoDEX + AI narrative pipeline |
 | [`docs/PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md) | Aleo ZK-proof selective disclosure + signed-voucher rebate flow |
 | [`docs/SECURITY.md`](./docs/SECURITY.md) | Signed-voucher treasury + replay protection |
@@ -142,7 +182,9 @@ penalty) and holds through ordinary drawdown by design.
 - **Anchor Adapters** — `agent/lib/anchors/{mantle,casper,index}.ts` (one interface, N chains, read + write)
 - **Casper Contract** — `casper/src/conviction_registry.rs` (Odra/Rust)
 - **MCP Server** — `agent/src/mcp/{server,tools,x402,pricing}.ts` (5 tools, x402 paywall, mounted on the existing Hono process)
-- **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent, surfaces MCP + x402 stats)
+- **CAP Adapter** — `agent/src/cap/{client,handler,pricing}.ts` (CROO Agent Protocol WebSocket client, USDC settlement, reuses the same reputation tools)
+- **Payment Stats** — `agent/src/payment-stats.ts` (shared counters for x402 and CAP)
+- **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent, surfaces MCP + x402 + CAP stats)
 
 ### SoSoValue + SoDEX Pipeline
 
@@ -151,29 +193,31 @@ penalty) and holds through ordinary drawdown by design.
 - **SoSoValue Trading Signals** — `agent/lib/sosovalue-signals.ts` (SSI index regime confirmation → `scoreMarketRegime`; high-impact macro event pause → trade sizing; per-symbol news sentiment → `scoreTokenConviction`)
 - **Market Narrative Generator** — `agent/lib/market-narrative.ts` (template-based + optional LLM-enhanced market commentary from SoSoValue feeds)
 
-## Origins
+## Origins & Casper Buildathon Submission
 
-This project was built across several hackathons during 2026, each contributing
-a specific layer of the architecture:
+This codebase has been developed across several 2026 hackathons and bounties,
+each contributing a specific layer of the architecture. See the documents below
+for the full lineage and design history.
 
-- **BNB Hack: AI Trading Agent Edition** (Jun 2026) — the live BSC trading
-  agent, 6-factor conviction signal, and bankroll discipline.
-  See [`AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md).
-- **Mantle Turing Test 2026** — ERC-8004 ConvictionRegistry anchoring.
-  See [`MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md).
-- **Casper Agentic Buildathon 2026** (Jun 2026) — Odra-based reputation
-  registry, the MCP server, and the x402 paywall for paid reputation queries.
-  See [`CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md).
-- **Aleo Privacy Buildathon 2026** — `early_not_wrong_v3.aleo` for ZK
-  selective disclosure + signed-voucher patience rebates.
-  See [`PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md).
-- **SoSoValue Buildathon 2026** (Wave 3, deadline Jul 8 2026) — SoSoValue
-  market data, SoDEX execution, AI narrative generator.
-  See [`SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md).
-- **Superteam Brasil Solana AI Kit bounty** (Jun 2026) — the four-gate
-  pre-trade safety pattern, extracted to a standalone skill:
-  [solana-safe-trade-skill](https://github.com/thisyearnofear/solana-safe-trade-skill).
-  Vendored back into the agent at `agent/lib/solana-safety.ts`.
+**The Casper Agentic Buildathon 2026 submission is the reputation marketplace
+layer**: an Odra smart contract on Casper Testnet, a Casper adapter that reads
+and writes that contract, an MCP server exposing the registry to other agents,
+and an x402 paywall so agents pay per query with CEP-18 micropayments. The
+autonomous BSC trading agent is the live reputation source that feeds this layer.
+
+For the buildathon submission narrative, see [`SUBMISSION.md`](./SUBMISSION.md).
+
+### Layer history
+
+| Layer | Hackathon / Bounty | Document |
+|-------|-------------------|----------|
+| Autonomous BSC trading agent, 6-factor conviction signal, bankroll discipline | BNB Hack: AI Trading Agent Edition | [`docs/AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md) |
+| ERC-8004 ConvictionRegistry on Mantle | Mantle Turing Test 2026 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) |
+| **Odra registry + MCP server + x402 paywall on Casper** | **Casper Agentic Buildathon 2026** | [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) |
+| **CROO Agent Protocol adapter with USDC settlement on Base** | **CROO Hackathon** | [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md) |
+| Aleo ZK selective disclosure + signed-voucher rebates | Aleo Privacy Buildathon 2026 | [`docs/PRIVACY_MODEL.md`](./docs/PRIVACY_MODEL.md) |
+| SoSoValue market data + SoDEX execution + AI narrative | SoSoValue Buildathon 2026 (Wave 3) | [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) |
+| Solana four-gate pre-trade safety skill | Superteam Brasil Solana AI Kit | [`agent/lib/solana-safety.ts`](./agent/lib/solana-safety.ts) + [solana-safe-trade-skill](https://github.com/thisyearnofear/solana-safe-trade-skill) |
 
 ## What This Is NOT
 

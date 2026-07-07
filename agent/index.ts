@@ -51,6 +51,7 @@ import {
 } from "./lib/onchain-portfolio.js";
 import { guardrails } from "./lib/risk-guardrails.js";
 import { setAgentState, startServer } from "./src/server.js";
+import { startCapClient, stopCapClient, getCapStatus } from "./src/cap/client.js";
 import {
   sendCycleSummary,
   sendStartup,
@@ -420,6 +421,9 @@ async function main(): Promise<void> {
   console.log(`Bankroll: reserve=$${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd}, target=$${AGENT_CONFIG.trading.bankroll.targetBnbUsd}, max-trade-fraction=${AGENT_CONFIG.trading.bankroll.maxTradeFractionOfBnb * 100}%, entry-skip-below=$${AGENT_CONFIG.trading.bankroll.entrySkipBelowBnbUsd}`);
 
   const server = startServer(31777);
+  await startCapClient();
+  const capStatus = getCapStatus();
+  console.log(`  CROO CAP:    ${capStatus.connected ? "✓" : "○"} (${capStatus.services.length} services)`);
   console.log("");
 
   const health = await startupCheck();
@@ -481,10 +485,11 @@ async function main(): Promise<void> {
 
   scheduleNextCycle();
 
-  process.on("SIGINT", () => {
+  process.on("SIGINT", async () => {
     console.log("\nGraceful shutdown...");
     console.log(`Total trades: ${state.totalTrades}, Volume: $${state.totalVolumeUsd.toFixed(2)}`);
     server.close();
+    await stopCapClient();
     process.exit(0);
   });
 }

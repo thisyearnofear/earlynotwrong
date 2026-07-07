@@ -230,6 +230,16 @@ export const AGENT_CONFIG = {
     },
   },
 
+  // CROO Agent Protocol — A2A commerce layer (additive to MCP + x402).
+  // Private SDK key is read from CROO_SDK_KEY at runtime; these are public
+  // defaults and chain metadata.
+  cap: {
+    apiUrl: process.env.CROO_API_URL ?? "https://api.croo.network",
+    wsUrl: process.env.CROO_WS_URL ?? "wss://api.croo.network/ws",
+    settlementChain: "base",
+    usdcDecimals: 6,
+  },
+
   // Anchoring orchestration — which chains we publish conviction records to.
   // Add an entry here + an adapter under `lib/anchors/` to extend to a new chain.
   anchoring: {

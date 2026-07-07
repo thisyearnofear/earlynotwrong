@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const AGENT_HOST = process.env.AGENT_HOST || "144.202.117.160";
 const AGENT_PORT = process.env.AGENT_PORT || "31777";
 
-const VALID_ENDPOINTS = ["status", "trades", "conviction", "reputation/stats"] as const;
+const VALID_ENDPOINTS = ["status", "trades", "conviction", "reputation/stats", "cap/status"] as const;
 
 export async function GET(req: NextRequest) {
   const endpoint = req.nextUrl.searchParams.get("endpoint");

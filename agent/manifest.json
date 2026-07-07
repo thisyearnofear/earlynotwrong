@@ -1,6 +1,6 @@
 {
-  "name": "Early, Not Wrong - Trading Agent",
-  "description": "Conviction-native trading agent for the BNB Hack: AI Trading Agent Edition. Scores contrarian conviction from CMC data (weakness + quality during fear), opens positions it holds through drawdown, caps losses at −35% and lets winners run past +100%, anchors the conviction record to Mantle.",
+  "name": "Early, Not Wrong - Conviction Agent",
+  "description": "Autonomous conviction-native trading agent. Scores contrarian signals from CMC and SoSoValue, executes self-custody trades on BNB Smart Chain, anchors a verifiable reputation record to Mantle and Casper, and exposes that record to other AI agents via MCP + x402 and the CROO Agent Protocol (CAP/USDC).",
   "engine": "openclaw",
   "identity": {
     "name": "Early, Not Wrong",
@@ -38,10 +38,24 @@
     "CMC_API_KEY",
     "TWAK_ACCESS_ID",
     "TWAK_HMAC_SECRET",
-    "TELEGRAM_BOT_TOKEN",
-    "TELEGRAM_CHAT_ID",
+    "AGENT_WALLET_KEY",
+    "SODEX_API_KEY_PRIVATE",
+    "SOSOVALUE_API_KEY",
+    "NODEREAL_API_KEY",
+    "COINGECKO_API_KEY",
     "MANTLE_OPERATOR_KEY",
-    "AGENT_WALLET_KEY"
+    "CSPR_CLOUD_TOKEN",
+    "CASPER_OPERATOR_PEM",
+    "CASPER_REGISTRY_HASH",
+    "CROO_SDK_KEY",
+    "CROO_WALLET_ADDRESS",
+    "CROO_WALLET_KEY",
+    "ALEO_PRIVATE_KEY",
+    "ALEO_SIGN_SERVICE_HMAC_SECRET",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID"
   ],
   "routes": [
     {
@@ -58,6 +72,26 @@
       "path": "/api/conviction",
       "port": 31777,
       "public": false
+    },
+    {
+      "path": "/api/mcp",
+      "port": 31777,
+      "public": false
+    },
+    {
+      "path": "/api/reputation/stats",
+      "port": 31777,
+      "public": false
+    },
+    {
+      "path": "/api/aleo/sign-voucher",
+      "port": 31777,
+      "public": false
+    },
+    {
+      "path": "/api/cap/status",
+      "port": 31777,
+      "public": false
     }
   ],
   "scripts": {
@@ -70,7 +104,7 @@
       "schedule": {
         "every": 240
       },
-      "prompt": "Run one full trading cycle: fetch CMC data, score contrarian regime, manage open positions (cap losses, let winners run), open entries on quality weakness, check guardrails, execute via TWAK, anchor the conviction record to Mantle.",
+      "prompt": "Run one full trading cycle: fetch composite market data (SoSoValue preferred, CMC fallback), score contrarian regime and token conviction, manage open positions (cap losses, let winners run), open entries on quality weakness, check guardrails, execute via TWAK or SoDEX, anchor the conviction record to Mantle and Casper.",
       "timeout": 600
     }
   ]

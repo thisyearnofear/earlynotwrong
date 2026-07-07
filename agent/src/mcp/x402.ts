@@ -17,6 +17,7 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
+import { recordCall } from "../payment-stats.js";
 import { PRICING, type ToolName } from "./pricing.js";
 
 const FACILITATOR_BASE = "https://x402-facilitator.cspr.cloud";
@@ -137,31 +138,9 @@ function extractToolName(body: unknown): string | null {
  * Hono middleware. Reads and re-attaches the request body so the downstream
  * MCP handler can re-parse it.
  *
- * Counters are exposed at the module level so the dashboard can surface them.
+ * Payment counters are tracked in the shared payment-stats module so the
+ * dashboard can aggregate x402 and CAP queries from one source.
  */
-export const x402Stats = {
-  queriesServed: 0,
-  paidQueries: 0,
-  feesCollectedBaseUnits: 0n,
-  byTool: new Map<string, { calls: number; paidCalls: number; baseUnits: bigint }>(),
-};
-
-function recordCall(tool: string | null, paid: boolean, baseUnits: bigint): void {
-  x402Stats.queriesServed += 1;
-  if (paid) {
-    x402Stats.paidQueries += 1;
-    x402Stats.feesCollectedBaseUnits += baseUnits;
-  }
-  if (!tool) return;
-  const entry = x402Stats.byTool.get(tool) ?? { calls: 0, paidCalls: 0, baseUnits: 0n };
-  entry.calls += 1;
-  if (paid) {
-    entry.paidCalls += 1;
-    entry.baseUnits += baseUnits;
-  }
-  x402Stats.byTool.set(tool, entry);
-}
-
 export function x402Middleware(): MiddlewareHandler {
   return async (c, next) => {
     // Clone the body so we can both inspect it and let MCP re-read it.
@@ -176,18 +155,18 @@ export function x402Middleware(): MiddlewareHandler {
     const toolName = extractToolName(parsed);
     if (!toolName) {
       // Not a tools/call — free pass (initialize, tools/list, ping, etc.).
-      recordCall(null, false, 0n);
+      recordCall(null, "x402", false, 0n);
       return next();
     }
     if (!(toolName in PRICING)) {
       // Unknown tool name. Let MCP handle the error.
-      recordCall(toolName, false, 0n);
+      recordCall(toolName, "x402", false, 0n);
       return next();
     }
     const requirements = paymentRequirementsFor(toolName as ToolName);
     if (!requirements) {
       // Free tier.
-      recordCall(toolName, false, 0n);
+      recordCall(toolName, "x402", false, 0n);
       return next();
     }
 
@@ -211,7 +190,7 @@ export function x402Middleware(): MiddlewareHandler {
         402,
       );
     }
-    recordCall(toolName, true, BigInt(requirements.amount));
+    recordCall(toolName, "x402", true, BigInt(requirements.amount));
     c.header(
       "x-payment-response",
       encodePaymentResponse({

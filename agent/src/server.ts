@@ -30,8 +30,11 @@ import type {
 import type { MarketNarrative } from "../lib/market-narrative.js";
 import type { MacroPauseSignal } from "../lib/sosovalue-signals.js";
 import { handleMcpRequest } from "./mcp/server.js";
-import { x402Middleware, x402Stats } from "./mcp/x402.js";
-import { PRICING } from "./mcp/pricing.js";
+import { x402Middleware } from "./mcp/x402.js";
+import { PRICING as MCP_PRICING } from "./mcp/pricing.js";
+import { paymentStats, serializeByTool } from "./payment-stats.js";
+import { CAP_PRICING } from "./cap/pricing.js";
+import { getCapStatus } from "./cap/client.js";
 import { aleoSignHmacMiddleware, handleSignVoucher } from "./aleo/sign-service.js";
 
 // =============================================================================
@@ -156,23 +159,62 @@ app.use("/aleo/sign-voucher", aleoSignHmacMiddleware());
 app.post("/aleo/sign-voucher", handleSignVoucher);
 
 // ===========================================================================
-// GET /reputation/stats — live MCP + x402 counters for the dashboard
+// GET /cap/status — CROO CAP connection and advertised services
 // ===========================================================================
 
-app.get("/reputation/stats", (c) =>
+app.get("/cap/status", (c) =>
   c.json({
-    queriesServed: x402Stats.queriesServed,
-    paidQueries: x402Stats.paidQueries,
-    feesCollectedBaseUnits: x402Stats.feesCollectedBaseUnits.toString(),
-    pricing: PRICING,
-    byTool: Object.fromEntries(
-      Array.from(x402Stats.byTool.entries()).map(([k, v]) => [
-        k,
-        { calls: v.calls, paidCalls: v.paidCalls, baseUnits: v.baseUnits.toString() },
-      ]),
+    connected: getCapStatus().connected,
+    services: Object.fromEntries(
+      Object.values(CAP_PRICING).map((entry) => [entry.serviceId, entry.description]),
     ),
   }),
 );
+
+// ===========================================================================
+// GET /reputation/stats — live A2A payment counters for the dashboard
+// ===========================================================================
+//
+// Top-level fields remain the x402 view for backward compatibility with the
+// existing dashboard. The `providers` breakdown surfaces CAP stats as well,
+// so future UI can aggregate both settlement rails without a breaking change.
+
+app.get("/reputation/stats", (c) => {
+  const x402 = paymentStats.byProvider.x402;
+  const cap = paymentStats.byProvider.cap;
+  return c.json({
+    queriesServed: x402.queriesServed,
+    paidQueries: x402.paidQueries,
+    feesCollectedBaseUnits: x402.feesCollectedBaseUnits.toString(),
+    pricing: MCP_PRICING,
+    byTool: serializeByTool(x402.byTool),
+    providers: {
+      x402: {
+        queriesServed: x402.queriesServed,
+        paidQueries: x402.paidQueries,
+        feesCollectedBaseUnits: x402.feesCollectedBaseUnits.toString(),
+        pricing: MCP_PRICING,
+        byTool: serializeByTool(x402.byTool),
+      },
+      cap: {
+        queriesServed: cap.queriesServed,
+        paidQueries: cap.paidQueries,
+        feesCollectedBaseUnits: cap.feesCollectedBaseUnits.toString(),
+        pricing: Object.fromEntries(
+          Object.values(CAP_PRICING).map((entry) => [
+            entry.serviceId,
+            {
+              paid: BigInt(entry.amountUsdcBaseUnits) > 0n,
+              amountUsdcBaseUnits: entry.amountUsdcBaseUnits,
+              description: entry.description,
+            },
+          ]),
+        ),
+        byTool: serializeByTool(cap.byTool),
+      },
+    },
+  });
+});
 
 // ===========================================================================
 // GET /status

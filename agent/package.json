@@ -15,6 +15,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@croo-network/sdk": "^0.2.1",
     "@hono/node-server": "^2.0.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@noble/hashes": "^2.2.0",
