@@ -357,6 +357,7 @@ app.get("/conviction", async (c) => {
         symbol: s.symbol,
         score: s.score,
         breakdown: s.breakdown,
+        weights: s.weights,
         holderCount: s.holderCount,
         holderGrowthPercent: s.holderGrowthPercent,
         newsSentiment: s.newsSentiment,
