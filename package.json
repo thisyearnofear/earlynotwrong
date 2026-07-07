@@ -21,7 +21,7 @@
     "@provablehq/sdk": "^0.10.2",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
-    "@radix-ui/react-tooltip": "^1.2.8",
+    "@radix-ui/react-tooltip": "^1.2.12",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
