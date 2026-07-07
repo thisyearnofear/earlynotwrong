@@ -140,6 +140,8 @@ interface ConvictionData {
     cyclesHeld: number;
     peakPriceUsd: number;
     maxUnderwaterPercent: number;
+    stuck?: boolean;
+    failedExitAttempts?: number;
   }>;
   positionVerdicts: Array<{
     symbol: string;
@@ -999,6 +1001,14 @@ function Dashboard({
                 <span className="ml-auto text-foreground-dim text-[10px] font-mono">
                   {conviction.heldPositions.length} held ·{" "}
                   {conviction.positionVerdicts.filter((v) => v.heldThroughDrawdown).length} weathered drawdown
+                  {conviction.heldPositions.filter((p) => p.stuck).length > 0 && (
+                    <>
+                      {" · "}
+                      <span className="text-impatience">
+                        {conviction.heldPositions.filter((p) => p.stuck).length} stuck
+                      </span>
+                    </>
+                  )}
                 </span>
               )}
             </CardTitle>
@@ -1038,6 +1048,14 @@ function Dashboard({
                             {verdict?.heldThroughDrawdown && (
                               <span className="text-[9px] font-mono text-signal">
                                 ◆ early, not wrong
+                              </span>
+                            )}
+                            {p.stuck && (
+                              <span
+                                className="text-[9px] font-mono px-1.5 py-0.5 rounded-full border border-impatience/30 bg-impatience/10 text-impatience"
+                                title={`Unexitable — ${p.failedExitAttempts ?? 0} failed exit attempts`}
+                              >
+                                STUCK
                               </span>
                             )}
                           </div>

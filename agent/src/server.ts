@@ -375,6 +375,8 @@ app.get("/conviction", async (c) => {
       cyclesHeld: p.cyclesHeld,
       peakPriceUsd: p.peakPriceUsd,
       maxUnderwaterPercent: Math.round(p.maxUnderwaterPercent * 10) / 10,
+      stuck: p.stuck,
+      failedExitAttempts: p.failedExitAttempts,
     })),
 
     // ── Latest position verdicts (what the agent decided this cycle) ───────

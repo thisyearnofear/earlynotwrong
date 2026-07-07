@@ -326,6 +326,17 @@ describe("scoreTokenConviction — integrated formula", () => {
     );
   });
 
+  it("marks a stuck position as HOLD and stops exit attempts", () => {
+    const stuckPos = openPosition({ symbol: "FAKE", entryPriceUsd: 1, amountUsd: 100, cycle: 1 });
+    stuckPos.stuck = true;
+    stuckPos.failedExitAttempts = 3;
+    stuckPos.maxUnderwaterPercent = 25;
+    const verdict = evaluatePosition(stuckPos, 0.5);
+    expect(verdict.action).toBe("HOLD");
+    expect(verdict.reason).toMatch(/stuck/);
+    expect(verdict.heldThroughDrawdown).toBe(true);
+  });
+
   it("surfaces RSI and volatility in the breakdown and rationale", () => {
     const signal = scoreTokenConviction(
       makeQuote({ percentChange7d: -25, percentChange24h: -5 }),

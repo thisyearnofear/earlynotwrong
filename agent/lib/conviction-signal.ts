@@ -434,6 +434,10 @@ export interface HeldPosition {
   cyclesHeld: number;
   /** True once the first partial profit (33% at +50%) has been taken. */
   partialProfitTaken: boolean;
+  /** Number of consecutive failed exit attempts. */
+  failedExitAttempts: number;
+  /** True if the position has been marked un-exitable (honeypot/broken token). */
+  stuck: boolean;
 }
 
 export type PositionAction = "HOLD" | "EXIT_STOP" | "EXIT_TRAIL" | "EXIT_PARTIAL";
@@ -468,6 +472,8 @@ export function openPosition(params: {
     maxUnderwaterPercent: 0,
     cyclesHeld: 0,
     partialProfitTaken: false,
+    failedExitAttempts: 0,
+    stuck: false,
   };
 }
 
@@ -494,6 +500,9 @@ export function accruePosition(
   };
 }
 
+/** Max failed exit attempts before a position is marked stuck. */
+export const STUCK_AFTER_FAILED_ATTEMPTS = 3;
+
 /**
  * Decide what to do with a held position.
  *
@@ -509,6 +518,26 @@ export function evaluatePosition(
   pos: HeldPosition,
   currentPriceUsd: number
 ): PositionVerdict {
+  if (pos.stuck) {
+    return {
+      symbol: pos.symbol,
+      action: "HOLD",
+      unrealizedPnLPercent: round1(
+        pos.entryPriceUsd > 0
+          ? ((currentPriceUsd - pos.entryPriceUsd) / pos.entryPriceUsd) * 100
+          : 0
+      ),
+      drawdownFromPeakPercent: round1(
+        pos.peakPriceUsd > 0
+          ? ((pos.peakPriceUsd - currentPriceUsd) / pos.peakPriceUsd) * 100
+          : 0
+      ),
+      reason: `Position marked stuck after ${pos.failedExitAttempts} failed exits — no further exit attempts`,
+      heldThroughDrawdown: pos.maxUnderwaterPercent >= 15,
+      sellFraction: 0,
+    };
+  }
+
   const t = AGENT_CONFIG.trading;
   const pnl =
     pos.entryPriceUsd > 0

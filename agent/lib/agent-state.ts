@@ -239,6 +239,12 @@ export const concentrationRejectionCount = new Map<string, number>();
  */
 export const unharvestableTokens = new Map<string, number>();
 
+/**
+ * Symbols that have been permanently marked as stuck/unexitable (e.g., honeypots
+ * or broken tax tokens). Prevents re-entry and stops exit retries.
+ */
+export const stuckSymbols = new Set<string>();
+
 export function tickUnharvestableCooldowns(): void {
   for (const [sym, count] of unharvestableTokens.entries()) {
     if (count <= 1) unharvestableTokens.delete(sym);

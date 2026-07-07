@@ -7,7 +7,7 @@
  * The entry point (index.ts) imports these steps and wires them into runCycle().
  */
 
-import { state, GAS_BUFFER_USD, getBnbUsd, computeBankrollCap, buildPriceMap, concentrationRejectionCount, unharvestableTokens, tickUnharvestableCooldowns } from "./agent-state.js";
+import { state, GAS_BUFFER_USD, getBnbUsd, computeBankrollCap, buildPriceMap, concentrationRejectionCount, unharvestableTokens, stuckSymbols, tickUnharvestableCooldowns } from "./agent-state.js";
 import { AGENT_CONFIG, AGENT_MODE } from "./config.js";
 import { cmcClient, sosovalueClient } from "./data-providers.js";
 import { sodexClient } from "./dex-trading.js";
@@ -21,7 +21,7 @@ import {
 import { guardrails } from "./risk-guardrails.js";
 import { computeSubjectHash, computeThesisHash, anchorAll } from "./anchors/index.js";
 import type { SwapResult } from "./twak-executor.js";
-import { scoreMarketRegime, scoreTokenConviction, evaluatePosition, accruePosition, openPosition } from "./conviction-signal.js";
+import { scoreMarketRegime, scoreTokenConviction, evaluatePosition, accruePosition, openPosition, STUCK_AFTER_FAILED_ATTEMPTS } from "./conviction-signal.js";
 import type { ConvictionSignal, HeldPosition, MarketRegime, PositionVerdict } from "./conviction-signal.js";
 import { sendErrorAlert, sendExitAlert, sendGuardrailBlocked } from "./telegram.js";
 import { summarizeError } from "./errors.js";
@@ -284,9 +284,14 @@ export async function augmentPortfolioOnchain(): Promise<void> {
     const { positions, totalUsd } = valueHoldings(holdings, new Map(), cg, dex);
 
     let addedValue = 0;
+    let stuckValueExcluded = 0;
     const sources = new Set<string>();
     for (const pos of positions) {
       if (pos.valueUsd <= 0.01) continue;
+      if (stuckSymbols.has(pos.symbol)) {
+        stuckValueExcluded += pos.valueUsd;
+        continue;
+      }
       sources.add(pos.priceSource);
       const existing = state.portfolio!.positions.find(
         (p) => p.symbol.toUpperCase() === pos.symbol.toUpperCase()
@@ -308,11 +313,12 @@ export async function augmentPortfolioOnchain(): Promise<void> {
     }
 
     const pricedCount = positions.filter((p) => p.valueUsd > 0.01).length;
-    if (addedValue !== 0) {
+    if (addedValue !== 0 || stuckValueExcluded > 0) {
       state.portfolio!.totalValueUsd += addedValue;
+      const stuckMsg = stuckValueExcluded > 0 ? ` (excluded $${stuckValueExcluded.toFixed(2)} stuck)` : "";
       console.log(
         `  [onchain] Valued ${pricedCount}/${holdings.length} held position(s) = $${totalUsd.toFixed(2)} ` +
-        `(${[...sources].join("+") || "none"}); portfolio → $${state.portfolio!.totalValueUsd.toFixed(2)}`
+        `(${[...sources].join("+") || "none"}); portfolio → $${state.portfolio!.totalValueUsd.toFixed(2)}${stuckMsg}`
       );
     }
   } catch {
@@ -384,6 +390,9 @@ export async function manageOpenPositions(): Promise<void> {
   state.positionVerdicts = verdicts;
 }
 
+const MIN_SWAP_USD = 1.0;
+const STUCK_SLIPPAGES_BPS = [1000, 2000, 4900]; // 10%, 20%, 49%
+
 async function closePosition(
   pos: HeldPosition,
   verdict: PositionVerdict
@@ -408,37 +417,45 @@ async function closePosition(
     return true;
   }
 
+  if (pos.stuck) {
+    console.log(`    [exit] ${pos.symbol} is marked stuck — skipping exit attempts`);
+    return false;
+  }
+
+  if (pos.amountUsd < MIN_SWAP_USD) {
+    console.log(`    [exit] Position too small ($${pos.amountUsd.toFixed(2)}) to justify gas — deferring`);
+    return false;
+  }
+
+  // Primary: default slippage direct to BNB.
   const result = await twakExecutor.executeSwap({
     tokenIn: pos.symbol,
     tokenOut: "BNB",
     amountIn: pos.amountUsd.toString(),
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
-
-  const MIN_SWAP_USD = 1.0;
-  if (pos.amountUsd < MIN_SWAP_USD) {
-    console.log(`    [exit] Position too small ($${pos.amountUsd.toFixed(2)}) to justify gas — deferring`);
-    return false;
-  }
-
   if (result.success) {
     return finalizeExit(pos, result, verdict, timestamp);
   }
   console.log(`    [exit] Primary exit failed: ${result.error}`);
 
-  console.log(`    [exit] Fallback A: retrying at 5% slippage`);
-  const hiSlipResult = await twakExecutor.executeSwap({
-    tokenIn: pos.symbol,
-    tokenOut: "BNB",
-    amountIn: pos.amountUsd.toString(),
-    slippageBps: 500,
-  });
-  if (hiSlipResult.success) {
-    return finalizeExit(pos, hiSlipResult, verdict, timestamp);
+  // Fallback A: progressively higher slippage (tax / low-liquidity tokens).
+  for (const slippageBps of STUCK_SLIPPAGES_BPS) {
+    console.log(`    [exit] Fallback: retrying at ${(slippageBps / 100).toFixed(0)}% slippage`);
+    const hiSlipResult = await twakExecutor.executeSwap({
+      tokenIn: pos.symbol,
+      tokenOut: "BNB",
+      amountIn: pos.amountUsd.toString(),
+      slippageBps,
+    });
+    if (hiSlipResult.success) {
+      return finalizeExit(pos, hiSlipResult, verdict, timestamp);
+    }
+    console.log(`    [exit] ${(slippageBps / 100).toFixed(0)}% slippage failed: ${hiSlipResult.error}`);
   }
-  console.log(`    [exit] High-slippage failed: ${hiSlipResult.error}`);
 
-  console.log(`    [exit] Fallback B: routing ${pos.symbol} → USDC`);
+  // Fallback B: route through USDC (often deeper liquidity on BSC).
+  console.log(`    [exit] Fallback: routing ${pos.symbol} → USDC`);
   const usdcResult = await twakExecutor.executeSwap({
     tokenIn: pos.symbol,
     tokenOut: "USDC",
@@ -449,12 +466,27 @@ async function closePosition(
     console.log(`    [exit] USDC leg succeeded — closing position (USDC held as stablecoin)`);
     return finalizeExit(pos, usdcResult, verdict, timestamp);
   }
+  console.log(`    [exit] USDC route failed: ${usdcResult.error}`);
 
-  console.log(`    [exit] All exit paths failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)})`);
-  sendErrorAlert({
-    cycle: state.cycle,
-    error: `EXIT ${verdict.action} failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)}, ${verdict.unrealizedPnLPercent.toFixed(1)}% PnL) after 3 attempts. Position kept.`,
-  }).catch(() => {});
+  // Track failure. After repeated failures, mark the position as stuck so we
+  // stop wasting gas on a honeypot / broken tax token.
+  pos.failedExitAttempts += 1;
+  if (pos.failedExitAttempts >= STUCK_AFTER_FAILED_ATTEMPTS) {
+    pos.stuck = true;
+    stuckSymbols.add(pos.symbol);
+    console.log(`    [exit] ${pos.symbol} marked STUCK after ${pos.failedExitAttempts} failed exits; added to blocklist`);
+    sendErrorAlert({
+      cycle: state.cycle,
+      error: `${pos.symbol} marked STUCK after ${pos.failedExitAttempts} failed exits ($${pos.amountUsd.toFixed(2)}). Added to blocklist — treating as worthless/honeypot.`,
+    }).catch(() => {});
+  } else {
+    console.log(`    [exit] All exit paths failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)}) — attempt ${pos.failedExitAttempts}/${STUCK_AFTER_FAILED_ATTEMPTS}`);
+    sendErrorAlert({
+      cycle: state.cycle,
+      error: `EXIT ${verdict.action} failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)}, ${verdict.unrealizedPnLPercent.toFixed(1)}% PnL). Attempt ${pos.failedExitAttempts}/${STUCK_AFTER_FAILED_ATTEMPTS}.`,
+    }).catch(() => {});
+  }
+
   return false;
 }
 
@@ -513,6 +545,8 @@ export async function harvestForBnb(): Promise<void> {
   const maturePositions = state.heldPositions
     .filter(
       (p) =>
+        !p.stuck &&
+        !stuckSymbols.has(p.symbol) &&
         p.cyclesHeld >= MIN_CYCLES_TO_HARVEST &&
         !unharvestableTokens.has(p.symbol) &&
         p.amountUsd >= MIN_HARVEST_USD,
@@ -700,6 +734,10 @@ export async function createTradeProposals(): Promise<Array<{
   for (let i = 0; i < MAX_SCAN && liquidTokens.length < AGENT_CONFIG.trading.topK; i++) {
     const candidate = scoredTokens[i];
     if (!candidate) break;
+    if (stuckSymbols.has(candidate.token.symbol)) {
+      console.log(`    [blocklist] Skipping ${candidate.token.symbol} — previously marked stuck`);
+      continue;
+    }
     checkedTokens.push(candidate.token.symbol);
     const hasLiquidity = await twakExecutor.checkLiquidity(candidate.token.symbol);
     if (hasLiquidity) {

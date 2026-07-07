@@ -29,7 +29,7 @@
 // parent env) were silently missed. See lib/env-bootstrap.ts for details.
 import "./lib/env-bootstrap.js";
 
-import { state, getBnbUsd, tickUnharvestableCooldowns } from "./lib/agent-state.js";
+import { state, getBnbUsd, stuckSymbols, tickUnharvestableCooldowns } from "./lib/agent-state.js";
 import {
   augmentPortfolioOnchain,
   fetchMarketData,
@@ -290,9 +290,18 @@ async function restoreSnapshot(): Promise<void> {
     const persisted = await loadPersistentState();
     const held = persisted?.agent?.heldPositions;
     if (Array.isArray(held) && held.length > 0) {
-      state.heldPositions = held;
+      state.heldPositions = held.map((p) => ({
+        ...p,
+        failedExitAttempts: Number(p.failedExitAttempts) || 0,
+        stuck: Boolean(p.stuck),
+      }));
+      // Restore stuck symbols blocklist so we don't re-enter broken tokens.
+      for (const p of state.heldPositions) {
+        if (p.stuck) stuckSymbols.add(p.symbol);
+      }
       console.log(
-        `  Snapshot: restored ${held.length} open position(s) from last cycle`
+        `  Snapshot: restored ${held.length} open position(s) from last cycle` +
+        (stuckSymbols.size > 0 ? ` (${stuckSymbols.size} stuck)` : "")
       );
     } else {
       console.log(`  Snapshot: no open positions to restore`);
