@@ -21,7 +21,7 @@
     "@noble/hashes": "^2.2.0",
     "@provablehq/sdk": "^0.10.5",
     "casper-js-sdk": "^5.0.12",
-    "hono": "^4.12.26",
+    "hono": "^4.12.28",
     "typescript": "^5.7.0",
     "viem": "^2.52.2",
     "zod": "^4.4.3"
