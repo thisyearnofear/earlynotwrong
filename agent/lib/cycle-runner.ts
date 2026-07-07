@@ -380,6 +380,7 @@ async function closePosition(
       timestamp,
     });
     state.totalTrades += 1;
+    state.totalVolumeUsd += pos.amountUsd;
     guardrails.recordTrade(pos.amountUsd, true);
     return true;
   }
@@ -442,6 +443,7 @@ function finalizeExit(
 ): boolean {
   state.executedTrades.push(result);
   state.totalTrades += 1;
+  state.totalVolumeUsd += pos.amountUsd;
   state.totalGasSpentUsd += result.feeUsd ?? GAS_BUFFER_USD;
   const exitValue = parseFloat(result.amountOut ?? "0");
   state.realizedPnlUsd += exitValue - pos.amountUsd;
@@ -521,6 +523,7 @@ export async function harvestForBnb(): Promise<void> {
     );
     state.executedTrades.push(primary);
     state.totalTrades += 1;
+    state.totalVolumeUsd += target.amountUsd;
     state.totalGasSpentUsd += primary.feeUsd ?? GAS_BUFFER_USD;
     guardrails.recordTrade(target.amountUsd, true);
     console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
@@ -555,6 +558,7 @@ export async function harvestForBnb(): Promise<void> {
         );
         state.executedTrades.push(toUsdc, usdcToBnb);
         state.totalTrades += 2;
+        state.totalVolumeUsd += target.amountUsd;
         state.totalGasSpentUsd += (toUsdc.feeUsd ?? GAS_BUFFER_USD) + (usdcToBnb.feeUsd ?? GAS_BUFFER_USD);
         guardrails.recordTrade(target.amountUsd, true);
         console.log(`  ✓ Harvested via USDC hop (${toUsdc.txHash?.slice(0, 10)} → ${usdcToBnb.txHash?.slice(0, 10)})`);
@@ -587,6 +591,7 @@ export async function harvestForBnb(): Promise<void> {
     if (retry.success) {
       state.executedTrades.push(tinyTest, retry);
       state.totalTrades += 2;
+      state.totalVolumeUsd += 1.5;
       state.totalGasSpentUsd += (tinyTest.feeUsd ?? GAS_BUFFER_USD) + (retry.feeUsd ?? GAS_BUFFER_USD);
       guardrails.recordTrade(1.5, true);
       const idx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
@@ -933,6 +938,8 @@ export async function executeTrades(
 
     if (result.success) {
       console.log(`    ✓ Trade executed${result.txHash ? ` — ${result.txHash.slice(0, 18)}...` : ""}`);
+      state.totalTrades += 1;
+      state.totalVolumeUsd += proposal.amountInUsd;
       guardrails.recordTrade(proposal.amountInUsd, true);
       state.totalGasSpentUsd += result.feeUsd ?? GAS_BUFFER_USD;
 
@@ -956,8 +963,6 @@ export async function executeTrades(
   }
 
   state.executedTrades.push(...results);
-  state.totalTrades += results.filter(r => r.success).length;
-  state.totalVolumeUsd += results.filter(r => r.success).reduce((sum, r) => sum + parseFloat(r.amountIn), 0);
 
   const successful = results.filter(r => r.success).length;
   console.log(`  ${successful}/${proposals.length} trades succeeded`);

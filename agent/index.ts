@@ -310,6 +310,12 @@ async function restoreSnapshot(): Promise<void> {
     if (typeof totalTrades === "number" && Number.isFinite(totalTrades) && totalTrades > 0) {
       state.totalTrades = totalTrades;
     }
+    // totalVolumeUsd was not persisted in agent state historically, but the
+    // guardrail totals have tracked it all along. Restore from there.
+    const guardrailVolume = persisted?.guardrails?.totalVolumeUsd;
+    if (typeof guardrailVolume === "number" && Number.isFinite(guardrailVolume) && guardrailVolume > 0) {
+      state.totalVolumeUsd = guardrailVolume;
+    }
 
     if (state.heldPositions.length > 0 && AGENT_MODE === "live") {
       try {
