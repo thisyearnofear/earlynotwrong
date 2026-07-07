@@ -53,6 +53,23 @@ interface AgentStatus {
     drawdownExceeded: boolean;
     allOk: boolean;
   };
+  metrics?: {
+    realizedPnlUsd: number;
+    totalGasSpentUsd: number;
+    netPnlUsd: number;
+    winRate: number;
+    totalEntries: number;
+    totalExits: number;
+    winningExits: number;
+    losingExits: number;
+    totalWinsUsd: number;
+    totalLossesUsd: number;
+    averageWinUsd: number;
+    averageLossUsd: number;
+    largestWinUsd: number;
+    largestLossUsd: number;
+    profitFactor: number;
+  };
 }
 
 interface Trade {
@@ -543,12 +560,12 @@ function Dashboard({
         </p>
       </motion.div>
 
-      {/* Row 1: Agent Status + Portfolio + Guardrails */}
+      {/* Row 1: Agent Status + Portfolio + Guardrails + Performance */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05, duration: 0.4 }}
-        className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -678,6 +695,58 @@ function Dashboard({
                   )}>
                     {status.guardrails.tradesToday}/{status.guardrails.dailyLimit}
                   </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.14, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <TrendingUp className="w-3.5 h-3.5 text-patience" />
+                Performance
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className={cn(
+                "text-2xl sm:text-3xl font-bold tabular-nums",
+                (status.metrics?.netPnlUsd ?? 0) >= 0 ? "text-patience" : "text-impatience"
+              )}>
+                {formatCurrency(status.metrics?.netPnlUsd ?? 0)}
+                <span className="text-xs font-normal text-foreground-muted ml-2">net PnL</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div>
+                  <span className="text-foreground-muted">Win Rate</span>
+                  <p className={cn(
+                    (status.metrics?.winRate ?? 0) >= 0.5 ? "text-patience" : "text-foreground"
+                  )}>
+                    {((status.metrics?.winRate ?? 0) * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Entries / Exits</span>
+                  <p className="text-foreground">
+                    {(status.metrics?.totalEntries ?? 0)} / {(status.metrics?.totalExits ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Profit Factor</span>
+                  <p className={cn(
+                    (status.metrics?.profitFactor ?? 0) >= 1 ? "text-patience" : "text-foreground"
+                  )}>
+                    {(status.metrics?.profitFactor ?? 0).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-foreground-muted">Gas Spent</span>
+                  <p className="text-foreground">{formatCurrency(status.metrics?.totalGasSpentUsd ?? 0)}</p>
                 </div>
               </div>
             </CardContent>

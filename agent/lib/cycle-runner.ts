@@ -35,6 +35,27 @@ import {
 import type { MacroPauseSignal } from "./sosovalue-signals.js";
 
 // =============================================================================
+// Trade statistics helpers
+// =============================================================================
+
+function recordEntryStats(): void {
+  state.tradeStats.entriesCount += 1;
+}
+
+function recordExitStats(pnlUsd: number): void {
+  state.tradeStats.exitsCount += 1;
+  if (pnlUsd > 0) {
+    state.tradeStats.winningExitsCount += 1;
+    state.tradeStats.totalWinsUsd += pnlUsd;
+    state.tradeStats.largestWinUsd = Math.max(state.tradeStats.largestWinUsd, pnlUsd);
+  } else if (pnlUsd < 0) {
+    state.tradeStats.losingExitsCount += 1;
+    state.tradeStats.totalLossesUsd += Math.abs(pnlUsd);
+    state.tradeStats.largestLossUsd = Math.max(state.tradeStats.largestLossUsd, Math.abs(pnlUsd));
+  }
+}
+
+// =============================================================================
 // Step 2: Fetch Market Data (SoSoValue + CMC composite)
 // =============================================================================
 
@@ -379,8 +400,10 @@ async function closePosition(
       txHash: `0xSIM_EXIT_${timestamp.toString(16)}`,
       timestamp,
     });
+    const simPnlUsd = pos.amountUsd * (verdict.unrealizedPnLPercent / 100);
     state.totalTrades += 1;
     state.totalVolumeUsd += pos.amountUsd;
+    recordExitStats(simPnlUsd);
     guardrails.recordTrade(pos.amountUsd, true);
     return true;
   }
@@ -446,7 +469,9 @@ function finalizeExit(
   state.totalVolumeUsd += pos.amountUsd;
   state.totalGasSpentUsd += result.feeUsd ?? GAS_BUFFER_USD;
   const exitValue = parseFloat(result.amountOut ?? "0");
-  state.realizedPnlUsd += exitValue - pos.amountUsd;
+  const pnlUsd = exitValue - pos.amountUsd;
+  state.realizedPnlUsd += pnlUsd;
+  recordExitStats(pnlUsd);
   guardrails.recordTrade(pos.amountUsd, true);
 
   // Surface this exit to Telegram so judges see live risk decisions, not
@@ -525,6 +550,9 @@ export async function harvestForBnb(): Promise<void> {
     state.totalTrades += 1;
     state.totalVolumeUsd += target.amountUsd;
     state.totalGasSpentUsd += primary.feeUsd ?? GAS_BUFFER_USD;
+    const harvestPnlUsd = parseFloat(primary.amountOut ?? "0") - target.amountUsd;
+    state.realizedPnlUsd += harvestPnlUsd;
+    recordExitStats(harvestPnlUsd);
     guardrails.recordTrade(target.amountUsd, true);
     console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
     state.portfolio = await twakExecutor.getPortfolio();
@@ -560,6 +588,9 @@ export async function harvestForBnb(): Promise<void> {
         state.totalTrades += 2;
         state.totalVolumeUsd += target.amountUsd;
         state.totalGasSpentUsd += (toUsdc.feeUsd ?? GAS_BUFFER_USD) + (usdcToBnb.feeUsd ?? GAS_BUFFER_USD);
+        const hopPnlUsd = parseFloat(usdcToBnb.amountOut ?? "0") - target.amountUsd;
+        state.realizedPnlUsd += hopPnlUsd;
+        recordExitStats(hopPnlUsd);
         guardrails.recordTrade(target.amountUsd, true);
         console.log(`  ✓ Harvested via USDC hop (${toUsdc.txHash?.slice(0, 10)} → ${usdcToBnb.txHash?.slice(0, 10)})`);
         state.portfolio = await twakExecutor.getPortfolio();
@@ -593,6 +624,9 @@ export async function harvestForBnb(): Promise<void> {
       state.totalTrades += 2;
       state.totalVolumeUsd += 1.5;
       state.totalGasSpentUsd += (tinyTest.feeUsd ?? GAS_BUFFER_USD) + (retry.feeUsd ?? GAS_BUFFER_USD);
+      const probePnlUsd = parseFloat(retry.amountOut ?? "0") - 1.5;
+      state.realizedPnlUsd += probePnlUsd;
+      recordExitStats(probePnlUsd);
       guardrails.recordTrade(1.5, true);
       const idx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
       if (idx >= 0) {
@@ -940,6 +974,7 @@ export async function executeTrades(
       console.log(`    ✓ Trade executed${result.txHash ? ` — ${result.txHash.slice(0, 18)}...` : ""}`);
       state.totalTrades += 1;
       state.totalVolumeUsd += proposal.amountInUsd;
+      recordEntryStats();
       guardrails.recordTrade(proposal.amountInUsd, true);
       state.totalGasSpentUsd += result.feeUsd ?? GAS_BUFFER_USD;
 

@@ -316,6 +316,21 @@ async function restoreSnapshot(): Promise<void> {
     if (typeof guardrailVolume === "number" && Number.isFinite(guardrailVolume) && guardrailVolume > 0) {
       state.totalVolumeUsd = guardrailVolume;
     }
+    // Restore aggregate trade statistics so the dashboard can show win rate,
+    // average win/loss, and other metrics across restarts.
+    const persistedStats = (persisted?.agent as { tradeStats?: typeof state.tradeStats } | undefined)?.tradeStats;
+    if (persistedStats && typeof persistedStats === "object") {
+      state.tradeStats = {
+        entriesCount: Number(persistedStats.entriesCount) || 0,
+        exitsCount: Number(persistedStats.exitsCount) || 0,
+        winningExitsCount: Number(persistedStats.winningExitsCount) || 0,
+        losingExitsCount: Number(persistedStats.losingExitsCount) || 0,
+        totalWinsUsd: Number(persistedStats.totalWinsUsd) || 0,
+        totalLossesUsd: Number(persistedStats.totalLossesUsd) || 0,
+        largestWinUsd: Number(persistedStats.largestWinUsd) || 0,
+        largestLossUsd: Number(persistedStats.largestLossUsd) || 0,
+      };
+    }
 
     if (state.heldPositions.length > 0 && AGENT_MODE === "live") {
       try {
@@ -379,6 +394,7 @@ function syncServerState(): void {
     totalVolumeUsd: state.totalVolumeUsd,
     totalGasSpentUsd: state.totalGasSpentUsd,
     realizedPnlUsd: state.realizedPnlUsd,
+    tradeStats: state.tradeStats,
     errors: state.errors,
     marketData: state.marketData,
     executedTrades: state.executedTrades,

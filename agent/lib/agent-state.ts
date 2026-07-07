@@ -140,6 +140,18 @@ export interface MarketDataProvider {
   fetchFundingRates(): Promise<Record<string, number>>;
 }
 
+/** Aggregate trade performance statistics. */
+export interface TradeStats {
+  entriesCount: number;
+  exitsCount: number;
+  winningExitsCount: number;
+  losingExitsCount: number;
+  totalWinsUsd: number;
+  totalLossesUsd: number;
+  largestWinUsd: number;
+  largestLossUsd: number;
+}
+
 /** Serializable state published via the MCP server. */
 export interface AgentState {
   cycle: number;
@@ -173,6 +185,16 @@ export const state = {
   totalVolumeUsd: 0,
   totalGasSpentUsd: 0,
   realizedPnlUsd: 0,
+  tradeStats: {
+    entriesCount: 0,
+    exitsCount: 0,
+    winningExitsCount: 0,
+    losingExitsCount: 0,
+    totalWinsUsd: 0,
+    totalLossesUsd: 0,
+    largestWinUsd: 0,
+    largestLossUsd: 0,
+  } as TradeStats,
   errors: [] as string[],
 
   // Cached market data for this cycle

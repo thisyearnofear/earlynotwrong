@@ -29,6 +29,7 @@ import type {
 } from "../lib/conviction-signal.js";
 import type { MarketNarrative } from "../lib/market-narrative.js";
 import type { MacroPauseSignal } from "../lib/sosovalue-signals.js";
+import type { TradeStats } from "../lib/agent-state.js";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware } from "./mcp/x402.js";
 import { PRICING as MCP_PRICING } from "./mcp/pricing.js";
@@ -48,6 +49,9 @@ export interface AgentServerState {
   nextRunAt: number | null;
   totalTrades: number;
   totalVolumeUsd: number;
+  totalGasSpentUsd: number;
+  realizedPnlUsd: number;
+  tradeStats: TradeStats;
   errors: string[];
   marketData: CmcMarketData | null;
   executedTrades: SwapResult[];
@@ -87,6 +91,18 @@ let agentState: AgentServerState = {
   nextRunAt: null,
   totalTrades: 0,
   totalVolumeUsd: 0,
+  totalGasSpentUsd: 0,
+  realizedPnlUsd: 0,
+  tradeStats: {
+    entriesCount: 0,
+    exitsCount: 0,
+    winningExitsCount: 0,
+    losingExitsCount: 0,
+    totalWinsUsd: 0,
+    totalLossesUsd: 0,
+    largestWinUsd: 0,
+    largestLossUsd: 0,
+  },
   errors: [],
   marketData: null,
   executedTrades: [],
@@ -223,6 +239,12 @@ app.get("/reputation/stats", (c) => {
 app.get("/status", async (c) => {
   const portfolio = await resolvePortfolio();
   const guardrailStatus = guardrails.getStatus(portfolio.totalValueUsd);
+  const stats = agentState.tradeStats;
+  const winRate = stats.exitsCount > 0 ? stats.winningExitsCount / stats.exitsCount : 0;
+  const avgWinUsd = stats.winningExitsCount > 0 ? stats.totalWinsUsd / stats.winningExitsCount : 0;
+  const avgLossUsd = stats.losingExitsCount > 0 ? stats.totalLossesUsd / stats.losingExitsCount : 0;
+  const profitFactor = stats.totalLossesUsd > 0 ? stats.totalWinsUsd / stats.totalLossesUsd : (stats.totalWinsUsd > 0 ? Infinity : 0);
+  const netPnlUsd = agentState.realizedPnlUsd - agentState.totalGasSpentUsd;
 
   const body = {
     agent: "Early, Not Wrong",
@@ -247,6 +269,23 @@ app.get("/status", async (c) => {
       dailyLimit: AGENT_CONFIG.trading.maxDailyTrades,
       drawdownExceeded: guardrailStatus.drawdownExceeded,
       allOk: guardrailStatus.allOk,
+    },
+    metrics: {
+      realizedPnlUsd: agentState.realizedPnlUsd,
+      totalGasSpentUsd: agentState.totalGasSpentUsd,
+      netPnlUsd,
+      winRate,
+      totalEntries: stats.entriesCount,
+      totalExits: stats.exitsCount,
+      winningExits: stats.winningExitsCount,
+      losingExits: stats.losingExitsCount,
+      totalWinsUsd: stats.totalWinsUsd,
+      totalLossesUsd: stats.totalLossesUsd,
+      averageWinUsd: avgWinUsd,
+      averageLossUsd: avgLossUsd,
+      largestWinUsd: stats.largestWinUsd,
+      largestLossUsd: stats.largestLossUsd,
+      profitFactor,
     },
   };
 
