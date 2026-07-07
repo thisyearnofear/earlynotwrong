@@ -116,6 +116,16 @@ interface ConvictionData {
       /** SoSoValue news sentiment adjustment (signed, ±10pp). */
       news: number;
     };
+    /** Active signal weights for this regime. */
+    weights: {
+      contrarian: number;
+      rsi: number;
+      quality: number;
+      regime: number;
+      holders: number;
+      volatilityPenaltyMax: number;
+      newsMax: number;
+    };
     holderCount: number | null;
     holderGrowthPercent: number | null;
     /** Net news sentiment in [−1, +1], or null if no related news in this cycle. */
@@ -834,6 +844,27 @@ function Dashboard({
                         </>
                       )}
                     </p>
+                    {conviction.signals[0]?.weights && (
+                      <p
+                        className="text-[9px] font-mono text-foreground-dim/70 mt-1"
+                        title="Active signal weights shifted by current regime"
+                      >
+                        weights{" "}
+                        <span className="text-signal">C{conviction.signals[0].weights.contrarian}</span>
+                        {" · "}
+                        <span className="text-cyan-400">R{conviction.signals[0].weights.rsi}</span>
+                        {" · "}
+                        <span className="text-patience">Q{conviction.signals[0].weights.quality}</span>
+                        {" · "}
+                        <span className="text-cyan-400">M{conviction.signals[0].weights.regime}</span>
+                        {" · "}
+                        <span className="text-amber-400">H{conviction.signals[0].weights.holders}</span>
+                        {" · "}
+                        <span className="text-impatience">V{conviction.signals[0].weights.volatilityPenaltyMax}</span>
+                        {" · "}
+                        <span className="text-emerald-400">N{conviction.signals[0].weights.newsMax}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="text-3xl font-bold tabular-nums text-signal">
                     {conviction.regime.score}

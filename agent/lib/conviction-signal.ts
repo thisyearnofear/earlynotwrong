@@ -125,6 +125,16 @@ export function scoreMarketRegime(
 // Token Conviction (entry signal)
 // =============================================================================
 
+export interface SignalWeights {
+  contrarian: number;
+  rsi: number;
+  quality: number;
+  regime: number;
+  holders: number;
+  volatilityPenaltyMax: number;
+  newsMax: number;
+}
+
 export interface ConvictionSignal {
   symbol: string;
   /** 0–100 conviction to OPEN a position. */
@@ -141,6 +151,8 @@ export interface ConvictionSignal {
     /** SoSoValue news sentiment adjustment (signed, ±newsMax). */
     news: number;
   };
+  /** Active signal weights for this regime — surfaced for transparency. */
+  weights: SignalWeights;
   /** Holder count from BscScan, or null if unavailable. */
   holderCount: number | null;
   /** Holder growth % over the lookback window, or null if history too short. */
@@ -258,6 +270,62 @@ function qualityFraction(token: TokenQuote): number {
 }
 
 /**
+ * Compute regime-adaptive signal weights.
+ *
+ * In deep fear we lean into contrarian entries and accept more volatility;
+ * in euphoria we get defensive and only buy high-quality dips. The base
+ * weights from config are shifted, never inverted below zero.
+ */
+export function computeAdaptiveWeights(regime: MarketRegime): SignalWeights {
+  const base = AGENT_CONFIG.signal;
+  const score = regime.score;
+
+  const adjustments: Partial<SignalWeights> = {};
+
+  if (score >= 80) {
+    // Deep fear: greedy for dips, volatility is just noise, holders matter.
+    adjustments.contrarian = 5;
+    adjustments.regime = 5;
+    adjustments.quality = -3;
+    adjustments.holders = 2;
+    adjustments.volatilityPenaltyMax = 3;
+  } else if (score >= 60) {
+    // Fear: slight tilt toward contrarian opportunities.
+    adjustments.contrarian = 3;
+    adjustments.regime = 3;
+    adjustments.quality = -2;
+  } else if (score >= 45) {
+    // Neutral: quality becomes the differentiator.
+    adjustments.quality = 3;
+    adjustments.contrarian = -2;
+    adjustments.rsi = -1;
+  } else if (score >= 30) {
+    // Greed: only high-quality, liquid dips; penalize chop harder.
+    adjustments.quality = 5;
+    adjustments.contrarian = -5;
+    adjustments.holders = -2;
+    adjustments.volatilityPenaltyMax = 5;
+  } else {
+    // Euphoria: defensive — quality over everything, avoid risky early entries.
+    adjustments.contrarian = -10;
+    adjustments.quality = 8;
+    adjustments.regime = -5;
+    adjustments.holders = -3;
+    adjustments.newsMax = -3;
+  }
+
+  return {
+    contrarian: Math.max(0, base.contrarian + (adjustments.contrarian ?? 0)),
+    rsi: Math.max(0, base.rsi + (adjustments.rsi ?? 0)),
+    quality: Math.max(0, base.quality + (adjustments.quality ?? 0)),
+    regime: Math.max(0, base.regime + (adjustments.regime ?? 0)),
+    holders: Math.max(0, base.holders + (adjustments.holders ?? 0)),
+    volatilityPenaltyMax: Math.max(0, base.volatilityPenaltyMax + (adjustments.volatilityPenaltyMax ?? 0)),
+    newsMax: Math.max(0, base.newsMax + (adjustments.newsMax ?? 0)),
+  };
+}
+
+/**
  * Score a token's conviction to OPEN a position (0–100), contrarian by design.
  *
  *   score = contrarian + rsi + quality + regime + holders − volatilityPenalty
@@ -275,7 +343,7 @@ export function scoreTokenConviction(
   holderMetric?: { count: number; growthPercent: number | null },
   newsSentiment?: number | null,
 ): ConvictionSignal {
-  const w = AGENT_CONFIG.signal;
+  const w = computeAdaptiveWeights(regime);
 
   const contrarian = contrarianFraction(token.percentChange7d) * w.contrarian;
 
@@ -339,6 +407,7 @@ export function scoreTokenConviction(
       volatilityPenalty: Math.round(volPenalty),
       news: Math.round(newsAdj),
     },
+    weights: w,
     holderCount: holderMetric?.count ?? null,
     holderGrowthPercent: holderMetric?.growthPercent ?? null,
     newsSentiment: newsSentiment ?? null,

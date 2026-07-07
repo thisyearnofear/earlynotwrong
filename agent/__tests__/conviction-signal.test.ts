@@ -7,6 +7,7 @@ import {
   openPosition,
   synthesizeRsi7d,
   volatilityPenaltyFraction,
+  computeAdaptiveWeights,
 } from "../lib/conviction-signal.js";
 import type { TokenQuote } from "../lib/data-providers.js";
 
@@ -62,6 +63,57 @@ describe("scoreMarketRegime — contrarian lens", () => {
     expect(regime.score).toBeGreaterThanOrEqual(40);
     expect(regime.score).toBeLessThanOrEqual(60);
     expect(regime.fearLevel).toBe("unknown");
+  });
+});
+
+describe("computeAdaptiveWeights — regime-dependent weight shifts", () => {
+  const makeRegime = (score: number, label: string, fearLevel: string) => ({
+    score,
+    label,
+    fearGreedIndex: 50,
+    fearLevel: fearLevel as any,
+    ssiConfirmation: null,
+  });
+
+  it("increases contrarian weight in deep fear", () => {
+    const w = computeAdaptiveWeights(makeRegime(85, "DEEP FEAR", "extreme-fear"));
+    expect(w.contrarian).toBeGreaterThan(30);
+    expect(w.regime).toBeGreaterThan(20);
+  });
+
+  it("increases quality weight in euphoria", () => {
+    const w = computeAdaptiveWeights(makeRegime(20, "EUPHORIA", "extreme-greed"));
+    expect(w.quality).toBeGreaterThan(20);
+    expect(w.contrarian).toBeLessThan(30);
+  });
+
+  it("never returns negative weights", () => {
+    for (const score of [0, 25, 45, 60, 80, 100]) {
+      const w = computeAdaptiveWeights(makeRegime(score, "test", "neutral"));
+      expect(w.contrarian).toBeGreaterThanOrEqual(0);
+      expect(w.rsi).toBeGreaterThanOrEqual(0);
+      expect(w.quality).toBeGreaterThanOrEqual(0);
+      expect(w.regime).toBeGreaterThanOrEqual(0);
+      expect(w.holders).toBeGreaterThanOrEqual(0);
+      expect(w.volatilityPenaltyMax).toBeGreaterThanOrEqual(0);
+      expect(w.newsMax).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("surfaces active weights on the conviction signal", () => {
+    const fearfulRegime = {
+      score: 75,
+      label: "FEAR",
+      fearGreedIndex: 25,
+      fearLevel: "fear" as const,
+      ssiConfirmation: null,
+    };
+    const signal = scoreTokenConviction(
+      makeQuote({ percentChange7d: -25 }),
+      fearfulRegime
+    );
+    expect(signal.weights).toBeDefined();
+    expect(signal.weights.contrarian).toBeGreaterThan(30);
   });
 });
 
