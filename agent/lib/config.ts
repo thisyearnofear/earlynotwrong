@@ -77,6 +77,14 @@ export const AGENT_CONFIG = {
     // At ~$1.50 gas/trade, only strong signals justify the cost.
     minConvictionScore: 58,
 
+    // Holder-base gate: tokens need at least this many on-chain holders to be
+    // considered for entry. Shy of this we treat the token as too thin/unproven.
+    minHolderCount: 1_000,
+
+    // Holder growth gate: require non-negative 7d holder growth (or no history
+    // yet). Negative growth is a distribution/unwind signal.
+    requireNonNegativeHolderGrowth: true,
+
     // ── Position management (the soul: cap losses, let winners run) ──
     // Hard stop — the thesis is invalidated. This is the only reason we exit
     // a losing position. We do NOT sell into ordinary drawdown.

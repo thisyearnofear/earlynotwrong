@@ -728,12 +728,28 @@ export async function createTradeProposals(): Promise<Array<{
     .map((token) => ({
       token,
       conviction: signalBySymbol.get(token.symbol.toUpperCase())?.score ?? 0,
+      signal: signalBySymbol.get(token.symbol.toUpperCase()),
     }))
     .filter(
       (t) =>
         t.conviction >= AGENT_CONFIG.trading.minConvictionScore &&
         !held.has(t.token.symbol.toUpperCase())
     )
+    .filter((t) => {
+      const signal = t.signal;
+      if (!signal) return false;
+      const holders = signal.holderCount;
+      const growth = signal.holderGrowthPercent;
+      if (holders != null && holders < AGENT_CONFIG.trading.minHolderCount) {
+        console.log(`    [holder gate] Skipping ${t.token.symbol} — only ${holders.toLocaleString()} holders (min ${AGENT_CONFIG.trading.minHolderCount.toLocaleString()})`);
+        return false;
+      }
+      if (AGENT_CONFIG.trading.requireNonNegativeHolderGrowth && growth != null && growth < 0) {
+        console.log(`    [holder gate] Skipping ${t.token.symbol} — holder growth ${growth.toFixed(1)}% is negative`);
+        return false;
+      }
+      return true;
+    })
     .sort((a, b) => b.conviction - a.conviction);
 
   if (scoredTokens.length === 0) {

@@ -335,7 +335,7 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
   let executor: TwakExecutor;
   let dexCalls: string[];
 
-  const stubDex = (result: { liquidityUsd: number; volume24hUsd: number; pairCount: number } | null) => {
+  const stubDex = (result: { liquidityUsd: number; volume24hUsd: number; pairCount: number; buyTax?: number; sellTax?: number } | null) => {
     TwakExecutor.setDexScreenerFetcher(async (contract) => {
       dexCalls.push(contract);
       return result;
@@ -406,6 +406,16 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
 
     expect(await executor.checkLiquidity("REVERT")).toBe(false);
   });
+
+  it("rejects tokens with reported sell tax above 10%", async () => {
+    queueSearch(mock.queue, "TAXY", "0xB3d3c3D4e5F6789012345678901234567890ABcD");
+    stubDex({ liquidityUsd: 100_000, volume24hUsd: 50_000, pairCount: 1, sellTax: 0.15 });
+
+    expect(await executor.checkLiquidity("TAXY")).toBe(false);
+    // TWAK quote should NOT be called — short-circuited at DexScreener gate.
+    const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
+    expect(quoteCalls).toHaveLength(0);
+  });
 });
 
 describe("TwakExecutor — Liquidity Check", () => {
@@ -414,6 +424,12 @@ describe("TwakExecutor — Liquidity Check", () => {
 
   beforeEach(() => {
     TwakExecutor.resetCaches();
+    // Default passing DexScreener gate so these tests isolate the TWAK quote leg.
+    TwakExecutor.setDexScreenerFetcher(async () => ({
+      liquidityUsd: 100_000,
+      volume24hUsd: 50_000,
+      pairCount: 1,
+    }));
     mock = createResponseQueue();
     executor = new TwakExecutor({
       simulator: false,
@@ -532,6 +548,12 @@ describe("TwakExecutor — Edge Cases", () => {
 
   beforeEach(() => {
     TwakExecutor.resetCaches();
+    // Default passing DexScreener gate so these tests isolate edge behaviours.
+    TwakExecutor.setDexScreenerFetcher(async () => ({
+      liquidityUsd: 100_000,
+      volume24hUsd: 50_000,
+      pairCount: 1,
+    }));
     mock = createResponseQueue();
     executor = new TwakExecutor({
       simulator: false,

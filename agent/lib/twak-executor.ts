@@ -151,6 +151,10 @@ export interface DexLiquidity {
   liquidityUsd: number;
   volume24hUsd: number;
   pairCount: number;
+  /** Estimated buy tax from DexScreener, if reported (0-1). */
+  buyTax?: number;
+  /** Estimated sell tax from DexScreener, if reported (0-1). */
+  sellTax?: number;
 }
 
 // =============================================================================
@@ -667,6 +671,8 @@ export class TwakExecutor {
    */
   private static readonly MIN_DEX_LIQUIDITY_USD = 5_000;
   private static readonly MIN_DEX_24H_VOLUME_USD = 100;
+  /** Reject tokens whose reported sell tax exceeds this threshold (0.10 = 10%). */
+  private static readonly MAX_DEX_SELL_TAX = 0.10;
 
   /** Override the DexScreener fetcher (for tests). */
   private static dexScreenerFetcher: ((contract: string) => Promise<DexLiquidity | null>) | null = null;
@@ -688,12 +694,16 @@ export class TwakExecutor {
     try {
       const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${contract}`);
       if (!r.ok) return null;
-      const j = await r.json() as { pairs?: Array<{ chainId?: string; liquidity?: { usd?: number }; volume?: { h24?: number } }> };
+      const j = await r.json() as { pairs?: Array<{ chainId?: string; liquidity?: { usd?: number }; volume?: { h24?: number }; buyTax?: number; sellTax?: number; tax?: number }> };
       const pairs = (j.pairs ?? []).filter((p) => p.chainId === "bsc");
       if (pairs.length === 0) return { liquidityUsd: 0, volume24hUsd: 0, pairCount: 0 };
       const liquidityUsd = pairs.reduce((s, p) => s + (Number(p.liquidity?.usd) || 0), 0);
       const volume24hUsd = Math.max(...pairs.map((p) => Number(p.volume?.h24) || 0));
-      return { liquidityUsd, volume24hUsd, pairCount: pairs.length };
+      // Some DexScreener pairs report estimated buy/sell tax. Use the worst
+      // (highest) sell tax across BSC pairs as a defensive signal.
+      const sellTax = Math.max(...pairs.map((p) => Number(p.sellTax ?? p.tax ?? 0) || 0));
+      const buyTax = Math.max(...pairs.map((p) => Number(p.buyTax ?? 0) || 0));
+      return { liquidityUsd, volume24hUsd, pairCount: pairs.length, buyTax, sellTax };
     } catch {
       return null;
     }
@@ -749,6 +759,11 @@ export class TwakExecutor {
         }
         if (dex.volume24hUsd < TwakExecutor.MIN_DEX_24H_VOLUME_USD) {
           console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (24h volume $${dex.volume24hUsd.toFixed(0)} < $${TwakExecutor.MIN_DEX_24H_VOLUME_USD})`);
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
+          return false;
+        }
+        if ((dex.sellTax ?? 0) > TwakExecutor.MAX_DEX_SELL_TAX) {
+          console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (sell tax ${((dex.sellTax ?? 0) * 100).toFixed(0)}% > ${(TwakExecutor.MAX_DEX_SELL_TAX * 100).toFixed(0)}%)`);
           TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
           return false;
         }
