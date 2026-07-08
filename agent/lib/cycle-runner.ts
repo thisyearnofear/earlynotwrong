@@ -543,7 +543,8 @@ function finalizeExit(
 // Step 4b: Harvest for BNB (self-funding)
 // =============================================================================
 
-const MIN_CYCLES_TO_HARVEST = 8;
+const MIN_CYCLES_TO_HARVEST = 5;
+const DUST_USD = 0.5;
 
 export async function harvestForBnb(): Promise<void> {
   const bnbPosition = state.portfolio?.positions.find(
@@ -554,10 +555,14 @@ export async function harvestForBnb(): Promise<void> {
   const HARVEST_FLOOR = AGENT_CONFIG.trading.bankroll.harvestMinBnbUsd;
   const POSITION_CAP = AGENT_CONFIG.trading.maxOpenPositions;
   const bnbLow = bnbValue < HARVEST_FLOOR;
-  const overCap = state.heldPositions.length > POSITION_CAP;
-  if (!bnbLow && !overCap) return;
+  const atCap = state.heldPositions.length >= POSITION_CAP;
+  if (!bnbLow && !atCap) return;
 
-  const MIN_HARVEST_USD = 1.0;
+  // When BNB is very low we are willing to harvest tiny "dust" positions just
+  // to recycle gas. Otherwise we need at least $1 of value to justify a swap.
+  const minHarvestUsd = bnbValue < HARVEST_FLOOR * 0.5 ? DUST_USD : 1.0;
+
+  // Mature positions are the preferred harvest candidates.
   const maturePositions = state.heldPositions
     .filter(
       (p) =>
@@ -565,23 +570,44 @@ export async function harvestForBnb(): Promise<void> {
         !stuckSymbols.has(p.symbol) &&
         p.cyclesHeld >= MIN_CYCLES_TO_HARVEST &&
         !unharvestableTokens.has(p.symbol) &&
-        p.amountUsd >= MIN_HARVEST_USD,
+        p.amountUsd >= minHarvestUsd,
     );
 
-  maturePositions.sort((a, b) => (bnbLow ? b.amountUsd - a.amountUsd : a.amountUsd - b.amountUsd));
+  // If we are at cap and have no mature positions, fall back to any non-stuck
+  // position held for at least 2 cycles so we can free a slot for a better
+  // conviction entry.
+  const youngFallback = maturePositions.length === 0 && atCap
+    ? state.heldPositions
+        .filter(
+          (p) =>
+            !p.stuck &&
+            !stuckSymbols.has(p.symbol) &&
+            p.cyclesHeld >= 2 &&
+            !unharvestableTokens.has(p.symbol) &&
+            p.amountUsd >= minHarvestUsd,
+        )
+    : [];
 
-  if (maturePositions.length === 0) {
-    const trigger = bnbLow ? `BNB low ($${bnbValue.toFixed(2)})` : `over cap (${state.heldPositions.length}/${POSITION_CAP})`;
-    console.log(`  [harvest] ${trigger} but no harvestable position (need ≥${MIN_CYCLES_TO_HARVEST} cycles held AND ≥$${MIN_HARVEST_USD})`);
+  const candidates = maturePositions.length > 0 ? maturePositions : youngFallback;
+
+  // Sort order depends on why we are harvesting:
+  //   - BNB low → sell the largest position to raise the most BNB.
+  //   - At cap  → sell the smallest position to free a slot with minimal impact.
+  candidates.sort((a, b) => (bnbLow ? b.amountUsd - a.amountUsd : a.amountUsd - b.amountUsd));
+
+  if (candidates.length === 0) {
+    const trigger = bnbLow ? `BNB low ($${bnbValue.toFixed(2)})` : `at cap (${state.heldPositions.length}/${POSITION_CAP})`;
+    console.log(`  [harvest] ${trigger} but no harvestable position`);
     return;
   }
 
-  const target = maturePositions[0];
+  const target = candidates[0];
   const trigger = bnbLow
     ? `BNB low (balance: $${bnbValue.toFixed(2)}, floor: $${HARVEST_FLOOR})`
-    : `over cap (${state.heldPositions.length}/${POSITION_CAP})`;
+    : `at cap (${state.heldPositions.length}/${POSITION_CAP}) — freeing a slot`;
+  const targetLabel = maturePositions.length > 0 ? "mature" : "young";
   console.log(`\n[4b/8] Harvesting — ${trigger}`);
-  console.log(`  Selling ${target.symbol} ($${target.amountUsd.toFixed(2)}) — held ${target.cyclesHeld} cycles, ${bnbLow ? "largest" : "smallest"} harvestable position`);
+  console.log(`  Selling ${target.symbol} ($${target.amountUsd.toFixed(2)}) — ${targetLabel}, ${target.cyclesHeld} cycles held`);
 
   const harvestAmountUsd = target.amountUsd * 0.95;
 

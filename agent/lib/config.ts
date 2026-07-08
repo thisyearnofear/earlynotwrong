@@ -126,7 +126,9 @@ export const AGENT_CONFIG = {
       // Trigger harvest ABOVE the entry-skip floor so harvest fires whenever
       // we can't safely enter. Otherwise BNB sits in the dead zone (above
       // harvest floor, below entry floor) and the agent does nothing.
-      harvestMinBnbUsd: 6,
+      // Lowered so the agent recycles capital more aggressively from a small
+      // BNB base without external top-ups.
+      harvestMinBnbUsd: 4.5,
       // When BNB is low, double the loop interval to save gas on anchoring.
       adaptiveInterval: true,
     },
