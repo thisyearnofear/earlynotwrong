@@ -473,6 +473,59 @@ describe("TwakExecutor — Liquidity Check", () => {
   });
 });
 
+describe("TwakExecutor — Sellability Check (honeypot gate)", () => {
+  let mock: ReturnType<typeof createResponseQueue>;
+  let executor: TwakExecutor;
+
+  beforeEach(() => {
+    TwakExecutor.resetCaches();
+    mock = createResponseQueue();
+    executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      execFileOverride: mock.execFileOverride,
+    });
+  });
+
+  it("returns true when sell quote to BNB succeeds", async () => {
+    queueSearch(mock.queue, "SLX", "0x8A063A9ff4dE28dcB87117cc759BE6cE70e09F81");
+    queueQuote(mock.queue, "0.005");
+
+    expect(await executor.checkSellability("SLX")).toBe(true);
+
+    const sellQuoteCall = mock.calls.find((c) => c.args.includes("--quote-only") && c.args.includes("BNB"));
+    expect(sellQuoteCall).toBeDefined();
+    expect(sellQuoteCall!.args).toContain("0x8A063A9ff4dE28dcB87117cc759BE6cE70e09F81");
+    expect(sellQuoteCall!.args).toContain("BNB");
+  });
+
+  it("returns false when sell quote reverts", async () => {
+    queueSearch(mock.queue, "HONEY", "0xDEADBEEF000000000000000000000000DEADBEEF");
+    queueEmptyQuote(mock.queue, "execution reverted: transfer amount exceeds balance");
+
+    expect(await executor.checkSellability("HONEY")).toBe(false);
+  });
+
+  it("returns true in simulator mode without CLI calls", async () => {
+    const simExecutor = new TwakExecutor({ simulator: true });
+    expect(await simExecutor.checkSellability("ANY")).toBe(true);
+    expect(mock.calls).toHaveLength(0);
+  });
+
+  it("caches sellability result for repeated checks", async () => {
+    queueSearch(mock.queue, "SLX", "0x8A063A9ff4dE28dcB87117cc759BE6cE70e09F81");
+    queueQuote(mock.queue, "0.005");
+    await executor.checkSellability("SLX");
+    expect(mock.calls).toHaveLength(2);
+
+    mock.calls.length = 0;
+    mock.queue.length = 0;
+
+    expect(await executor.checkSellability("SLX")).toBe(true);
+    expect(mock.calls).toHaveLength(0);
+  });
+});
+
 describe("TwakExecutor — Edge Cases", () => {
   let mock: ReturnType<typeof createResponseQueue>;
   let executor: TwakExecutor;

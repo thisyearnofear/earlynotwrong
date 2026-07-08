@@ -756,12 +756,20 @@ export async function createTradeProposals(): Promise<Array<{
     }
     checkedTokens.push(candidate.token.symbol);
     const hasLiquidity = await twakExecutor.checkLiquidity(candidate.token.symbol);
-    if (hasLiquidity) {
-      liquidTokens.push(candidate);
+    if (!hasLiquidity) continue;
+
+    // Honeypot / tax-token defence: verify the token can actually be sold
+    // before we commit BNB to a buy.
+    const isSellable = await twakExecutor.checkSellability(candidate.token.symbol);
+    if (!isSellable) {
+      console.log(`    [honeypot gate] Skipping ${candidate.token.symbol} — sell route reverts or has no liquidity`);
+      continue;
     }
+
+    liquidTokens.push(candidate);
   }
 
-  console.log(`  Checked ${checkedTokens.length} tokens, ${liquidTokens.length} have DEX liquidity`);
+  console.log(`  Checked ${checkedTokens.length} tokens, ${liquidTokens.length} are both buyable and sellable`);
 
   if (liquidTokens.length === 0) {
     console.log("  No tradeable tokens with sufficient liquidity. Skipping trading this cycle.");

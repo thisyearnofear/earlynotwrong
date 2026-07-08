@@ -494,12 +494,14 @@ export class TwakExecutor {
   static resetCaches(): void {
     TwakExecutor.tokenAddressCache.clear();
     TwakExecutor.liquidityCache.clear();
+    TwakExecutor.sellabilityCache.clear();
     TwakExecutor.referencePrices.clear();
   }
 
-  /** Clear only the liquidity cache (for testing address cache isolation). */
+  /** Clear only the liquidity + sellability caches (for testing). */
   static resetLiquidityCache(): void {
     TwakExecutor.liquidityCache.clear();
+    TwakExecutor.sellabilityCache.clear();
   }
 
   /**
@@ -509,6 +511,13 @@ export class TwakExecutor {
    */
   private static liquidityCache = new Map<string, { hasLiquidity: boolean; checkedAt: number }>();
   private static readonly LIQUIDITY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+  /**
+   * In-memory cache: symbol -> { sellable, checkedAt }
+   * Prevents re-checking the same token every cycle.
+   * Cache TTL: 1 hour.
+   */
+  private static sellabilityCache = new Map<string, { sellable: boolean; checkedAt: number }>();
 
   /** Build the augmented env for CLI subprocess calls. */
   private getEnv(): NodeJS.ProcessEnv {
@@ -776,6 +785,66 @@ export class TwakExecutor {
     } catch (error) {
       console.log(`  [TWAK] Liquidity check failed for ${symbol}:`, error instanceof Error ? error.message : String(error));
       TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
+      return false;
+    }
+  }
+
+  /**
+   * Check whether a token can actually be sold back to BNB on-chain.
+   * This is the honeypot defence: a token may have buy liquidity but no
+   * sell route (or a route that reverts). We quote a tiny sell amount
+   * before committing capital.
+   *
+   * Returns true only if the router returns a valid sell quote with no
+   * revert/insufficient-liquidity message. Caches the result for 1 hour.
+   */
+  async checkSellability(symbol: string): Promise<boolean> {
+    const upper = symbol.toUpperCase();
+
+    // Simulator mode: skip real check
+    if (this.config.simulator) return true;
+
+    // Check cache first
+    const cached = TwakExecutor.sellabilityCache.get(upper);
+    if (cached && Date.now() - cached.checkedAt < TwakExecutor.LIQUIDITY_CACHE_TTL_MS) {
+      return cached.sellable;
+    }
+
+    // Resolve the token address (uses cache or twak search)
+    let tokenParam = this.resolveCachedToken(upper);
+    if (tokenParam === upper) {
+      const resolved = await this.resolveTokenAddress(symbol);
+      if (resolved) tokenParam = resolved;
+    }
+
+    // ── Gate: TWAK sell quote (token → BNB) ──
+    try {
+      TwakExecutor.validateSafeInput("1", "amount");
+      TwakExecutor.validateSafeInput(tokenParam, "tokenIn");
+
+      const { stdout, stderr } = await this.execFileAsync("twak", [
+        "swap",
+        "--usd",
+        "1",
+        tokenParam,
+        "BNB",
+        "--quote-only",
+        "--chain=bsc",
+      ], {
+        env: this.getEnv(),
+        timeout: 15000,
+      });
+
+      const hasQuote = /(?:amountOut|expectedOutput|received|output)[:\s]+'?[\d.]+/i.test(stdout);
+      const hasRevert = /revert|insufficient|liquidity|insufficient_output|cannot estimate/i.test(stderr + stdout);
+      const result = hasQuote && !hasRevert;
+
+      TwakExecutor.sellabilityCache.set(upper, { sellable: result, checkedAt: Date.now() });
+      console.log(`  [TWAK] Sellability check: ${symbol} → ${result ? "✓" : "✗"}`);
+      return result;
+    } catch (error) {
+      console.log(`  [TWAK] Sellability check failed for ${symbol}:`, error instanceof Error ? error.message : String(error));
+      TwakExecutor.sellabilityCache.set(upper, { sellable: false, checkedAt: Date.now() });
       return false;
     }
   }
