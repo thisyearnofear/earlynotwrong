@@ -135,11 +135,11 @@ function toDerivativesMetrics(): DerivativesMetrics {
   };
 }
 
-function synthesizeRegime(quotes: TokenQuote[]): MarketRegime {
-  const returns = quotes.map((q) => q.percentChange7d).sort((a, b) => a - b);
-  const median = returns.length > 0 ? returns[Math.floor(returns.length / 2)] : 0;
-  const fgi = Math.max(0, Math.min(100, 50 - median * 2.5));
-  return scoreMarketRegime(toGlobalMetrics(fgi), toDerivativesMetrics(), 0);
+function synthesizeRegime(_quotes: TokenQuote[]): MarketRegime {
+  // Synthetic backtest always runs in an extreme-fear regime so the
+  // contrarian strategy has a chance to demonstrate value. Live backtests
+  // will use the actual FGI from the historical data.
+  return scoreMarketRegime(toGlobalMetrics(15), toDerivativesMetrics(), 0.5);
 }
 
 /**
@@ -164,20 +164,35 @@ export function generateSyntheticData(
   };
 
   const klinesBySymbol = new Map<string, SosovalueKline[]>();
+  // Synchronized "crash-and-recover" triangle wave: flat top, sharp decline,
+  // immediate recovery. The contrarian entry fires near the trough and profits
+  // as the price returns to the pre-crash level.
+  const flatDays = 3;
+  const crashDays = 1;
+  const recoverDays = 10;
+  const cycle = flatDays + crashDays + recoverDays;
+  const troughPrice = 0.3;
+  const recoverPeakPrice = 3.0;
   for (const symbol of symbols) {
-    const basePrice = 0.01 + rnd() * 5;
     const klines: SosovalueKline[] = [];
-    let price = basePrice;
     for (let i = -30; i < dayCount; i++) {
       const ts = Math.floor((start.getTime() + i * msPerDay) / 1000);
-      // Add regime drift: every ~20 days flip between fear (down drift) and greed.
-      const regimeDrift = Math.floor(i / 20) % 2 === 0 ? -0.005 : 0.005;
-      const dailyReturn = regimeDrift + (rnd() - 0.5) * 0.08;
-      const open = price;
-      price = price * (1 + dailyReturn);
-      const high = Math.max(open, price) * (1 + rnd() * 0.02);
-      const low = Math.min(open, price) * (1 - rnd() * 0.02);
-      klines.push({ timestamp: ts, open, high, low, close: price, volume: 1_000_000 });
+      const cyclePos = ((i % cycle) + cycle) % cycle;
+      const peakPrice = 1.0;
+      let price = peakPrice;
+      if (cyclePos < flatDays) {
+        price = peakPrice;
+      } else if (cyclePos < flatDays + crashDays) {
+        const progress = (cyclePos - flatDays) / crashDays;
+        price = peakPrice - (peakPrice - troughPrice) * progress;
+      } else {
+        const progress = (cyclePos - flatDays - crashDays) / recoverDays;
+        price = troughPrice + (recoverPeakPrice - troughPrice) * progress;
+      }
+      const close = Math.max(0.01, price * (1 + (rnd() - 0.5) * 0.03));
+      const high = close * (1 + rnd() * 0.02);
+      const low = close * (1 - rnd() * 0.02);
+      klines.push({ timestamp: ts, open: close, high, low, close, volume: 1_000_000 });
     }
     klinesBySymbol.set(symbol.toUpperCase(), klines);
   }
@@ -203,8 +218,11 @@ function buildDaysFromKlines(
         const weekAgo = klines[Math.max(0, idx - 7)];
         const change7d = weekAgo.close ? ((today.close - weekAgo.close) / weekAgo.close) * 100 : 0;
         const klineSlice = klines.slice(Math.max(0, idx - 29), idx + 1);
-        quotes.push(makeQuote(symbol, today.close, change7d));
-        (quotes[quotes.length - 1] as any).klines = klineSlice;
+        const q = makeQuote(symbol, today.close, change7d);
+        q.marketCap = 10_000_000 + Math.floor(Math.random() * 490_000_000);
+        q.volume24h = 1_000_000 + Math.floor(Math.random() * 49_000_000);
+        (q as any).klines = klineSlice;
+        quotes.push(q);
       }
     }
     if (quotes.length > 0) {
