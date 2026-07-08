@@ -501,7 +501,7 @@ export function accruePosition(
 }
 
 /** Max failed exit attempts before a position is marked stuck. */
-export const STUCK_AFTER_FAILED_ATTEMPTS = 3;
+export const STUCK_AFTER_FAILED_ATTEMPTS = 2;
 
 /**
  * Decide what to do with a held position.
