@@ -13,7 +13,8 @@
     "backtest": "tsx scripts/run-backtest.ts",
     "docs": "typedoc",
     "docs:serve": "npx serve docs/api",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "deploy": "bash deploy.sh"
   },
   "dependencies": {
     "@croo-network/sdk": "^0.2.1",

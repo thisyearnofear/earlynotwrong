@@ -204,6 +204,29 @@ If you rotate the key, restart the process so the singleton client picks it up a
 - Port: 31777 (Hono HTTP server)
 - Routes are prefixed by Pinata gateway: `/api/status` → `/status` on port 31777
 
+### Deploying to the server (`nuncio-vultr`)
+
+The server's `/home/linuxuser/earlynotwrong` is a **git checkout** of this repo
+(no more hand-scp). Deploy with the script:
+
+```bash
+cd agent
+./deploy.sh                 # deploys origin/main
+./deploy.sh <commit-sha>    # pin an exact commit for auditability
+```
+
+The script runs on the server: `git fetch` → `git checkout -f <ref>` →
+`npm ci` → `rm -rf dist && npm run build` → `pm2 reload earlynotwrong
+--update-env`. Build runs before the reload, so a failed build never restarts a
+working process. `npm run deploy` is an alias. Rollback = `git checkout <prev>`
+on the server.
+
+One-time setup (already done): `git init` + remote + `git checkout -f
+origin/main` on the server, and `agent/ecosystem.config.js` documents the pm2
+process. The live process is still managed by name (`pm2 reload earlynotwrong`)
+so its injected env vars are preserved — do **not** switch it to start from
+`ecosystem.config.js` unless you also migrate those env vars into the file.
+
 ## TypeDoc Documentation
 
 ```bash
