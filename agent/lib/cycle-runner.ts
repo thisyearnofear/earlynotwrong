@@ -9,7 +9,7 @@
 
 import { state, GAS_BUFFER_USD, getBnbUsd, computeBankrollCap, buildPriceMap, concentrationRejectionCount, unharvestableTokens, stuckSymbols, tickUnharvestableCooldowns } from "./agent-state.js";
 import { AGENT_CONFIG, AGENT_MODE } from "./config.js";
-import { cmcClient, sosovalueClient } from "./data-providers.js";
+import { cmcClient, sosovalueClient, computeRSI14 } from "./data-providers.js";
 import { sodexClient } from "./dex-trading.js";
 import { twakExecutor, TwakExecutor } from "./twak-executor.js";
 import {
@@ -181,6 +181,7 @@ export async function analyzeConviction(): Promise<{
 
   const holderCache = loadHolderCache();
   const holderMetrics = new Map<string, { count: number; growthPercent: number | null }>();
+  const rsiCache = new Map<string, number>();
   const tokens = md?.tokenPrices ?? [];
 
   if (process.env.NODEREAL_API_KEY || process.env.COINGECKO_API_KEY) {
@@ -216,6 +217,31 @@ export async function analyzeConviction(): Promise<{
     if (fetched > 0) console.log(`  [holders] Fetched ${fetched} holder counts`);
   }
 
+  // Fetch real RSI(14) from SoSoValue daily klines for the top candidates.
+  // We only fetch for tokens that are likely to enter; the rest use the
+  // synthesized 7d-return RSI fallback. Skip entirely when no SoSoValue key
+  // is configured to avoid hanging the cycle on public-test / CI runs.
+  if (process.env.SOSOVALUE_API_KEY) {
+    const rsiCandidates = [...tokens]
+      .map((t) => ({ symbol: t.symbol, score: scoreTokenConviction(t, regime, holderMetrics.get(t.symbol), newsSignal.perSymbol.get(t.symbol.toUpperCase()) ?? null).score }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+    let fetchedRsi = 0;
+    for (const c of rsiCandidates) {
+      try {
+        const klines = await sosovalueClient.fetchKlinesBySymbol(c.symbol, "1d", 30);
+        if (klines.length >= 15) {
+          const rsi = computeRSI14(klines);
+          rsiCache.set(c.symbol.toUpperCase(), rsi);
+          fetchedRsi++;
+        }
+      } catch {
+        // Non-fatal: fall back to synthesized RSI.
+      }
+    }
+    if (fetchedRsi > 0) console.log(`  [rsi] Fetched real RSI(14) for ${fetchedRsi} top candidates`);
+  }
+
   for (const t of tokens) {
     const metric = computeHolderMetric(holderCache, t.symbol);
     if (metric.count > 0) {
@@ -232,6 +258,7 @@ export async function analyzeConviction(): Promise<{
       regime,
       holderMetrics.get(t.symbol),
       newsSignal.perSymbol.get(t.symbol.toUpperCase()) ?? null,
+      rsiCache.get(t.symbol.toUpperCase()) ?? null,
     )
   );
 

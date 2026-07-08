@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "backtest": "tsx scripts/run-backtest.ts",
     "docs": "typedoc",
     "docs:serve": "npx serve docs/api",
     "dev": "tsx watch src/index.ts"

@@ -609,6 +609,16 @@ export class SosovalueClient implements MarketDataProvider {
     return extractList<SosovalueKline>(raw);
   }
 
+  /**
+   * Fetch historical klines by symbol (resolves currency ID first).
+   * Returns empty array if the symbol is not in the SoSoValue catalog.
+   */
+  async fetchKlinesBySymbol(symbol: string, interval: string = "1d", limit: number = 30): Promise<SosovalueKline[]> {
+    const id = await this.resolveCurrencyId(symbol);
+    if (!id) return [];
+    return this.fetchKlines(id, interval, limit);
+  }
+
   /** Fetch all available SoSoValue Indices. */
   async fetchIndices(): Promise<SosovalueIndex[]> { const raw = await ssvRestGet<unknown>("/indices", this.apiKey, this.baseUrl); return extractList<SosovalueIndex>(raw); }
 
@@ -663,3 +673,38 @@ export class SosovalueClient implements MarketDataProvider {
 
 /** Singleton SoSoValue client instance. Reads SOSOVALUE_API_KEY from the environment. */
 export const sosovalueClient = new SosovalueClient();
+
+// =============================================================================
+// Kline / RSI helpers
+// =============================================================================
+
+/**
+ * Compute RSI(14) from ascending kline closes.
+ * Uses the standard Wilder smoothing method.
+ * Returns 50 (neutral) when insufficient data.
+ */
+export function computeRSI14(klines: SosovalueKline[]): number {
+  if (klines.length < 15) return 50;
+  const closes = klines
+    .slice()
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((k) => k.close);
+  let gains = 0;
+  let losses = 0;
+  for (let i = 1; i <= 14; i++) {
+    const change = closes[i] - closes[i - 1];
+    if (change >= 0) gains += change;
+    else losses -= change;
+  }
+  let avgGain = gains / 14;
+  let avgLoss = losses / 14;
+  for (let i = 15; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+    avgGain = (avgGain * 13 + Math.max(change, 0)) / 14;
+    avgLoss = (avgLoss * 13 + Math.max(-change, 0)) / 14;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  const rsi = 100 - 100 / (1 + rs);
+  return Math.max(0, Math.min(100, rsi));
+}

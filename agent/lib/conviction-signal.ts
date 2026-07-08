@@ -342,12 +342,13 @@ export function scoreTokenConviction(
   regime: MarketRegime,
   holderMetric?: { count: number; growthPercent: number | null },
   newsSentiment?: number | null,
+  rsi14?: number | null,
 ): ConvictionSignal {
   const w = computeAdaptiveWeights(regime);
 
   const contrarian = contrarianFraction(token.percentChange7d) * w.contrarian;
 
-  const rsi = synthesizeRsi7d(token.percentChange7d);
+  const rsi = rsi14 ?? synthesizeRsi7d(token.percentChange7d);
   const rsiBonus = rsiTimingFraction(rsi) * w.rsi;
 
   const quality = qualityFraction(token) * w.quality;

@@ -8,6 +8,7 @@ import {
 import type { NormalisedNewsItem } from "../lib/sosovalue-signals.js";
 import { scoreMarketRegime } from "../lib/conviction-signal.js";
 import * as dataProviders from "../lib/data-providers.js";
+import { computeRSI14 } from "../lib/data-providers.js";
 
 describe("computeNewsSentiment", () => {
   it("aggregates per-symbol sentiment averages using explicit sentimentWord", () => {
@@ -256,5 +257,38 @@ describe("fetchMacroPauseSignal", () => {
     const sig = await fetchMacroPauseSignal(24, now);
     expect(sig.skipEntries).toBe(true);
     expect(sig.triggeringEvent?.name).toBe("US CPI");
+  });
+});
+
+describe("computeRSI14", () => {
+  it("returns 50 when insufficient klines", () => {
+    expect(computeRSI14([])).toBe(50);
+    expect(computeRSI14([{ timestamp: 1, open: 10, high: 11, low: 9, close: 10, volume: 100 }])).toBe(50);
+  });
+
+  it("computes oversold RSI after a 14-day decline", () => {
+    const klines = Array.from({ length: 15 }, (_, i) => ({
+      timestamp: i,
+      open: 100 - i,
+      high: 100 - i,
+      low: 100 - i,
+      close: 100 - i,
+      volume: 100,
+    }));
+    const rsi = computeRSI14(klines);
+    expect(rsi).toBeLessThan(35);
+  });
+
+  it("computes overbought RSI after a 14-day rally", () => {
+    const klines = Array.from({ length: 15 }, (_, i) => ({
+      timestamp: i,
+      open: 100 + i,
+      high: 100 + i,
+      low: 100 + i,
+      close: 100 + i,
+      volume: 100,
+    }));
+    const rsi = computeRSI14(klines);
+    expect(rsi).toBeGreaterThan(65);
   });
 });
