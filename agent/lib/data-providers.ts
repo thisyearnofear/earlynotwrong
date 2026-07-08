@@ -305,6 +305,18 @@ export class CmcClient implements MarketDataProvider {
     return { globalMetrics, derivatives, tokenPrices, tokenHolders: [], trendingNarratives: [] };
   }
 
+  /**
+   * Fetch only the global/derivative data SoSoValue can't provide
+   * (global metrics, Fear & Greed, funding rates). Skips the per-token
+   * quote pull so the agent doesn't spend CMC credits on a 147-token batch
+   * that SoSoValue already covers. Token prices are fetched separately via
+   * getEligibleTokenQuotes() only when SoSoValue returns no prices.
+   */
+  async fetchGlobalData(): Promise<CmcMarketData> {
+    const [globalMetrics, derivatives] = await Promise.all([this.getGlobalMetrics(), this.getDerivativesMetrics()]);
+    return { globalMetrics, derivatives, tokenPrices: [], tokenHolders: [], trendingNarratives: [] };
+  }
+
   /** Fetch global market cap, BTC/ETH dominance, and FGI from CMC v1 + v3. */
   async getGlobalMetrics(): Promise<GlobalMetrics | null> {
     const [data, fearGreedIndex] = await Promise.all([cmcRestGet<Record<string, unknown>>("/v1/global-metrics/quotes/latest", this.apiKey), fetchFearGreedFromCmc(this.apiKey)]);
@@ -473,17 +485,56 @@ export interface SosovalueMacroEvent {
 
 const SSV_DEFAULT_BASE_URL = "https://openapi.sosovalue.com/openapi/v1";
 
-async function ssvRestGet<T = Record<string, unknown>>(path: string, apiKey: string, baseUrl: string = SSV_DEFAULT_BASE_URL): Promise<T | null> {
+const SSV_RATE_LIMIT_PER_MIN = 20;
+const SSV_RATE_LIMIT_CAPACITY = SSV_RATE_LIMIT_PER_MIN;
+const SSV_REFILL_MS_PER_TOKEN = 60_000 / SSV_RATE_LIMIT_PER_MIN;
+
+let ssvBucketTokens = SSV_RATE_LIMIT_CAPACITY;
+let ssvBucketLast = Date.now();
+let ssvBucketChain: Promise<void> = Promise.resolve();
+
+async function ssvThrottle(): Promise<void> {
+  const run = ssvBucketChain.then(async () => {
+    for (;;) {
+      const now = Date.now();
+      const elapsed = now - ssvBucketLast;
+      ssvBucketTokens = Math.min(SSV_RATE_LIMIT_CAPACITY, ssvBucketTokens + elapsed / SSV_REFILL_MS_PER_TOKEN);
+      ssvBucketLast = now;
+      if (ssvBucketTokens >= 1) {
+        ssvBucketTokens -= 1;
+        return;
+      }
+      await new Promise((r) => setTimeout(r, (1 - ssvBucketTokens) * SSV_REFILL_MS_PER_TOKEN));
+    }
+  });
+  ssvBucketChain = run.catch(() => {});
+  return run;
+}
+
+async function ssvRestGet<T = Record<string, unknown>>(
+  path: string,
+  apiKey: string,
+  baseUrl: string = SSV_DEFAULT_BASE_URL,
+  onMeta?: (status: number, headers: Headers) => void,
+): Promise<T | null> {
   try {
+    await ssvThrottle();
     const response = await fetch(`${baseUrl}${path}`, {
       headers: { "x-soso-api-key": apiKey, Accept: "application/json" },
       signal: AbortSignal.timeout(10000),
     });
-    if (!response.ok) { console.warn(`[SoSoValue] HTTP ${response.status} for ${path}: ${response.statusText}`); return null; }
+    onMeta?.(response.status, response.headers);
+    if (!response.ok) {
+      console.warn(`[SoSoValue] HTTP ${response.status} for ${path}: ${response.statusText}`);
+      return null;
+    }
     const json = (await response.json()) as Record<string, unknown>;
     if (json && typeof json === "object" && "data" in json) return json.data as T;
     return json as unknown as T;
-  } catch (error) { console.warn(`[SoSoValue] Request failed for ${path}:`, error); return null; }
+  } catch (error) {
+    console.warn(`[SoSoValue] Request failed for ${path}:`, error);
+    return null;
+  }
 }
 
 function extractList<T>(raw: unknown): T[] {
@@ -515,12 +566,63 @@ export class SosovalueClient implements MarketDataProvider {
   readonly name = "sosovalue" as const;
   private apiKey: string;
   private baseUrl: string;
+
+  // Circuit breaker / rate-limit protection
+  private apiHealthy = true;
+  private apiSuspendedUntil = 0;
+  private consecutiveFailures = 0;
+  private static readonly SUSPENSION_COOLDOWN_MS = 15 * 60 * 1000;
+  private static readonly MAX_CONSECUTIVE_FAILURES = 3;
+
+  // Currency ID cache (5 min TTL) for symbol→ID resolution
   private currencyIdCache = new Map<string, { id: string; symbol: string; name: string }>();
   private currencyCacheLastFetched = 0;
   private static readonly CURRENCY_CACHE_TTL_MS = 5 * 60 * 1000;
 
+  // Market snapshot cache: avoid re-fetching 150+ snapshots every cycle.
+  // TTL is intentionally longer than the cycle interval so most cycles hit cache.
+  private snapshotCache = new Map<string, { snapshot: SosovalueMarketSnapshot; fetchedAt: number }>();
+  private static readonly SNAPSHOT_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h (covers 3 cycles at 4h intervals)
+
+  // Kline cache: daily klines change once per day, so cache until next UTC midnight.
+  private klineCache = new Map<string, { klines: SosovalueKline[]; fetchedAt: number }>();
+  private static readonly KLINE_CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4h (pragmatic)
+
+  // News / macro cache: share between sentiment analysis and narrative generation.
+  private hotNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null = null;
+  private featuredNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null = null;
+  private macroEventsCache: { items: SosovalueMacroEvent[]; fetchedAt: number } | null = null;
+  private static readonly NEWS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
+  private static readonly MACRO_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+
   /** @param options.apiKey — SoSoValue API key. Falls back to SOSOVALUE_API_KEY env var. */
-  constructor(options: { apiKey?: string; baseUrl?: string } = {}) { this.apiKey = options.apiKey || process.env.SOSOVALUE_API_KEY || ""; this.baseUrl = options.baseUrl || SSV_DEFAULT_BASE_URL; }
+  constructor(options: { apiKey?: string; baseUrl?: string } = {}) {
+    this.apiKey = options.apiKey || process.env.SOSOVALUE_API_KEY || "";
+    this.baseUrl = options.baseUrl || SSV_DEFAULT_BASE_URL;
+    this.apiHealthy = Boolean(this.apiKey);
+  }
+
+  /** True when the key exists and we haven't tripped the circuit breaker. */
+  isAvailable(): boolean {
+    return this.apiHealthy && Date.now() > this.apiSuspendedUntil && Boolean(this.apiKey);
+  }
+
+  /** Update circuit breaker based on response status. Call after every request. */
+  private recordApiCall(status: number): void {
+    if (status >= 200 && status < 300) {
+      this.consecutiveFailures = 0;
+      this.apiSuspendedUntil = 0;
+      return;
+    }
+    // Treat auth failures and rate limits as key-health issues.
+    if (status === 401 || status === 403 || status === 429) {
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= SosovalueClient.MAX_CONSECUTIVE_FAILURES) {
+        this.apiSuspendedUntil = Date.now() + SosovalueClient.SUSPENSION_COOLDOWN_MS;
+        console.warn(`[SoSoValue] Suspending API calls for ${SosovalueClient.SUSPENSION_COOLDOWN_MS / 60000} min after ${this.consecutiveFailures} consecutive failures (HTTP ${status}).`);
+      }
+    }
+  }
 
   /** Fetch current USD price for a symbol. Returns 0 if unavailable. */
   async fetchTokenPrice(symbol: string): Promise<number> { const q = await this.getQuote(symbol); return q?.price ?? 0; }
@@ -531,6 +633,7 @@ export class SosovalueClient implements MarketDataProvider {
 
   /** Fetch market data. Only token prices are populated — global metrics and derivatives come from CMC. */
   async fetchMarketData(): Promise<CmcMarketData> {
+    if (!this.isAvailable()) return { globalMetrics: null, derivatives: null, tokenPrices: [], tokenHolders: [], trendingNarratives: [] };
     const tokenPrices = await this.getEligibleTokenQuotes();
     return { globalMetrics: null, derivatives: null, tokenPrices, tokenHolders: [], trendingNarratives: [] };
   }
@@ -540,9 +643,10 @@ export class SosovalueClient implements MarketDataProvider {
    * Cache has a 5-minute TTL. Returns cached list if still fresh.
    */
   async fetchCurrencies(): Promise<SosovalueCurrency[]> {
+    if (!this.isAvailable()) return [];
     const now = Date.now();
     if (this.currencyIdCache.size > 0 && now - this.currencyCacheLastFetched < SosovalueClient.CURRENCY_CACHE_TTL_MS) return Array.from(this.currencyIdCache.values());
-    const raw = await ssvRestGet<unknown>("/currencies", this.apiKey, this.baseUrl);
+    const raw = await ssvRestGet<unknown>("/currencies", this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const currencies = extractList<SosovalueCurrency>(raw);
     if (currencies.length > 0) {
       this.currencyIdCache.clear();
@@ -564,8 +668,14 @@ export class SosovalueClient implements MarketDataProvider {
 
   /** Fetch live market snapshot for a currency by SoSoValue ID. Returns null if unavailable. */
   async fetchMarketSnapshot(currencyId: string): Promise<SosovalueMarketSnapshot | null> {
-    const raw = await ssvRestGet<Record<string, unknown>>(`/currencies/${encodeURIComponent(currencyId)}/market-snapshot`, this.apiKey, this.baseUrl);
-    return raw ? this.parseSnapshot(raw) : null;
+    if (!this.isAvailable()) return null;
+    const now = Date.now();
+    const cached = this.snapshotCache.get(currencyId);
+    if (cached && now - cached.fetchedAt < SosovalueClient.SNAPSHOT_CACHE_TTL_MS) return cached.snapshot;
+    const raw = await ssvRestGet<Record<string, unknown>>(`/currencies/${encodeURIComponent(currencyId)}/market-snapshot`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const snapshot = raw ? this.parseSnapshot(raw) : null;
+    if (snapshot) this.snapshotCache.set(currencyId, { snapshot, fetchedAt: now });
+    return snapshot;
   }
 
   /**
@@ -605,8 +715,15 @@ export class SosovalueClient implements MarketDataProvider {
    * @param limit — Number of klines to fetch. Default 30.
    */
   async fetchKlines(currencyId: string, interval: string = "1d", limit: number = 30): Promise<SosovalueKline[]> {
-    const raw = await ssvRestGet<unknown>(`/currencies/${encodeURIComponent(currencyId)}/klines?interval=${encodeURIComponent(interval)}&limit=${limit}`, this.apiKey, this.baseUrl);
-    return extractList<SosovalueKline>(raw);
+    if (!this.isAvailable()) return [];
+    const cacheKey = `${currencyId}:${interval}:${limit}`;
+    const now = Date.now();
+    const cached = this.klineCache.get(cacheKey);
+    if (cached && now - cached.fetchedAt < SosovalueClient.KLINE_CACHE_TTL_MS) return cached.klines;
+    const raw = await ssvRestGet<unknown>(`/currencies/${encodeURIComponent(currencyId)}/klines?interval=${encodeURIComponent(interval)}&limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const klines = extractList<SosovalueKline>(raw);
+    if (klines.length > 0) this.klineCache.set(cacheKey, { klines, fetchedAt: now });
+    return klines;
   }
 
   /**
@@ -620,40 +737,76 @@ export class SosovalueClient implements MarketDataProvider {
   }
 
   /** Fetch all available SoSoValue Indices. */
-  async fetchIndices(): Promise<SosovalueIndex[]> { const raw = await ssvRestGet<unknown>("/indices", this.apiKey, this.baseUrl); return extractList<SosovalueIndex>(raw); }
+  async fetchIndices(): Promise<SosovalueIndex[]> {
+    if (!this.isAvailable()) return [];
+    const raw = await ssvRestGet<unknown>("/indices", this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    return extractList<SosovalueIndex>(raw);
+  }
 
   /** Fetch live market snapshot for an index by ticker. */
   async fetchIndexSnapshot(indexTicker: string): Promise<SosovalueIndexSnapshot | null> {
-    const raw = await ssvRestGet<Record<string, unknown>>(`/indices/${encodeURIComponent(indexTicker)}/market-snapshot`, this.apiKey, this.baseUrl);
+    if (!this.isAvailable()) return null;
+    const raw = await ssvRestGet<Record<string, unknown>>(`/indices/${encodeURIComponent(indexTicker)}/market-snapshot`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     if (!raw) return null;
     return { ticker: String(raw.ticker ?? raw.symbol ?? indexTicker), name: String(raw.name ?? ""), price: safeNumber(raw.price ?? raw.price_usd), percent_change_24h: safeNumber(raw.percent_change_24h), percent_change_7d: safeNumber(raw.percent_change_7d), market_cap_usd: safeNumber(raw.market_cap_usd), volume_24h_usd: safeNumber(raw.volume_24h_usd), last_updated: String(raw.last_updated ?? "") };
   }
 
   /** Fetch constituent tokens and weights for an index. */
   async fetchIndexConstituents(indexTicker: string): Promise<SosovalueIndexConstituent[]> {
-    const raw = await ssvRestGet<unknown>(`/indices/${encodeURIComponent(indexTicker)}/constituents`, this.apiKey, this.baseUrl);
+    if (!this.isAvailable()) return [];
+    const raw = await ssvRestGet<unknown>(`/indices/${encodeURIComponent(indexTicker)}/constituents`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     return extractList<SosovalueIndexConstituent>(raw);
   }
 
   /** Fetch the latest news feed. @param limit — Max items. Default 20. */
-  async fetchFeeds(limit: number = 20): Promise<SosovalueFeedItem[]> { const raw = await ssvRestGet<unknown>(`/news?limit=${limit}`, this.apiKey, this.baseUrl); return extractList<SosovalueFeedItem>(raw); }
+  async fetchFeeds(limit: number = 20): Promise<SosovalueFeedItem[]> {
+    if (!this.isAvailable()) return [];
+    const raw = await ssvRestGet<unknown>(`/news?limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    return extractList<SosovalueFeedItem>(raw);
+  }
+
   /** Fetch hot/trending news. @param limit — Max items. Default 10. */
-  async fetchHotNews(limit: number = 10): Promise<SosovalueFeedItem[]> { const raw = await ssvRestGet<unknown>(`/news/hot?limit=${limit}`, this.apiKey, this.baseUrl); return extractList<SosovalueFeedItem>(raw); }
+  async fetchHotNews(limit: number = 10): Promise<SosovalueFeedItem[]> {
+    if (!this.isAvailable()) return [];
+    const now = Date.now();
+    if (this.hotNewsCache && now - this.hotNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) return this.hotNewsCache.items.slice(0, limit);
+    const raw = await ssvRestGet<unknown>(`/news/hot?limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const items = extractList<SosovalueFeedItem>(raw);
+    if (items.length > 0) this.hotNewsCache = { items, fetchedAt: now };
+    return items;
+  }
+
   /** Fetch featured/curated news. @param limit — Max items. Default 10. */
-  async fetchFeaturedNews(limit: number = 10): Promise<SosovalueFeedItem[]> { const raw = await ssvRestGet<unknown>(`/news/featured?limit=${limit}`, this.apiKey, this.baseUrl); return extractList<SosovalueFeedItem>(raw); }
+  async fetchFeaturedNews(limit: number = 10): Promise<SosovalueFeedItem[]> {
+    if (!this.isAvailable()) return [];
+    const now = Date.now();
+    if (this.featuredNewsCache && now - this.featuredNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) return this.featuredNewsCache.items.slice(0, limit);
+    const raw = await ssvRestGet<unknown>(`/news/featured?limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const items = extractList<SosovalueFeedItem>(raw);
+    if (items.length > 0) this.featuredNewsCache = { items, fetchedAt: now };
+    return items;
+  }
 
   /**
    * Fetch macro-economic events for a given date.
    * @param date — ISO date string (e.g. "2024-01-15"). Defaults to today.
    */
   async fetchMacroEvents(date?: string): Promise<SosovalueMacroEvent[]> {
+    if (!this.isAvailable()) return [];
+    const cacheKey = date || "today";
+    const now = Date.now();
+    const cached = this.macroEventsCache;
+    if (cached && cacheKey === (date || "today") && now - cached.fetchedAt < SosovalueClient.MACRO_CACHE_TTL_MS) return cached.items;
     const query = date ? `?date=${encodeURIComponent(date)}` : "";
-    const raw = await ssvRestGet<unknown>(`/macro/events${query}`, this.apiKey, this.baseUrl);
-    return extractList<SosovalueMacroEvent>(raw);
+    const raw = await ssvRestGet<unknown>(`/macro/events${query}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const items = extractList<SosovalueMacroEvent>(raw);
+    if (items.length > 0) this.macroEventsCache = { items, fetchedAt: now };
+    return items;
   }
 
   /** Verify connectivity by fetching the currency list. */
   async healthCheck(): Promise<boolean> {
+    if (!this.isAvailable()) return false;
     try {
       const currencies = await this.fetchCurrencies();
       if (currencies.length > 0) { console.log(`[SoSoValue] Connected — ${currencies.length} currencies available`); return true; }

@@ -111,7 +111,17 @@ describe("cycle integration — one full pass under simulator", () => {
       tokenHolders: [],
       trendingNarratives: [],
     });
-    vi.spyOn(dataProviders.cmcClient, "fetchMarketData").mockResolvedValue(CMC_MARKET_FIXTURE);
+    // SoSoValue offline → CMC is the only source. Global/derivative data now
+    // comes from fetchGlobalData; token prices from getEligibleTokenQuotes
+    // (only invoked as a fallback when SoSoValue returns no prices).
+    vi.spyOn(dataProviders.cmcClient, "fetchGlobalData").mockResolvedValue({
+      globalMetrics: CMC_MARKET_FIXTURE.globalMetrics,
+      derivatives: CMC_MARKET_FIXTURE.derivatives,
+      tokenPrices: [],
+      tokenHolders: [],
+      trendingNarratives: [],
+    });
+    vi.spyOn(dataProviders.cmcClient, "getEligibleTokenQuotes").mockResolvedValue(CMC_MARKET_FIXTURE.tokenPrices);
 
     // SoSoValue augmentations — SSI confirms fear (roi_7d -0.10 = -10%),
     // featured news bullish on TWT via matchedCurrencies tag.

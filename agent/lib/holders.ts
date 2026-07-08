@@ -18,6 +18,21 @@ const NODEREAL_RPC = "https://bsc-mainnet.nodereal.io/v1";
 const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 const DEFAULT_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
+// CoinGecko demo keys are rate-limited (~5 req/min). The NodeReal primary is
+// paced at 600ms/token, but if NodeReal fails entirely the fallback would
+// otherwise hammer CoinGecko once per token with no spacing and trip the limit.
+// Guard every CoinGecko call with a min-interval and a short per-contract cache.
+const COINGECKO_MIN_INTERVAL_MS = 12_000;
+const COINGECKO_CACHE_TTL_MS = 10 * 60 * 1000;
+let cgLastCall = 0;
+const cgHolderCache = new Map<string, { count: number; fetchedAt: number }>();
+
+async function cgThrottle(): Promise<void> {
+  const wait = COINGECKO_MIN_INTERVAL_MS - (Date.now() - cgLastCall);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  cgLastCall = Date.now();
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -116,6 +131,11 @@ async function fetchFromNodeReal(contractAddress: string, symbol: string): Promi
 async function fetchFromCoinGecko(contractAddress: string, symbol: string): Promise<number | null> {
   const apiKey = process.env.COINGECKO_API_KEY;
   if (!apiKey) return null;
+  const cacheKey = contractAddress.toLowerCase();
+  const now = Date.now();
+  const cached = cgHolderCache.get(cacheKey);
+  if (cached && now - cached.fetchedAt < COINGECKO_CACHE_TTL_MS) return cached.count;
+  await cgThrottle();
   try {
     const res = await fetch(`${COINGECKO_BASE}/onchain/networks/bsc/tokens/${contractAddress}/info`, {
       headers: { "x-cg-demo-api-key": apiKey },
@@ -123,7 +143,11 @@ async function fetchFromCoinGecko(contractAddress: string, symbol: string): Prom
     if (!res.ok) { console.warn(`[holders] ${symbol}: CoinGecko HTTP ${res.status}`); return null; }
     const body = (await res.json()) as { data?: { attributes?: { holders?: { count?: number } } } };
     const count = body.data?.attributes?.holders?.count;
-    return typeof count === "number" && count >= 0 ? count : null;
+    if (typeof count === "number" && count >= 0) {
+      cgHolderCache.set(cacheKey, { count, fetchedAt: Date.now() });
+      return count;
+    }
+    return null;
   } catch (err) {
     console.warn(`[holders] ${symbol} CoinGecko failed:`, (err as Error)?.message || String(err));
     return null;

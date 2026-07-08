@@ -10,6 +10,7 @@
 import { state, GAS_BUFFER_USD, getBnbUsd, computeBankrollCap, buildPriceMap, concentrationRejectionCount, unharvestableTokens, stuckSymbols, tickUnharvestableCooldowns } from "./agent-state.js";
 import { AGENT_CONFIG, AGENT_MODE } from "./config.js";
 import { cmcClient, sosovalueClient, computeRSI14 } from "./data-providers.js";
+import type { TokenQuote } from "./data-providers.js";
 import { sodexClient } from "./dex-trading.js";
 import { twakExecutor, TwakExecutor } from "./twak-executor.js";
 import {
@@ -62,22 +63,31 @@ function recordExitStats(pnlUsd: number): void {
 export async function fetchMarketData(): Promise<void> {
   console.log("\n[1/6] Fetching market data (SoSoValue + CMC composite)...");
 
+  // SoSoValue token prices are preferred. CMC is always needed for global
+  // metrics + derivatives (SoSoValue doesn't provide them), so we fetch those
+  // in parallel. CMC's per-token quote pull (a 147-token batch) is deferred —
+  // only fetched as a fallback when SoSoValue returns no prices — to avoid
+  // spending CMC credits on a redundant pull every cycle.
   const [ssvData, cmcData] = await Promise.all([
     sosovalueClient.fetchMarketData().catch(() => null),
-    cmcClient.fetchMarketData().catch(() => null),
+    cmcClient.fetchGlobalData().catch(() => null),
   ]);
 
+  const ssvTokenPrices = ssvData?.tokenPrices ?? [];
+  let cmcTokenPrices: TokenQuote[] = [];
+  if (ssvTokenPrices.length === 0 && cmcData) {
+    cmcTokenPrices = await cmcClient.getEligibleTokenQuotes().catch(() => []);
+  }
+
   // Merge: SoSoValue token prices preferred, CMC fills missing tokens
-  let tokenPrices = ssvData?.tokenPrices ?? [];
-  if (cmcData?.tokenPrices && ssvData) {
+  let tokenPrices = ssvTokenPrices;
+  if (cmcTokenPrices.length > 0) {
     const ssvSymbols = new Set(tokenPrices.map((t) => t.symbol.toUpperCase()));
-    for (const cmcToken of cmcData.tokenPrices) {
+    for (const cmcToken of cmcTokenPrices) {
       if (!ssvSymbols.has(cmcToken.symbol.toUpperCase())) {
         tokenPrices.push(cmcToken);
       }
     }
-  } else if (cmcData?.tokenPrices && !ssvData) {
-    tokenPrices = cmcData.tokenPrices;
   }
 
   const marketData = {
@@ -89,8 +99,8 @@ export async function fetchMarketData(): Promise<void> {
   };
 
   // ── Logging ──
-  const ssvCount = ssvData?.tokenPrices.length ?? 0;
-  const cmcCount = cmcData?.tokenPrices.length ?? 0;
+  const ssvCount = ssvTokenPrices.length;
+  const cmcCount = cmcTokenPrices.length;
   const mergedCount = tokenPrices.length;
   if (ssvCount > 0) {
     console.log(`  Source: SoSoValue (${ssvCount} tokens) + CMC (${cmcCount} tokens) → ${mergedCount} merged`);
