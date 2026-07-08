@@ -142,23 +142,55 @@ function synthesizeRegime(quotes: TokenQuote[]): MarketRegime {
   return scoreMarketRegime(toGlobalMetrics(fgi), toDerivativesMetrics(), 0);
 }
 
-export async function loadHistoricalData(
+/**
+ * Generate synthetic daily klines for backtesting when live SoSoValue data is
+ * unavailable or for quick strategy comparisons. Prices follow a mean-reverting
+ * random walk with occasional "fear" and "greed" regimes.
+ */
+export function generateSyntheticData(
   config: Pick<BacktestConfig, "startDate" | "endDate" | "symbols">
-): Promise<BacktestDay[]> {
+): BacktestDay[] {
   const symbols = config.symbols ?? AGENT_CONFIG.competition.eligibleTokens.slice(0, 50);
   const start = new Date(config.startDate);
   const end = new Date(config.endDate);
   const msPerDay = 24 * 60 * 60 * 1000;
   const dayCount = Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
 
+  // Fixed seedable PRNG so the same run produces the same path.
+  let seed = 42;
+  const rnd = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+
   const klinesBySymbol = new Map<string, SosovalueKline[]>();
   for (const symbol of symbols) {
-    const klines = await sosovalueClient.fetchKlinesBySymbol(symbol, "1d", dayCount + 20);
-    if (klines.length >= 15) {
-      klinesBySymbol.set(symbol.toUpperCase(), klines.slice().sort((a, b) => a.timestamp - b.timestamp));
+    const basePrice = 0.01 + rnd() * 5;
+    const klines: SosovalueKline[] = [];
+    let price = basePrice;
+    for (let i = -30; i < dayCount; i++) {
+      const ts = Math.floor((start.getTime() + i * msPerDay) / 1000);
+      // Add regime drift: every ~20 days flip between fear (down drift) and greed.
+      const regimeDrift = Math.floor(i / 20) % 2 === 0 ? -0.005 : 0.005;
+      const dailyReturn = regimeDrift + (rnd() - 0.5) * 0.08;
+      const open = price;
+      price = price * (1 + dailyReturn);
+      const high = Math.max(open, price) * (1 + rnd() * 0.02);
+      const low = Math.min(open, price) * (1 - rnd() * 0.02);
+      klines.push({ timestamp: ts, open, high, low, close: price, volume: 1_000_000 });
     }
+    klinesBySymbol.set(symbol.toUpperCase(), klines);
   }
 
+  return buildDaysFromKlines(start, dayCount, klinesBySymbol);
+}
+
+function buildDaysFromKlines(
+  start: Date,
+  dayCount: number,
+  klinesBySymbol: Map<string, SosovalueKline[]>
+): BacktestDay[] {
+  const msPerDay = 24 * 60 * 60 * 1000;
   const days: BacktestDay[] = [];
   for (let i = 0; i < dayCount; i++) {
     const ts = start.getTime() + i * msPerDay;
@@ -185,6 +217,34 @@ export async function loadHistoricalData(
     }
   }
   return days;
+}
+
+export async function loadHistoricalData(
+  config: Pick<BacktestConfig, "startDate" | "endDate" | "symbols">
+): Promise<BacktestDay[]> {
+  const symbols = config.symbols ?? AGENT_CONFIG.competition.eligibleTokens.slice(0, 50);
+  const start = new Date(config.startDate);
+  const end = new Date(config.endDate);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const dayCount = Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
+
+  const klinesBySymbol = new Map<string, SosovalueKline[]>();
+  for (const symbol of symbols) {
+    try {
+      const klines = await sosovalueClient.fetchKlinesBySymbol(symbol, "1d", dayCount + 20);
+      if (klines.length >= 15) {
+        klinesBySymbol.set(symbol.toUpperCase(), klines.slice().sort((a, b) => a.timestamp - b.timestamp));
+      }
+    } catch {
+      // Ignore individual-symbol failures; fall through to synthetic data if none load.
+    }
+  }
+
+  if (klinesBySymbol.size === 0) {
+    throw new Error("No historical klines could be loaded from SoSoValue");
+  }
+
+  return buildDaysFromKlines(start, dayCount, klinesBySymbol);
 }
 
 function cloneRegimeForWeights(regime: MarketRegime, adaptive: boolean): MarketRegime {
@@ -397,12 +457,22 @@ function runBacktestVariant(
 
 export async function runBacktest(config: BacktestConfig): Promise<BacktestResult[]> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
-  const days = await loadHistoricalData(cfg);
+  let days: BacktestDay[];
+  let dataSource = "live";
+  try {
+    days = await loadHistoricalData(cfg);
+  } catch {
+    console.warn("[backtest] Live SoSoValue klines unavailable — falling back to synthetic data");
+    days = generateSyntheticData(cfg);
+    dataSource = "synthetic";
+  }
   if (days.length === 0) throw new Error("No historical data loaded");
 
-  return [
+  const results = [
     runBacktestVariant(days, { ...cfg, adaptiveWeights: false, honeypotGate: false }, "baseline_fixed"),
     runBacktestVariant(days, { ...cfg, adaptiveWeights: true, honeypotGate: false }, "adaptive"),
     runBacktestVariant(days, { ...cfg, adaptiveWeights: true, honeypotGate: true }, "adaptive_honeypot"),
   ];
+  for (const r of results) (r as any).dataSource = dataSource;
+  return results;
 }

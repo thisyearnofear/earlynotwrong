@@ -29,6 +29,7 @@ runBacktest(cfg)
   .then((results) => {
     console.log("\n═══════════════════════════════════════════════════");
     console.log("  BACKTEST RESULTS");
+    console.log(`  Data source: ${(results[0] as any).dataSource ?? "unknown"}`);
     console.log("═══════════════════════════════════════════════════\n");
     for (const r of results) {
       console.log(`Variant:        ${r.variant}`);
