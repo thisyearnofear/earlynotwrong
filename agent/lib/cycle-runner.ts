@@ -427,6 +427,22 @@ async function closePosition(
     return false;
   }
 
+  // Reconcile the intended sell size with the actual on-chain balance. Tokens with
+  // buy/sell taxes (or bridged/wrapped proxies like BSB) often leave the wallet
+  // with fewer tokens than the recorded cost basis implies, causing "transfer
+  // amount exceeds balance" reverts. Using the live balance prevents that.
+  const balance = await twakExecutor.getBalance(pos.symbol);
+  const balanceUsd = balance?.valueUsd ?? 0;
+  if (balanceUsd > 0 && balanceUsd < pos.amountUsd) {
+    console.log(`    [exit] Recorded cost basis $${pos.amountUsd.toFixed(2)} exceeds live balance $${balanceUsd.toFixed(2)} — sizing down`);
+    pos.amountUsd = balanceUsd;
+  }
+
+  if (pos.amountUsd < MIN_SWAP_USD) {
+    console.log(`    [exit] Live balance too small ($${pos.amountUsd.toFixed(2)}) to justify gas — deferring`);
+    return false;
+  }
+
   // Primary: default slippage direct to BNB.
   const result = await twakExecutor.executeSwap({
     tokenIn: pos.symbol,
