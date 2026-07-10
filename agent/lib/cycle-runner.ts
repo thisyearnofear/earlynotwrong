@@ -24,7 +24,7 @@ import { computeSubjectHash, computeThesisHash, anchorAll } from "./anchors/inde
 import type { SwapResult } from "./twak-executor.js";
 import { scoreMarketRegime, scoreTokenConviction, evaluatePosition, accruePosition, openPosition, STUCK_AFTER_FAILED_ATTEMPTS } from "./conviction-signal.js";
 import type { ConvictionSignal, HeldPosition, MarketRegime, PositionVerdict } from "./conviction-signal.js";
-import { sendErrorAlert, sendExitAlert, sendGuardrailBlocked } from "./telegram.js";
+import { sendEntryAlert, sendErrorAlert, sendExitAlert, sendGuardrailBlocked } from "./telegram.js";
 import { summarizeError } from "./errors.js";
 import { loadHolderCache, saveHolderCache, fetchHolderCount, recordHolderCount, computeHolderMetric } from "./holders.js";
 import { generateNarrative } from "./market-narrative.js";
@@ -1215,6 +1215,20 @@ export async function executeTrades(
           cycle: state.cycle,
         })
       );
+
+      // Public trade narrative — broadcast the entry to the operator channel
+      // and all /start subscribers. Non-blocking; safe when unconfigured.
+      const signal = state.convictionSignals.find(
+        (s) => s.symbol.toUpperCase() === proposal.tokenSymbol.toUpperCase()
+      );
+      sendEntryAlert({
+        cycle: state.cycle,
+        symbol: proposal.tokenSymbol,
+        amountUsd: proposal.amountInUsd,
+        convictionScore: proposal.convictionScore,
+        rationale: signal?.rationale ?? "contrarian entry",
+        txHash: result.txHash,
+      }).catch(() => {});
     } else {
       console.log(`    ✗ Trade failed: ${result.error}`);
       guardrails.recordTrade(proposal.amountInUsd, false);

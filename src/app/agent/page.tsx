@@ -26,6 +26,7 @@ import {
   Sparkles,
   Signal,
   Network,
+  Send,
 } from "lucide-react";
 
 // ─── Types ───
@@ -40,6 +41,11 @@ interface AgentStatus {
   totalTrades: number;
   totalVolumeUsd: number;
   errors: number;
+  /** Public "watch this agent" Telegram channel — null when unconfigured. */
+  telegram?: {
+    botUsername: string;
+    subscriberCount: number;
+  } | null;
   portfolio: {
     totalValueUsd: number;
     positions: number;
@@ -565,6 +571,46 @@ function Dashboard({
           on Casper — see the Reputation API panel below.
         </p>
       </motion.div>
+
+      {/* Row 0b: Watch this agent — public Telegram alerts. Only rendered
+          when the agent reports a live bot identity on /status. */}
+      {status.telegram?.botUsername && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.03, duration: 0.4 }}
+        >
+          <a
+            href={`https://t.me/${status.telegram.botUsername}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center gap-4 p-3 rounded-lg border border-border/50 bg-surface/30 hover:border-signal/40 transition-colors"
+          >
+            <div className="flex items-center justify-center w-8 h-8 rounded-full border border-signal/40 bg-signal/10 shrink-0">
+              <Send className="w-4 h-4 text-signal" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-signal">
+                Watch This Agent
+              </span>
+              <p className="text-xs text-foreground-muted leading-relaxed">
+                Get Telegram alerts when the agent enters, exits, or holds through drawdown.
+              </p>
+            </div>
+            <div className="hidden sm:flex items-center gap-3 text-xs font-mono shrink-0">
+              <span className="text-foreground group-hover:text-signal transition-colors">
+                @{status.telegram.botUsername}
+              </span>
+              {status.telegram.subscriberCount > 0 && (
+                <span className="text-foreground-muted">
+                  {status.telegram.subscriberCount} watching
+                </span>
+              )}
+              <ExternalLink className="w-3.5 h-3.5 text-foreground-muted group-hover:text-signal transition-colors" />
+            </div>
+          </a>
+        </motion.div>
+      )}
 
       {/* Row 1: Agent Status + Portfolio + Guardrails + Performance */}
       <motion.div

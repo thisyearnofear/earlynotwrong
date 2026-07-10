@@ -10,25 +10,39 @@
  */
 
 import type { SwapResult } from "./twak-executor.js";
+import { getSubscriberChatIds } from "./telegram-subscribers.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
+/** Small delay between subscriber sends — stays well under Telegram's ~30 msg/s. */
+const SUBSCRIBER_SEND_DELAY_MS = 50;
+
 /**
- * Check if Telegram is configured.
+ * Check if Telegram is configured (operator channel).
  */
 function isConfigured(): boolean {
   return !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 
 /**
- * Send a raw text message to the Telegram channel.
- * Silently skips if env vars are not set.
+ * Check if the bot token alone is set — enough to broadcast to /start
+ * subscribers even without an operator TELEGRAM_CHAT_ID.
  */
-async function sendMessage(text: string): Promise<void> {
-  if (!isConfigured()) return;
+function hasToken(): boolean {
+  return !!process.env.TELEGRAM_BOT_TOKEN;
+}
+
+/**
+ * Send a raw text message to a Telegram chat (defaults to the operator
+ * channel). Silently skips if the token or target chat is not set.
+ */
+async function sendMessage(
+  text: string,
+  chatId: string | undefined = process.env.TELEGRAM_CHAT_ID
+): Promise<void> {
+  if (!hasToken() || !chatId) return;
 
   const token = process.env.TELEGRAM_BOT_TOKEN!;
-  const chatId = process.env.TELEGRAM_CHAT_ID!;
 
   try {
     const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
@@ -50,6 +64,27 @@ async function sendMessage(text: string): Promise<void> {
     // Network errors are non-fatal — log and continue
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[telegram] sendMessage error: ${message}`);
+  }
+}
+
+/**
+ * Broadcast a PUBLIC trade message: operator channel (existing behavior)
+ * plus fan-out to every /start subscriber. Sequential with a small delay so
+ * we stay politely under Telegram's rate limits. Only entry/exit alerts go
+ * through here — operator-only messages (errors, guardrails, cycle
+ * summaries, startup) must keep using sendMessage directly.
+ */
+async function broadcastMessage(text: string): Promise<void> {
+  await sendMessage(text);
+
+  if (!hasToken()) return;
+
+  const operatorChatId = process.env.TELEGRAM_CHAT_ID;
+  for (const chatId of getSubscriberChatIds()) {
+    // The operator may have DM'd /start too — don't double-send.
+    if (chatId === operatorChatId) continue;
+    await sendMessage(text, chatId);
+    await new Promise((r) => setTimeout(r, SUBSCRIBER_SEND_DELAY_MS));
   }
 }
 
@@ -254,8 +289,38 @@ export async function sendStartup(params: {
 }
 
 /**
+ * Send a position-entry alert — the agent's public trade narrative.
+ * Broadcast to the operator channel AND all /start subscribers.
+ */
+export async function sendEntryAlert(params: {
+  cycle: number;
+  symbol: string;
+  amountUsd: number;
+  convictionScore: number;
+  rationale: string;
+  txHash?: string;
+}): Promise<void> {
+  if (!hasToken()) return;
+
+  const lines: string[] = [
+    `🟢 <b>ENTRY</b> ${escapeHtml(params.symbol)} — cycle #${params.cycle}`,
+    `<code>$${params.amountUsd.toFixed(2)} · conviction ${params.convictionScore}/100</code>`,
+    `<i>${escapeHtml(params.rationale)}</i>`,
+  ];
+  if (params.txHash) {
+    const url = params.txHash.startsWith("0xSODEX_")
+      ? `https://testnet.sodex.dev/order/${params.txHash.slice(8)}`
+      : `https://bscscan.com/tx/${params.txHash}`;
+    lines.push(`<a href="${url}">tx</a>`);
+  }
+
+  await broadcastMessage(lines.join("\n"));
+}
+
+/**
  * Send a position-exit alert. One message per closed (or partially closed)
  * position so judges can see live decisions in the Telegram timeline.
+ * Broadcast to the operator channel AND all /start subscribers.
  */
 export async function sendExitAlert(params: {
   cycle: number;
@@ -267,7 +332,7 @@ export async function sendExitAlert(params: {
   sellFraction: number;
   txHash?: string;
 }): Promise<void> {
-  if (!isConfigured()) return;
+  if (!hasToken()) return;
 
   const icon =
     params.action === "EXIT_STOP" ? "🛑" :
@@ -288,7 +353,7 @@ export async function sendExitAlert(params: {
     lines.push(`<a href="${url}">tx</a>`);
   }
 
-  await sendMessage(lines.join("\n"));
+  await broadcastMessage(lines.join("\n"));
 }
 
 /**
