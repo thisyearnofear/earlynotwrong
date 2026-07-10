@@ -67,7 +67,7 @@ export function TokenHeatmap({ tokens }: TokenHeatmapProps) {
 
             <div className="grid grid-cols-2 gap-2 mt-2">
               <div>
-                <div className="text-[9px] font-mono uppercase tracking-wider text-foreground-muted">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
                   Intensity
                 </div>
                 <div className="flex items-center gap-1 mt-0.5">
@@ -78,7 +78,7 @@ export function TokenHeatmap({ tokens }: TokenHeatmapProps) {
                 </div>
               </div>
               <div>
-                <div className="text-[9px] font-mono uppercase tracking-wider text-foreground-muted">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
                   Holders
                 </div>
                 <div className="flex items-center gap-1 mt-0.5">
@@ -92,7 +92,7 @@ export function TokenHeatmap({ tokens }: TokenHeatmapProps) {
 
             <div className="mt-3 pt-3 border-t border-border/30">
               <div className="flex items-center justify-between">
-                <div className="text-[9px] font-mono uppercase tracking-wider text-foreground-muted">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
                   Avg Conviction
                 </div>
                 <div className="text-xs font-mono tabular-nums text-foreground">

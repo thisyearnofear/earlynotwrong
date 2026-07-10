@@ -125,9 +125,12 @@ export function AlphaTraderCard({ trader, rank }: AlphaTraderCardProps) {
           </div>
         </div>
 
-        <div className="text-right hidden md:block">
+        <div
+          className="text-right hidden md:block"
+          title="Ranking value: conviction score boosted by Ethos social credibility. The conviction score itself is purely behavioral."
+        >
           <div className="text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
-            Weighted
+            Cred-Weighted
           </div>
           <div className="text-sm font-mono tabular-nums text-signal">
             {trader.weightedScore}

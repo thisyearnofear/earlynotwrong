@@ -112,10 +112,10 @@ export function MantleConvictionCard({
               className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-[#65b3ae]/20 border border-[#65b3ae]/30"
             >
               <ShieldCheck className="w-3 h-3 text-[#65b3ae]" />
-              <span className="text-[9px] font-mono font-bold text-[#65b3ae]">VERIFIED</span>
+              <span className="text-[10px] font-mono font-bold text-[#65b3ae]">VERIFIED</span>
             </motion.div>
           ) : (
-            <div className="text-[9px] font-mono text-foreground-muted">
+            <div className="text-[10px] font-mono text-foreground-muted">
               NOT ANCHORED
             </div>
           )}
@@ -124,15 +124,15 @@ export function MantleConvictionCard({
 
       <div className="p-3 rounded-lg bg-surface/50 border border-border/50">
         <div className="flex justify-between items-center mb-1">
-          <span className="text-[9px] font-mono text-foreground-muted uppercase">Thesis Hash</span>
-          <span className="text-[9px] font-mono text-foreground-muted">KECCAK-256</span>
+          <span className="text-[10px] font-mono text-foreground-muted uppercase">Thesis Hash</span>
+          <span className="text-[10px] font-mono text-foreground-muted">KECCAK-256</span>
         </div>
         <div className="font-mono text-[10px] text-foreground break-all bg-background/50 p-2 rounded border border-border/30">
           {thesisHash}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-[9px] font-mono">
+      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
         <div className="p-2 rounded border border-border/30 bg-background/30">
           <div className="text-foreground-muted uppercase">Score</div>
           <div className="text-foreground font-bold">{Math.round(convictionScore)}/100</div>
@@ -183,7 +183,7 @@ export function MantleConvictionCard({
         )}
       </div>
 
-      <p className="text-[9px] text-foreground-muted font-mono leading-relaxed italic">
+      <p className="text-[10px] text-foreground-muted font-mono leading-relaxed italic">
         * Anchoring records this cross-chain AI analysis on Mantle. Solana/Base wallet identifiers are stored as hashes; the connected EVM wallet signs as the ENW agent/operator.
       </p>
     </div>

@@ -69,8 +69,27 @@ interface PositionAnalysis {
   } | null;
 }
 
+interface ScoreComponent {
+  /** The measured input (a rate/percentage, 0–100 scale). */
+  value: number;
+  /** Points this component contributed to the score (negative = penalty). */
+  points: number;
+}
+
+interface ScoreBreakdown {
+  winRate: ScoreComponent;
+  upsideCapture: ScoreComponent;
+  earlyExitMitigation: ScoreComponent;
+  holdingPeriod: ScoreComponent;
+  diamondHands: ScoreComponent;
+  consistency: ScoreComponent;
+  panicSell: ScoreComponent;
+}
+
 interface ConvictionMetrics {
   score: number;
+  /** Exact component contributions that produced `score`. */
+  breakdown?: ScoreBreakdown;
   patienceTax: number;
   upsideCapture: number;
   earlyExits: number;
@@ -88,7 +107,7 @@ interface ConvictionMetrics {
 export async function POST(request: NextRequest) {
   try {
     const body: BatchRequest = await request.json();
-    const { positions, chain, ethosScore } = body;
+    const { positions, chain } = body;
 
     if (!positions || !chain) {
       return NextResponse.json(
@@ -129,8 +148,7 @@ export async function POST(request: NextRequest) {
 
     const convictionMetrics = calculateConvictionMetrics(
       positions,
-      positionAnalyses,
-      ethosScore
+      positionAnalyses
     );
 
     // Rank against the real cohort of analyzed wallets. When the DB is
@@ -269,8 +287,7 @@ async function analyzePosition(
 
 function calculateConvictionMetrics(
   positions: Position[],
-  analyses: PositionAnalysis[],
-  ethosScore?: number | null
+  analyses: PositionAnalysis[]
 ): ConvictionMetrics {
   if (positions.length === 0) {
     return {
@@ -369,10 +386,28 @@ function calculateConvictionMetrics(
     ? Math.max(0, 100 - (positionSizeStdDev / avgPositionSize) * 100)
     : 50;
 
-  const { weights, reputation } = APP_CONFIG;
+  const { weights } = APP_CONFIG;
 
-  // Enhanced base score with behavioral components
-  const baseScore = Math.max(
+  // Score components. Each entry is (input value, points contributed) so the
+  // breakdown shown in the UI is exactly what produced the score — no
+  // client-side re-derivation.
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const holdingPeriodFactor = Math.min(avgHoldingPeriod / 30, 1) * 100;
+  const breakdown: ScoreBreakdown = {
+    winRate: { value: round1(winRate), points: round1(winRate * weights.winRate) },
+    upsideCapture: { value: round1(upsideCapture), points: round1(upsideCapture * weights.upsideCapture) },
+    earlyExitMitigation: { value: round1(100 - earlyExitRate), points: round1((100 - earlyExitRate) * weights.earlyExitMitigation) },
+    holdingPeriod: { value: round1(holdingPeriodFactor), points: round1(holdingPeriodFactor * weights.holdingPeriod) },
+    diamondHands: { value: round1(diamondHandRate), points: round1(diamondHandRate * 0.05) },
+    consistency: { value: round1(consistencyScore), points: round1(consistencyScore * 0.05) },
+    panicSell: { value: round1(panicSellRate), points: round1(-(panicSellRate * 0.1)) },
+  };
+
+  // The conviction score is purely behavioral (SOUL.md: "Conviction ≠
+  // Performance", no social signals). Ethos credibility is surfaced
+  // separately in the UI and used only as a distinct rank on /alpha —
+  // it never multiplies this score.
+  const finalScore = Math.max(
     0,
     Math.min(
       100,
@@ -386,26 +421,9 @@ function calculateConvictionMetrics(
     )
   );
 
-  // Apply reputation weighting if Ethos score available
-  let finalScore = baseScore;
-  let reputationMultiplier = 1.0;
-
-  if (ethosScore && ethosScore > 0) {
-    if (ethosScore >= reputation.ethosScoreThresholds.elite) {
-      reputationMultiplier = 1.5;
-    } else if (ethosScore >= reputation.ethosScoreThresholds.high) {
-      reputationMultiplier = 1.3;
-    } else if (ethosScore >= reputation.ethosScoreThresholds.medium) {
-      reputationMultiplier = 1.15;
-    } else if (ethosScore >= reputation.ethosScoreThresholds.low) {
-      reputationMultiplier = 1.05;
-    }
-
-    finalScore = Math.min(100, baseScore * reputationMultiplier);
-  }
-
   return {
     score: Math.round(finalScore * 10) / 10,
+    breakdown,
     patienceTax: Math.round(totalPatienceTax),
     upsideCapture: Math.round(upsideCapture),
     earlyExits,

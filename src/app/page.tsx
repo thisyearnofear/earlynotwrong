@@ -452,7 +452,7 @@ export default function Home() {
                       <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest text-center">
                         Analyze any public profile
                       </p>
-                      <div className="flex items-center justify-center gap-2 text-[9px] font-mono text-foreground-muted">
+                      <div className="flex items-center justify-center gap-2 text-[10px] font-mono text-foreground-muted">
                         <span>Today: {dailyAnalysisCount}/{dailyLimit === Infinity ? '∞' : dailyLimit} scans</span>
                         {dailyLimit !== Infinity && dailyAnalysisCount >= dailyLimit && (
                           <span className="text-amber-500">(Limit reached)</span>
@@ -503,7 +503,7 @@ export default function Home() {
 
                     <div className="flex flex-col items-center gap-3">
                       {!hasEverScanned && (
-                        <p className="text-[9px] text-foreground-muted text-center">
+                        <p className="text-[10px] text-foreground-muted text-center">
                           Or try one of these examples:
                         </p>
                       )}
@@ -523,7 +523,7 @@ export default function Home() {
                                 {wallet.name}
                               </span>
                               {archetypeLabel && (
-                                <span className="font-mono text-[8px] text-foreground-muted">
+                                <span className="font-mono text-[10px] text-foreground-muted">
                                   {archetypeLabel}
                                 </span>
                               )}
@@ -825,8 +825,6 @@ export default function Home() {
                           open={breakdownOpen}
                           onOpenChange={setBreakdownOpen}
                           metrics={convictionMetrics}
-                          positionCount={positionAnalyses.length}
-                          ethosScore={ethosScore?.score}
                         />
                       </>
                     ) : (

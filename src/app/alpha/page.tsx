@@ -207,7 +207,8 @@ export default function AlphaPage() {
                   />
                   <StatStrip
                     icon={<Zap className="w-3.5 h-3.5" />}
-                    label="Top Weighted"
+                    label="Top Cred-Weighted"
+                    sub="conviction × Ethos credibility"
                     value={
                       displayTraders[0]?.weightedScore ?? 0
                     }

@@ -103,27 +103,27 @@ function PositionCard({
               {/* Badges row - scrollable on mobile */}
               <div className="flex items-center gap-1 mt-1 overflow-x-auto pb-0.5">
                 {position.isEarlyExit && (
-                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-impatience/20 text-impatience rounded whitespace-nowrap shrink-0">
+                  <span className="px-1 py-0.5 text-[10px] sm:text-[10px] font-mono bg-impatience/20 text-impatience rounded whitespace-nowrap shrink-0">
                     EARLY EXIT
                   </span>
                 )}
                 {position.exitDetails && position.holdingPeriodDays < 7 && (
-                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-red-500/20 text-red-400 rounded whitespace-nowrap shrink-0">
+                  <span className="px-1 py-0.5 text-[10px] sm:text-[10px] font-mono bg-red-500/20 text-red-400 rounded whitespace-nowrap shrink-0">
                     PANIC SELL
                   </span>
                 )}
                 {position.maxMissedGain > 100 && position.holdingPeriodDays > 30 && (
-                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-patience/20 text-patience rounded whitespace-nowrap shrink-0">
+                  <span className="px-1 py-0.5 text-[10px] sm:text-[10px] font-mono bg-patience/20 text-patience rounded whitespace-nowrap shrink-0">
                     CONVICTION HOLD
                   </span>
                 )}
                 {position.hasReEntry && (
-                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-signal/20 text-signal rounded whitespace-nowrap shrink-0">
+                  <span className="px-1 py-0.5 text-[10px] sm:text-[10px] font-mono bg-signal/20 text-signal rounded whitespace-nowrap shrink-0">
                     RE-ENTRY
                   </span>
                 )}
                 {position.realizedPnL > position.entryDetails.totalValue * 0.5 && (
-                  <span className="px-1 py-0.5 text-[8px] sm:text-[10px] font-mono bg-emerald-200/20 text-emerald-400 rounded whitespace-nowrap shrink-0">
+                  <span className="px-1 py-0.5 text-[10px] sm:text-[10px] font-mono bg-emerald-200/20 text-emerald-400 rounded whitespace-nowrap shrink-0">
                     WIN
                   </span>
                 )}

@@ -70,7 +70,7 @@ function SliderTicks({
                 />
                 <span
                   className={cn(
-                    "text-[8px] font-mono mt-0.5 whitespace-nowrap transition-all",
+                    "text-[10px] font-mono mt-0.5 whitespace-nowrap transition-all",
                     isActive
                       ? "text-foreground-muted/70"
                       : "text-foreground-dim/50",

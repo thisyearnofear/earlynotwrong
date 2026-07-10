@@ -278,7 +278,7 @@ function PipelineGrid() {
           <span className="text-[10px] font-mono uppercase tracking-wider text-foreground">
             {step.label}
           </span>
-          <span className="text-[8px] text-foreground-muted leading-tight">{step.desc}</span>
+          <span className="text-[10px] text-foreground-muted leading-tight">{step.desc}</span>
         </motion.div>
       ))}
     </div>
@@ -888,7 +888,7 @@ function Dashboard({
                     </p>
                     {conviction.signals[0]?.weights && (
                       <p
-                        className="text-[9px] font-mono text-foreground-dim/70 mt-1"
+                        className="text-[10px] font-mono text-foreground-dim/70 mt-1"
                         title="Active signal weights shifted by current regime"
                       >
                         weights{" "}
@@ -971,7 +971,7 @@ function Dashboard({
                           {s.rationale}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-foreground-muted">
+                      <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted">
                         <span>contrarian <span className="text-signal">{s.breakdown.contrarian}</span></span>
                         <span>· rsi <span className="text-cyan-400">{s.breakdown.rsi}</span></span>
                         <span>· quality <span className="text-patience">{s.breakdown.quality}</span></span>
@@ -993,7 +993,7 @@ function Dashboard({
                         )}
                       </div>
                       {s.holderCount != null && (
-                        <div className="flex items-center gap-2 mt-0.5 text-[9px] font-mono text-foreground-dim">
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-foreground-dim">
                           <span>{s.holderCount.toLocaleString()} holders</span>
                           {s.holderGrowthPercent != null && (
                             <span className={s.holderGrowthPercent >= 0 ? "text-emerald-500" : "text-impatience"}>
@@ -1075,7 +1075,7 @@ function Dashboard({
                             <span className="text-sm font-semibold">{p.symbol}</span>
                             {verdict && (
                               <span className={cn(
-                                "text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-full border",
+                                "text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-full border",
                                 verdict.action === "HOLD"
                                   ? "border-patience/30 bg-patience/10 text-patience"
                                   : verdict.action === "EXIT_TRAIL"
@@ -1086,13 +1086,13 @@ function Dashboard({
                               </span>
                             )}
                             {verdict?.heldThroughDrawdown && (
-                              <span className="text-[9px] font-mono text-signal">
+                              <span className="text-[10px] font-mono text-signal">
                                 ◆ early, not wrong
                               </span>
                             )}
                             {p.stuck && (
                               <span
-                                className="text-[9px] font-mono px-1.5 py-0.5 rounded-full border border-impatience/30 bg-impatience/10 text-impatience"
+                                className="text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-impatience/30 bg-impatience/10 text-impatience"
                                 title={`Unexitable — ${p.failedExitAttempts ?? 0} failed exit attempts`}
                               >
                                 STUCK

@@ -44,7 +44,7 @@ export function MantleStrategyLens() {
             </p>
           </div>
         </div>
-        <div className="px-2 py-1 rounded-full bg-[#65b3ae]/15 border border-[#65b3ae]/25 text-[9px] font-mono font-bold text-[#65b3ae] uppercase shrink-0">
+        <div className="px-2 py-1 rounded-full bg-[#65b3ae]/15 border border-[#65b3ae]/25 text-[10px] font-mono font-bold text-[#65b3ae] uppercase shrink-0">
           Demo Lens
         </div>
       </div>
@@ -66,7 +66,7 @@ export function MantleStrategyLens() {
                     <div className="font-mono text-xs font-bold text-foreground">
                       {asset.symbol}
                     </div>
-                    <div className="text-[9px] font-mono text-foreground-muted uppercase truncate">
+                    <div className="text-[10px] font-mono text-foreground-muted uppercase truncate">
                       {asset.label}
                     </div>
                   </div>
@@ -83,7 +83,7 @@ export function MantleStrategyLens() {
         })}
       </div>
 
-      <p className="text-[9px] text-foreground-muted font-mono leading-relaxed italic">
+      <p className="text-[10px] text-foreground-muted font-mono leading-relaxed italic">
         * This curated lens helps judges see how ENW extends from Solana/Base behavior into Mantle-native strategy intelligence.
       </p>
     </div>

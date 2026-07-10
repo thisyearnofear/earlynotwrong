@@ -89,7 +89,7 @@ export function ConvictionBadge({
       icon: "p-1.5",
       iconSize: "w-3 h-3",
       text: "text-xs",
-      label: "text-[7px]",
+      label: "text-[10px]",
       sparkle: "w-2 h-2"
     },
     md: {
@@ -97,7 +97,7 @@ export function ConvictionBadge({
       icon: "p-2.5",
       iconSize: "w-6 h-6",
       text: "text-xl",
-      label: "text-[9px]",
+      label: "text-[10px]",
       sparkle: "w-3 h-3"
     },
     lg: {

@@ -97,7 +97,7 @@ export function Terminal({ logs, className }: TerminalProps) {
               onClick={() => setSimplified(true)}
               aria-pressed={simplified}
               className={cn(
-                "text-[9px] tracking-wider uppercase px-2 py-0.5 transition-all",
+                "text-[10px] tracking-wider uppercase px-2 py-0.5 transition-all",
                 simplified
                   ? "bg-signal/10 text-signal"
                   : "text-foreground-muted hover:text-foreground",
@@ -109,7 +109,7 @@ export function Terminal({ logs, className }: TerminalProps) {
               onClick={() => setSimplified(false)}
               aria-pressed={!simplified}
               className={cn(
-                "text-[9px] tracking-wider uppercase px-2 py-0.5 border-l border-border transition-all",
+                "text-[10px] tracking-wider uppercase px-2 py-0.5 border-l border-border transition-all",
                 !simplified
                   ? "bg-signal/10 text-signal"
                   : "text-foreground-muted hover:text-foreground",
@@ -135,7 +135,7 @@ export function Terminal({ logs, className }: TerminalProps) {
             <p className="text-[10px] text-foreground-muted">Waiting for key signals...</p>
             <button
               onClick={() => setSimplified(false)}
-              className="text-[9px] text-signal hover:underline mt-2"
+              className="text-[10px] text-signal hover:underline mt-2"
             >
               Switch to Advanced view
             </button>

@@ -41,8 +41,28 @@ export interface ConvictionAnalysis {
   daysHeld: number;
 }
 
+export interface ScoreComponent {
+  /** The measured input (a rate/percentage, 0–100 scale). */
+  value: number;
+  /** Points this component contributed to the score (negative = penalty). */
+  points: number;
+}
+
+/** Exact server-computed component contributions behind a conviction score. */
+export interface ScoreBreakdown {
+  winRate: ScoreComponent;
+  upsideCapture: ScoreComponent;
+  earlyExitMitigation: ScoreComponent;
+  holdingPeriod: ScoreComponent;
+  diamondHands: ScoreComponent;
+  consistency: ScoreComponent;
+  panicSell: ScoreComponent;
+}
+
 export interface ConvictionMetrics {
   score: number;
+  /** Present on fresh analyses; absent on older cached results. */
+  breakdown?: ScoreBreakdown;
   patienceTax: number;
   upsideCapture: number;
   earlyExits: number;

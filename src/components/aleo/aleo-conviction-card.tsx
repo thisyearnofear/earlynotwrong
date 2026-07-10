@@ -95,7 +95,7 @@ export function AleoConvictionCard() {
           <ExternalLink className="w-2.5 h-2.5" />
           {APP_CONFIG.chains.aleo.programId} on Aleo Testnet
         </a>
-        <p className="text-[9px] font-mono text-foreground-muted/70 leading-snug mt-1.5">
+        <p className="text-[10px] font-mono text-foreground-muted/70 leading-snug mt-1.5">
           Treasury key never touches Vercel — vouchers signed on a separate VPS over an
           HMAC channel, nonces single-use on-chain.{" "}
           <a
@@ -176,7 +176,7 @@ export function AleoConvictionCard() {
                   )}
                 </Button>
                 {lastTxId.startsWith("shield_") && (
-                  <p className="text-[9px] text-center text-signal italic px-4 leading-tight">
+                  <p className="text-[10px] text-center text-signal italic px-4 leading-tight">
                     Shield Wallet is assigning a permanent ID. Please check back in a few seconds.
                   </p>
                 )}
@@ -200,7 +200,7 @@ export function AleoConvictionCard() {
               Premium Alpha
             </div>
             {isAleoPremium && (
-              <Badge className="bg-signal/20 text-signal border-signal/30 text-[8px] h-4 px-1">
+              <Badge className="bg-signal/20 text-signal border-signal/30 text-[10px] h-4 px-1">
                 UNLOCKED
               </Badge>
             )}
@@ -209,7 +209,7 @@ export function AleoConvictionCard() {
           {!isAleoPremium ? (
             <Button 
               variant="ghost" 
-              className="w-full h-8 text-[9px] font-mono border border-signal/20 hover:bg-signal/10 hover:text-signal transition-all"
+              className="w-full h-8 text-[10px] font-mono border border-signal/20 hover:bg-signal/10 hover:text-signal transition-all"
               onClick={handlePurchasePremium}
               disabled={isMinting || !isAleoConnected}
             >
@@ -220,7 +220,7 @@ export function AleoConvictionCard() {
               {/* Rebate row hidden by config when the on-chain program lacks a
                   claim_rebate entry point (v2 didn't; v3 does). */}
               {APP_CONFIG.chains.aleo.rebatesEnabled && (
-                <div className="flex justify-between items-center text-[9px] font-mono">
+                <div className="flex justify-between items-center text-[10px] font-mono">
                   <span className="text-foreground-muted">PATIENCE REBATE:</span>
                   {!rebateTxId ? (
                     <button
@@ -245,11 +245,11 @@ export function AleoConvictionCard() {
                   )}
                 </div>
               )}
-              <div className="flex justify-between items-center text-[9px] font-mono">
+              <div className="flex justify-between items-center text-[10px] font-mono">
                 <span className="text-foreground-muted">WHALE SIGNALS:</span>
                 <span className="text-signal">ACTIVE</span>
               </div>
-              <div className="flex justify-between items-center text-[9px] font-mono">
+              <div className="flex justify-between items-center text-[10px] font-mono">
                 <span className="text-foreground-muted">EXIT MAP:</span>
                 <span className="text-signal">SYNCED</span>
               </div>
