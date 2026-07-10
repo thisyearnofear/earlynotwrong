@@ -2,13 +2,17 @@
 
 > Being early feels like being wrong. Until it doesn't.
 
-An autonomous on-chain trading agent that scores **behavioral conviction**
-(not price predictions), executes self-custody trades on BNB Smart Chain,
-and anchors a verifiable record of every decision to **two settlement
-chains** — then exposes that record as a **reputation marketplace** so any
-other AI agent can hire it. Other agents query the record via **Model
-Context Protocol** with x402 micropayments on Casper, or through the
-**CROO Agent Protocol (CAP)** with USDC settlement on Base.
+An autonomous trading agent whose entire decision history is publicly
+verifiable. It buys quality assets during fear (never chases strength),
+holds through ordinary drawdown by design, and publishes every decision —
+entries, exits, losses included — to an on-chain record that anyone, human
+or AI agent, can audit or pay to query.
+
+Under the hood: trades execute self-custody on BNB Smart Chain; the
+decision record anchors to two settlement chains (Mantle ERC-8004 +
+Casper Odra); and other agents query it via **Model Context Protocol**
+with x402 micropayments on Casper, or through the **CROO Agent Protocol
+(CAP)** with USDC settlement on Base.
 
 ```
 CMC Agent Hub ─► Conviction Engine ─► Risk Guardrails ─► TWAK Execution ─► Anchor Layer
@@ -76,8 +80,9 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 - **MCP reputation API** — `POST /mcp` (5 tools, free + x402-paid). See
   [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md#reproduce-the-live-402-challenge)
   for the one-curl reproduction.
-- **CAP reputation API** — listed on the CROO Agent Store; runtime connects via
-  the `@croo-network/sdk` WebSocket and accepts USDC orders.
+- **CAP reputation API** — implemented and listed on the CROO Agent Store;
+  the live WebSocket connection activates once the `CROO_SDK_KEY` arrives
+  (see "Current status" below). Not yet accepting live USDC orders.
 - **CAP status endpoint** — `GET /cap/status` on port 31777
 - **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through)
 - **Latest dual-chain anchor** — verifiable on

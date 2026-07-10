@@ -26,7 +26,7 @@ The agent is implemented as a standalone Node.js process running autonomously on
 
 The agent embodies "Early, Not Wrong" through four exit tiers:
 - **HOLD** through ordinary drawdown (the default — patience is the strategy)
-- **EXIT_PARTIAL** at +50% gain — sell 33%, let the rest ride (capital recycling)
+- **EXIT_PARTIAL** at +50% *current* gain (not peak — a spike that faded doesn't trigger a sale) — sell 33%, let the rest ride (capital recycling)
 - **EXIT_STOP** at −35% — thesis invalidated, cap the loss
 - **EXIT_TRAIL** at +100% peak → 30% give-back — lock the asymmetry
 
@@ -100,11 +100,11 @@ Most trading agents fall into one of three categories: signal-based (RSI/MACD, p
 The question is "which tokens have the strongest behavioral conviction right now?", not "which will go up?":
 
 - **Contrarian (30)** — Rewards assets down 7d during fear (the "early, not wrong" thesis literalized)
-- **RSI timing (10)** — Synthesized RSI(14) from 7d return; bonus for oversold
+- **RSI timing (10)** — Real RSI(14) from SoSoValue daily klines for top candidates; when klines are unavailable it falls back to a synthesis from the 7d return at **half weight**, since that fallback is not independent of the contrarian factor
 - **Quality (15)** — Market cap × liquidity filter (capped downside, room to run)
 - **Regime (20)** — Fear & Greed + funding rate composite (entering when market is fearful)
 - **Holder growth (10)** — On-chain holder base expansion via NodeReal JSON-RPC + CoinGecko fallback ("smart money accumulating")
-- **Volatility penalty** — Subtracted for erratic 7d price paths
+- **Volatility penalty** — Subtracted for *erratic* paths: measures how far the 24h move deviates from the smooth 7d trend (`|24h − 7d/7|`), so a clean decline is not penalized but a falling knife that's bouncing is
 
 ### Self-Funding Harvest Ladder
 

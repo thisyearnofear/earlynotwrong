@@ -23,10 +23,10 @@ import {
   TrendingUp,
   Shield,
   AlertTriangle,
-  Settings,
   Share2,
   Copy,
   Check,
+  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { keccak256, toBytes } from "viem";
@@ -42,7 +42,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
@@ -79,7 +78,6 @@ export default function Home() {
     dataQuality,
     logs,
     parameters,
-    setParameters,
     reset,
     errorState,
     clearError,
@@ -122,6 +120,7 @@ export default function Home() {
   }, [analysisChain, targetAddress]);
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const hasScanned = !isAnalyzing && logs.length > 0;
   const [hasEverScanned, setHasEverScanned] = useState(false);
   
@@ -131,15 +130,10 @@ export default function Home() {
       setHasEverScanned(localStorage.getItem('enw_has_scanned') === 'true');
     }
   }, []);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const prevHasScanned = useRef(false);
 
   useEffect(() => {
     if (hasScanned && !prevHasScanned.current && convictionMetrics) {
-      // Use setTimeout to avoid synchronous setState inside effect which triggers cascading renders
-      const timer = setTimeout(() => setShowSuccessMessage(true), 0);
-      const hideTimer = setTimeout(() => setShowSuccessMessage(false), 4000);
-      
       // Autoscroll to results once scan finishes
       const scrollTimer = setTimeout(() => {
         const resultsSection = document.getElementById("conviction-results");
@@ -152,13 +146,24 @@ export default function Home() {
       }, 300); // Wait a bit for the animation and DOM update
 
       return () => {
-        clearTimeout(timer);
-        clearTimeout(hideTimer);
         clearTimeout(scrollTimer);
       };
     }
     prevHasScanned.current = hasScanned;
   }, [hasScanned, convictionMetrics]);
+
+  // Deep-link support: /?wallet=<address|ens|handle> triggers an analysis on
+  // load. This is how leaderboard rows (and shared links) open a wallet here.
+  const walletParamHandled = useRef(false);
+  useEffect(() => {
+    if (walletParamHandled.current || isAnalyzing) return;
+    const wallet = new URLSearchParams(window.location.search).get("wallet");
+    if (wallet) {
+      walletParamHandled.current = true;
+      analyzeWallet(wallet);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [isCopied, setIsCopied] = useState(false);
   const handleCopyAddress = useCallback(() => {
@@ -318,72 +323,6 @@ export default function Home() {
                 {activeTab === "analyzer" ? (
                   <div className="flex flex-col items-center gap-8 pt-4">
                   <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-10 px-4 rounded-full border-border/50 hover:border-signal/50 font-mono text-xs text-foreground-muted gap-2"
-                        >
-                          <Settings className="w-4 h-4" />
-                          Filters
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Analysis Parameters</DialogTitle>
-                          <DialogDescription>
-                            Fine-tune the behavioral heuristics for your
-                            conviction audit.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-6 py-4">
-                          <div className="space-y-3">
-                            <label className="text-xs font-mono uppercase text-foreground-muted flex justify-between">
-                              Time Horizon{" "}
-                              <span>{parameters.timeHorizon} Days</span>
-                            </label>
-                            <input
-                              type="range"
-                              min="30"
-                              max="365"
-                              step="30"
-                              value={parameters.timeHorizon}
-                              onChange={(e) =>
-                                setParameters({
-                                  timeHorizon: parseInt(e.target.value) as
-                                    | 30
-                                    | 90
-                                    | 180
-                                    | 365,
-                                })
-                              }
-                              className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
-                            />
-                          </div>
-                          <div className="space-y-3">
-                            <label className="text-xs font-mono uppercase text-foreground-muted flex justify-between">
-                              Min. Trade Value{" "}
-                              <span>${parameters.minTradeValue}</span>
-                            </label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="1000"
-                              step="50"
-                              value={parameters.minTradeValue}
-                              onChange={(e) =>
-                                setParameters({
-                                  minTradeValue: parseInt(e.target.value),
-                                })
-                              }
-                              className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-signal"
-                            />
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-
                     {!hasScanned ? (
                       <Button
                         size="lg"
@@ -730,7 +669,9 @@ export default function Home() {
                           {convictionMetrics.archetype && (
                             <> · {convictionMetrics.archetype}</>
                           )}
-                          <> · Top {convictionMetrics.percentile}%</>
+                          {convictionMetrics.percentile != null && (
+                            <> · Top {convictionMetrics.percentile}%</>
+                          )}
                           <> · {positionAnalyses.length} positions</>
                         </span>
                       </div>
@@ -746,7 +687,6 @@ export default function Home() {
                         </Button>
                         <Link
                           href="/leaderboard"
-                          target="_blank"
                           className="text-xs font-mono text-foreground-muted hover:text-foreground px-3 py-1.5 rounded hover:bg-surface transition-colors"
                         >
                           Leaderboard
@@ -840,10 +780,15 @@ export default function Home() {
                               <div className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-bold text-foreground tracking-tighter text-glow">
                                 <AnimatedScore value={convictionMetrics.score} />
                               </div>
-                              <div className="flex items-center gap-2 text-patience font-mono text-sm">
-                                <TrendingUp className="w-4 h-4" />
-                                Top {convictionMetrics.percentile}% of Traders
-                              </div>
+                              {convictionMetrics.percentile != null && (
+                                <div className="flex items-center gap-2 text-patience font-mono text-sm">
+                                  <TrendingUp className="w-4 h-4" />
+                                  Top {convictionMetrics.percentile}%
+                                  <span className="text-foreground-muted text-xs">
+                                    of {convictionMetrics.cohortSize ?? "all"} analyzed wallets
+                                  </span>
+                                </div>
+                              )}
                             </div>
 
                             {convictionMetrics.archetype && (
@@ -861,7 +806,9 @@ export default function Home() {
                               <div className="flex justify-between items-baseline text-xs font-mono">
                                 <span className="uppercase text-foreground-muted">Patience Tax</span>
                                 <span className="text-lg font-bold text-impatience">
-                                  -${formatCurrency(convictionMetrics.patienceTax)}
+                                  {convictionMetrics.patienceTax > 0
+                                    ? `−${formatCurrency(convictionMetrics.patienceTax)}`
+                                    : formatCurrency(0)}
                                 </span>
                               </div>
                               <div className="flex justify-between items-baseline text-xs font-mono">
@@ -925,57 +872,58 @@ export default function Home() {
                   />
                 </motion.div>
 
-                {/* Mantle Agentic Card */}
-                {mantle.isMantleMode && (
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
+                {/* Verify & Anchor — on-chain infrastructure behind progressive
+                    disclosure so the behavioral payoff stays front and center. */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-12"
+                >
+                  <button
+                    onClick={() => setVerifyOpen((v) => !v)}
+                    aria-expanded={verifyOpen}
+                    className="w-full flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border hover:border-signal/40 transition-colors"
                   >
-                    <MantleConvictionCard
-                      thesisHash={thesisHash}
-                      subjectHash={subjectHash}
-                      subjectLabel={targetAddress ?? "No wallet selected"}
-                      convictionScore={convictionMetrics?.score ?? 0}
-                      archetype={convictionMetrics?.archetype ?? "Unclassified"}
+                    <span className="text-xs font-mono uppercase tracking-widest text-foreground-muted">
+                      Verify &amp; Anchor On-Chain
+                      <span className="ml-2 normal-case tracking-normal text-foreground-dim">
+                        {mantle.isMantleMode ? "Mantle · " : ""}Aleo · Privacy Cash
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 text-foreground-muted transition-transform",
+                        verifyOpen && "rotate-180",
+                      )}
                     />
-                  </motion.div>
-                )}
-
-                {/* Mantle Strategy Lens */}
-                {mantle.isMantleMode && (
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                  >
-                    <MantleStrategyLens />
-                  </motion.div>
-                )}
-
-                {/* Aleo Privacy Card */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                >
-                  <AleoConvictionCard />                </motion.div>
-
-                {/* Privacy Cash Private Treasury */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                >
-                  <PrivateBalanceCard />
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {verifyOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+                          {mantle.isMantleMode && (
+                            <MantleConvictionCard
+                              thesisHash={thesisHash}
+                              subjectHash={subjectHash}
+                              subjectLabel={targetAddress ?? "No wallet selected"}
+                              convictionScore={convictionMetrics?.score ?? 0}
+                              archetype={convictionMetrics?.archetype ?? "Unclassified"}
+                            />
+                          )}
+                          {mantle.isMantleMode && <MantleStrategyLens />}
+                          <AleoConvictionCard />
+                          <PrivateBalanceCard />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
 
                 {/* Position Explorer */}
