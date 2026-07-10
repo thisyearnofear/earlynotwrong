@@ -14,11 +14,32 @@ export function Terminal({ logs, className }: TerminalProps) {
   const [mounted, setMounted] = useState(false);
   const [simplified, setSimplified] = useState(false);
 
+  // Record a real timestamp for each log line when it first appears, so the
+  // audit-log times are stable across re-renders. Keyed by position in the
+  // append-only `logs` array; the stream resetting truncates stale entries.
+  const [timestamps, setTimestamps] = useState<string[]>([]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTimestamps((prev) => {
+      if (prev.length === logs.length) return prev;
+      if (prev.length > logs.length) return prev.slice(0, logs.length);
+      const now = new Date().toISOString().split("T")[1].split(".")[0];
+      return [...prev, ...Array(logs.length - prev.length).fill(now)];
+    });
+  }, [logs.length]);
+
+  // Pair each line with its original index so filtered views keep stable
+  // keys and timestamps.
+  const entries = useMemo(
+    () => logs.map((log, index) => ({ log, index })),
+    [logs],
+  );
+
   // In simplified mode, filter to only key status lines
   const displayLogs = useMemo(() => {
-    if (!simplified) return logs;
-    return logs.filter(
-      (log) =>
+    if (!simplified) return entries;
+    return entries.filter(
+      ({ log }) =>
         log.includes("CONVICTION_SCORE") ||
         log.includes("ETHOS_SCORE") ||
         log.includes("UNIFIED_TRUST_SCORE") ||
@@ -37,7 +58,7 @@ export function Terminal({ logs, className }: TerminalProps) {
         log.includes("INSUFFICIENT") ||
         log.includes("CACHED ANALYSIS")
     );
-  }, [logs, simplified]);
+  }, [entries, simplified]);
 
   useEffect(() => {
     const handle = requestAnimationFrame(() => {
@@ -66,18 +87,37 @@ export function Terminal({ logs, className }: TerminalProps) {
           <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/50" />
         </div>
         <div className="flex items-center gap-3">
-          {/* Simplified/Advanced toggle */}
-          <button
-            onClick={() => setSimplified((prev) => !prev)}
-            className={cn(
-              "text-[9px] tracking-wider uppercase px-2 py-0.5 rounded border transition-all",
-              simplified
-                ? "bg-surface text-foreground border-border hover:border-foreground/30"
-                : "bg-signal/10 text-signal border-signal/20 hover:bg-signal/20",
-            )}
+          {/* Simplified/Advanced segmented control */}
+          <div
+            role="group"
+            aria-label="Log detail level"
+            className="flex items-center rounded border border-border overflow-hidden"
           >
-            {simplified ? "SIMPLE" : "ADV"}
-          </button>
+            <button
+              onClick={() => setSimplified(true)}
+              aria-pressed={simplified}
+              className={cn(
+                "text-[9px] tracking-wider uppercase px-2 py-0.5 transition-all",
+                simplified
+                  ? "bg-signal/10 text-signal"
+                  : "text-foreground-muted hover:text-foreground",
+              )}
+            >
+              Simple
+            </button>
+            <button
+              onClick={() => setSimplified(false)}
+              aria-pressed={!simplified}
+              className={cn(
+                "text-[9px] tracking-wider uppercase px-2 py-0.5 border-l border-border transition-all",
+                !simplified
+                  ? "bg-signal/10 text-signal"
+                  : "text-foreground-muted hover:text-foreground",
+              )}
+            >
+              Adv
+            </button>
+          </div>
           <div className="text-[10px] text-foreground-muted tracking-widest uppercase">
             Agent_Trace_Log // Multi_Chain_Oracle_v1.0
           </div>
@@ -101,7 +141,7 @@ export function Terminal({ logs, className }: TerminalProps) {
             </button>
           </div>
         ) : (
-          displayLogs.map((log, index) => {
+          displayLogs.map(({ log, index }) => {
           const isNetworkLog = log.startsWith("> NETWORK:");
           const network = isNetworkLog ? log.split(":")[1].trim() : "";
 
@@ -113,21 +153,17 @@ export function Terminal({ logs, className }: TerminalProps) {
               transition={{ duration: 0.2 }}
               className={cn(
                 "break-all",
-                log.includes("ERROR") || log.includes("ABORTING")
-                  ? "text-red-500"
-                  : log.includes("WARNING")
-                    ? "text-impatience"
-                    : log.includes("SUCCESS") || log.includes("COMPLETE")
-                      ? "text-patience"
-                      : "text-signal",
+                log.includes("ERROR") ||
+                  log.includes("ABORTING") ||
+                  log.includes("WARNING")
+                  ? "text-impatience"
+                  : log.includes("SUCCESS") || log.includes("COMPLETE")
+                    ? "text-patience"
+                    : "text-signal",
               )}
             >
               <span className="opacity-50 mr-2">
-                [
-                {mounted
-                  ? new Date().toISOString().split("T")[1].split(".")[0]
-                  : "--:--:--"}
-                ]
+                [{mounted ? timestamps[index] ?? "--:--:--" : "--:--:--"}]
               </span>
               {isNetworkLog ? (
                 <>

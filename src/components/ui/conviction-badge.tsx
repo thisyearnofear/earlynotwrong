@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Shield, Gem, Ghost, Zap, Sparkles } from "lucide-react";
+import { Shield, Gem, Ghost, Zap, Sparkles, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -12,7 +12,11 @@ export type Archetype =
   | "Diamond Hand";
 
 interface ConvictionBadgeProps {
-  archetype: Archetype;
+  /**
+   * Known archetypes get their full config; any other string (e.g.
+   * "Unclassified") falls back to a neutral badge instead of crashing.
+   */
+  archetype: Archetype | (string & {});
   className?: string;
   showDescription?: boolean;
   size?: 'sm' | 'md' | 'lg';
@@ -53,6 +57,17 @@ const ARCHETYPE_CONFIG = {
   },
 };
 
+// Neutral fallback for archetypes not present in ARCHETYPE_CONFIG
+// (e.g. "Unclassified" traders).
+const FALLBACK_CONFIG = {
+  icon: HelpCircle,
+  color: "text-foreground-muted",
+  bg: "bg-surface/50",
+  border: "border-border",
+  glow: "",
+  description: "Not enough trading history to classify this archetype yet.",
+};
+
 /**
  * ConvictionBadge
  * A theatrical representation of a trader's behavioral archetype.
@@ -65,7 +80,7 @@ export function ConvictionBadge({
   showDescription = false,
   size = 'md',
 }: ConvictionBadgeProps) {
-  const config = ARCHETYPE_CONFIG[archetype];
+  const config = ARCHETYPE_CONFIG[archetype as Archetype] ?? FALLBACK_CONFIG;
   const Icon = config.icon;
 
   const sizeClasses = {

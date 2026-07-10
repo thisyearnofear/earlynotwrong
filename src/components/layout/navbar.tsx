@@ -110,7 +110,7 @@ export function Navbar() {
             <div className="flex items-center gap-2 sm:gap-3">
               <Link
                 href="/"
-                className="font-bold text-base sm:text-lg tracking-tight text-foreground hover:text-white transition-colors flex items-center gap-1"
+                className="font-bold text-base sm:text-lg tracking-tight text-foreground hover:opacity-80 transition-opacity flex items-center gap-1"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <span className="hidden sm:inline">EARLY</span>
@@ -243,18 +243,12 @@ export function Navbar() {
               </Dialog>
             )}
 
-            {currentScore === 0 && !isShowcaseMode && (
-              <div className="hidden md:flex items-center gap-2 text-xs font-mono text-foreground-muted mr-2">
-                <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
-                SYSTEM ONLINE
-              </div>
-            )}
-
             <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
               <DialogTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label="Search wallets"
                   className="h-10 w-10 text-foreground-muted hover:text-foreground"
                 >
                   <Search className="w-5 h-5" />
@@ -280,6 +274,11 @@ export function Navbar() {
             <Button
               variant="ghost"
               size="icon"
+              aria-label={
+                theme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+              }
               className="h-10 w-10 text-foreground-muted hover:text-foreground"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
@@ -298,6 +297,8 @@ export function Navbar() {
             <Button
               variant="ghost"
               size="icon"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
               className="h-10 w-10 text-foreground-muted hover:text-foreground lg:hidden"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
@@ -353,6 +354,9 @@ export function Navbar() {
                 <span className="text-sm font-mono text-foreground-muted">Demo Mode</span>
                 <button
                   onClick={() => toggleShowcaseMode()}
+                  role="switch"
+                  aria-checked={isShowcaseMode}
+                  aria-label="Demo Mode"
                   className={cn(
                     "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
                     isShowcaseMode ? "bg-signal" : "bg-surface"
@@ -372,6 +376,9 @@ export function Navbar() {
                 <span className="text-sm font-mono text-[#65b3ae]">Mantle Mode</span>
                 <button
                   onClick={() => useAppStore.getState().setMantleState({ isMantleMode: !mantle.isMantleMode })}
+                  role="switch"
+                  aria-checked={mantle.isMantleMode}
+                  aria-label="Mantle Mode"
                   className={cn(
                     "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
                     mantle.isMantleMode ? "bg-[#65b3ae]" : "bg-surface"
@@ -391,13 +398,6 @@ export function Navbar() {
                 <WalletConnect className="w-full h-12 justify-center" />
               </div>
 
-              {/* Mobile Status */}
-              {currentScore === 0 && !isShowcaseMode && (
-                <div className="flex items-center gap-2 px-4 py-3 text-sm font-mono text-foreground-muted">
-                  <span className="w-2 h-2 rounded-full bg-patience animate-pulse"></span>
-                  SYSTEM ONLINE
-                </div>
-              )}
             </div>
           </motion.div>
         )}

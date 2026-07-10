@@ -64,6 +64,11 @@ export function TunnelBackground() {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Respect the user's motion preference: skip the WebGL scene entirely and
+    // leave the static themed background + vignette.
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (reducedMotion.matches) return;
+
     // 1. Setup Scene
     const scene = new THREE.Scene();
     const bgColor = isDark ? 0x000000 : 0xf8f8f8;
@@ -234,6 +239,14 @@ export function TunnelBackground() {
 
     animate();
 
+    // 6b. Pause the render loop while the tab is hidden — no reason to burn
+    // GPU/battery on a background decoration nobody can see.
+    const handleVisibility = () => {
+      cancelAnimationFrame(frameIdRef.current);
+      if (!document.hidden) animate();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     // 7. Resize Handler
     const handleResize = () => {
       if (!cameraRef.current || !rendererRef.current) return;
@@ -248,6 +261,7 @@ export function TunnelBackground() {
     // 8. Cleanup
     return () => {
       window.removeEventListener("resize", handleResize);
+      document.removeEventListener("visibilitychange", handleVisibility);
       cancelAnimationFrame(frameIdRef.current);
       if (rendererRef.current) {
         rendererRef.current.dispose();

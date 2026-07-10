@@ -358,7 +358,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAleoPremium: (enabled) => set({ isAleoPremium: enabled }),
   setWalletModalOpen: (open) => set({ isWalletModalOpen: open }),
   theme: "dark",
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem("enw_theme", theme);
+      } catch {
+        // Storage unavailable (private mode) — theme still applies for the session.
+      }
+    }
+    set({ theme });
+  },
   reset: () =>
     set({
       isAnalyzing: false,

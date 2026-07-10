@@ -24,6 +24,9 @@
     --impatience: #d97706; /* Amber-600 */
     --impatience-dim: rgba(217, 119, 6, 0.05);
 
+    /* Warning (Errors / degraded states - Orange, distinct from impatience) */
+    --warning: #ea580c; /* Orange-600 */
+
     /* Ethos Brand Alignment */
     --ethos-purple: #7c3aed;
 }
@@ -52,6 +55,9 @@
     --impatience: #fbbf24; /* Amber-400 */
     --impatience-dim: rgba(251, 191, 36, 0.1);
 
+    /* Warning (Errors / degraded states - Orange, distinct from impatience) */
+    --warning: #fb923c; /* Orange-400 */
+
     /* Ethos Brand Alignment */
     --ethos-purple: #8b5cf6;
 }
@@ -64,11 +70,12 @@
 
     --color-foreground: var(--foreground);
     --color-foreground-muted: var(--foreground-muted);
-    --color-foreground-dim: var(--color-foreground-dim);
+    --color-foreground-dim: var(--foreground-dim);
 
     --color-signal: var(--signal);
     --color-patience: var(--patience);
     --color-impatience: var(--impatience);
+    --color-warning: var(--warning);
     --color-ethos: var(--ethos-purple);
 
     --font-sans: var(--font-geist-sans);
@@ -151,5 +158,20 @@ body {
     /* Smooth momentum scrolling on iOS */
     .momentum-scroll {
         -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* Respect the user's motion preference: collapse CSS animations and
+   transitions to near-instant. (framer-motion is handled separately via
+   MotionConfig reducedMotion="user"; the WebGL tunnel checks the media
+   query itself.) */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }

@@ -43,7 +43,7 @@ export const metadata: Metadata = {
       {
         url: `${APP_URL}/api/og`,
         width: 1200,
-        height: 800,
+        height: 630,
         alt: "Early, Not Wrong - On-chain Conviction Analysis",
       },
     ],
@@ -79,10 +79,15 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: "cover",
 };
+
+/**
+ * Applies the persisted (or OS-preferred) theme class before first paint so
+ * the page never flashes the wrong palette. Mirrors the resolution logic in
+ * ThemeManager, which takes over after hydration.
+ */
+const themeInitScript = `(function(){try{var t=localStorage.getItem("enw_theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";}if(t==="dark"){document.documentElement.classList.add("dark");}}catch(e){document.documentElement.classList.add("dark");}})();`;
 
 export default function RootLayout({
   children,
@@ -90,7 +95,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

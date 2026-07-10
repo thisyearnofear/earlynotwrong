@@ -14,6 +14,7 @@ import { AleoWalletProvider } from "@provablehq/aleo-wallet-adaptor-react";
 import { ShieldWalletAdapter } from "@provablehq/aleo-wallet-adaptor-shield";
 import { Network } from "@provablehq/aleo-types";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { MotionConfig } from "framer-motion";
 import { miniApp, type MiniAppState } from "@/lib/farcaster-miniapp";
 import { APP_CONFIG } from "@/lib/config";
 
@@ -126,9 +127,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 autoConnect
               >
                 <TooltipProvider>
-                  <MiniAppProvider>
-                    {children}
-                  </MiniAppProvider>
+                  <MotionConfig reducedMotion="user">
+                    <MiniAppProvider>
+                      {children}
+                    </MiniAppProvider>
+                  </MotionConfig>
                 </TooltipProvider>
               </AleoWalletProvider>
             </SolanaWalletModalProvider>
