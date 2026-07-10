@@ -10,7 +10,7 @@
  * agent runnable in simulator / local-dev mode without a Store listing.
  */
 
-import { AgentClient, Config, EventType } from "@croo-network/sdk";
+import { AgentClient, Config, EventType, type Logger } from "@croo-network/sdk";
 import { AGENT_CONFIG } from "../../lib/config.js";
 import { fulfillCapOrder } from "./handler.js";
 import { CAP_SERVICE_IDS } from "./pricing.js";
@@ -46,9 +46,28 @@ export async function startCapClient(): Promise<void> {
     return;
   }
 
+  // The SDK's default logger (plain console) logs the connect URL verbatim,
+  // which embeds the SDK key as a `?key=` query param — redact it here since
+  // we don't control that log call inside @croo-network/sdk.
+  const redact = (value: unknown): unknown => {
+    if (typeof value === "string") return value.replaceAll(sdkKey, "***");
+    if (Array.isArray(value)) return value.map(redact);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v)]));
+    }
+    return value;
+  };
+  const logger: Logger = {
+    info: (message, ...args) => console.log(message, ...args.map(redact)),
+    warn: (message, ...args) => console.warn(message, ...args.map(redact)),
+    error: (message, ...args) => console.error(message, ...args.map(redact)),
+    debug: (message, ...args) => console.debug(message, ...args.map(redact)),
+  };
+
   const config: Config = {
     baseURL: AGENT_CONFIG.cap.apiUrl,
     wsURL: AGENT_CONFIG.cap.wsUrl,
+    logger,
   };
   client = new AgentClient(config, sdkKey);
 

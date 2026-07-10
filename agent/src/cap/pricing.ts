@@ -2,20 +2,16 @@
  * CAP (CROO Agent Protocol) service pricing.
  *
  * Each service maps to one of the shared reputation tools in
- * `agent/src/mcp/tools.ts`. The serviceId is registered on the CROO Agent
- * Store; when a requester agent negotiates an order with that serviceId,
- * the CAP handler routes it to the matching tool.
+ * `agent/src/mcp/tools.ts`. When a requester agent negotiates an order with
+ * one of these serviceIds, the CAP handler routes it to the matching tool.
  *
- * Pricing philosophy (mirrors the x402/MCP side): the trust-decision query
- * (`reputation-agent`) is the free-equivalent — $0 is supported end-to-end
- * here (the handler and payment stats both handle a 0 amount) — while the
- * recurring-value live conviction data (`signals-live`) is the premium
- * product. The four reputation-* serviceIds are PRE-REGISTERED on the CROO
- * Store and must NOT be renamed; the Store listing price for
- * `reputation-agent` must be updated there to match the $0 here.
- *
- * NOTE: `signals-live` is a NEW serviceId — it must be registered on the
- * CROO Agent Store (see docs/CROO_INTEGRATION.md) before it is purchasable.
+ * Only `signals-live` (paid live-signal feed) is registered on the CROO
+ * Agent Store. `reputation-agent` is meant to be a free trust-decision
+ * query, but CROO's Store requires a positive price, so it stays free via
+ * MCP instead of being listed there. The other three need a `subjectHash` a
+ * cold Store buyer has no way to discover (see docs/CROO_INTEGRATION.md).
+ * All five stay in CAP_SERVICE_IDS so a requester who already knows what to
+ * ask for can still negotiate any of them directly.
  */
 
 export type CapServiceName =

@@ -82,9 +82,11 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
   conviction signals — is x402-paid). See
   [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md#reproduce-the-live-402-challenge)
   for the one-curl reproduction.
-- **CAP reputation API** — implemented and listed on the CROO Agent Store;
-  the live WebSocket connection activates once the `CROO_SDK_KEY` arrives
-  (see "Current status" below). Not yet accepting live USDC orders.
+- **CAP reputation API** — live: connected to CROO via WebSocket, with
+  `signals-live` ($0.05) registered and searchable on the CROO Agent Store
+  as "Early, Not Wrong". See [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md#why-only-one-service-is-store-listed)
+  for why the other four reputation tools (including the free
+  `reputation-agent` trust check) stay MCP-only instead.
 - **CAP status endpoint** — `GET /cap/status` on port 31777
 - **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through; recorded before the current pricing — `get_agent_reputation` shown as paid is now free)
 - **Latest dual-chain anchor** — verifiable on
@@ -130,14 +132,12 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
 ### Quick Start — CROO Agent Protocol (CAP)
 
 ```bash
-# 1. Create your agent + services on https://agent.croo.network
-#    Service IDs must match the keys in agent/src/cap/pricing.ts:
-#    • reputation-latest
-#    • reputation-history
-#    • reputation-cross-chain
-#    • reputation-agent      (free — the trust-decision query)
-#    • signals-live          (NEW — $0.05 live conviction signals; must be
-#                             registered on the CROO Store before purchasable)
+# 1. Create your agent on https://agent.croo.network, then register
+#    only this one service — the only one defensible for a cold Store
+#    buyer (see docs/CROO_INTEGRATION.md for why the other four
+#    reputation tools, including the free reputation-agent trust check,
+#    stay MCP-only instead of Store-listed):
+#    • signals-live          ($0.05 — live conviction signals)
 #
 # 2. Copy the SDK key from the CROO dashboard
 echo "CROO_SDK_KEY=croo_sk_..." >> agent/.env
@@ -150,10 +150,9 @@ echo "CROO_WS_URL=wss://api.croo.network/ws" >> agent/.env
 When the agent starts it will connect to CROO via WebSocket and accept
 incoming reputation orders. Payment settles on-chain in USDC on Base.
 
-> **Current status**: CAP code is implemented and the CROO wallet has been
-> generated (`0x5d3d23679DFb6b01107b50A840b3c2EbB45AeE2C`). Once you receive
-> the `CROO_SDK_KEY` from the Store, add it to `agent/.env` and restart the
-> agent to activate the live CAP connection.
+> **Current status**: live. CROO wallet `0x5d3d23679DFb6b01107b50A840b3c2EbB45AeE2C`
+> is whitelisted, `CROO_SDK_KEY` is set, and the agent is connected
+> (`[cap] Connected to CROO CAP`) — confirmed at `GET /cap/status`.
 
 ## Key Documents
 

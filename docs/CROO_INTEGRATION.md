@@ -9,7 +9,8 @@
 - CAP client code is implemented and merged (`agent/src/cap/`).
 - CROO test/whitelist wallet generated: `0x5d3d23679DFb6b01107b50A840b3c2EbB45AeE2C`.
 - Wallet private key stored in `agent/.env` locally and on the production VPS (`nuncio-vultr`).
-- Pending: CROO SDK key (`CROO_SDK_KEY`) and Store listing to activate the live WebSocket connection.
+- `CROO_SDK_KEY` is set; the agent is connected — `[cap] Connected to CROO CAP`, confirmed live at `GET /cap/status`.
+- Store listing: `signals-live` ($0.05) is registered and live on the CROO Agent Store — searchable at https://agent.croo.network as "Early, Not Wrong". `reputation-agent` and the three subject-lookup services are intentionally **not** Store-listed — see "Why only one service is Store-listed" below.
 
 ---
 
@@ -40,19 +41,24 @@ The agent's job is reduced to: **accept known services, run the matching reputat
 
 ## CAP Services
 
-The agent advertises five services on the CROO Agent Store. Each maps to one of the shared reputation tools:
+The agent's CAP client recognizes five serviceIds (`agent/src/cap/pricing.ts`), but only one is registered on the CROO Agent Store — the other four are reachable via MCP only. See the rationale below.
 
-| Service ID | Reputation Tool | USDC Price | Description |
+| Service ID | Reputation Tool | USDC Price | Store-listed? |
 |---|---:|---|---|
-| `reputation-latest` | `get_latest_conviction` | $0.005 | Most recent record across Mantle + Casper |
-| `reputation-history` | `get_subject_history` | $0.01 | Full chronological history cross-chain |
-| `reputation-cross-chain` | `cross_chain_lookup` | $0.01 | Mantle + Casper side-by-side + in-sync flag |
-| `reputation-agent` | `get_agent_reputation` | $0 (free) | Aggregate report (counts, mean score, dual-chain) — the trust-decision query |
-| `signals-live` | `get_live_signals` | $0.05 | Live conviction signals for the current cycle (the tradeable data) |
+| `signals-live` | `get_live_signals` | $0.05 | Yes — the tradeable live-signal product |
+| `reputation-agent` | `get_agent_reputation` | $0 (free) | No — CROO requires a positive price; a free query would contradict its own value prop. Free via MCP instead. |
+| `reputation-latest` | `get_latest_conviction` | $0.005 | No — MCP only |
+| `reputation-history` | `get_subject_history` | $0.01 | No — MCP only |
+| `reputation-cross-chain` | `cross_chain_lookup` | $0.01 | No — MCP only |
 
-Rationale: the trust-decision query (`reputation-agent`) is free so any agent can decide whether to trust ENW before spending; the recurring-value live signals are the paid product.
+### Why only one service is Store-listed
 
-Prices are configured in `agent/src/cap/pricing.ts`. The four `reputation-*` serviceIds are already registered on the CROO Store (do not rename them; the `reputation-agent` Store listing price needs updating to $0). **`signals-live` is a new serviceId and must be registered on the CROO Store before it is purchasable.**
+CROO Store buyers are cold — they discover a service with no prior context on ENW. `signals-live` is self-contained: a standalone live trading-signal feed, no prior knowledge required. Everything else is either undiscoverable or mispriced for a cold buyer:
+
+- The three subject-lookup services (`reputation-latest`, `reputation-history`, `reputation-cross-chain`) require the caller to already know a specific `subjectHash` — and only return data for tokens ENW has itself traded (~20 trades total, no search-by-symbol). A Store buyer has no way to discover what to query.
+- `reputation-agent` is designed to be the *free* trust-decision query — but CROO's Store requires a positive price ("price must be positive"), so listing it there would mean charging for what's supposed to be a free trust check, undermining the reason it exists. It stays free via MCP instead.
+
+Prices are configured in `agent/src/cap/pricing.ts`. `CAP_SERVICE_IDS` includes all five so the client still accepts/fulfills orders for the MCP-only ones if a requester negotiates them directly — only Store *discoverability* is scoped down, not functionality.
 
 ---
 
@@ -96,7 +102,7 @@ Methods actually called by our adapter:
 ## Setup
 
 1. **Create the agent on the CROO Agent Store** at https://agent.croo.network.
-2. **Create one service per row** in the table above. The `serviceId` in the Store must exactly match the keys in `agent/src/cap/pricing.ts`. The four `reputation-*` services are already registered; `signals-live` still needs to be created on the Store.
+2. **Create the one Store-listed service** (`signals-live` at $0.05). The `serviceId` in the Store must exactly match the key in `agent/src/cap/pricing.ts`. The other four serviceIds stay MCP-only by design (see "Why only one service is Store-listed" above) — don't register them on the Store.
 3. **Copy the SDK key** into the agent environment:
 
 ```bash
@@ -163,12 +169,12 @@ stream.on(EventType.OrderCompleted, async (e) => {
 });
 
 await client.negotiateOrder({
-  serviceId: "reputation-agent",
-  requirements: JSON.stringify({
-    subjectHash: "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a",
-  }),
+  serviceId: "signals-live",
+  requirements: JSON.stringify({}),
 });
 ```
+
+`signals-live` is the Store-listed service and needs no `subjectHash` — it returns the agent's own current-cycle data. The MCP-only services (e.g. `reputation-agent`) follow the same `negotiateOrder` shape but with a `subjectHash` in `requirements`, for a requester who already knows to ask for them directly.
 
 The `requirements` field must be a JSON object containing `subjectHash`. It is read from the negotiation before the agent accepts the order. (`signals-live` is the exception — it returns the agent's own current-cycle data and needs no `subjectHash`.)
 
