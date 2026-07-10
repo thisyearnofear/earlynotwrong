@@ -93,6 +93,18 @@ const DEFAULT_CONFIG: Partial<BacktestConfig> = {
   honeypotRate: 0.05,
 };
 
+/**
+ * Fixed seedable LCG PRNG — the same seed always produces the same path, so
+ * backtest runs (and variant comparisons) are deterministic.
+ */
+function makeRng(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
 function makeQuote(symbol: string, price: number, change7d: number): TokenQuote {
   return {
     id: 0,
@@ -157,11 +169,7 @@ export function generateSyntheticData(
   const dayCount = Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
 
   // Fixed seedable PRNG so the same run produces the same path.
-  let seed = 42;
-  const rnd = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
+  const rnd = makeRng(42);
 
   const klinesBySymbol = new Map<string, SosovalueKline[]>();
   // Synchronized "crash-and-recover" triangle wave: flat top, sharp decline,
@@ -172,7 +180,11 @@ export function generateSyntheticData(
   const recoverDays = 10;
   const cycle = flatDays + crashDays + recoverDays;
   const troughPrice = 0.3;
-  const recoverPeakPrice = 3.0;
+  // Recover exactly to the pre-crash level so the path is continuous across
+  // cycles. The old 3.0 overshoot teleported back to 1.0 at each cycle
+  // boundary, which made the flat top look like a 7d dip — entries fired at
+  // the TOP right before the crash instead of near the trough.
+  const recoverPeakPrice = 1.0;
   for (const symbol of symbols) {
     const klines: SosovalueKline[] = [];
     for (let i = -30; i < dayCount; i++) {
@@ -207,6 +219,8 @@ function buildDaysFromKlines(
 ): BacktestDay[] {
   const msPerDay = 24 * 60 * 60 * 1000;
   const days: BacktestDay[] = [];
+  // Seeded PRNG (not Math.random) keeps synthesized mcap/volume deterministic.
+  const rnd = makeRng(1337);
   for (let i = 0; i < dayCount; i++) {
     const ts = start.getTime() + i * msPerDay;
     const d = new Date(ts);
@@ -219,8 +233,8 @@ function buildDaysFromKlines(
         const change7d = weekAgo.close ? ((today.close - weekAgo.close) / weekAgo.close) * 100 : 0;
         const klineSlice = klines.slice(Math.max(0, idx - 29), idx + 1);
         const q = makeQuote(symbol, today.close, change7d);
-        q.marketCap = 10_000_000 + Math.floor(Math.random() * 490_000_000);
-        q.volume24h = 1_000_000 + Math.floor(Math.random() * 49_000_000);
+        q.marketCap = 10_000_000 + Math.floor(rnd() * 490_000_000);
+        q.volume24h = 1_000_000 + Math.floor(rnd() * 49_000_000);
         (q as any).klines = klineSlice;
         quotes.push(q);
       }
@@ -276,8 +290,26 @@ function cloneRegimeForWeights(regime: MarketRegime, adaptive: boolean): MarketR
   return { ...neutral, score: 50, fearLevel: "neutral" };
 }
 
-function totalValue(state: SimState): number {
-  return state.cashUsd + state.bnbUsd + state.positions.reduce((s, p) => s + p.amountUsd, 0);
+/**
+ * Mark a position to market: `p.amountUsd` is the cost BASIS, so the current
+ * value is the basis scaled by price appreciation since entry. Falls back to
+ * the basis when the price is unknown (missing quote that day).
+ */
+function positionValueUsd(p: HeldPosition, price: number): number {
+  return p.entryPriceUsd > 0 && price > 0
+    ? p.amountUsd * (price / p.entryPriceUsd)
+    : p.amountUsd;
+}
+
+function totalValue(state: SimState, priceMap?: Map<string, number>): number {
+  return (
+    state.cashUsd +
+    state.bnbUsd +
+    state.positions.reduce(
+      (s, p) => s + positionValueUsd(p, priceMap?.get(p.symbol.toUpperCase()) ?? 0),
+      0,
+    )
+  );
 }
 
 function sellPosition(
@@ -290,10 +322,14 @@ function sellPosition(
   gasUsd: number,
   slippageBps: number,
 ): number {
-  const sellValue = p.amountUsd * fraction * (1 - slippageBps / 10000);
+  // Proceeds come from CURRENT market value; P&L is measured against the
+  // cost basis of the slice sold. Valuing exits at basis would make every
+  // exit realize exactly −slippage regardless of the price path.
+  const sellValue = positionValueUsd(p, price) * fraction * (1 - slippageBps / 10000);
   const costBasisSold = p.amountUsd * fraction;
   const pnl = sellValue - costBasisSold;
-  state.cashUsd += sellValue;
+  // The live agent sells back to BNB — proceeds refill the entry bankroll.
+  state.bnbUsd += sellValue;
   state.realizedPnlUsd += pnl;
   state.gasSpentUsd += gasUsd;
   state.trades.push({
@@ -304,12 +340,12 @@ function sellPosition(
     pnlUsd: pnl,
     priceUsd: price,
   });
-  // Reduce the position's tracked cost basis and amount proportionally.
+  // Reduce the position's tracked cost basis proportionally.
   p.amountUsd *= 1 - fraction;
   return pnl;
 }
 
-function runBacktestVariant(
+export function runBacktestVariant(
   days: BacktestDay[],
   cfg: BacktestConfig,
   variant: string,
@@ -327,10 +363,14 @@ function runBacktestVariant(
 
   const initialValue = totalValue(state);
   let cycle = 0;
+  // Seeded PRNG for the simulated honeypot gate so variants stay comparable.
+  const rnd = makeRng(4242);
+  let lastPriceMap: Map<string, number> | undefined;
 
   for (const day of days) {
     cycle += 1;
     const priceMap = new Map(day.quotes.map((q) => [q.symbol.toUpperCase(), q.price]));
+    lastPriceMap = priceMap;
 
     // 1. Accrue price history onto positions and evaluate exits.
     for (const p of state.positions) {
@@ -366,7 +406,7 @@ function runBacktestVariant(
     // 2. Score candidates and enter the best one if we have room + BNB.
     const reserve = cfg.minBnbReserveUsd;
     const tradeableBnb = Math.max(0, state.bnbUsd - reserve);
-    const portfolioValue = totalValue(state);
+    const portfolioValue = totalValue(state, priceMap);
     const maxTradeSize = Math.min(
       portfolioValue * 0.15,
       tradeableBnb * cfg.maxTradeFractionOfBnb,
@@ -386,7 +426,7 @@ function runBacktestVariant(
       const signals: ConvictionSignal[] = day.quotes
         .filter((q) => !state.positions.some((p) => p.symbol.toUpperCase() === q.symbol.toUpperCase()))
         .map((q) => {
-          if (cfg.honeypotGate && Math.random() < (cfg.honeypotRate ?? 0)) {
+          if (cfg.honeypotGate && rnd() < (cfg.honeypotRate ?? 0)) {
             return { ...scoreTokenConviction(q, regime, undefined, null, rsiBySymbol.get(q.symbol.toUpperCase()) ?? null), score: 0 };
           }
           return scoreTokenConviction(q, regime, undefined, null, rsiBySymbol.get(q.symbol.toUpperCase()) ?? null);
@@ -422,7 +462,12 @@ function runBacktestVariant(
 
     // 3. Harvest smallest position if BNB is critically low or at cap.
     if ((state.bnbUsd < cfg.initialBnbUsd * 0.25 || state.positions.length >= cfg.maxOpenPositions) && state.positions.length > 0) {
-      const candidates = [...state.positions].sort((a, b) => a.amountUsd - b.amountUsd);
+      // Smallest by CURRENT value, so a shrunken loser goes before a winner.
+      const candidates = [...state.positions].sort(
+        (a, b) =>
+          positionValueUsd(a, priceMap.get(a.symbol.toUpperCase()) ?? 0) -
+          positionValueUsd(b, priceMap.get(b.symbol.toUpperCase()) ?? 0),
+      );
       const victim = candidates[0];
       if (victim) {
         const price = priceMap.get(victim.symbol.toUpperCase()) ?? 0;
@@ -433,12 +478,12 @@ function runBacktestVariant(
       }
     }
 
-    const value = totalValue(state);
+    const value = totalValue(state, priceMap);
     state.dailyValues.push(value);
     if (value > state.peakValueUsd) state.peakValueUsd = value;
   }
 
-  const finalValue = totalValue(state);
+  const finalValue = totalValue(state, lastPriceMap);
   const returns = state.dailyValues.map((v) => (v / initialValue) - 1);
   const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
   const variance = returns.length > 0 ? returns.reduce((s, r) => s + Math.pow(r - avgReturn, 2), 0) / returns.length : 0;
@@ -485,6 +530,10 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
     dataSource = "synthetic";
   }
   if (days.length === 0) throw new Error("No historical data loaded");
+
+  if (dataSource === "synthetic") {
+    console.warn("\n⚠ SYNTHETIC DATA — results demonstrate mechanics only, not returns\n");
+  }
 
   const results = [
     runBacktestVariant(days, { ...cfg, adaptiveWeights: false, honeypotGate: false }, "baseline_fixed"),

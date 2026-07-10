@@ -192,8 +192,8 @@ describe("evaluatePosition — cap losses, let winners run", () => {
     expect(verdict.reason).toMatch(/thesis invalidated/i);
   });
 
-  it("never takes profit early on a winner below trailing activation", () => {
-    const verdict = evaluatePosition(base, 150); // +50%, below 100% activation
+  it("never takes profit early on a winner below the partial-profit threshold", () => {
+    const verdict = evaluatePosition(base, 140); // +40%, below +50% partial threshold
     expect(verdict.action).toBe("HOLD");
     expect(verdict.reason).toMatch(/winner/i);
   });
@@ -207,12 +207,23 @@ describe("evaluatePosition — cap losses, let winners run", () => {
   });
 
   it("EXIT_PARTIAL at +50% gain — sell 33%, let the rest ride", () => {
-    // Position ran to +60%, partial not yet taken.
+    // Position ran to +60%, partial not yet taken; currently +55%.
     const pos = { ...base, peakPriceUsd: 160 };
     const verdict = evaluatePosition(pos, 155);
     expect(verdict.action).toBe("EXIT_PARTIAL");
     expect(verdict.sellFraction).toBeCloseTo(0.33, 1);
     expect(verdict.reason).toMatch(/33%/i);
+    // The reason reports the CURRENT gain (+55%), not the peak (+60%).
+    expect(verdict.reason).toMatch(/Up 55%/);
+  });
+
+  it("requires CURRENT gain for partial profit — a peaked-and-retraced position is not a winner", () => {
+    // Peaked +55% intra-cycle, but sits at −10% by evaluation. Selling here
+    // would realize a loss while calling it profit-taking.
+    const pos = { ...base, peakPriceUsd: 155 };
+    const verdict = evaluatePosition(pos, 90);
+    expect(verdict.action).toBe("HOLD");
+    expect(verdict.reason).toMatch(/drawdown/i);
   });
 
   it("HOLDs a big winner that has NOT yet given back from peak", () => {
@@ -283,19 +294,27 @@ describe("synthesizeRsi7d — RSI-like timing from a single 7d return", () => {
   });
 });
 
-describe("volatilityPenaltyFraction — penalizes erratic paths", () => {
-  it("returns 0 when 7d and 24h agree (smooth path)", () => {
-    expect(volatilityPenaltyFraction(-20, -20)).toBe(0);
-    expect(volatilityPenaltyFraction(10, 10)).toBe(0);
+describe("volatilityPenaltyFraction — penalizes erratic paths, not magnitude", () => {
+  it("returns ~0 when the 24h move sits on the smooth 7d path", () => {
+    // −40% over 7d moving ~−5.7% a day is a clean decline — the target trade.
+    expect(volatilityPenaltyFraction(-40, -40 / 7)).toBe(0);
+    expect(volatilityPenaltyFraction(-40, -5.7)).toBeLessThan(0.01);
+    expect(volatilityPenaltyFraction(14, 2)).toBe(0);
   });
 
-  it("returns the maximum (1) when divergence is 50pp+", () => {
+  it("returns the maximum (1) when the 24h move deviates 20pp+ from the daily drift", () => {
+    // A −40% week bouncing +15% in the last 24h is a falling knife mid-bounce.
     expect(volatilityPenaltyFraction(-40, 15)).toBe(1);
-    expect(volatilityPenaltyFraction(50, 0)).toBe(1);
+    expect(volatilityPenaltyFraction(0, 20)).toBe(1);
+  });
+
+  it("penalizes a front-loaded dump (whole 7d move in the last 24h)", () => {
+    // −20% 7d that ALL happened in the last day is abrupt, not smooth.
+    expect(volatilityPenaltyFraction(-20, -20)).toBeGreaterThan(0.8);
   });
 
   it("scales linearly between 0 and 1", () => {
-    const mid = volatilityPenaltyFraction(-25, 0); // 25pp divergence
+    const mid = volatilityPenaltyFraction(0, 10); // 10pp deviation from flat drift
     expect(mid).toBeCloseTo(0.5, 2);
   });
 });
@@ -309,12 +328,13 @@ describe("scoreTokenConviction — integrated formula", () => {
   };
 
   it("awards a bonus to a smooth-path oversold token vs a choppy-path equally-down token", () => {
-    // Smooth path: down 20% over 7d AND down 20% over 24h → low vol penalty
+    // Smooth path: down 20% over 7d, moving ~−3%/day → ~zero vol penalty
     const smooth = scoreTokenConviction(
-      makeQuote({ percentChange7d: -20, percentChange24h: -20 }),
+      makeQuote({ percentChange7d: -20, percentChange24h: -3 }),
       fearfulRegime
     );
-    // Erratic path: down 40% over 7d BUT up 15% in the last 24h → 55pp divergence
+    // Erratic path: down 40% over 7d BUT up 15% in the last 24h — a bounce
+    // ~21pp off the smooth daily drift → maximum vol penalty
     const erratic = scoreTokenConviction(
       makeQuote({ percentChange7d: -40, percentChange24h: 15 }),
       fearfulRegime

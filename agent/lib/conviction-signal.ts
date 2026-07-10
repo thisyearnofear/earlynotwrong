@@ -171,6 +171,11 @@ export interface ConvictionSignal {
  * `p` that would produce the observed cumulative return under a symmetric
  * ±2% daily volatility prior. RSI then collapses to 100·p.
  *
+ * NOTE: this is a pure function of the same 7d return the contrarian factor
+ * already scores — it adds no independent information. scoreTokenConviction
+ * therefore awards the synthesized fallback only HALF the RSI weight; real
+ * RSI(14) from klines keeps full weight.
+ *
  * Sanity check:
  *   +14% over 7d  →  ~5 up days of 7  →  RSI ≈ 71  (overbought)
  *    0%           →  balanced          →  RSI = 50  (neutral)
@@ -201,19 +206,23 @@ function rsiTimingFraction(rsi: number): number {
 /**
  * Volatility penalty fraction (0–1).
  *
- * Uses the divergence between the 7d cumulative return and the 24h return
- * as a proxy for path erraticism. A token down 40% over 7d but up 15% in
- * the last 24h has a volatile, choppy path — "early" here is
- * indistinguishable from a falling knife that's bouncing. We penalize it.
+ * Measures how far the last 24h deviates from the smooth 7d path: a 7d move
+ * spread evenly implies ~(7d/7)% per day, so the erraticism is the gap
+ * between the actual 24h move and that implied daily drift. A clean −40%/7d
+ * decline moving ~−5.7% a day scores ~0 — that smooth dip is exactly the
+ * "early" trade we want. A token down 40% over 7d but up 15% in the last
+ * 24h has a choppy, bouncing path — "early" here is indistinguishable from
+ * a falling knife that's bouncing. We penalize it.
  *
- * Capped at 1.0; scaled by 50pp → a 50pp divergence is the maximum penalty.
+ * Clamped to [0, 1]; scaled by 20pp → a 20pp deviation from the implied
+ * daily drift is the maximum penalty.
  */
 export function volatilityPenaltyFraction(
   percentChange7d: number,
   percentChange24h: number
 ): number {
-  const divergence = Math.abs(percentChange7d - percentChange24h);
-  return Math.min(1, divergence / 50);
+  const erraticism = Math.abs(percentChange24h - percentChange7d / 7) / 20;
+  return Math.max(0, Math.min(1, erraticism));
 }
 
 /**
@@ -348,8 +357,13 @@ export function scoreTokenConviction(
 
   const contrarian = contrarianFraction(token.percentChange7d) * w.contrarian;
 
-  const rsi = rsi14 ?? synthesizeRsi7d(token.percentChange7d);
-  const rsiBonus = rsiTimingFraction(rsi) * w.rsi;
+  // Real RSI(14) earns the full weight. The synthesized fallback derives from
+  // the same 7d return the contrarian factor already scores — full weight
+  // would double-count one input — so it only earns half weight (reduced
+  // confidence in a non-independent signal).
+  const hasRealRsi = rsi14 != null;
+  const rsi = hasRealRsi ? rsi14 : synthesizeRsi7d(token.percentChange7d);
+  const rsiBonus = rsiTimingFraction(rsi) * w.rsi * (hasRealRsi ? 1 : 0.5);
 
   const quality = qualityFraction(token) * w.quality;
   const regimeComponent = (regime.score / 100) * w.regime;
@@ -509,8 +523,8 @@ export const STUCK_AFTER_FAILED_ATTEMPTS = 2;
  *
  * Exit rules (tiered):
  *   1. Stop hit — down past stopLossPercent: thesis invalidated, cap the loss.
- *   2. Partial profit — at +50% gain, sell 33% (take chips off, recycle capital).
- *      Fires once per position (tracked by partialProfitTaken flag).
+ *   2. Partial profit — at +50% CURRENT gain, sell 33% (take chips off, recycle
+ *      capital). Fires once per position (tracked by partialProfitTaken flag).
  *   3. Trailing stop — only AFTER a large run (+100% peak), give back
  *      trailingStopPercent from the peak: lock the asymmetry we earned.
  * Everything else is HOLD. We never sell into ordinary drawdown.
@@ -567,14 +581,17 @@ export function evaluatePosition(
       ? ((pos.peakPriceUsd - pos.entryPriceUsd) / pos.entryPriceUsd) * 100
       : 0;
 
-  // Tiered profit-taking: sell 33% at +50% gain (once per position).
-  if (!pos.partialProfitTaken && peakGain >= t.partialProfitGainPercent) {
+  // Tiered profit-taking: sell 33% at +50% CURRENT gain (once per position).
+  // Gating on the live pnl — not the peak — matters at a 4h cadence: a token
+  // can peak +55% intra-cycle and be back at −10% by evaluation, and selling
+  // there is realizing a loss while calling it profit-taking.
+  if (!pos.partialProfitTaken && pnl >= t.partialProfitGainPercent) {
     return {
       symbol: pos.symbol,
       action: "EXIT_PARTIAL",
       unrealizedPnLPercent: round1(pnl),
       drawdownFromPeakPercent: round1(drawdownFromPeak),
-      reason: `Up ${peakGain.toFixed(0)}% — taking 33% profit, letting the rest ride`,
+      reason: `Up ${pnl.toFixed(0)}% — taking 33% profit, letting the rest ride`,
       heldThroughDrawdown,
       sellFraction: 0.33,
     };
