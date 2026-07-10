@@ -77,14 +77,16 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
 - **Agent API** — `GET /status`, `/conviction`, `/trades` on port 31777
-- **MCP reputation API** — `POST /mcp` (5 tools, free + x402-paid). See
+- **MCP reputation API** — `POST /mcp` (6 tools; the trust-decision reputation
+  queries are free, the recurring-value data — history, cross-chain, live
+  conviction signals — is x402-paid). See
   [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md#reproduce-the-live-402-challenge)
   for the one-curl reproduction.
 - **CAP reputation API** — implemented and listed on the CROO Agent Store;
   the live WebSocket connection activates once the `CROO_SDK_KEY` arrives
   (see "Current status" below). Not yet accepting live USDC orders.
 - **CAP status endpoint** — `GET /cap/status` on port 31777
-- **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through)
+- **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through; recorded before the current pricing — `get_agent_reputation` shown as paid is now free)
 - **Latest dual-chain anchor** — verifiable on
   [Mantle Sepolia](https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C)
   and [Casper Testnet](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
@@ -133,7 +135,9 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
 #    • reputation-latest
 #    • reputation-history
 #    • reputation-cross-chain
-#    • reputation-agent
+#    • reputation-agent      (free — the trust-decision query)
+#    • signals-live          (NEW — $0.05 live conviction signals; must be
+#                             registered on the CROO Store before purchasable)
 #
 # 2. Copy the SDK key from the CROO dashboard
 echo "CROO_SDK_KEY=croo_sk_..." >> agent/.env
@@ -186,7 +190,7 @@ penalty) and holds through ordinary drawdown by design.
 - **On-Chain Portfolio** — `agent/lib/onchain-portfolio.ts` (`balanceOf` truth, contract-priced)
 - **Anchor Adapters** — `agent/lib/anchors/{mantle,casper,index}.ts` (one interface, N chains, read + write)
 - **Casper Contract** — `casper/src/conviction_registry.rs` (Odra/Rust)
-- **MCP Server** — `agent/src/mcp/{server,tools,x402,pricing}.ts` (5 tools, x402 paywall, mounted on the existing Hono process)
+- **MCP Server** — `agent/src/mcp/{server,tools,x402,pricing}.ts` (6 tools, x402 paywall, mounted on the existing Hono process)
 - **CAP Adapter** — `agent/src/cap/{client,handler,pricing}.ts` (CROO Agent Protocol WebSocket client, USDC settlement, reuses the same reputation tools)
 - **Payment Stats** — `agent/src/payment-stats.ts` (shared counters for x402 and CAP)
 - **Dashboard** — `src/app/agent/page.tsx` (Next.js, proxies the live agent, surfaces MCP + x402 + CAP stats)

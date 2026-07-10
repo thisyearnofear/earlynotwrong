@@ -3,7 +3,7 @@
 **What this is**: Casper-hosted agent reputation registry, queryable by other AI agents via Model Context Protocol, paid per call via x402 CEP-18 micropayments.
 
 **Live dashboard**: https://earlynotwrong.vercel.app/agent (the "Agent Reputation API" panel)
-**Demo**: [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 live)
+**Demo**: [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 live; recorded before the current pricing — it shows `get_agent_reputation` as paid, which is now free)
 
 ---
 
@@ -34,19 +34,20 @@ Facilitator pays the gas      ✗                   ✓
 
 ## What the MCP Server Exposes
 
-Five tools registered via `@modelcontextprotocol/sdk@^1.29.0`, served at `POST /mcp` on the same Hono process that runs the trading agent — one HTTP boot, shared state.
+Six tools registered via `@modelcontextprotocol/sdk@^1.29.0`, served at `POST /mcp` on the same Hono process that runs the trading agent — one HTTP boot, shared state.
 
 ```
 Tool                       Paid?      Description
 ──────────────────────────────────────────────────────────────────────
 get_latest_conviction      FREE       Most recent record across both chains
 get_by_thesis              FREE       Point lookup by 32-byte thesis hash
+get_agent_reputation       FREE       Aggregate report (counts, mean, dual-chain)
 get_subject_history        0.1 CSPR   Full chronological history cross-chain
 cross_chain_lookup         0.1 CSPR   Mantle + Casper side-by-side + sync flag
-get_agent_reputation       0.2 CSPR   Aggregate report (counts, mean, dual-chain)
+get_live_signals           0.5 CSPR   Live conviction signals for the current cycle
 ```
 
-Free tier is for sanity checks — "is this agent live? what's its most recent thesis?". Paid tier is the actual marketplace surface — full history walks, cross-chain reconciliation, aggregate reputation scoring.
+The trust-decision queries are free — including the aggregate reputation report a first-time evaluator needs to decide whether to trust the agent at all. The paid tier is the recurring-value data: history walks, cross-chain reconciliation, and the agent's live current-cycle conviction signals (the tradeable data).
 
 ## The x402 Paywall Flow
 
@@ -102,7 +103,7 @@ MCP queries return live records in 200-300 ms (cold) / <10 ms (cached).
 | `agent/lib/anchors/casper.ts` | Casper adapter: anchor writes + CES event reads (no gas) |
 | `agent/lib/anchors/mantle.ts` | EVM-side view functions + event log reads via viem |
 | `agent/lib/anchors/index.ts` | `lookupSubjectCrossChain` orchestrator |
-| `agent/src/mcp/server.ts` | MCP server with 5 tools, mounted on existing Hono |
+| `agent/src/mcp/server.ts` | MCP server with 6 tools, mounted on existing Hono |
 | `agent/src/mcp/tools.ts` | Pure-function tool implementations over the adapter interface |
 | `agent/src/mcp/x402.ts` | Paywall middleware — 402 challenge + facilitator settle |
 | `agent/src/mcp/pricing.ts` | Per-tool pricing table |
@@ -124,7 +125,7 @@ Any AI agent — a Claude Desktop client, a Cursor agent, a custom yield bot —
 }
 ```
 
-Then they can ask in natural language: *"What's the reputation of agent `0x4a93767…459a`?"* The client routes the request through MCP to our server, we read the contract, return the report. For paid tools, the client signs a CEP-18 payment; the facilitator settles it on Casper Testnet. The agent pays 0.1 CSPR to learn whether to trust another agent.
+Then they can ask in natural language: *"What's the reputation of agent `0x4a93767…459a`?"* The client routes the request through MCP to our server, we read the contract, return the report — free, because the trust decision is the adoption gateway. Once trust is established, the recurring queries are paid: the client signs a CEP-18 payment (e.g. 0.5 CSPR for `get_live_signals`), and the facilitator settles it on Casper Testnet.
 
 This is the missing piece of the agent economy: agents need to verify each other's track records without trusting self-reported claims. We host that verification surface, on Casper, with native payment rails.
 
@@ -167,10 +168,8 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
     "id": 1,
     "method": "tools/call",
     "params": {
-      "name": "get_agent_reputation",
-      "arguments": {
-        "subjectHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"
-      }
+      "name": "get_live_signals",
+      "arguments": {}
     }
   }'
 ```
@@ -185,15 +184,15 @@ Returns a fully-populated `casper:casper-test` `PaymentRequirements`:
     "network": "casper:casper-test",
     "asset":   "9824d60dc3a5c44a20b9fd260a412437933835b52fc683d8ae36e4ec2114843e",
     "payTo":   "23058a429ae31f0de556b5747546cc6d7817a559afe2657f297186dc509cd30a",
-    "amount":  "20",
+    "amount":  "50",
     "extra":   { "name": "Cep18x402", "symbol": "CSPR", "decimals": "2", "version": "1" }
   }]
 }
 ```
 
-To complete the round trip, a client constructs + signs a `Cep18x402` transfer authorization for 20 base units (0.20 CSPR) to that account hash, re-POSTs with `X-PAYMENT: <base64>`, and our middleware forwards to `cspr.cloud/settle` — which verifies and submits the on-chain CEP-18 transfer in one round trip. The `Cep18x402` token on testnet is the cspr.cloud-hosted canonical wrapper; no token deploy needed on our side.
+To complete the round trip, a client constructs + signs a `Cep18x402` transfer authorization for 50 base units (0.5 CSPR) to that account hash, re-POSTs with `X-PAYMENT: <base64>`, and our middleware forwards to `cspr.cloud/settle` — which verifies and submits the on-chain CEP-18 transfer in one round trip. The `Cep18x402` token on testnet is the cspr.cloud-hosted canonical wrapper; no token deploy needed on our side.
 
-The free tier works without any of this — `get_latest_conviction` and `get_by_thesis` return real data from the live Casper contract immediately:
+The free tier works without any of this — `get_latest_conviction`, `get_by_thesis`, and `get_agent_reputation` return real data from the live Casper contract immediately:
 
 ```bash
 curl -sS -X POST http://144.202.117.160:31777/mcp \
@@ -213,6 +212,6 @@ For a client to settle a paid call end-to-end (not just receive the 402 challeng
 - **GitHub**: https://github.com/thisyearnofear/earlynotwrong
 - **Live dashboard**: https://earlynotwrong.vercel.app/agent
 - **Casper contract**: https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa
-- **Demo recording**: https://asciinema.org/a/ox0AlPA1AN7uwfWJ
+- **Demo recording**: https://asciinema.org/a/ox0AlPA1AN7uwfWJ (predates the current pricing — `get_agent_reputation` shown as paid is now free)
 - **Mantle integration (parallel chain)**: [`MANTLE_INTEGRATION.md`](./MANTLE_INTEGRATION.md)
 - **Trading agent (the source of records)**: [`AGENT_DESIGN.md`](./AGENT_DESIGN.md)

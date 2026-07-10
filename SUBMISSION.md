@@ -71,15 +71,18 @@ Key design choices:
 
 ### 3. MCP Server
 
-`agent/src/mcp/server.ts` and `agent/src/mcp/tools.ts` — five tools served on the existing Hono process at `POST /mcp`:
+`agent/src/mcp/server.ts` and `agent/src/mcp/tools.ts` — six tools served on the existing Hono process at `POST /mcp`:
 
 | Tool | Price | Purpose |
 |---|---|---|
 | `get_latest_conviction` | Free | Most recent record across Mantle + Casper. |
 | `get_by_thesis` | Free | Point lookup by 32-byte thesis hash. |
+| `get_agent_reputation` | Free | Aggregate report: total anchors, mean score, dual-chain presence. |
 | `get_subject_history` | 0.1 CSPR | Full chronological history. |
 | `cross_chain_lookup` | 0.1 CSPR | Side-by-side Mantle + Casper view with sync flag. |
-| `get_agent_reputation` | 0.2 CSPR | Aggregate report: total anchors, mean score, dual-chain presence. |
+| `get_live_signals` | 0.5 CSPR | Live conviction signals for the current cycle (the tradeable data). |
+
+The trust-decision query (`get_agent_reputation`) is free so evaluators can decide whether to trust the agent; the recurring-value live signals are the paid product.
 
 ### 4. x402 Paywall
 
@@ -109,10 +112,8 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
     "id": 1,
     "method": "tools/call",
     "params": {
-      "name": "get_agent_reputation",
-      "arguments": {
-        "subjectHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"
-      }
+      "name": "get_live_signals",
+      "arguments": {}
     }
   }'
 ```

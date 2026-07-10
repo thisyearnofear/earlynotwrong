@@ -40,16 +40,19 @@ The agent's job is reduced to: **accept known services, run the matching reputat
 
 ## CAP Services
 
-The agent advertises four services on the CROO Agent Store. Each maps to one of the shared reputation tools:
+The agent advertises five services on the CROO Agent Store. Each maps to one of the shared reputation tools:
 
 | Service ID | Reputation Tool | USDC Price | Description |
 |---|---:|---|---|
 | `reputation-latest` | `get_latest_conviction` | $0.005 | Most recent record across Mantle + Casper |
 | `reputation-history` | `get_subject_history` | $0.01 | Full chronological history cross-chain |
 | `reputation-cross-chain` | `cross_chain_lookup` | $0.01 | Mantle + Casper side-by-side + in-sync flag |
-| `reputation-agent` | `get_agent_reputation` | $0.02 | Aggregate report (counts, mean score, dual-chain) |
+| `reputation-agent` | `get_agent_reputation` | $0 (free) | Aggregate report (counts, mean score, dual-chain) — the trust-decision query |
+| `signals-live` | `get_live_signals` | $0.05 | Live conviction signals for the current cycle (the tradeable data) |
 
-Prices are configured in `agent/src/cap/pricing.ts`.
+Rationale: the trust-decision query (`reputation-agent`) is free so any agent can decide whether to trust ENW before spending; the recurring-value live signals are the paid product.
+
+Prices are configured in `agent/src/cap/pricing.ts`. The four `reputation-*` serviceIds are already registered on the CROO Store (do not rename them; the `reputation-agent` Store listing price needs updating to $0). **`signals-live` is a new serviceId and must be registered on the CROO Store before it is purchasable.**
 
 ---
 
@@ -93,7 +96,7 @@ Methods actually called by our adapter:
 ## Setup
 
 1. **Create the agent on the CROO Agent Store** at https://agent.croo.network.
-2. **Create one service per row** in the table above. The `serviceId` in the Store must exactly match the keys in `agent/src/cap/pricing.ts`.
+2. **Create one service per row** in the table above. The `serviceId` in the Store must exactly match the keys in `agent/src/cap/pricing.ts`. The four `reputation-*` services are already registered; `signals-live` still needs to be created on the Store.
 3. **Copy the SDK key** into the agent environment:
 
 ```bash
@@ -167,7 +170,7 @@ await client.negotiateOrder({
 });
 ```
 
-The `requirements` field must be a JSON object containing `subjectHash`. It is read from the negotiation before the agent accepts the order.
+The `requirements` field must be a JSON object containing `subjectHash`. It is read from the negotiation before the agent accepts the order. (`signals-live` is the exception — it returns the agent's own current-cycle data and needs no `subjectHash`.)
 
 ---
 
