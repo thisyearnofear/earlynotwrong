@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { PositionAnalysis } from "@/lib/api-client";
@@ -10,19 +10,7 @@ import {
   Clock,
   AlertTriangle,
   ExternalLink,
-  Users,
-  Loader2,
 } from "lucide-react";
-import { useConviction } from "@/hooks/use-conviction";
-
-interface TokenHolder {
-  walletAddress: string;
-  tokenSymbol: string | null;
-  realizedPnl: number | null;
-  isProfitable: boolean;
-  convictionScore: number | null;
-  farcasterUsername: string | null;
-}
 
 interface PositionExplorerProps {
   positions: PositionAnalysis[];
@@ -47,27 +35,6 @@ function PositionCard({
   const hasCounterfactual =
     position.counterfactual && position.counterfactual.missedGainDollars > 0;
 
-  const [holders, setHolders] = useState<TokenHolder[]>([]);
-  const [holdersLoading, setHoldersLoading] = useState(false);
-  const [holdersLoaded, setHoldersLoaded] = useState(false);
-  
-  const { analyzeWallet } = useConviction();
-
-  const loadHolders = useCallback(async () => {
-    if (holdersLoaded || holdersLoading) return;
-    setHoldersLoading(true);
-    try {
-      const res = await fetch(`/api/tokens/holders?token=${position.tokenAddress}&chain=${chain}&limit=5`);
-      const data = await res.json();
-      setHolders(data.holders || []);
-      setHoldersLoaded(true);
-    } catch {
-      setHolders([]);
-    } finally {
-      setHoldersLoading(false);
-    }
-  }, [position.tokenAddress, chain, holdersLoaded, holdersLoading]);
-
   const explorerUrl =
     chain === "solana"
       ? `https://solscan.io/token/${position.tokenAddress}`
@@ -82,6 +49,10 @@ function PositionCard({
 
   const formatPercent = (val: number) =>
     `${val >= 0 ? "+" : ""}${val.toFixed(1)}%`;
+
+  // Patience tax is a cost: render as -$X when positive, plain $0 otherwise.
+  const formatPatienceTax = (val: number) =>
+    val > 0 ? `-${formatCurrency(val)}` : formatCurrency(0);
 
   const formatDate = (timestamp: number) =>
     new Date(timestamp).toLocaleDateString("en-US", {
@@ -282,7 +253,7 @@ function PositionCard({
                         : "text-foreground"
                     )}
                   >
-                    {formatCurrency(position.patienceTax)}
+                    {formatPatienceTax(position.patienceTax)}
                   </div>
                   {position.maxMissedGain > 0 && (
                     <div className="text-xs text-foreground-muted">
@@ -335,14 +306,6 @@ function PositionCard({
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); loadHolders(); }}
-                    className="flex items-center gap-1 text-xs text-foreground-muted hover:text-patience transition-colors"
-                    title="See other wallets that held this token"
-                  >
-                    {holdersLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Users className="w-3 h-3" />}
-                    Who Holds This?
-                  </button>
                   <a
                     href={`https://dexscreener.com/search?q=${position.tokenAddress}`}
                     target="_blank"
@@ -363,49 +326,6 @@ function PositionCard({
                   </a>
                 </div>
               </div>
-
-              {/* Other Holders Section */}
-              {holdersLoaded && (
-                <div className="mt-3 pt-3 border-t border-border/50">
-                  {holders.length === 0 ? (
-                    <div className="text-[10px] text-foreground-muted text-center py-2">
-                      No other analyzed wallets hold this token yet.
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
-                        Other Holders ({holders.length})
-                      </div>
-                      {holders.map((holder) => (
-                        <button
-                          key={holder.walletAddress}
-                          onClick={(e) => { e.stopPropagation(); analyzeWallet(holder.walletAddress); }}
-                          className="w-full flex items-center justify-between p-2 rounded bg-surface/30 hover:bg-surface/50 transition-colors text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-foreground">
-                              {holder.farcasterUsername 
-                                ? `@${holder.farcasterUsername}` 
-                                : `${holder.walletAddress.slice(0,6)}...${holder.walletAddress.slice(-4)}`}
-                            </span>
-                            {holder.convictionScore && (
-                              <span className="text-[10px] px-1 rounded bg-signal/10 text-signal">
-                                CI: {holder.convictionScore}
-                              </span>
-                            )}
-                          </div>
-                          <span className={cn(
-                            "text-[10px] font-mono",
-                            holder.isProfitable ? "text-patience" : "text-impatience"
-                          )}>
-                            {holder.isProfitable ? "Profit" : "Loss"}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </motion.div>
         )}
@@ -419,7 +339,7 @@ export function PositionExplorer({
   chain,
   className,
 }: PositionExplorerProps) {
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"pnl" | "patienceTax" | "date">("pnl");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [filter, setFilter] = useState<'all' | 'profitable' | 'early-exit' | 'diamond-hands'>('all');
@@ -499,8 +419,15 @@ export function PositionExplorer({
         </div>
         <div className="text-center sm:text-left">
           <div className="text-foreground-muted text-[10px] sm:text-xs uppercase tracking-wider">Tax</div>
-          <div className="font-mono font-semibold text-impatience truncate">
-            {formatCurrency(totalPatienceTax)}
+          <div
+            className={cn(
+              "font-mono font-semibold truncate",
+              totalPatienceTax > 0 ? "text-impatience" : "text-foreground"
+            )}
+          >
+            {totalPatienceTax > 0
+              ? `-${formatCurrency(totalPatienceTax)}`
+              : formatCurrency(0)}
           </div>
         </div>
         <div className="text-center sm:text-left">
@@ -601,77 +528,21 @@ export function PositionExplorer({
             Click any position to see detailed entry/exit timing and counterfactual analysis.
           </p>
         )}
-        {filteredPositions.map((position, index) => (
+        {filteredPositions.map((position) => (
           <PositionCard
             key={position.tokenAddress}
             position={position}
             chain={chain}
-            isExpanded={expandedIndex === index}
+            isExpanded={expandedKey === position.tokenAddress}
             onToggle={() =>
-              setExpandedIndex(expandedIndex === index ? null : index)
+              setExpandedKey(
+                expandedKey === position.tokenAddress
+                  ? null
+                  : position.tokenAddress
+              )
             }
           />
         ))}
-      </div>
-
-      {/* Cohort Analysis */}
-      <div className="pt-8">
-            <div className="rounded-lg border border-ethos/20 bg-ethos/5 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                    <Users className="w-5 h-5 text-ethos" />
-                    <h3 className="font-semibold text-foreground">Whale Cohort Benchmarks</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="space-y-2">
-                        <div className="text-xs text-foreground-muted uppercase tracking-wider">
-                            Patience Score
-                        </div>
-                        <div className="flex items-end gap-2">
-                            <span className="text-2xl font-mono font-bold text-ethos">Top 15%</span>
-                            <span className="text-xs text-foreground-muted mb-1">of cohort</span>
-                        </div>
-                        <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
-                            <div className="h-full bg-ethos w-[85%]" />
-                        </div>
-                        <p className="text-xs text-foreground-muted">
-                            You hold winners 2.4x longer than the average trader.
-                        </p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <div className="text-xs text-foreground-muted uppercase tracking-wider">
-                            Panic Selling
-                        </div>
-                        <div className="flex items-end gap-2">
-                            <span className="text-2xl font-mono font-bold text-patience">Low</span>
-                            <span className="text-xs text-foreground-muted mb-1">frequency</span>
-                        </div>
-                        <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
-                            <div className="h-full bg-patience w-[20%]" />
-                        </div>
-                        <p className="text-xs text-foreground-muted">
-                            You exit specifically during drawdowns 40% less often than peers.
-                        </p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <div className="text-xs text-foreground-muted uppercase tracking-wider">
-                            Conviction Tax
-                        </div>
-                        <div className="flex items-end gap-2">
-                            <span className="text-2xl font-mono font-bold text-impatience">-$12.4k</span>
-                            <span className="text-xs text-foreground-muted mb-1">missed</span>
-                        </div>
-                        <div className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
-                            <div className="h-full bg-impatience w-[45%]" />
-                        </div>
-                        <p className="text-xs text-foreground-muted">
-                            Better than 55% of traders (Avg tax: -$28k).
-                        </p>
-                    </div>
-                </div>
-            </div>
       </div>
     </div>
   );

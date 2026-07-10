@@ -47,7 +47,10 @@ export interface ConvictionMetrics {
   upsideCapture: number;
   earlyExits: number;
   convictionWins: number;
-  percentile: number;
+  /** Real cohort rank ("Top X%") — null when the cohort is unavailable/too small. */
+  percentile: number | null;
+  /** Number of analyzed wallets the percentile was computed against. */
+  cohortSize?: number;
   archetype?:
     | "Iron Pillar"
     | "Profit Phantom"

@@ -26,7 +26,9 @@ export async function generateMetadata({
   const ogImageUrl = getOgImageUrl(data, baseUrl);
 
   const title = `Conviction Score: ${data.score} | ${data.archetype}`;
-  const description = `Top ${data.percentile}% of traders. Patience Tax: $${data.patienceTax.toLocaleString()}. Upside Capture: ${data.upsideCapture}%. Being early feels like being wrong. Until it doesn't.`;
+  const percentilePrefix =
+    data.percentile != null ? `Top ${data.percentile}% of analyzed wallets. ` : "";
+  const description = `${percentilePrefix}Patience Tax: $${data.patienceTax.toLocaleString()}. Upside Capture: ${data.upsideCapture}%. Being early feels like being wrong. Until it doesn't.`;
 
   return {
     title,
@@ -86,9 +88,11 @@ export default async function SharePage({ params }: SharePageProps) {
             <span className="text-xl font-semibold text-signal">
               {data.archetype}
             </span>
-            <span className="text-sm text-foreground-muted">
-              Top {data.percentile}%
-            </span>
+            {data.percentile != null && (
+              <span className="text-sm text-foreground-muted">
+                Top {data.percentile}% of analyzed wallets
+              </span>
+            )}
           </div>
         </div>
 

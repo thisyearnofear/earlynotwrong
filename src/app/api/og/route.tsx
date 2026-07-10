@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
 
   const score = searchParams.get("score") || "0";
   const archetype = searchParams.get("archetype") || "Diamond Hand";
-  const percentile = searchParams.get("percentile") || "50";
+  // Real cohort rank only — when absent we omit the chip rather than fake one.
+  const percentile = searchParams.get("percentile");
   const patienceTax = searchParams.get("patienceTax") || "0";
   const upsideCapture = searchParams.get("upsideCapture") || "0";
   const chain = searchParams.get("chain") || "solana";
@@ -144,14 +145,16 @@ export async function GET(request: NextRequest) {
             >
               {archetype}
             </span>
-            <span
-              style={{
-                fontSize: "16px",
-                color: "#a1a1aa",
-              }}
-            >
-              Top {percentile}%
-            </span>
+            {percentile ? (
+              <span
+                style={{
+                  fontSize: "16px",
+                  color: "#a1a1aa",
+                }}
+              >
+                Top {percentile}%
+              </span>
+            ) : null}
           </div>
 
           {/* Metrics Row */}

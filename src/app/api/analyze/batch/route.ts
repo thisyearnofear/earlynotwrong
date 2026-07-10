@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { marketService } from "@/lib/services/market-service";
 import { APP_CONFIG } from "@/lib/config";
+import { getCohortPercentile } from "@/lib/db/postgres";
 
 interface Position {
   tokenAddress: string;
@@ -74,7 +75,10 @@ interface ConvictionMetrics {
   upsideCapture: number;
   earlyExits: number;
   convictionWins: number;
-  percentile: number;
+  /** Real cohort rank ("Top X%") — null when the cohort is unavailable/too small. */
+  percentile: number | null;
+  /** Number of analyzed wallets the percentile was computed against. */
+  cohortSize?: number;
   archetype: "Iron Pillar" | "Profit Phantom" | "Exit Voyager" | "Diamond Hand";
   totalPositions: number;
   avgHoldingPeriod: number;
@@ -128,6 +132,15 @@ export async function POST(request: NextRequest) {
       positionAnalyses,
       ethosScore
     );
+
+    // Rank against the real cohort of analyzed wallets. When the DB is
+    // unreachable or the cohort is too small, percentile stays null and the
+    // UI omits the stat — we never show a fabricated rank.
+    const cohort = await getCohortPercentile(convictionMetrics.score, chain);
+    if (cohort) {
+      convictionMetrics.percentile = cohort.topPercent;
+      convictionMetrics.cohortSize = cohort.cohortSize;
+    }
 
     return NextResponse.json({
       success: true,
@@ -266,7 +279,7 @@ function calculateConvictionMetrics(
       upsideCapture: 0,
       earlyExits: 0,
       convictionWins: 0,
-      percentile: 0,
+      percentile: null,
       archetype: APP_CONFIG.archetypes.EXIT_VOYAGER.label as ConvictionMetrics["archetype"],
       totalPositions: 0,
       avgHoldingPeriod: 0,
@@ -391,15 +404,14 @@ function calculateConvictionMetrics(
     finalScore = Math.min(100, baseScore * reputationMultiplier);
   }
 
-  const percentile = Math.max(1, Math.min(99, 100 - Math.floor(finalScore)));
-
   return {
     score: Math.round(finalScore * 10) / 10,
     patienceTax: Math.round(totalPatienceTax),
     upsideCapture: Math.round(upsideCapture),
     earlyExits,
     convictionWins,
-    percentile,
+    // Filled in by the route from the real cohort; never derived from the score.
+    percentile: null,
     archetype: getArchetype(finalScore, totalPatienceTax) as ConvictionMetrics["archetype"],
     totalPositions: positions.length,
     avgHoldingPeriod: Math.round(avgHoldingPeriod),

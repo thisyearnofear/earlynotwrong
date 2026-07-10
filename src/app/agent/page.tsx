@@ -364,17 +364,19 @@ function LoadingStory() {
                   ? "border-signal/40 bg-signal/10"
                   : "border-border/30 bg-surface/30",
               )}>
-                {visibleStep > i ? (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="text-signal"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                  </motion.span>
-                ) : (
-                  <step.icon className="w-4 h-4 text-foreground-muted" />
-                )}
+                {/* Honest progress: this component only renders while the
+                    agent fetch is still in flight, so no step is ever DONE
+                    here — revealed steps pulse as in-progress instead of
+                    showing a checkmark. The dashboard replaces this view
+                    the moment the fetch actually resolves. */}
+                <step.icon
+                  className={cn(
+                    "w-4 h-4 transition-colors",
+                    visibleStep > i
+                      ? "text-signal animate-pulse"
+                      : "text-foreground-muted",
+                  )}
+                />
               </div>
               <div className="flex-1 min-w-0">
                 <p className={cn(
@@ -414,27 +416,20 @@ function LoadingStory() {
           transition={{ duration: 0.6 }}
           className="mt-10 max-w-sm mx-auto w-full"
         >
+          {/* All three phases are genuinely in flight until the fetch
+              resolves (at which point this whole view is replaced), so
+              none may render as done — each dot pulses instead. */}
           <div className="flex items-center gap-0 w-full">
-            {[
-              { label: "Connect", done: true },
-              { label: "Fetch", done: true },
-              { label: "Signals", done: false },
-            ].map((step, i) => (
-              <div key={i} className="flex items-center flex-1">
+            {["Connect", "Fetch", "Signals"].map((label, i) => (
+              <div key={label} className="flex items-center flex-1">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "w-2 h-2 rounded-full transition-colors",
-                      step.done ? "bg-signal shadow-[0_0_6px_var(--signal)]" : "bg-foreground-dim/30",
-                    )}
+                  <motion.span
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ delay: i * 0.4, duration: 1.5, repeat: Infinity }}
+                    className="w-2 h-2 rounded-full bg-signal shadow-[0_0_6px_var(--signal)]"
                   />
-                  <span
-                    className={cn(
-                      "text-[10px] font-mono uppercase tracking-wider transition-colors",
-                      step.done ? "text-foreground-muted" : "text-foreground-dim/50",
-                    )}
-                  >
-                    {step.label}
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
+                    {label}
                   </span>
                 </div>
                 {i < 2 && (
@@ -481,9 +476,8 @@ function ErrorState({
           <AlertTriangle className="w-10 h-10 text-impatience/60 mx-auto" />
           <h2 className="text-2xl font-bold text-foreground">Agent Unreachable</h2>
           <p className="text-sm text-foreground-muted max-w-lg mx-auto leading-relaxed">
-            The trading agent is running on a VPS at{" "}
-            <code className="text-xs font-mono bg-surface/50 px-1 py-0.5 rounded">144.202.117.160:31777</code>.
-            It may be mid-cycle or the connection timed out — retrying usually works.
+            The trading agent runs on the agent host. It may be mid-cycle or
+            the connection timed out — retrying usually works.
           </p>
         </div>
 
@@ -561,7 +555,7 @@ function Dashboard({
         </p>
         <p className="text-[10px] font-mono text-foreground-dim mt-1">
           Live from{" "}
-          <span className="text-foreground-muted">144.202.117.160:31777</span> ·{" "}
+          <span className="text-foreground-muted">the agent&apos;s public API</span> ·{" "}
           ~4h cycles: data → score → manage → execute → anchor → narrate
         </p>
         <p className="text-xs text-foreground-muted mt-1.5 leading-relaxed">
@@ -1646,7 +1640,10 @@ function ReputationApiCard() {
             </p>
           </div>
           <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
-            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Fees collected</p>
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+              Fees collected{" "}
+              <span className="text-foreground-dim normal-case">(testnet)</span>
+            </p>
             <p className="text-2xl font-semibold tabular-nums text-patience">
               {formatCspr(stats?.feesCollectedBaseUnits)}
             </p>

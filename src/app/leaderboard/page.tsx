@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import { Navbar } from "@/components/layout/navbar";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 import { APP_CONFIG } from "@/lib/config";
 import { getLeaderboard } from "@/lib/db/postgres";
@@ -7,11 +8,11 @@ import { getLeaderboard } from "@/lib/db/postgres";
 export const metadata: Metadata = {
   title: "Leaderboard | Early, Not Wrong",
   description:
-    "Top-performing wallets ranked by conviction score. See who holds through volatility and captures upside.",
+    "Wallets analyzed on Early, Not Wrong, ranked by conviction score. See who holds through volatility and captures upside.",
   openGraph: {
     title: "Conviction Leaderboard | Early, Not Wrong",
     description:
-      "Top-performing wallets ranked by behavioral conviction score.",
+      "Wallets analyzed on Early, Not Wrong, ranked by behavioral conviction score.",
     url: `${APP_CONFIG.baseUrl}/leaderboard`,
   },
 };
@@ -25,8 +26,10 @@ export default async function LeaderboardPage() {
   }
 
   return (
-    <div className="min-h-screen text-foreground">
-      <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+    <main className="min-h-screen bg-background text-foreground">
+      <Navbar />
+
+      <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-widest mb-3">
@@ -36,8 +39,9 @@ export default async function LeaderboardPage() {
             Top Conviction Scores
           </h1>
           <p className="text-sm text-foreground-muted max-w-xl">
-            Wallets ranked by behavioral conviction — how consistently they
-            allow upside to compound and cap downside efficiently.
+            Ranked among wallets analyzed on Early, Not Wrong — how
+            consistently they allow upside to compound and cap downside
+            efficiently.
           </p>
         </div>
 
@@ -53,7 +57,7 @@ export default async function LeaderboardPage() {
 
         {/* Table */}
         <LeaderboardTable initialEntries={entries} />
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }

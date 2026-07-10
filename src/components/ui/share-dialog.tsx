@@ -54,6 +54,7 @@ export function ShareDialog({
     score: metrics.score,
     archetype: metrics.archetype || "Diamond Hand",
     percentile: metrics.percentile,
+    cohortSize: metrics.cohortSize,
     patienceTax: metrics.patienceTax,
     upsideCapture: metrics.upsideCapture,
     chain,

@@ -43,16 +43,18 @@ export default function AlphaPage() {
     chain: effectiveChain,
   });
 
-  // When gated or DB-empty, fall back to showcase data for the preview layer.
-  const showShowcase =
-    isShowcaseMode ||
-    data.isGated ||
-    (data.traders.length === 0 && data.tokens.length === 0);
+  // When gated or DB-empty, each list independently falls back to showcase
+  // (fabricated example) data. Any tab rendering showcase data must say so
+  // loudly — see the ShowcaseBanner rendered above the lists below.
+  const tradersAreShowcase = data.traders.length === 0;
+  const tokensAreShowcase = data.tokens.length === 0;
 
-  const displayTraders =
-    data.traders.length > 0 ? data.traders : SHOWCASE_ALPHA_TRADERS;
-  const displayTokens =
-    data.tokens.length > 0 ? data.tokens : SHOWCASE_TOKEN_HEATMAP;
+  const displayTraders = tradersAreShowcase
+    ? SHOWCASE_ALPHA_TRADERS
+    : data.traders;
+  const displayTokens = tokensAreShowcase
+    ? SHOWCASE_TOKEN_HEATMAP
+    : data.tokens;
 
   const tabs: { key: AlphaTab; label: string; icon: typeof Zap }[] = [
     { key: "traders", label: "High-Conviction Traders", icon: TrendingUp },
@@ -184,6 +186,10 @@ export default function AlphaPage() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
               >
+                {tradersAreShowcase && (
+                  <ShowcaseBanner note="example traders, not live analysis" />
+                )}
+
                 {/* Stat strip */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                   <StatStrip
@@ -209,7 +215,7 @@ export default function AlphaPage() {
                   <StatStrip
                     icon={<Database className="w-3.5 h-3.5" />}
                     label="Source"
-                    value={showShowcase ? "Showcase" : "Live"}
+                    value={tradersAreShowcase ? "Showcase" : "Live"}
                   />
                 </div>
 
@@ -232,6 +238,10 @@ export default function AlphaPage() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
               >
+                {tokensAreShowcase && (
+                  <ShowcaseBanner note="example tokens, not live analysis" />
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                   <StatStrip
                     icon={<Flame className="w-3.5 h-3.5" />}
@@ -240,7 +250,8 @@ export default function AlphaPage() {
                   />
                   <StatStrip
                     icon={<Users className="w-3.5 h-3.5" />}
-                    label="Unique Holders"
+                    label="Combined Holders"
+                    sub="sum across tokens, not deduplicated"
                     value={displayTokens.reduce(
                       (a, t) => a + t.holderCount,
                       0,
@@ -256,7 +267,7 @@ export default function AlphaPage() {
                   <StatStrip
                     icon={<Database className="w-3.5 h-3.5" />}
                     label="Source"
-                    value={showShowcase ? "Showcase" : "Live"}
+                    value={tokensAreShowcase ? "Showcase" : "Live"}
                   />
                 </div>
 
@@ -266,22 +277,26 @@ export default function AlphaPage() {
           </AnimatePresence>
         )}
 
-        {/* Empty state (non-gated, non-loading, no data, no showcase) */}
-        {!data.isLoading &&
-          !data.isGated &&
-          displayTraders.length === 0 &&
-          displayTokens.length === 0 &&
-          !showShowcase && (
-            <div className="text-center py-16 text-foreground-muted">
-              <Database className="w-10 h-10 mx-auto mb-3 opacity-40" />
-              <p className="text-sm font-mono">
-                No alpha data yet. Scan a wallet to start populating the
-                conviction ledger.
-              </p>
-            </div>
-          )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Loud disclosure for fabricated fallback data. Mirrors the SHOWCASE MODE
+ * chip on the home page score card, expanded into a banner so it can't be
+ * missed above the lists.
+ */
+function ShowcaseBanner({ note }: { note: string }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-signal/20 bg-signal/5">
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-signal/10 text-signal border border-signal/20">
+        SHOWCASE DATA
+      </span>
+      <span className="text-xs text-foreground-muted">
+        {note} — scan a wallet to populate the live conviction ledger.
+      </span>
+    </div>
   );
 }
 
@@ -289,13 +304,18 @@ function StatStrip({
   icon,
   label,
   value,
+  sub,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number | string;
+  sub?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface/30 px-3 py-2.5">
+    <div
+      className="rounded-lg border border-border bg-surface/30 px-3 py-2.5"
+      title={sub}
+    >
       <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
         {icon}
         {label}
@@ -303,6 +323,11 @@ function StatStrip({
       <div className="mt-1 text-lg font-bold tabular-nums text-foreground">
         {value}
       </div>
+      {sub && (
+        <div className="text-[10px] font-mono text-foreground-dim mt-0.5">
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

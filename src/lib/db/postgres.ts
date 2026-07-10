@@ -101,7 +101,7 @@ export async function saveAnalysis(
         ${metrics.upsideCapture},
         ${metrics.earlyExits},
         ${metrics.convictionWins},
-        ${metrics.percentile},
+        ${metrics.percentile ?? 0},
         ${metrics.archetype || null},
         ${metrics.totalPositions},
         ${metrics.avgHoldingPeriod},
@@ -161,6 +161,50 @@ export async function getAnalysesByAddress(
   } catch (error) {
     console.warn("Failed to fetch analyses:", error);
     return [];
+  }
+}
+
+/**
+ * Cohort rank for a score among stored analyses (last 90 days).
+ *
+ * Returns the honest "Top X%" figure plus the cohort size so the UI can
+ * caption it ("among N analyzed wallets"). Returns null when the DB is
+ * unavailable or the cohort is too small for a rank to mean anything —
+ * callers must omit the stat rather than show a made-up number.
+ */
+export async function getCohortPercentile(
+  score: number,
+  chain?: "solana" | "base"
+): Promise<{ topPercent: number; cohortSize: number } | null> {
+  const MIN_COHORT_SIZE = 5;
+  try {
+    const result = chain
+      ? await sql`
+          SELECT COUNT(*) as total,
+                 COUNT(*) FILTER (WHERE score < ${score}) as below
+          FROM conviction_analyses
+          WHERE chain = ${chain}
+            AND analyzed_at > NOW() - INTERVAL '90 days'
+        `
+      : await sql`
+          SELECT COUNT(*) as total,
+                 COUNT(*) FILTER (WHERE score < ${score}) as below
+          FROM conviction_analyses
+          WHERE analyzed_at > NOW() - INTERVAL '90 days'
+        `;
+
+    const total = Number(result.rows[0]?.total ?? 0);
+    const below = Number(result.rows[0]?.below ?? 0);
+    if (total < MIN_COHORT_SIZE) return null;
+
+    const topPercent = Math.max(
+      1,
+      Math.min(99, Math.round(100 - (below / total) * 100))
+    );
+    return { topPercent, cohortSize: total };
+  } catch (error) {
+    console.warn("Failed to calculate cohort percentile:", error);
+    return null;
   }
 }
 
