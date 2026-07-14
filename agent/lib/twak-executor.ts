@@ -115,6 +115,8 @@ interface SwapRequest {
   amountIn: string; // string to handle decimal precision
   slippageBps?: number;
   chain?: string;
+  /** When true, amountIn is a token quantity (not USD). Only used for live mode. */
+  amountInIsToken?: boolean;
 }
 
 interface SwapResult {
@@ -633,11 +635,17 @@ export class TwakExecutor {
   }
 
   /**
-   * In-memory cache: symbol -> { hasLiquidity, checkedAt }
+   * In-memory cache: symbol -> { hasLiquidity, liquidityUsd, volume24hUsd, sellTax, checkedAt }
    * Prevents re-checking the same token every cycle.
    * Cache TTL: 1 hour (liquidity doesn't change that fast).
    */
-  private static liquidityCache = new Map<string, { hasLiquidity: boolean; checkedAt: number }>();
+  private static liquidityCache = new Map<string, {
+    hasLiquidity: boolean;
+    liquidityUsd: number;
+    volume24hUsd: number;
+    sellTax: number;
+    checkedAt: number;
+  }>();
   private static readonly LIQUIDITY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
   /**
@@ -691,15 +699,16 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput(chain, "chain");
 
       const slippagePercent = Math.max(0.1, Math.min(50, slippage / 100));
-      const { stdout } = await this.execFileAsync(this.twakCmd, [
+      const args = [
         "swap",
-        "--usd",
+        ...(request.amountInIsToken ? [] : ["--usd"]),
         request.amountIn,
         tokenIn,
         tokenOut,
         `--chain=${chain}`,
         `--slippage=${slippagePercent}`,
-      ], {
+      ];
+      const { stdout } = await this.execFileAsync(this.twakCmd, args, {
         env: this.getEnv(),
         timeout: 30000,
       });
@@ -846,17 +855,33 @@ export class TwakExecutor {
    *
    * Results are cached for 1 hour. In simulator mode, always returns true.
    */
-  async checkLiquidity(symbol: string): Promise<boolean> {
+  async checkLiquidity(symbol: string): Promise<{
+    hasLiquidity: boolean;
+    liquidityUsd: number;
+    volume24hUsd: number;
+    sellTax: number;
+  }> {
     const upper = symbol.toUpperCase();
 
     // Simulator mode: skip real check
-    if (this.config.simulator) return true;
+    if (this.config.simulator) {
+      return { hasLiquidity: true, liquidityUsd: Infinity, volume24hUsd: Infinity, sellTax: 0 };
+    }
 
     // Check cache first
     const cached = TwakExecutor.liquidityCache.get(upper);
     if (cached && Date.now() - cached.checkedAt < TwakExecutor.LIQUIDITY_CACHE_TTL_MS) {
-      return cached.hasLiquidity;
+      return {
+        hasLiquidity: cached.hasLiquidity,
+        liquidityUsd: cached.liquidityUsd,
+        volume24hUsd: cached.volume24hUsd,
+        sellTax: cached.sellTax,
+      };
     }
+
+    let liquidityUsd = 0;
+    let volume24hUsd = 0;
+    let sellTax = 0;
 
     // Resolve the token address (uses cache or twak search)
     let tokenParam = this.resolveCachedToken(upper);
@@ -872,25 +897,28 @@ export class TwakExecutor {
       // If the fetcher errored (null), we don't reject — let TWAK be the sole
       // judge so a transient DexScreener outage doesn't freeze trading.
       if (dex) {
+        liquidityUsd = dex.liquidityUsd;
+        volume24hUsd = dex.volume24hUsd;
+        sellTax = dex.sellTax ?? 0;
         if (dex.pairCount === 0) {
           console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (no DEX pair on BSC)`);
-          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
-          return false;
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax, checkedAt: Date.now() });
+          return { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax };
         }
         if (dex.liquidityUsd < TwakExecutor.MIN_DEX_LIQUIDITY_USD) {
           console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (pool $${dex.liquidityUsd.toFixed(0)} < $${TwakExecutor.MIN_DEX_LIQUIDITY_USD})`);
-          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
-          return false;
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax, checkedAt: Date.now() });
+          return { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax };
         }
         if (dex.volume24hUsd < TwakExecutor.MIN_DEX_24H_VOLUME_USD) {
           console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (24h volume $${dex.volume24hUsd.toFixed(0)} < $${TwakExecutor.MIN_DEX_24H_VOLUME_USD})`);
-          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
-          return false;
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax, checkedAt: Date.now() });
+          return { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax };
         }
         if ((dex.sellTax ?? 0) > TwakExecutor.MAX_DEX_SELL_TAX) {
           console.log(`  [TWAK] Liquidity check: ${symbol} → ✗ (sell tax ${((dex.sellTax ?? 0) * 100).toFixed(0)}% > ${(TwakExecutor.MAX_DEX_SELL_TAX * 100).toFixed(0)}%)`);
-          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
-          return false;
+          TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax, checkedAt: Date.now() });
+          return { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax };
         }
       }
     }
@@ -919,13 +947,13 @@ export class TwakExecutor {
       const hasRevert = /revert|insufficient|liquidity|insufficient_output/i.test(stderr + stdout);
       const result = hasQuote && !hasRevert;
 
-      TwakExecutor.liquidityCache.set(upper, { hasLiquidity: result, checkedAt: Date.now() });
+      TwakExecutor.liquidityCache.set(upper, { hasLiquidity: result, liquidityUsd, volume24hUsd, sellTax, checkedAt: Date.now() });
       console.log(`  [TWAK] Liquidity check: ${symbol} → ${result ? "✓" : "✗"}`);
-      return result;
+      return { hasLiquidity: result, liquidityUsd, volume24hUsd, sellTax };
     } catch (error) {
       console.log(`  [TWAK] Liquidity check failed for ${symbol}:`, error instanceof Error ? error.message : String(error));
-      TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, checkedAt: Date.now() });
-      return false;
+      TwakExecutor.liquidityCache.set(upper, { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax, checkedAt: Date.now() });
+      return { hasLiquidity: false, liquidityUsd, volume24hUsd, sellTax };
     }
   }
 
@@ -987,6 +1015,76 @@ export class TwakExecutor {
       TwakExecutor.sellabilityCache.set(upper, { sellable: false, checkedAt: Date.now() });
       return false;
     }
+  }
+
+  /**
+   * Pre-entry execution probe: buy a small amount of the token and immediately
+   * sell it back. This catches quote-only false positives (honeypots, broken
+   * routes, allowance/spender mismatches) before committing the full position.
+   *
+   * Uses a very wide slippage tolerance so execution — not slippage — is the
+   * gate. Returns the round-trip loss percentage (excluding gas) and both swap
+   * results so the caller can record them in the ledger.
+   */
+  async probeToken(symbol: string, bnbUsd: number): Promise<{
+    success: boolean;
+    buy?: SwapResult;
+    sell?: SwapResult;
+    gasUsd: number;
+    roundTripLossPercent: number;
+    error?: string;
+  }> {
+    const { enabled, amountUsd, maxAcceptableLossPercent, slippageBps } = AGENT_CONFIG.trading.entryProbe;
+    if (!enabled) {
+      return { success: true, gasUsd: 0, roundTripLossPercent: 0 };
+    }
+
+    // Buy $amountUsd of token with BNB.
+    const buy = await this.executeSwap({
+      tokenIn: "BNB",
+      tokenOut: symbol,
+      amountIn: amountUsd.toFixed(4),
+      slippageBps,
+    });
+    if (!buy.success) {
+      return { success: false, gasUsd: 0, roundTripLossPercent: 0, error: `probe buy failed: ${buy.error}` };
+    }
+
+    const boughtAmount = buy.amountOut;
+    if (!boughtAmount || !Number.isFinite(parseFloat(boughtAmount)) || parseFloat(boughtAmount) <= 0) {
+      return { success: false, buy, gasUsd: 0, roundTripLossPercent: 0, error: "probe buy returned no token amount" };
+    }
+
+    // Sell the exact bought amount back to BNB (raw token quantity, not USD).
+    const sell = await this.executeSwap({
+      tokenIn: symbol,
+      tokenOut: "BNB",
+      amountIn: boughtAmount,
+      amountInIsToken: true,
+      slippageBps,
+    });
+    if (!sell.success) {
+      return { success: false, buy, sell, gasUsd: 0, roundTripLossPercent: 100, error: `probe sell failed: ${sell.error}` };
+    }
+
+    const bnbSpent = bnbUsd > 0 ? amountUsd / bnbUsd : 0;
+    const bnbReceived = parseFloat(sell.amountOut ?? "0");
+    const roundTripReturnRatio = bnbSpent > 0 ? bnbReceived / bnbSpent : 1;
+    const roundTripLossPercent = (1 - roundTripReturnRatio) * 100;
+    const gasUsd = (buy.feeUsd ?? 0) + (sell.feeUsd ?? 0);
+
+    if (roundTripLossPercent > maxAcceptableLossPercent) {
+      return {
+        success: false,
+        buy,
+        sell,
+        gasUsd,
+        roundTripLossPercent,
+        error: `probe round-trip loss ${roundTripLossPercent.toFixed(1)}% exceeds ${maxAcceptableLossPercent}% cap`,
+      };
+    }
+
+    return { success: true, buy, sell, gasUsd, roundTripLossPercent };
   }
 
   /**

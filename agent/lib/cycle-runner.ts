@@ -1012,8 +1012,8 @@ export async function createTradeProposals(): Promise<Array<{
       continue;
     }
     checkedTokens.push(candidate.token.symbol);
-    const hasLiquidity = await twakExecutor.checkLiquidity(candidate.token.symbol);
-    if (!hasLiquidity) continue;
+    const liquidity = await twakExecutor.checkLiquidity(candidate.token.symbol);
+    if (!liquidity.hasLiquidity) continue;
 
     // Honeypot / tax-token defence: verify the token can actually be sold
     // before we commit BNB to a buy.
@@ -1021,6 +1021,42 @@ export async function createTradeProposals(): Promise<Array<{
     if (!isSellable) {
       console.log(`    [honeypot gate] Skipping ${candidate.token.symbol} — sell route reverts or has no liquidity`);
       continue;
+    }
+
+    // Pre-entry execution probe: for tokens with thin liquidity, actually buy
+    // and sell a tiny amount before committing a full position. Quote-only
+    // checks miss allowance/spender mismatches and honeypots (UAI proved this).
+    const { enabled, amountUsd, minLiquidityUsdForSkip } = AGENT_CONFIG.trading.entryProbe;
+    if (enabled && liquidity.liquidityUsd < minLiquidityUsdForSkip) {
+      console.log(`    [probe] ${candidate.token.symbol} liquidity $${liquidity.liquidityUsd.toFixed(0)} < $${minLiquidityUsdForSkip}; running $${amountUsd.toFixed(2)} buy/sell probe`);
+      const probe = await twakExecutor.probeToken(candidate.token.symbol, getBnbUsd(portfolio));
+      if (!probe.success) {
+        console.log(`    [probe] Skipping ${candidate.token.symbol} — ${probe.error}`);
+        if (probe.sell?.success === false || probe.error?.includes("probe sell failed")) {
+          // The token was bought but could not be sold back — this is exactly
+          // the failure mode we want to avoid ever entering again.
+          stuckSymbols.add(candidate.token.symbol);
+          console.log(`    [probe] ${candidate.token.symbol} added to blocklist after unsellable probe`);
+        }
+        // Record the failed probe costs if a buy actually executed.
+        if (probe.buy?.success) {
+          state.executedTrades.push(probe.buy);
+          state.totalTrades += 1;
+          state.totalVolumeUsd += amountUsd;
+          state.totalGasSpentUsd += probe.buy.feeUsd ?? GAS_BUFFER_USD;
+        }
+        continue;
+      }
+      console.log(`    [probe] ${candidate.token.symbol} round-trip loss ${probe.roundTripLossPercent.toFixed(1)}% — acceptable`);
+      if (probe.buy && probe.sell) {
+        state.executedTrades.push(probe.buy, probe.sell);
+        state.totalTrades += 2;
+        state.totalVolumeUsd += amountUsd * 2;
+        state.totalGasSpentUsd += probe.gasUsd;
+        // Probe spread/tax loss is realized immediately (gas is tracked separately).
+        const sellValueUsd = parseFloat(probe.sell.amountOut ?? "0") * getBnbUsd(portfolio);
+        state.realizedPnlUsd += sellValueUsd - amountUsd;
+      }
     }
 
     liquidTokens.push(candidate);

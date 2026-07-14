@@ -140,7 +140,7 @@ describe("cycle integration — one full pass under simulator", () => {
 
     // Twak — simulator returns synthetic results. Force liquidity and balances.
     vi.spyOn(twakExecutor, "getPortfolio").mockResolvedValue(SIMULATOR_PORTFOLIO as any);
-    vi.spyOn(twakExecutor, "checkLiquidity").mockResolvedValue(true);
+    vi.spyOn(twakExecutor, "checkLiquidity").mockResolvedValue({ hasLiquidity: true, liquidityUsd: 50_000, volume24hUsd: 10_000, sellTax: 0 });
     vi.spyOn(twakExecutor, "checkSellability").mockResolvedValue(true);
     vi.spyOn(twakExecutor, "getBalance").mockResolvedValue({
       token: "BNB",

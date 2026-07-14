@@ -73,6 +73,19 @@ export const AGENT_CONFIG = {
     // Slippage
     defaultSlippageBps: 100, // 1%
 
+    // Pre-entry execution probe: buy a small amount of the token and immediately
+    // sell it back to verify the route is swappable in practice. This catches
+    // honeypots, allowance/spender mismatches, and illiquid pairs that pass
+    // quote-only checks. Probes are skipped when disabled or when liquidity is
+    // comfortably above the threshold (see minLiquidityUsdForSkip).
+    entryProbe: {
+      enabled: true,
+      amountUsd: 1.0,                // probe size
+      maxAcceptableLossPercent: 15,  // reject if round-trip loses more than this
+      slippageBps: 4900,             // 49% — use a very wide probe so execution, not slippage, is the gate
+      minLiquidityUsdForSkip: 20_000, // skip probe when DexScreener liquidity >= this
+    },
+
     // Minimum conviction score required to open a position.
     // At ~$1.50 gas/trade, only strong signals justify the cost.
     minConvictionScore: 58,

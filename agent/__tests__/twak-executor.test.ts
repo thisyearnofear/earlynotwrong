@@ -187,7 +187,7 @@ describe("TwakExecutor — Simulator Mode", () => {
   });
 
   it("checkLiquidity returns true in simulator mode", async () => {
-    expect(await executor.checkLiquidity("SLX")).toBe(true);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(true);
   });
 
   it("executeSwap simulates successfully with BNB", async () => {
@@ -269,7 +269,7 @@ describe("TwakExecutor — Token Address Resolution", () => {
     queueSearch(mock.queue, "SLX", "0x8A063A9ff4dE28dcB87117cc759BE6cE70e09F81");
     queueQuote(mock.queue, "854.599978068370381711");
 
-    expect(await executor.checkLiquidity("SLX")).toBe(true);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(true);
     expect(mock.calls).toHaveLength(2);
 
     const searchCall = mock.calls[0];
@@ -288,7 +288,7 @@ describe("TwakExecutor — Token Address Resolution", () => {
     ]);
     queueQuote(mock.queue, "854.5");
 
-    expect(await executor.checkLiquidity("SLX")).toBe(true);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(true);
 
     // The CMC-listed address should be used for the quote
     const quoteArgs = mock.calls[1].args;
@@ -298,7 +298,7 @@ describe("TwakExecutor — Token Address Resolution", () => {
   it("returns false for tokens not found on BSC", async () => {
     queueEmptySearch(mock.queue);
 
-    expect(await executor.checkLiquidity("UNKNOWN_TOKEN")).toBe(false);
+    expect((await executor.checkLiquidity("UNKNOWN_TOKEN")).hasLiquidity).toBe(false);
   });
 
   it("caches resolved addresses for subsequent calls", async () => {
@@ -314,7 +314,7 @@ describe("TwakExecutor — Token Address Resolution", () => {
     mock.queue.length = 0;
     queueQuote(mock.queue, "854.6");
 
-    expect(await executor.checkLiquidity("SLX")).toBe(true);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(true);
     expect(mock.calls).toHaveLength(1); // only quote (address cached, no search)
     expect(mock.calls[0].args).toContain("swap");
   });
@@ -322,7 +322,7 @@ describe("TwakExecutor — Token Address Resolution", () => {
   it("handles search CLI failure gracefully", async () => {
     queueError(mock.queue, "CLI not found");
 
-    expect(await executor.checkLiquidity("SLX")).toBe(false);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(false);
   });
 });
 
@@ -357,7 +357,7 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
     queueSearch(mock.queue, "SCAM", "0xDEADBEEF000000000000000000000000DEADBEEF");
     stubDex({ liquidityUsd: 0, volume24hUsd: 0, pairCount: 0 });
 
-    expect(await executor.checkLiquidity("SCAM")).toBe(false);
+    expect((await executor.checkLiquidity("SCAM")).hasLiquidity).toBe(false);
     // TWAK quote should NOT be called — we short-circuited at the DexScreener gate.
     const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
     expect(quoteCalls).toHaveLength(0);
@@ -367,7 +367,7 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
     queueSearch(mock.queue, "KAI", "0x39Ae8EEFB05138f418Bb27659c21632Dc1DDAb10");
     stubDex({ liquidityUsd: 951, volume24hUsd: 0, pairCount: 1 });
 
-    expect(await executor.checkLiquidity("KAI")).toBe(false);
+    expect((await executor.checkLiquidity("KAI")).hasLiquidity).toBe(false);
     const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
     expect(quoteCalls).toHaveLength(0);
   });
@@ -376,7 +376,7 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
     queueSearch(mock.queue, "DEAD", "0x000000000000000000000000000000000DEAD000");
     stubDex({ liquidityUsd: 100_000, volume24hUsd: 0, pairCount: 1 });
 
-    expect(await executor.checkLiquidity("DEAD")).toBe(false);
+    expect((await executor.checkLiquidity("DEAD")).hasLiquidity).toBe(false);
   });
 
   it("accepts tokens with deep pool and active volume (passes both gates)", async () => {
@@ -384,7 +384,7 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
     stubDex({ liquidityUsd: 155_000, volume24hUsd: 53_000, pairCount: 3 });
     queueQuote(mock.queue, "100.5");
 
-    expect(await executor.checkLiquidity("FET")).toBe(true);
+    expect((await executor.checkLiquidity("FET")).hasLiquidity).toBe(true);
     expect(dexCalls).toHaveLength(1);
     expect(dexCalls[0]).toBe("0x031b41e504677879370e9dbcf937283a8691fa7f");
   });
@@ -394,7 +394,7 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
     stubDex(null); // outage
     queueQuote(mock.queue, "100.5");
 
-    expect(await executor.checkLiquidity("BSB")).toBe(true);
+    expect((await executor.checkLiquidity("BSB")).hasLiquidity).toBe(true);
     const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
     expect(quoteCalls).toHaveLength(1);
   });
@@ -404,14 +404,14 @@ describe("TwakExecutor — DexScreener liquidity gate", () => {
     stubDex({ liquidityUsd: 100_000, volume24hUsd: 50_000, pairCount: 1 });
     queueEmptyQuote(mock.queue, "revert: insufficient output amount");
 
-    expect(await executor.checkLiquidity("REVERT")).toBe(false);
+    expect((await executor.checkLiquidity("REVERT")).hasLiquidity).toBe(false);
   });
 
   it("rejects tokens with reported sell tax above 10%", async () => {
     queueSearch(mock.queue, "TAXY", "0xB3d3c3D4e5F6789012345678901234567890ABcD");
     stubDex({ liquidityUsd: 100_000, volume24hUsd: 50_000, pairCount: 1, sellTax: 0.15 });
 
-    expect(await executor.checkLiquidity("TAXY")).toBe(false);
+    expect((await executor.checkLiquidity("TAXY")).hasLiquidity).toBe(false);
     // TWAK quote should NOT be called — short-circuited at DexScreener gate.
     const quoteCalls = mock.calls.filter((c) => c.args.includes("--quote-only"));
     expect(quoteCalls).toHaveLength(0);
@@ -442,7 +442,7 @@ describe("TwakExecutor — Liquidity Check", () => {
     queueSearch(mock.queue, "AXS", "0x715D400F88C167884bbCc41C5FeA407ed4D2f8A0");
     queueQuote(mock.queue, "10.5");
 
-    expect(await executor.checkLiquidity("AXS")).toBe(true);
+    expect((await executor.checkLiquidity("AXS")).hasLiquidity).toBe(true);
     expect(mock.calls).toHaveLength(2);
   });
 
@@ -450,14 +450,14 @@ describe("TwakExecutor — Liquidity Check", () => {
     queueSearch(mock.queue, "SLX", "0x8A063A9ff4dE28dcB87117cc759BE6cE70e09F81");
     queueEmptyQuote(mock.queue, "No route found");
 
-    expect(await executor.checkLiquidity("SLX")).toBe(false);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(false);
   });
 
   it("returns false when quote CLI throws", async () => {
     queueSearch(mock.queue, "SLX", "0x8A063A9ff4dE28dcB87117cc759BE6cE70e09F81");
     queueError(mock.queue, "execution reverted: insufficient liquidity");
 
-    expect(await executor.checkLiquidity("SLX")).toBe(false);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(false);
   });
 
   it("uses cached liquidity result for repeated checks", async () => {
@@ -471,7 +471,7 @@ describe("TwakExecutor — Liquidity Check", () => {
     mock.calls.length = 0;
     mock.queue.length = 0;
 
-    expect(await executor.checkLiquidity("BSB")).toBe(true);
+    expect((await executor.checkLiquidity("BSB")).hasLiquidity).toBe(true);
     expect(mock.calls).toHaveLength(0); // no CLI calls
   });
 
@@ -564,19 +564,19 @@ describe("TwakExecutor — Edge Cases", () => {
 
   it("handles empty search results", async () => {
     queueEmptySearch(mock.queue);
-    expect(await executor.checkLiquidity("RANDOM")).toBe(false);
+    expect((await executor.checkLiquidity("RANDOM")).hasLiquidity).toBe(false);
   });
 
   it("handles non-BSC search results", async () => {
     queueSearchResults(mock.queue, [
       { symbol: "TEST", address: "0x1234", chain: "ethereum", hasCmcLogo: true },
     ]);
-    expect(await executor.checkLiquidity("TEST")).toBe(false);
+    expect((await executor.checkLiquidity("TEST")).hasLiquidity).toBe(false);
   });
 
   it("handles malformed JSON from search", async () => {
     queueMalformedJson(mock.queue);
-    expect(await executor.checkLiquidity("SLX")).toBe(false);
+    expect((await executor.checkLiquidity("SLX")).hasLiquidity).toBe(false);
   });
 });
 

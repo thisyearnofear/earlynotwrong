@@ -186,6 +186,18 @@ The agent publishes conviction records to a Casper testnet contract. Because eve
 
 When the agent needs BNB for gas or has hit the open-position cap, `harvestForBnb()` sells the weakest mature position. If a position cannot be exited, it is eventually marked **stuck** so the bot stops burning gas and stops it from blocking new entries.
 
+### Pre-entry execution probe (thin-liquidity tokens)
+
+For tokens with DexScreener liquidity below `entryProbe.minLiquidityUsdForSkip` (default $20k), the agent performs a real **buy/sell probe** before opening a full position:
+
+1. Buy `$entryProbe.amountUsd` of the token with BNB.
+2. Immediately sell the exact bought amount back to BNB.
+3. Reject the token if either leg reverts or if the round-trip loss (spread/tax, excluding gas) exceeds `entryProbe.maxAcceptableLossPercent`.
+
+This catches quote-only false positives such as the UAI allowance/spender mismatch (`SafeTransferFromFailed`). If the sell leg fails outright, the symbol is added to `stuckSymbols` so the agent never re-enters. Probes use a very wide slippage (`entryProbe.slippageBps`, default 49%) so execution, not slippage, is the gate.
+
+High-liquidity tokens (≥ $20k pool) skip the probe to avoid unnecessary gas.
+
 ### Exit/harvest fallback ladder
 
 Both exits and harvests use the same retry ladder:
