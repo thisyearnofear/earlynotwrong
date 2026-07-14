@@ -158,9 +158,12 @@ export const state = {
   regimeScore: null as number | null,
   sentimentLabel: null as string | null,
   lastAnchoredHash: null as string | null,
+  // Last thesis hash that was (or would have been) anchored. Used to skip
+  // redundant on-chain anchors when the conviction thesis hasn't changed.
+  lastAnchoredThesisHash: null as string | null,
   anchoring: null as {
     hash: string;
-    mode: "on-chain" | "reverted" | "off-chain" | "simulator";
+    mode: "on-chain" | "reverted" | "off-chain" | "simulator" | "cached";
     blockNumber?: number;
     gasUsed?: string;
   } | null,

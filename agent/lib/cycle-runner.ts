@@ -1377,6 +1377,18 @@ export async function anchorToMantle(): Promise<void> {
   console.log(`  Subject hash: ${subjectHash.slice(0, 18)}...`);
   console.log(`  Thesis hash:  ${thesisHash.slice(0, 18)}...`);
 
+  // Skip redundant anchors when the thesis hasn't changed since the last
+  // successful (or skipped-due-to-balance) on-chain publish. Anchoring is
+  // for provenance, not heartbeat — re-publishing the same thesis hash only
+  // burns gas without adding useful history.
+  if (state.lastAnchoredThesisHash === thesisHash) {
+    console.log(`  Thesis unchanged since last anchor; skipping redundant on-chain anchor`);
+    state.anchorResults = [];
+    state.anchoring = { hash: thesisHash, mode: "cached" };
+    state.lastAnchoredHash = thesisHash;
+    return;
+  }
+
   const results = await anchorAll({
     subjectHash,
     thesisHash,
@@ -1401,6 +1413,7 @@ export async function anchorToMantle(): Promise<void> {
   const primary = results.find((r) => r.status === "success");
   if (primary) {
     state.lastAnchoredHash = primary.txHash ?? thesisHash;
+    state.lastAnchoredThesisHash = thesisHash;
     state.anchoring = {
       hash: primary.txHash ?? thesisHash,
       mode: "on-chain",
@@ -1482,6 +1495,7 @@ export function printCycleSummary(startTime: number): void {
   if (anchor) {
     const statusIcon =
       anchor.mode === "on-chain" ? "✓" :
+      anchor.mode === "cached" ? "◌" :
       anchor.mode === "simulator" ? "○" :
       "⚠";
     console.log(`  Anchoring:    ${statusIcon} ${anchor.mode}`);

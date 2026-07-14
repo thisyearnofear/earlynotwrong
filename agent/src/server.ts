@@ -60,7 +60,7 @@ export interface AgentServerState {
   lastAnchoredHash: string | null;
   anchoring: {
     hash: string;
-    mode: "on-chain" | "reverted" | "off-chain" | "simulator";
+    mode: "on-chain" | "reverted" | "off-chain" | "simulator" | "cached";
     blockNumber?: number;
     gasUsed?: string;
   } | null;
