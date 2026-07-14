@@ -677,6 +677,15 @@ function finalizeExit(
 const MIN_CYCLES_TO_HARVEST = 5;
 const DUST_USD = 0.5;
 
+/** Number of non-stuck (still tradeable) open positions. Stuck/honeypot
+ *  positions stay in the ledger for accounting but should not block new
+ *  entries or force unnecessary harvests. */
+function activePositionCount(): number {
+  return state.heldPositions.filter(
+    (p) => !p.stuck && !stuckSymbols.has(p.symbol),
+  ).length;
+}
+
 export async function harvestForBnb(): Promise<void> {
   const bnbPosition = state.portfolio?.positions.find(
     (p) => p.symbol.toUpperCase() === "BNB" || p.token.toUpperCase() === "BNB"
@@ -685,8 +694,9 @@ export async function harvestForBnb(): Promise<void> {
 
   const HARVEST_FLOOR = AGENT_CONFIG.trading.bankroll.harvestMinBnbUsd;
   const POSITION_CAP = AGENT_CONFIG.trading.maxOpenPositions;
+  const activePositions = activePositionCount();
   const bnbLow = bnbValue < HARVEST_FLOOR;
-  const atCap = state.heldPositions.length >= POSITION_CAP;
+  const atCap = activePositions >= POSITION_CAP;
   if (!bnbLow && !atCap) return;
 
   // When BNB is very low we are willing to harvest tiny "dust" positions just
@@ -742,7 +752,7 @@ export async function harvestForBnb(): Promise<void> {
   const targetValueUsd = currentValue(target);
   const trigger = bnbLow
     ? `BNB low (balance: $${bnbValue.toFixed(2)}, floor: $${HARVEST_FLOOR})`
-    : `at cap (${state.heldPositions.length}/${POSITION_CAP}) — freeing a slot`;
+    : `at cap (${activePositions}/${POSITION_CAP}) — freeing a slot`;
   const targetLabel = maturePositions.length > 0 ? "mature" : "young";
   console.log(`\n[4b/8] Harvesting — ${trigger}`);
   console.log(`  Selling ${target.symbol} ($${targetValueUsd.toFixed(2)} value, $${target.amountUsd.toFixed(2)} basis) — ${targetLabel}, ${target.cyclesHeld} cycles held`);
@@ -750,12 +760,20 @@ export async function harvestForBnb(): Promise<void> {
   // Sell ~95% of CURRENT value (dust margin absorbs price drift + rounding).
   const harvestAmountUsd = targetValueUsd * 0.95;
 
-  const primary = await twakExecutor.executeSwap({
-    tokenIn: target.symbol,
-    tokenOut: "BNB",
-    amountIn: harvestAmountUsd.toFixed(4),
-    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
-  });
+  // Primary: default slippage, then progressively higher slippage for
+  // tax-token / low-liquidity tokens (same ladder as exits).
+  let primaryAttempt: Awaited<ReturnType<typeof twakExecutor.executeSwap>> | null = null;
+  for (const slippageBps of [AGENT_CONFIG.trading.defaultSlippageBps, ...STUCK_SLIPPAGES_BPS]) {
+    primaryAttempt = await twakExecutor.executeSwap({
+      tokenIn: target.symbol,
+      tokenOut: "BNB",
+      amountIn: harvestAmountUsd.toFixed(4),
+      slippageBps,
+    });
+    if (primaryAttempt.success) break;
+    console.log(`  ⚠ Primary harvest failed at ${(slippageBps / 100).toFixed(0)}%: ${primaryAttempt.error}`);
+  }
+  const primary = primaryAttempt!;
 
   if (primary.success) {
     state.heldPositions = state.heldPositions.filter(
@@ -840,12 +858,19 @@ export async function harvestForBnb(): Promise<void> {
   }
 
   console.log(`  [harvest] Fallback B: test swap at $0.50 to diagnose revert`);
-  const tinyTest = await twakExecutor.executeSwap({
-    tokenIn: target.symbol,
-    tokenOut: "BNB",
-    amountIn: "0.5",
-    slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
-  });
+  let tinyTestAttempt: Awaited<ReturnType<typeof twakExecutor.executeSwap>> | null = null;
+  for (const slippageBps of [AGENT_CONFIG.trading.defaultSlippageBps, ...STUCK_SLIPPAGES_BPS]) {
+    tinyTestAttempt = await twakExecutor.executeSwap({
+      tokenIn: target.symbol,
+      tokenOut: "BNB",
+      amountIn: "0.5",
+      slippageBps,
+    });
+    if (tinyTestAttempt.success) break;
+    console.log(`  ⚠ Tiny harvest probe failed at ${(slippageBps / 100).toFixed(0)}%: ${tinyTestAttempt.error}`);
+  }
+  const tinyTest = tinyTestAttempt!;
+
   if (tinyTest.success) {
     console.log(`  ✓ Tiny swap worked, retrying at $1`);
     const retry = await twakExecutor.executeSwap({
@@ -886,11 +911,21 @@ export async function harvestForBnb(): Promise<void> {
   }
 
   console.log(`  ✗ All harvest attempts failed for ${target.symbol}`);
-  console.log(`  [harvest] Marking ${target.symbol} as un-harvestable for 5 cycles`);
+
+  // If a position cannot be harvested through any route or slippage, it is
+  // effectively unexitable — treat it as stuck/honeypot so we stop wasting gas
+  // and stop it from blocking the position cap.
+  const targetIdx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
+  if (targetIdx >= 0) {
+    state.heldPositions[targetIdx].stuck = true;
+    state.heldPositions[targetIdx].failedExitAttempts += 1;
+  }
+  stuckSymbols.add(target.symbol);
   unharvestableTokens.set(target.symbol, 5);
+  console.log(`  [harvest] ${target.symbol} marked STUCK after all harvest paths failed; added to blocklist`);
   sendErrorAlert({
     cycle: state.cycle,
-    error: `Harvest failed for ${target.symbol} after 3 attempts (primary + USDC hop + size probe). Token marked un-harvestable.`,
+    error: `Harvest failed for ${target.symbol} after all paths failed (slippage ladder + USDC hop + size probe). Position marked stuck/honeypot and blocklisted.`,
   }).catch(() => {});
 }
 
@@ -917,9 +952,10 @@ export async function createTradeProposals(): Promise<Array<{
   }
   const portfolioValue = portfolio.totalValueUsd;
 
-  if (state.heldPositions.length >= AGENT_CONFIG.trading.maxOpenPositions) {
+  const openPositions = activePositionCount();
+  if (openPositions >= AGENT_CONFIG.trading.maxOpenPositions) {
     console.log(
-      `  Position cap reached (${state.heldPositions.length}/${AGENT_CONFIG.trading.maxOpenPositions}). Skipping new entries — harvest first.`,
+      `  Position cap reached (${openPositions}/${AGENT_CONFIG.trading.maxOpenPositions}). Skipping new entries — harvest first.`,
     );
     return [];
   }

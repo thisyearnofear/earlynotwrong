@@ -182,6 +182,37 @@ The agent publishes conviction records to a Casper testnet contract. Because eve
 
 ---
 
+## TWAK Harvesting & Honeypot Handling
+
+When the agent needs BNB for gas or has hit the open-position cap, `harvestForBnb()` sells the weakest mature position. If a position cannot be exited, it is eventually marked **stuck** so the bot stops burning gas and stops it from blocking new entries.
+
+### Exit/harvest fallback ladder
+
+Both exits and harvests use the same retry ladder:
+
+1. Direct swap to BNB at default slippage (1%)
+2. Retry at 10% / 20% / 49% slippage (tax-token / low-liquidity tokens)
+3. Route through USDC (often deeper liquidity on BSC)
+4. Harvest only: tiny size-probe ($0.50 → $1) with the same slippage ladder
+
+If every path reverts, the position is marked `stuck` and its symbol is added to `stuckSymbols` (blocklist).
+
+### Position cap no longer counts stuck tokens
+
+`maxOpenPositions` used to count stuck/honeypot positions, so an 8-slot cap could be silently consumed by unexitable tokens. The cap now looks at **active** positions only (`!p.stuck && !stuckSymbols.has(p.symbol)`), freeing up slots for real opportunities.
+
+### Diagnosing `execution reverted: 0xf4059071`
+
+That selector is `SafeTransferFromFailed()` — a router-level failure. Common causes:
+
+- **Honeypot / blacklist:** token transfer reverts for non-whitelisted sellers.
+- **Insufficient allowance:** TWAK's chosen router/spender changed; re-approve via `twak approve` if you believe the token is legitimate.
+- **Bad route / fake pool:** the router picked an illiquid or bait pair (e.g., a PancakeSwap pair against a fake "Subject 3" token). This is not a honeypot token per se, but the on-chain path is unusable.
+
+If a token persistently fails every fallback, the agent will mark it stuck. To manually force a retry, remove its symbol from `stuckSymbols` in memory or restart the process (the blocklist is rebuilt from persisted `p.stuck` flags).
+
+---
+
 ## TWAK Troubleshooting
 
 TWAK is the Trust Wallet Agent Kit CLI (`twak`). The agent uses it for BSC swaps, token search, and wallet reads.
