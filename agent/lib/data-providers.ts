@@ -12,6 +12,8 @@
  * Exports: CmcClient, SosovalueClient, cmcClient, sosovalueClient + all types.
  */
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { AGENT_CONFIG } from "./config.js";
 import type { MarketDataProvider } from "./agent-state.js";
 
@@ -485,6 +487,60 @@ export interface SosovalueMacroEvent {
 
 const SSV_DEFAULT_BASE_URL = "https://openapi.sosovalue.com/openapi/v1";
 
+// Persistent cache for SoSoValue: avoids cold-start bursts after deploys/restarts.
+// Stored in AGENT_DATA_DIR (or <cwd>/data) next to state.json. Cache entries are
+// TTL'd at read time, not written time, so stale-but-recent data is reusable.
+const SSV_CACHE_FILE = "sosovalue-cache.json";
+
+function getSsvDataDir(): string | null {
+  const dir = process.env.AGENT_DATA_DIR || join(process.cwd(), "data");
+  if (!existsSync(dir)) {
+    if (process.env.AGENT_DATA_DIR) {
+      try { mkdirSync(dir, { recursive: true }); } catch { return null; }
+    } else {
+      // No explicit data dir and default doesn't exist — skip disk persistence
+      // (typical in tests or fresh clones) rather than creating files everywhere.
+      return null;
+    }
+  }
+  return dir;
+}
+
+interface SsvPersistentCache {
+  currencyIdCache: Array<[string, { id: string; symbol: string; name?: string }]> | null;
+  currencyCacheLastFetched: number;
+  snapshotCache: Array<[string, { snapshot: SosovalueMarketSnapshot; fetchedAt: number }]> | null;
+  klineCache: Array<[string, { klines: SosovalueKline[]; fetchedAt: number }]> | null;
+  hotNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null;
+  featuredNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null;
+  macroEventsCache: { items: SosovalueMacroEvent[]; fetchedAt: number; dateKey: string } | null;
+  indexListCache: { items: SosovalueIndex[]; fetchedAt: number } | null;
+  indexSnapshotCache: Array<[string, { snapshot: SosovalueIndexSnapshot; fetchedAt: number }]> | null;
+  indexConstituentCache: Array<[string, { constituents: SosovalueIndexConstituent[]; fetchedAt: number }]> | null;
+}
+
+function loadSsvCache(): SsvPersistentCache | null {
+  const dir = getSsvDataDir();
+  if (!dir) return null;
+  const path = join(dir, SSV_CACHE_FILE);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as SsvPersistentCache;
+  } catch {
+    return null;
+  }
+}
+
+function saveSsvCache(cache: SsvPersistentCache): void {
+  const dir = getSsvDataDir();
+  if (!dir) return;
+  try {
+    writeFileSync(join(dir, SSV_CACHE_FILE), JSON.stringify(cache), "utf-8");
+  } catch (err) {
+    console.warn("[SoSoValue] Failed to persist cache:", (err as Error)?.message || String(err));
+  }
+}
+
 const SSV_RATE_LIMIT_PER_MIN = 20;
 const SSV_RATE_LIMIT_CAPACITY = SSV_RATE_LIMIT_PER_MIN;
 const SSV_REFILL_MS_PER_TOKEN = 60_000 / SSV_RATE_LIMIT_PER_MIN;
@@ -574,10 +630,11 @@ export class SosovalueClient implements MarketDataProvider {
   private static readonly SUSPENSION_COOLDOWN_MS = 15 * 60 * 1000;
   private static readonly MAX_CONSECUTIVE_FAILURES = 3;
 
-  // Currency ID cache (5 min TTL) for symbol→ID resolution
+  // Currency ID cache (1h TTL) for symbol→ID resolution. The list changes rarely;
+  // we keep it long to avoid a /currencies call on every restart.
   private currencyIdCache = new Map<string, { id: string; symbol: string; name: string }>();
   private currencyCacheLastFetched = 0;
-  private static readonly CURRENCY_CACHE_TTL_MS = 5 * 60 * 1000;
+  private static readonly CURRENCY_CACHE_TTL_MS = 60 * 60 * 1000;
 
   // Market snapshot cache: avoid re-fetching 150+ snapshots every cycle.
   // TTL is intentionally longer than the cycle interval so most cycles hit cache.
@@ -591,15 +648,88 @@ export class SosovalueClient implements MarketDataProvider {
   // News / macro cache: share between sentiment analysis and narrative generation.
   private hotNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null = null;
   private featuredNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null = null;
-  private macroEventsCache: { items: SosovalueMacroEvent[]; fetchedAt: number } | null = null;
-  private static readonly NEWS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
-  private static readonly MACRO_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+  private macroEventsCache: { items: SosovalueMacroEvent[]; fetchedAt: number; dateKey: string } | null = null;
+  private static readonly NEWS_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2h
+  private static readonly MACRO_CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4h
+
+  // Index data caches (used by SSI regime signal every cycle).
+  private indexListCache: { items: SosovalueIndex[]; fetchedAt: number } | null = null;
+  private indexSnapshotCache = new Map<string, { snapshot: SosovalueIndexSnapshot; fetchedAt: number }>();
+  private indexConstituentCache = new Map<string, { constituents: SosovalueIndexConstituent[]; fetchedAt: number }>();
+  private static readonly INDEX_LIST_TTL_MS = 60 * 60 * 1000; // 1h
+  private static readonly INDEX_SNAPSHOT_TTL_MS = 60 * 60 * 1000; // 1h
+  private static readonly INDEX_CONSTITUENT_TTL_MS = 60 * 60 * 1000; // 1h
+
+  // Observability: count actual HTTP requests emitted through this client.
+  private apiCallsThisCycle = 0;
 
   /** @param options.apiKey — SoSoValue API key. Falls back to SOSOVALUE_API_KEY env var. */
   constructor(options: { apiKey?: string; baseUrl?: string } = {}) {
     this.apiKey = options.apiKey || process.env.SOSOVALUE_API_KEY || "";
     this.baseUrl = options.baseUrl || SSV_DEFAULT_BASE_URL;
     this.apiHealthy = Boolean(this.apiKey);
+    this.loadCache();
+  }
+
+  /** Persist all caches to disk so restarts don't trigger cold-start bursts. */
+  private saveCache(): void {
+    const payload: SsvPersistentCache = {
+      currencyIdCache: this.currencyIdCache.size > 0 ? Array.from(this.currencyIdCache.entries()) : null,
+      currencyCacheLastFetched: this.currencyCacheLastFetched,
+      snapshotCache: this.snapshotCache.size > 0 ? Array.from(this.snapshotCache.entries()) : null,
+      klineCache: this.klineCache.size > 0 ? Array.from(this.klineCache.entries()) : null,
+      hotNewsCache: this.hotNewsCache,
+      featuredNewsCache: this.featuredNewsCache,
+      macroEventsCache: this.macroEventsCache,
+      indexListCache: this.indexListCache,
+      indexSnapshotCache: this.indexSnapshotCache.size > 0 ? Array.from(this.indexSnapshotCache.entries()) : null,
+      indexConstituentCache: this.indexConstituentCache.size > 0 ? Array.from(this.indexConstituentCache.entries()) : null,
+    };
+    saveSsvCache(payload);
+  }
+
+  private loadCache(): void {
+    const raw = loadSsvCache();
+    if (!raw) return;
+    const now = Date.now();
+    if (raw.currencyCacheLastFetched) {
+      this.currencyCacheLastFetched = raw.currencyCacheLastFetched;
+      if (raw.currencyIdCache) {
+        for (const [k, v] of raw.currencyIdCache) this.currencyIdCache.set(k, { id: v.id, symbol: v.symbol, name: v.name ?? "" });
+      }
+    }
+    if (raw.snapshotCache) {
+      for (const [k, v] of raw.snapshotCache) {
+        if (now - v.fetchedAt < SosovalueClient.SNAPSHOT_CACHE_TTL_MS) this.snapshotCache.set(k, v);
+      }
+    }
+    if (raw.klineCache) {
+      for (const [k, v] of raw.klineCache) {
+        if (now - v.fetchedAt < SosovalueClient.KLINE_CACHE_TTL_MS) this.klineCache.set(k, v);
+      }
+    }
+    if (raw.hotNewsCache && now - raw.hotNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) this.hotNewsCache = raw.hotNewsCache;
+    if (raw.featuredNewsCache && now - raw.featuredNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) this.featuredNewsCache = raw.featuredNewsCache;
+    if (raw.macroEventsCache && now - raw.macroEventsCache.fetchedAt < SosovalueClient.MACRO_CACHE_TTL_MS) this.macroEventsCache = raw.macroEventsCache;
+    if (raw.indexListCache && now - raw.indexListCache.fetchedAt < SosovalueClient.INDEX_LIST_TTL_MS) this.indexListCache = raw.indexListCache;
+    if (raw.indexSnapshotCache) {
+      for (const [k, v] of raw.indexSnapshotCache) {
+        if (now - v.fetchedAt < SosovalueClient.INDEX_SNAPSHOT_TTL_MS) this.indexSnapshotCache.set(k, v);
+      }
+    }
+    if (raw.indexConstituentCache) {
+      for (const [k, v] of raw.indexConstituentCache) {
+        if (now - v.fetchedAt < SosovalueClient.INDEX_CONSTITUENT_TTL_MS) this.indexConstituentCache.set(k, v);
+      }
+    }
+  }
+
+  /** Reset the per-cycle API call counter. Called by the trading loop each cycle. */
+  resetApiCallCounter(): void {
+    if (this.apiCallsThisCycle > 0) {
+      console.log(`[SoSoValue] HTTP requests this cycle: ${this.apiCallsThisCycle}`);
+    }
+    this.apiCallsThisCycle = 0;
   }
 
   /** True when the key exists and we haven't tripped the circuit breaker. */
@@ -609,6 +739,7 @@ export class SosovalueClient implements MarketDataProvider {
 
   /** Update circuit breaker based on response status. Call after every request. */
   private recordApiCall(status: number): void {
+    this.apiCallsThisCycle++;
     if (status >= 200 && status < 300) {
       this.consecutiveFailures = 0;
       this.apiSuspendedUntil = 0;
@@ -652,6 +783,7 @@ export class SosovalueClient implements MarketDataProvider {
       this.currencyIdCache.clear();
       for (const c of currencies) { if (c.id && c.symbol) this.currencyIdCache.set(c.symbol.toUpperCase(), { id: c.id, symbol: c.symbol, name: c.name }); }
       this.currencyCacheLastFetched = now;
+      this.saveCache();
     }
     return currencies;
   }
@@ -674,7 +806,10 @@ export class SosovalueClient implements MarketDataProvider {
     if (cached && now - cached.fetchedAt < SosovalueClient.SNAPSHOT_CACHE_TTL_MS) return cached.snapshot;
     const raw = await ssvRestGet<Record<string, unknown>>(`/currencies/${encodeURIComponent(currencyId)}/market-snapshot`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const snapshot = raw ? this.parseSnapshot(raw) : null;
-    if (snapshot) this.snapshotCache.set(currencyId, { snapshot, fetchedAt: now });
+    if (snapshot) {
+      this.snapshotCache.set(currencyId, { snapshot, fetchedAt: now });
+      this.saveCache();
+    }
     return snapshot;
   }
 
@@ -722,7 +857,10 @@ export class SosovalueClient implements MarketDataProvider {
     if (cached && now - cached.fetchedAt < SosovalueClient.KLINE_CACHE_TTL_MS) return cached.klines;
     const raw = await ssvRestGet<unknown>(`/currencies/${encodeURIComponent(currencyId)}/klines?interval=${encodeURIComponent(interval)}&limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const klines = extractList<SosovalueKline>(raw);
-    if (klines.length > 0) this.klineCache.set(cacheKey, { klines, fetchedAt: now });
+    if (klines.length > 0) {
+      this.klineCache.set(cacheKey, { klines, fetchedAt: now });
+      this.saveCache();
+    }
     return klines;
   }
 
@@ -739,23 +877,44 @@ export class SosovalueClient implements MarketDataProvider {
   /** Fetch all available SoSoValue Indices. */
   async fetchIndices(): Promise<SosovalueIndex[]> {
     if (!this.isAvailable()) return [];
+    const now = Date.now();
+    if (this.indexListCache && now - this.indexListCache.fetchedAt < SosovalueClient.INDEX_LIST_TTL_MS) return this.indexListCache.items;
     const raw = await ssvRestGet<unknown>("/indices", this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
-    return extractList<SosovalueIndex>(raw);
+    const items = extractList<SosovalueIndex>(raw);
+    if (items.length > 0) {
+      this.indexListCache = { items, fetchedAt: now };
+      this.saveCache();
+    }
+    return items;
   }
 
   /** Fetch live market snapshot for an index by ticker. */
   async fetchIndexSnapshot(indexTicker: string): Promise<SosovalueIndexSnapshot | null> {
     if (!this.isAvailable()) return null;
+    const now = Date.now();
+    const cached = this.indexSnapshotCache.get(indexTicker);
+    if (cached && now - cached.fetchedAt < SosovalueClient.INDEX_SNAPSHOT_TTL_MS) return cached.snapshot;
     const raw = await ssvRestGet<Record<string, unknown>>(`/indices/${encodeURIComponent(indexTicker)}/market-snapshot`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     if (!raw) return null;
-    return { ticker: String(raw.ticker ?? raw.symbol ?? indexTicker), name: String(raw.name ?? ""), price: safeNumber(raw.price ?? raw.price_usd), percent_change_24h: safeNumber(raw.percent_change_24h), percent_change_7d: safeNumber(raw.percent_change_7d), market_cap_usd: safeNumber(raw.market_cap_usd), volume_24h_usd: safeNumber(raw.volume_24h_usd), last_updated: String(raw.last_updated ?? "") };
+    const snapshot = { ticker: String(raw.ticker ?? raw.symbol ?? indexTicker), name: String(raw.name ?? ""), price: safeNumber(raw.price ?? raw.price_usd), percent_change_24h: safeNumber(raw.percent_change_24h), percent_change_7d: safeNumber(raw.percent_change_7d), market_cap_usd: safeNumber(raw.market_cap_usd), volume_24h_usd: safeNumber(raw.volume_24h_usd), last_updated: String(raw.last_updated ?? "") };
+    this.indexSnapshotCache.set(indexTicker, { snapshot, fetchedAt: now });
+    this.saveCache();
+    return snapshot;
   }
 
   /** Fetch constituent tokens and weights for an index. */
   async fetchIndexConstituents(indexTicker: string): Promise<SosovalueIndexConstituent[]> {
     if (!this.isAvailable()) return [];
+    const now = Date.now();
+    const cached = this.indexConstituentCache.get(indexTicker);
+    if (cached && now - cached.fetchedAt < SosovalueClient.INDEX_CONSTITUENT_TTL_MS) return cached.constituents;
     const raw = await ssvRestGet<unknown>(`/indices/${encodeURIComponent(indexTicker)}/constituents`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
-    return extractList<SosovalueIndexConstituent>(raw);
+    const items = extractList<SosovalueIndexConstituent>(raw);
+    if (items.length > 0) {
+      this.indexConstituentCache.set(indexTicker, { constituents: items, fetchedAt: now });
+      this.saveCache();
+    }
+    return items;
   }
 
   /** Fetch the latest news feed. @param limit — Max items. Default 20. */
@@ -772,7 +931,10 @@ export class SosovalueClient implements MarketDataProvider {
     if (this.hotNewsCache && now - this.hotNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) return this.hotNewsCache.items.slice(0, limit);
     const raw = await ssvRestGet<unknown>(`/news/hot?page=1&page_size=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const items = extractList<SosovalueFeedItem>(raw);
-    if (items.length > 0) this.hotNewsCache = { items, fetchedAt: now };
+    if (items.length > 0) {
+      this.hotNewsCache = { items, fetchedAt: now };
+      this.saveCache();
+    }
     return items;
   }
 
@@ -783,7 +945,10 @@ export class SosovalueClient implements MarketDataProvider {
     if (this.featuredNewsCache && now - this.featuredNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) return this.featuredNewsCache.items.slice(0, limit);
     const raw = await ssvRestGet<unknown>(`/news/pick?page=1&page_size=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const items = extractList<SosovalueFeedItem>(raw);
-    if (items.length > 0) this.featuredNewsCache = { items, fetchedAt: now };
+    if (items.length > 0) {
+      this.featuredNewsCache = { items, fetchedAt: now };
+      this.saveCache();
+    }
     return items;
   }
 
@@ -800,7 +965,10 @@ export class SosovalueClient implements MarketDataProvider {
     const query = date ? `?date=${encodeURIComponent(date)}` : "";
     const raw = await ssvRestGet<unknown>(`/macro/events${query}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const items = extractList<SosovalueMacroEvent>(raw);
-    if (items.length > 0) this.macroEventsCache = { items, fetchedAt: now };
+    if (items.length > 0) {
+      this.macroEventsCache = { items, fetchedAt: now, dateKey: cacheKey };
+      this.saveCache();
+    }
     return items;
   }
 

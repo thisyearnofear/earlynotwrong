@@ -136,6 +136,8 @@ async function runCycle(): Promise<void> {
   state.marketRegime = null;
   state.regimeScore = null;
   state.sentimentLabel = null;
+
+  sosovalueClient.resetApiCallCounter();
   state.lastAnchoredHash = null;
   state.anchoring = null;
   state.anchorResults = [];
