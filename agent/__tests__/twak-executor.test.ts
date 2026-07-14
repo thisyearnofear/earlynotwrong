@@ -632,6 +632,33 @@ describe("TwakExecutor — Portfolio Parser", () => {
     expect(portfolio.totalValueUsd).toBeCloseTo(38.68, 1);
   });
 
+  it("parses JSON balance output from modern TWAK", async () => {
+    const queue = createResponseQueue();
+    queue.queue.push((_err, result) => {
+      result.stdout = JSON.stringify({
+        address: "0xA1Dd...",
+        chain: "smartchain",
+        symbol: "BNB",
+        available: "0.022739113450852134",
+        total: "0.022739113450852134",
+        totalUsd: 13.18,
+      });
+      result.stderr = "";
+    });
+
+    const executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      agentAddress: "0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a",
+      execFileOverride: queue.execFileOverride,
+    });
+
+    const balance = await executor.getBalance("BNB");
+    expect(balance).toBeDefined();
+    expect(balance!.valueUsd).toBeCloseTo(13.18, 1);
+    expect(Number(balance!.balance)).toBeGreaterThan(0);
+  });
+
   it("falls back to an empty portfolio when the live TWAK CLI fails", async () => {
     const queue = createResponseQueue();
     queueError(queue.queue, "spawn twak ENOENT");

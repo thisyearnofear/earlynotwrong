@@ -1060,8 +1060,9 @@ export class TwakExecutor {
     const args = ["balance", "--address", wallet, "--chain", "bsc"];
 
     if (upper === "BNB") {
-      // SLIP44 coin id 714 = BNB (native).
-      args.push("--coin", "714");
+      // Native BNB: omit --coin and --token; `twak balance` returns the chain's
+      // native asset. The previous SLIP44 id 714 is rejected by newer TWAK.
+      // (no extra args needed)
     } else {
       // Need a contract address for ERC-20 reads. Use the cached resolution if
       // available, otherwise resolve on-the-fly.
@@ -1075,7 +1076,7 @@ export class TwakExecutor {
       args.push("--token", contract);
     }
 
-    const { stdout } = await this.execFileAsync("twak", args, {
+    const { stdout } = await this.execFileAsync(this.twakCmd, args, {
       env: this.getEnv(),
       timeout: 10000,
     });
@@ -1087,6 +1088,7 @@ export class TwakExecutor {
     const { stdout } = await this.execFileAsync(this.twakCmd, [
       "wallet",
       "portfolio",
+      "--chains=bsc",
     ], {
       env: this.getEnv(),
       timeout: 15000,
@@ -1284,6 +1286,29 @@ export class TwakExecutor {
   }
 
   private parseBalanceOutput(output: string, token: string): BalanceEntry | null {
+    // TWAK balance returns JSON when stdout is valid JSON. Otherwise fall back
+    // to the legacy text regex for compatibility with older CLI versions.
+    try {
+      const parsed = JSON.parse(output);
+      if (parsed && typeof parsed === "object" && !parsed.error && parsed.errorCode === undefined) {
+        const rawBalance = parsed.available ?? parsed.total ?? parsed.balance ?? parsed.amount;
+        const rawValue = parsed.totalUsd ?? parsed.valueUsd ?? parsed.value;
+        const balance = typeof rawBalance === "string" ? rawBalance : typeof rawBalance === "number" ? String(rawBalance) : undefined;
+        const valueUsd = typeof rawValue === "number" ? rawValue : typeof rawValue === "string" ? parseFloat(rawValue) : 0;
+        if (balance) {
+          return {
+            token,
+            symbol: (parsed.symbol ?? token).toUpperCase(),
+            balance,
+            valueUsd,
+            chain: this.config.testnet ? "bsc-testnet" : "bsc",
+          };
+        }
+      }
+    } catch {
+      // not JSON, continue with text regex
+    }
+
     const balanceMatch = output.match(/(?:balance|amount)[:\s]+([\d.]+)/i);
     const valueMatch = output.match(/(?:value|usd)[:\s]*\$?([\d.]+)/i);
 
