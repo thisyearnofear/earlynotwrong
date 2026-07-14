@@ -88,6 +88,8 @@ The first three gates fire **before** any BNB is committed; the bottom three kee
 | `agent/scripts/scan-holdings.mjs` | Discovers every BEP-20 the wallet holds via ERC-20 Transfer log scan; classifies each as bought-by-agent vs airdrop spam by transfer initiator |
 | `agent/scripts/recover-positions.mjs` | Re-adopts legit on-chain bought tokens into `state.json` (`--apply`); excludes airdrops and illiquid paper-pumps |
 | `agent/scripts/audit-holdings.mjs` | DexScreener-backed liquidity/legitimacy audit of held positions; `--prune` mode removes illiquid + no-pair entries from the ledger |
+| `agent/lib/self-analysis.ts` | Records every entry/exit in a canonical ledger and scores the agent's own behavior via `packages/conviction-core` |
+| `packages/conviction-core` | Shared pure domain model used by both agent and web: ledger types, behavioral scoring, patience-tax math, and keccak256 hashing |
 
 ## Design Decisions
 

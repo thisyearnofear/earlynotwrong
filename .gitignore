@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+packages/*/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -81,6 +82,24 @@ videos/*/audio.log
 videos/*/audio_meta.json
 videos/*/audio_engine_meta.json
 videos/*/audio_request.json
+videos/**/*.mp4
+videos/**/*.webm
+videos/**/*.mp3
+videos/**/*.wav
+videos/**/*.gif
+videos/**/*.png
+videos/**/*.jpg
+videos/**/*.jpeg
+videos/**/*.cast
+videos/**/audio/
+videos/**/browser/
+videos/**/final/
+videos/**/terminal/
+videos/**/--full-page
+videos/**/build-demo.py
+videos/**/generate-voiceover.py
+videos/**/mix-voiceover.py
+videos/**/record-terminal.sh
 # Auto-generated boilerplate from `hyperframes init` / `hyperframes capture`
 # — identical generic docs, not project-specific.
 videos/*/AGENTS.md

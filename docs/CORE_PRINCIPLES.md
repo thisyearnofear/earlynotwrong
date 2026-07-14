@@ -73,6 +73,7 @@ Every piece of business logic, configuration, type definition, and utility funct
 
 **How to apply:**
 - Shared types live in `src/lib/` modules or their domain subdirectories — never inline in components
+- Logic shared across the agent and the web app lives in `packages/<domain>` (e.g., `packages/conviction-core`) — the single source of truth for both runtimes
 - Chain-specific constants (RPC URLs, program IDs, contract addresses) go in `src/lib/config.ts` — the single source of truth
 - API clients and data-fetching logic go in `src/lib/` or `src/hooks/` — never inline in route handlers
 - UI patterns (buttons, cards, badges, dialogs) use the shared `src/components/ui/` library

@@ -4,14 +4,15 @@
 
 ## Project Overview
 
-Two main entry points:
+Three main entry points:
 
 ```
-agent/       — Autonomous trading agent (Node.js, TypeScript, Hono)
-src/         — Next.js web app (frontend + API routes)
+packages/conviction-core/  — Shared pure domain model (ledger, scoring, hashing)
+agent/                   — Autonomous trading agent (Node.js, TypeScript, Hono)
+src/                     — Next.js web app (frontend + API routes)
 ```
 
-The **agent** is the autonomous trading core; the **web app** is its monitoring dashboard and the Conviction Analysis surface for end users.
+The **agent** is the autonomous trading core; the **web app** is its monitoring dashboard and the Conviction Analysis surface for end users. `packages/conviction-core` is the single source of truth for the conviction framework consumed by both.
 
 ---
 
@@ -41,6 +42,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | `agent/lib/onchain-portfolio.ts` | On-chain portfolio reader — values BEP-20 positions TWAK can't see |
 | `agent/lib/market-narrative.ts` | AI market narrative generation from SoSoValue feeds + macro events |
 | `agent/lib/anchors/` | Cross-chain anchoring adapters — `MantleAnchorAdapter` + `CasperAnchorAdapter` |
+| `agent/lib/self-analysis.ts` | Builds the agent's canonical trade ledger and scores its own behavior each cycle via `conviction-core` |
 
 ### Module Dependency Graph
 
@@ -70,7 +72,17 @@ cycle-runner.ts
   ├─ anchors/index.ts (anchorAll, computeSubjectHash)
   ├─ market-narrative.ts (generateNarrative)
   ├─ telegram.ts (sendErrorAlert)
-  └─ errors.ts (summarizeError)
+  ├─ errors.ts (summarizeError)
+  └─ self-analysis.ts (recordAgentEntry, recordAgentExit)
+
+self-analysis.ts
+  └─ conviction-core (LedgerEntry, calculateBehavioralMetrics)
+
+src/app/api/analyze/batch/route.ts
+  └─ conviction-core (analyzePosition, calculateBehavioralMetrics)
+
+src/lib/market.ts
+  └─ conviction-core (LedgerEntry, LedgerPosition, BehavioralMetrics)
 ```
 
 ### Trading Loop (8 Steps)
@@ -99,13 +111,16 @@ cycle-runner.ts
 7. **Execute trades** — SoDEX testnet preferred → TWAK fallback. Pre-flight BNB re-check with reserve enforcement. Linear retry backoff (1s, 2s).
 8. **Anchor to Mantle + Casper** — submit thesis hash + score to both ERC-8004 registry and Casper ConvictionRegistry (sequential per-adapter).
 8b. **Generate market narrative** — AI-composed headline + summary from SoSoValue feeds and macro events.
+8c. **Self-analysis** — the agent builds a canonical ledger of its own entries/exits and runs `conviction-core`'s `calculateBehavioralMetrics`, surfacing its own behavioral conviction score in `/status` and on the dashboard.
 
 ### Key Patterns
 
 - **Simulator mode**: Auto-detected when `TWAK_ACCESS_ID` is not set. Uses in-memory mock portfolio.
   - **Composite market data**: SoSoValue token prices are preferred (higher refresh rate); CMC fills missing tokens and provides Fear & Greed / funding rates that SoSoValue doesn't offer. CMC's per-token quote pull (a 147-token batch) is deferred — `cycle-runner.fetchMarketData()` only calls `cmcClient.getEligibleTokenQuotes()` as a fallback when SoSoValue returns no prices, so a healthy SoSoValue run spends ~0 CMC credits on token quotes (CMC is still used every cycle for global metrics + derivatives, which SoSoValue lacks).
   - **Holder data (on-chain conviction)**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`, 50 CUs/call) is the primary source; CoinGecko token info (`holders.count`) is the fallback. Results cached in `agent/data/holders.json`; growth computed over 7d lookback after 24h+ of snapshots. Agent pre-scores tokens to target the top 15 candidates, not the full universe. The CoinGecko fallback is rate-limited (`COINGECKO_MIN_INTERVAL_MS = 12s`) with a 10-min per-contract cache in `holders.ts`, so a NodeReal outage can't cascade into a CoinGecko 429 storm.
-- **Cross-chain anchoring**: Same `ConvictionRecord` payload sent to Mantle (EVM, viem) and Casper (casper-js-sdk). Hashes computed once in `anchors/hashes.ts` via keccak256 — same hash on every chain.
+- **Shared conviction framework**: Pure ledger types and behavioral scoring live in `packages/conviction-core`. Both the agent self-analysis and the web wallet analyzer consume the same `calculateBehavioralMetrics` / `analyzePosition` / `calculatePatienceTax` functions. Do not duplicate scoring logic in `src/` or `agent/`.
+- **No fabricated fallback data**: Showcase/demo wallets use real public addresses only. Do not add fabricated traders, heatmaps, or percentile defaults to fill empty UI states. Return `null` and show an honest empty state instead.
+- **Cross-chain anchoring**: Same `ConvictionRecord` payload sent to Mantle (EVM, viem) and Casper (casper-js-sdk). Hashes computed once via `conviction-core`'s `computeSubjectHash` / `computeThesisHash` — same hash on every chain.
 - **Telegram dispatch**: 3-message cycle summary with HTML formatting (`<pre>`, `<code>`, `<b>`). Non-blocking `.catch(() => {})` — env-vars-gated startup/cycle/error alerts.
 - **Guardrails**: Pure in-memory state with daily counter reset. Hard limits from `AGENT_CONFIG.trading`.
 - **Bankroll management**: BNB reserve + adaptive interval doubling (4h → 8h) when BNB drops below `targetBnbUsd`.
