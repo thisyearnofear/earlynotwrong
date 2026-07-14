@@ -146,23 +146,26 @@ src/lib/market.ts
 
 SoSoValue rate limits: **20 req/min**, **100,000 req/month** per API key. The agent historically bursts ~150 individual `/currencies/{id}/market-snapshot` calls per cycle, which trips the per-minute limit.
 
-`SosovalueClient` (`agent/lib/data-providers.ts`) mitigates this with tiered caching:
+`SosovalueClient` (`agent/lib/data-providers.ts`) mitigates this with tiered, **disk-persisted** caching (`AGENT_DATA_DIR/sosovalue-cache.json`). Persistence means deploys/restarts don't trigger cold-start bursts:
 
 | Cache | TTL | Purpose |
 |-------|-----|---------|
-| Currency ID list | 5 min | Symbol → ID resolution |
+| Currency ID list | 1 h | Symbol → ID resolution (API returns `currency_id`) |
 | Market snapshots | 12 h | Avoid re-fetching 150+ snapshots every 4h cycle |
 | Daily klines | 4 h | RSI input changes once per day |
-| Hot news | 30 min | Shared between sentiment + narrative |
-| Featured news | 30 min | Shared between sentiment + narrative |
-| Macro events | 1 h | Shared between guardrail pause + narrative |
+| Hot news | 2 h | Shared between sentiment + narrative |
+| Featured news | 2 h | Shared between sentiment + narrative |
+| Macro events | 4 h | Shared between guardrail pause + narrative |
+| Index list / snapshot / constituents | 1 h | SSI regime signal |
 
   Additional protections:
 
   - If `SOSOVALUE_API_KEY` is missing, all SoSoValue calls short-circuit and CMC/fallback data is used.
-  - **Token-bucket rate limiter** (`ssvThrottle` in `data-providers.ts`) wraps every `ssvRestGet` call and enforces the 20 req/min ceiling. The first 20 requests in a window fire immediately, then requests pace at one per 3s. This is what prevents the cold-cache burst (147 snapshot calls + 10 klines + news) from tripping the per-minute limit and getting the key deactivated.
+  - **Token-bucket rate limiter** (`ssvThrottle` in `data-providers.ts`) wraps every `ssvRestGet` call and enforces the 20 req/min ceiling. The first 20 requests in a window fire immediately, then requests pace at one per 3s.
+  - **Debounced disk writes** — rapid cache updates coalesce into one `sosovalue-cache.json` write 500ms after the last update, so a 147-snapshot cold fill doesn't perform 147 sync writes.
   - A circuit breaker tracks consecutive 401/403/429 responses. After 3 failures, SoSoValue is suspended for 15 minutes.
   - `fetchKlinesBySymbol` is only called for the top 10 conviction candidates and only when `SOSOVALUE_API_KEY` is set.
+  - A per-cycle HTTP request counter logs actual SoSoValue API usage at the end of each cycle.
 
 If you rotate the key, restart the process so the singleton client picks it up and resets the suspension.
 
