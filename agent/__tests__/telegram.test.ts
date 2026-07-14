@@ -12,6 +12,14 @@ vi.mock("../lib/mantle.js", () => ({
   getBscExplorerTxUrl: vi.fn((hash: string) => `https://testnet.bscscan.com/tx/${hash}`),
 }));
 
+// Mock the subscriber registry so broadcast fan-out is controllable per test
+const { mockGetSubscriberChatIds } = vi.hoisted(() => ({
+  mockGetSubscriberChatIds: vi.fn((): string[] => []),
+}));
+vi.mock("../lib/telegram-subscribers.js", () => ({
+  getSubscriberChatIds: mockGetSubscriberChatIds,
+}));
+
 // Mock fetch
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -20,6 +28,8 @@ describe("Telegram module", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     mockFetch.mockReset();
+    mockGetSubscriberChatIds.mockReset();
+    mockGetSubscriberChatIds.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -148,6 +158,130 @@ describe("Telegram module", () => {
     expect(body.text).toContain("&lt;broken&gt;");
     expect(body.text).toContain("&amp; not safe");
     expect(body.text).toContain("Cycle #3");
+  });
+
+  // =========================================================================
+  // Flow: Broadcast fan-out — public alerts reach subscribers, operator-only
+  // alerts do not
+  // =========================================================================
+
+  it("sendEntryAlert broadcasts to the operator chat AND all subscribers", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockGetSubscriberChatIds.mockReturnValue(["111", "222"]);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    const { sendEntryAlert } = await import("../lib/telegram.js");
+    await sendEntryAlert({
+      cycle: 7,
+      symbol: "CAKE",
+      amountUsd: 25,
+      convictionScore: 82,
+      rationale: "quality asset down 18% during extreme fear",
+      txHash: "0xabc123",
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    const bodies = mockFetch.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(bodies.map((b) => b.chat_id)).toEqual(["-100123456", "111", "222"]);
+    for (const body of bodies) {
+      expect(body.text).toContain("ENTRY");
+      expect(body.text).toContain("CAKE");
+      expect(body.text).toContain("82/100");
+      expect(body.text).toContain("extreme fear");
+    }
+  });
+
+  it("sendExitAlert broadcasts to subscribers with P&L intact", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockGetSubscriberChatIds.mockReturnValue(["111"]);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    const { sendExitAlert } = await import("../lib/telegram.js");
+    await sendExitAlert({
+      cycle: 9,
+      symbol: "UNI",
+      action: "EXIT_TRAIL",
+      reason: "trailing stop after +120% run",
+      pnlPercent: 84.2,
+      amountUsd: 42.5,
+      sellFraction: 1,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const bodies = mockFetch.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(bodies.map((b) => b.chat_id)).toEqual(["-100123456", "111"]);
+    expect(bodies[1].text).toContain("+84.2% PnL");
+  });
+
+  it("does not double-send when the operator chat is also subscribed", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockGetSubscriberChatIds.mockReturnValue(["-100123456", "111"]);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    const { sendEntryAlert } = await import("../lib/telegram.js");
+    await sendEntryAlert({
+      cycle: 1,
+      symbol: "LINK",
+      amountUsd: 10,
+      convictionScore: 75,
+      rationale: "contrarian entry",
+    });
+
+    const bodies = mockFetch.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(bodies.map((b) => b.chat_id)).toEqual(["-100123456", "111"]);
+  });
+
+  it("sendErrorAlert stays operator-only (never fans out to subscribers)", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockGetSubscriberChatIds.mockReturnValue(["111", "222"]);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    const { sendErrorAlert } = await import("../lib/telegram.js");
+    await sendErrorAlert({ cycle: 4, error: "RPC timeout" });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.chat_id).toBe("-100123456");
+  });
+
+  it("sendEntryAlert is a no-op without TELEGRAM_BOT_TOKEN", async () => {
+    mockGetSubscriberChatIds.mockReturnValue(["111"]);
+
+    const { sendEntryAlert } = await import("../lib/telegram.js");
+    await sendEntryAlert({
+      cycle: 1,
+      symbol: "CAKE",
+      amountUsd: 10,
+      convictionScore: 70,
+      rationale: "contrarian entry",
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("broadcasts to subscribers even when only the token is set (no operator chat)", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    mockGetSubscriberChatIds.mockReturnValue(["111"]);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    const { sendExitAlert } = await import("../lib/telegram.js");
+    await sendExitAlert({
+      cycle: 2,
+      symbol: "DOGE",
+      action: "EXIT_STOP",
+      reason: "thesis broke at -35%",
+      pnlPercent: -35.1,
+      amountUsd: 9.5,
+      sellFraction: 1,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.chat_id).toBe("111");
   });
 
   // =========================================================================

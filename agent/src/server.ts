@@ -36,6 +36,7 @@ import { PRICING as MCP_PRICING } from "./mcp/pricing.js";
 import { paymentStats, serializeByTool } from "./payment-stats.js";
 import { CAP_PRICING } from "./cap/pricing.js";
 import { getCapStatus } from "./cap/client.js";
+import { getBotUsername, getSubscriberCount } from "../lib/telegram-subscribers.js";
 import { aleoSignHmacMiddleware, handleSignVoucher } from "./aleo/sign-service.js";
 
 // =============================================================================
@@ -245,6 +246,7 @@ app.get("/status", async (c) => {
   const avgLossUsd = stats.losingExitsCount > 0 ? stats.totalLossesUsd / stats.losingExitsCount : 0;
   const profitFactor = stats.totalLossesUsd > 0 ? stats.totalWinsUsd / stats.totalLossesUsd : (stats.totalWinsUsd > 0 ? Infinity : 0);
   const netPnlUsd = agentState.realizedPnlUsd - agentState.totalGasSpentUsd;
+  const botUsername = getBotUsername();
 
   const body = {
     agent: "Early, Not Wrong",
@@ -257,6 +259,11 @@ app.get("/status", async (c) => {
     totalTrades: agentState.totalTrades,
     totalVolumeUsd: agentState.totalVolumeUsd,
     errors: agentState.errors.length,
+    // "Watch this agent" — public Telegram subscription channel. Null when
+    // TELEGRAM_BOT_TOKEN is unset or getMe hasn't resolved yet.
+    telegram: botUsername
+      ? { botUsername, subscriberCount: getSubscriberCount() }
+      : null,
     portfolio: {
       totalValueUsd: portfolio.totalValueUsd,
       positions: portfolio.positions.length,

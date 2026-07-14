@@ -57,6 +57,10 @@ import {
   sendStartup,
   sendErrorAlert,
 } from "./lib/telegram.js";
+import {
+  startSubscriberPolling,
+  stopSubscriberPolling,
+} from "./lib/telegram-subscribers.js";
 import { summarizeError, isRecoverable } from "./lib/errors.js";
 import { AGENT_MODE } from "./lib/config.js";
 import { persistState, loadPersistentState } from "./lib/persistence.js";
@@ -470,6 +474,11 @@ async function main(): Promise<void> {
     maxDrawdown: AGENT_CONFIG.trading.maxDrawdownPercent,
   }).catch(() => {});
 
+  // Public "watch this agent" channel — polls getUpdates for /start
+  // subscribers. No-ops without TELEGRAM_BOT_TOKEN; timer is unref'd so it
+  // never holds the process open on its own.
+  startSubscriberPolling();
+
   console.log(`Agent mode: ${AGENT_MODE.toUpperCase()}${AGENT_MODE === "simulator" ? " (no real execution)" : ""}`);
 
   await restoreSnapshot();
@@ -519,6 +528,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", async () => {
     console.log("\nGraceful shutdown...");
     console.log(`Total trades: ${state.totalTrades}, Volume: $${state.totalVolumeUsd.toFixed(2)}`);
+    stopSubscriberPolling();
     server.close();
     await stopCapClient();
     process.exit(0);

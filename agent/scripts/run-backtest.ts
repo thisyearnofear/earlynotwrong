@@ -27,9 +27,14 @@ const cfg: BacktestConfig = {
 
 runBacktest(cfg)
   .then((results) => {
+    const dataSource = (results[0] as any).dataSource ?? "unknown";
     console.log("\n═══════════════════════════════════════════════════");
     console.log("  BACKTEST RESULTS");
-    console.log(`  Data source: ${(results[0] as any).dataSource ?? "unknown"}`);
+    console.log(`  Data source: ${dataSource}`);
+    if (dataSource === "synthetic") {
+      console.log("  ⚠ SYNTHETIC DATA — results demonstrate mechanics");
+      console.log("    only, not returns");
+    }
     console.log("═══════════════════════════════════════════════════\n");
     for (const r of results) {
       console.log(`Variant:        ${r.variant}`);

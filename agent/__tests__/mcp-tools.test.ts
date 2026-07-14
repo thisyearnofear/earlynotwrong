@@ -6,7 +6,7 @@
  * The paywall middleware is tested by stubbing the facilitator fetch.
  */
 
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { PRICING } from "../src/mcp/pricing.js";
 import type { AnchoredRecord } from "../lib/anchors/index.js";
 
@@ -18,14 +18,23 @@ describe("PRICING config", () => {
     expect(PRICING.get_by_thesis.paid).toBe(false);
   });
 
-  it("marks the aggregate / history queries as paid", () => {
+  it("marks the trust-decision reputation query as free", () => {
+    expect(PRICING.get_agent_reputation.paid).toBe(false);
+    expect(PRICING.get_agent_reputation.amountBaseUnits).toBe("0");
+  });
+
+  it("marks the history / cross-chain / live-signal queries as paid", () => {
     expect(PRICING.get_subject_history.paid).toBe(true);
     expect(PRICING.cross_chain_lookup.paid).toBe(true);
-    expect(PRICING.get_agent_reputation.paid).toBe(true);
+    expect(PRICING.get_live_signals.paid).toBe(true);
+  });
+
+  it("prices live signals at 0.5 CSPR (50 base units of the 2-decimal token)", () => {
+    expect(PRICING.get_live_signals.amountBaseUnits).toBe("50");
   });
 
   it("paid tools carry a non-zero amount", () => {
-    for (const tool of ["get_subject_history", "cross_chain_lookup", "get_agent_reputation"] as const) {
+    for (const tool of ["get_subject_history", "cross_chain_lookup", "get_live_signals"] as const) {
       expect(BigInt(PRICING[tool].amountBaseUnits)).toBeGreaterThan(0n);
     }
   });
@@ -59,6 +68,26 @@ const ZERO_HASH = "0x00000000000000000000000000000000000000000000000000000000000
 
 describe("MCP tools — empty / unknown subject", () => {
   let originalFetch: typeof fetch;
+
+  // Warm the tools module once, outside the per-test timeout: the first
+  // dynamic import pays the whole transform cost and can exceed 5s when the
+  // full suite runs under CPU contention. Same stubs as beforeEach so no
+  // network is reachable during module init either.
+  beforeAll(async () => {
+    vi.stubEnv("CSPR_CLOUD_TOKEN", "");
+    vi.stubEnv("MANTLE_OPERATOR_KEY", "");
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    try {
+      await import("../src/mcp/tools.js");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  }, 60_000);
 
   beforeEach(() => {
     vi.stubEnv("CSPR_CLOUD_TOKEN", "");
@@ -142,7 +171,7 @@ describe("x402 middleware — request gating", () => {
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "get_agent_reputation", arguments: { subjectHash: ZERO_HASH } },
+        params: { name: "get_live_signals", arguments: {} },
       }),
     });
     expect(res.status).toBe(402);
@@ -154,7 +183,29 @@ describe("x402 middleware — request gating", () => {
     expect(body.x402Version).toBe(2);
     expect(body.accepts?.[0]?.scheme).toBe("exact");
     expect(body.accepts?.[0]?.network).toBe("casper:casper-test");
-    expect(body.accepts?.[0]?.amount).toBe(PRICING.get_agent_reputation.amountBaseUnits);
+    expect(body.accepts?.[0]?.amount).toBe(PRICING.get_live_signals.amountBaseUnits);
+  });
+
+  it("serves get_agent_reputation without payment (free trust-decision query)", async () => {
+    const { Hono } = await import("hono");
+    const { x402Middleware } = await import("../src/mcp/x402.js");
+    const app = new Hono();
+    app.use("/mcp", x402Middleware());
+    app.post("/mcp", (c) => c.json({ passedThrough: true }));
+
+    const res = await app.request("/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "get_agent_reputation", arguments: { subjectHash: ZERO_HASH } },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { passedThrough?: boolean };
+    expect(body.passedThrough).toBe(true);
   });
 
   it("passes through free tools without a payment header", async () => {
@@ -236,6 +287,171 @@ describe("x402 middleware — request gating", () => {
       expect(body.error).toBe("insufficient_funds");
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("serves get_live_signals (regime + signals) when the payment settles", async () => {
+    const { Hono } = await import("hono");
+    const { x402Middleware } = await import("../src/mcp/x402.js");
+    const { getLiveSignals } = await import("../src/mcp/tools.js");
+    const { state } = await import("../lib/agent-state.js");
+    const app = new Hono();
+    app.use("/mcp", x402Middleware());
+    // Downstream handler returns the live-signals payload directly, so the
+    // test asserts on the actual tool output behind the paywall.
+    app.post("/mcp", async (c) => c.json(await getLiveSignals()));
+
+    vi.stubEnv("CSPR_CLOUD_TOKEN", "test-token");
+
+    // Populate the shared in-process agent state (what the cycle runner would
+    // have written), then restore afterwards.
+    const saved = {
+      cycle: state.cycle,
+      lastRunAt: state.lastRunAt,
+      marketRegime: state.marketRegime,
+      convictionSignals: state.convictionSignals,
+    };
+    state.cycle = 7;
+    state.lastRunAt = 1_700_000_000_000;
+    state.marketRegime = {
+      score: 72,
+      label: "Extreme fear — contrarian entry window",
+      fearGreedIndex: 18,
+      fearLevel: "extreme-fear",
+      ssiConfirmation: 0.4,
+    };
+    state.convictionSignals = [
+      {
+        symbol: "CAKE",
+        score: 81,
+        breakdown: { contrarian: 30, rsi: 20, quality: 15, regime: 10, holders: 4, volatilityPenalty: 0, news: 2 },
+        weights: {} as never,
+        holderCount: 1000,
+        holderGrowthPercent: 2.1,
+        newsSentiment: 0.3,
+        rationale: "deep drawdown + accumulating holders",
+      },
+    ];
+
+    // Stub fetch to simulate the facilitator settling the payment.
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ success: true, transaction: "0xabc", network: "casper:casper-test", payer: "0xdef" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+
+    try {
+      const fakePayment = Buffer.from(JSON.stringify({
+        x402Version: 2,
+        resource: { url: "http://localhost/mcp" },
+        accepted: {},
+        payload: {},
+      })).toString("base64");
+      const res = await app.request("/mcp", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-payment": fakePayment },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "get_live_signals", arguments: {} },
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-payment-response")).toBeTruthy();
+      const body = await res.json() as Awaited<ReturnType<typeof getLiveSignals>>;
+      expect(body.cycle).toBe(7);
+      expect(body.lastRunAt).toBe(1_700_000_000_000);
+      expect(body.regime?.score).toBe(72);
+      expect(body.regime?.fearGreedIndex).toBe(18);
+      expect(body.signals).toHaveLength(1);
+      expect(body.signals[0].symbol).toBe("CAKE");
+      expect(body.signals[0].breakdown.contrarian).toBe(30);
+      expect(body.signals[0].rationale).toContain("drawdown");
+    } finally {
+      globalThis.fetch = originalFetch;
+      state.cycle = saved.cycle;
+      state.lastRunAt = saved.lastRunAt;
+      state.marketRegime = saved.marketRegime;
+      state.convictionSignals = saved.convictionSignals;
+    }
+  });
+});
+
+// ─── get_live_signals — live in-process state ────────────────────────────────
+
+describe("getLiveSignals", () => {
+  it("returns a well-formed empty response before the first cycle (simulator mode)", async () => {
+    const { getLiveSignals } = await import("../src/mcp/tools.js");
+    const { state } = await import("../lib/agent-state.js");
+    const saved = {
+      cycle: state.cycle,
+      lastRunAt: state.lastRunAt,
+      marketRegime: state.marketRegime,
+      convictionSignals: state.convictionSignals,
+      macroPause: state.macroPause,
+    };
+    state.cycle = 0;
+    state.lastRunAt = null;
+    state.marketRegime = null;
+    state.convictionSignals = [];
+    state.macroPause = null;
+    try {
+      const result = await getLiveSignals();
+      expect(result.cycle).toBe(0);
+      expect(result.lastRunAt).toBeNull();
+      expect(result.regime).toBeNull();
+      expect(result.signals).toEqual([]);
+      expect(result.macroPause).toBeNull();
+    } finally {
+      Object.assign(state, saved);
+    }
+  });
+
+  it("returns at most the top 5 signals, ranked by score descending", async () => {
+    const { getLiveSignals } = await import("../src/mcp/tools.js");
+    const { state } = await import("../lib/agent-state.js");
+    const saved = { convictionSignals: state.convictionSignals, macroPause: state.macroPause };
+    const mkSignal = (symbol: string, score: number) => ({
+      symbol,
+      score,
+      breakdown: { contrarian: 0, rsi: 0, quality: 0, regime: 0, holders: 0, volatilityPenalty: 0, news: 0 },
+      weights: {} as never,
+      holderCount: null,
+      holderGrowthPercent: null,
+      newsSentiment: null,
+      rationale: `signal for ${symbol}`,
+    });
+    state.convictionSignals = [
+      mkSignal("A", 10),
+      mkSignal("B", 90),
+      mkSignal("C", 50),
+      mkSignal("D", 70),
+      mkSignal("E", 30),
+      mkSignal("F", 60),
+      mkSignal("G", 20),
+    ];
+    state.macroPause = {
+      clear: false,
+      skipEntries: true,
+      sizeMultiplier: 0,
+      hoursUntilNext: 2,
+      triggeringEvent: null,
+      reason: "CPI print in 2h",
+    };
+    try {
+      const result = await getLiveSignals();
+      expect(result.signals.map((s) => s.symbol)).toEqual(["B", "D", "F", "C", "E"]);
+      expect(result.macroPause).toEqual({
+        clear: false,
+        skipEntries: true,
+        sizeMultiplier: 0,
+        hoursUntilNext: 2,
+        reason: "CPI print in 2h",
+      });
+    } finally {
+      Object.assign(state, saved);
     }
   });
 });

@@ -22,6 +22,7 @@ import {
   getAgentReputation,
   getByThesis,
   getLatestConviction,
+  getLiveSignals,
   getSubjectHistory,
 } from "./tools.js";
 
@@ -109,11 +110,24 @@ export function buildMcpServer(): McpServer {
     "get_agent_reputation",
     {
       description:
-        "Aggregate reputation report for an agent: total anchors, mean conviction score, dual-chain presence, distinct archetypes. The one-shot 'should I trust this agent' lookup. PAID (x402).",
+        "Aggregate reputation report for an agent: total anchors, mean conviction score, dual-chain presence, distinct archetypes. The one-shot 'should I trust this agent' lookup. FREE — the trust decision gates everything else, so it costs nothing.",
       inputSchema: SubjectInputShape,
     },
     async (args) => {
       const result = await getAgentReputation({ subjectHash: args.subjectHash });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "get_live_signals",
+    {
+      description:
+        "The agent's LIVE conviction signals for the current cycle: market regime (score/label/FGI), top token conviction scores with factor breakdowns and rationale, macro-pause status, and cycle metadata. The tradeable data. PAID (x402, 0.5 CSPR).",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await getLiveSignals();
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );

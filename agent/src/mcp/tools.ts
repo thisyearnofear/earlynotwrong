@@ -20,6 +20,8 @@ import {
 import { MantleAnchorAdapter } from "../../lib/anchors/mantle.js";
 import { CasperAnchorAdapter } from "../../lib/anchors/casper.js";
 import { AGENT_CONFIG } from "../../lib/config.js";
+import { state as liveAgentState } from "../../lib/agent-state.js";
+import type { ConvictionSignal, MarketRegime } from "../../lib/conviction-signal.js";
 
 // Two adapter instances are sufficient — they're stateless wrappers; the
 // CasperAnchorAdapter caches reads internally. We don't reach into the
@@ -179,11 +181,12 @@ export async function crossChainLookup(
   };
 }
 
-// ─── Tool: get_agent_reputation (PAID) ───────────────────────────────────────
+// ─── Tool: get_agent_reputation (FREE) ───────────────────────────────────────
 //
 // Aggregate score over all anchored records for an agent's subject hash:
 // total anchors, mean conviction score, time span, dual-chain presence.
-// Designed to be a "should I trust this agent" one-shot for other agents.
+// Designed to be a "should I trust this agent" one-shot for other agents —
+// free, because the trust decision is the gateway to every paid lookup.
 
 export interface GetAgentReputationInput {
   subjectHash: Bytes32Hex;
@@ -225,5 +228,77 @@ export async function getAgentReputation(
     latestAnchor,
     dualChain,
     archetypes,
+  };
+}
+
+// ─── Tool: get_live_signals (PAID) ───────────────────────────────────────────
+//
+// The premium product: the agent's CURRENT-cycle conviction data — market
+// regime, top token conviction signals with full factor breakdowns and
+// rationale, and macro-pause status. Unlike the anchored-history tools above,
+// this reads the live in-process agent state (the same `state` object the
+// cycle runner mutates every cycle — the MCP server is mounted on the same
+// Hono process, so no IPC needed). Acquired the same way tools.ts acquires
+// its adapters: a module-level singleton import.
+//
+// In simulator mode or before the first cycle completes, the state fields are
+// simply null/empty — the tool returns a well-formed response either way.
+
+/** How many top conviction signals a paid call returns. */
+const LIVE_SIGNALS_TOP_N = 5;
+
+export interface LiveSignalEntry {
+  symbol: string;
+  /** 0–100 conviction to OPEN a position. */
+  score: number;
+  /** Per-factor score breakdown (contrarian, rsi, quality, regime, …). */
+  breakdown: ConvictionSignal["breakdown"];
+  /** Human-readable "why" behind the score. */
+  rationale: string;
+}
+
+export interface GetLiveSignalsResult {
+  /** Cycle metadata — which run produced this data. */
+  cycle: number;
+  lastRunAt: number | null;
+  /** Contrarian market regime: score, label, FGI, fear level, SSI confirmation. */
+  regime: MarketRegime | null;
+  /** Top conviction signals this cycle, ranked by score descending. */
+  signals: LiveSignalEntry[];
+  /** Macro event pause state — null when no macro data this cycle. */
+  macroPause: {
+    clear: boolean;
+    skipEntries: boolean;
+    sizeMultiplier: number;
+    hoursUntilNext: number | null;
+    reason: string;
+  } | null;
+}
+
+export async function getLiveSignals(): Promise<GetLiveSignalsResult> {
+  const signals = [...liveAgentState.convictionSignals]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, LIVE_SIGNALS_TOP_N)
+    .map((s) => ({
+      symbol: s.symbol,
+      score: s.score,
+      breakdown: s.breakdown,
+      rationale: s.rationale,
+    }));
+  const macro = liveAgentState.macroPause;
+  return {
+    cycle: liveAgentState.cycle,
+    lastRunAt: liveAgentState.lastRunAt,
+    regime: liveAgentState.marketRegime,
+    signals,
+    macroPause: macro
+      ? {
+          clear: macro.clear,
+          skipEntries: macro.skipEntries,
+          sizeMultiplier: macro.sizeMultiplier,
+          hoursUntilNext: macro.hoursUntilNext,
+          reason: macro.reason,
+        }
+      : null,
   };
 }

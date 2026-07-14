@@ -24,7 +24,7 @@ import { computeSubjectHash, computeThesisHash, anchorAll } from "./anchors/inde
 import type { SwapResult } from "./twak-executor.js";
 import { scoreMarketRegime, scoreTokenConviction, evaluatePosition, accruePosition, openPosition, STUCK_AFTER_FAILED_ATTEMPTS } from "./conviction-signal.js";
 import type { ConvictionSignal, HeldPosition, MarketRegime, PositionVerdict } from "./conviction-signal.js";
-import { sendErrorAlert, sendExitAlert, sendGuardrailBlocked } from "./telegram.js";
+import { sendEntryAlert, sendErrorAlert, sendExitAlert, sendGuardrailBlocked } from "./telegram.js";
 import { summarizeError } from "./errors.js";
 import { loadHolderCache, saveHolderCache, fetchHolderCount, recordHolderCount, computeHolderMetric } from "./holders.js";
 import { generateNarrative } from "./market-narrative.js";
@@ -399,15 +399,18 @@ export async function manageOpenPositions(): Promise<void> {
     }
 
     if (verdict.action === "EXIT_PARTIAL") {
-      const sellAmount = pos.amountUsd * verdict.sellFraction;
-      console.log(`  PARTIAL ${pos.symbol}: ${verdict.reason} (selling $${sellAmount.toFixed(2)})`);
-      const partialPos = { ...pos, amountUsd: sellAmount };
-      const closed = await closePosition(partialPos, verdict);
+      // Sell 33% of the position's CURRENT market value; reduce the cost
+      // basis by the same fraction so the remainder's P&L stays honest.
+      const marketValueUsd = positionMarketValueUsd(pos, price);
+      const sellValueUsd = marketValueUsd * verdict.sellFraction;
+      const basisSoldUsd = pos.amountUsd * verdict.sellFraction;
+      console.log(`  PARTIAL ${pos.symbol}: ${verdict.reason} (selling $${sellValueUsd.toFixed(2)} of $${marketValueUsd.toFixed(2)})`);
+      const closed = await closePosition(pos, verdict, price);
       if (closed) {
         pos.partialProfitTaken = true;
-        pos.amountUsd -= sellAmount;
+        pos.amountUsd -= basisSoldUsd;
         remaining.push(pos);
-        console.log(`    ✓ Sold $${sellAmount.toFixed(2)}, keeping $${pos.amountUsd.toFixed(2)} riding`);
+        console.log(`    ✓ Sold $${sellValueUsd.toFixed(2)}, keeping $${(marketValueUsd - sellValueUsd).toFixed(2)} riding ($${pos.amountUsd.toFixed(2)} basis)`);
       } else {
         console.log(`    ✗ Partial exit failed — keeping full position, will retry next cycle`);
         remaining.push(pos);
@@ -416,7 +419,7 @@ export async function manageOpenPositions(): Promise<void> {
     }
 
     console.log(`  ${verdict.action} ${pos.symbol}: ${verdict.reason}`);
-    const closed = await closePosition(pos, verdict);
+    const closed = await closePosition(pos, verdict, price);
     if (!closed) {
       console.log(`    ✗ Exit failed — keeping position, will retry next cycle`);
       remaining.push(pos);
@@ -430,27 +433,49 @@ export async function manageOpenPositions(): Promise<void> {
 const MIN_SWAP_USD = 1.0;
 const STUCK_SLIPPAGES_BPS = [1000, 2000, 4900]; // 10%, 20%, 49%
 
+/**
+ * Current USD market value of a held position: the cost basis scaled by the
+ * price move since entry. `pos.amountUsd` is the cost BASIS — selling that
+ * many dollars of a winner leaves the gains stranded in the wallet. Falls
+ * back to the basis when either price is unknown (stale feed).
+ */
+function positionMarketValueUsd(pos: HeldPosition, currentPriceUsd: number): number {
+  if (pos.entryPriceUsd > 0 && currentPriceUsd > 0) {
+    return pos.amountUsd * (currentPriceUsd / pos.entryPriceUsd);
+  }
+  return pos.amountUsd;
+}
+
 async function closePosition(
   pos: HeldPosition,
-  verdict: PositionVerdict
+  verdict: PositionVerdict,
+  currentPriceUsd: number
 ): Promise<boolean> {
   const timestamp = Date.now();
+  const sellFraction = verdict.sellFraction > 0 ? verdict.sellFraction : 1;
+  // Exits are denominated in CURRENT market value (what `twak swap --usd`
+  // actually sells at today's price); P&L is measured against the cost basis
+  // of the slice sold. Selling the basis of a 2.5x winner would leave ~60%
+  // of the tokens stranded untracked and record ~$0 P&L.
+  const costBasisSoldUsd = pos.amountUsd * sellFraction;
+  const marketValueUsd = positionMarketValueUsd(pos, currentPriceUsd);
 
   if (AGENT_MODE === "simulator") {
+    const proceedsUsd = marketValueUsd * sellFraction;
     state.executedTrades.push({
       success: true,
       tokenIn: pos.symbol,
       tokenOut: "BNB",
-      amountIn: pos.amountUsd.toFixed(2),
-      amountOut: (pos.amountUsd * (1 + verdict.unrealizedPnLPercent / 100)).toFixed(2),
+      amountIn: proceedsUsd.toFixed(2),
+      amountOut: proceedsUsd.toFixed(2),
       txHash: `0xSIM_EXIT_${timestamp.toString(16)}`,
       timestamp,
     });
-    const simPnlUsd = pos.amountUsd * (verdict.unrealizedPnLPercent / 100);
+    const simPnlUsd = proceedsUsd - costBasisSoldUsd;
     state.totalTrades += 1;
-    state.totalVolumeUsd += pos.amountUsd;
+    state.totalVolumeUsd += proceedsUsd;
     recordExitStats(simPnlUsd);
-    guardrails.recordTrade(pos.amountUsd, true);
+    guardrails.recordTrade(proceedsUsd, true);
     return true;
   }
 
@@ -459,36 +484,45 @@ async function closePosition(
     return false;
   }
 
-  if (pos.amountUsd < MIN_SWAP_USD) {
-    console.log(`    [exit] Position too small ($${pos.amountUsd.toFixed(2)}) to justify gas — deferring`);
+  if (marketValueUsd * sellFraction < MIN_SWAP_USD) {
+    console.log(`    [exit] Position too small ($${(marketValueUsd * sellFraction).toFixed(2)}) to justify gas — deferring`);
     return false;
   }
 
-  // Reconcile the intended sell size with the actual on-chain balance. Tokens with
-  // buy/sell taxes (or bridged/wrapped proxies like BSB) often leave the wallet
-  // with fewer tokens than the recorded cost basis implies, causing "transfer
-  // amount exceeds balance" reverts. Using the live balance prevents that.
+  // Reconcile the intended sell size with the actual on-chain balance. Tokens
+  // with buy/sell taxes (or bridged/wrapped proxies like BSB) often leave the
+  // wallet holding less than the price-implied value, causing "transfer amount
+  // exceeds balance" reverts. When readable, the live balance is the
+  // authoritative value of the whole position.
   const balance = await twakExecutor.getBalance(pos.symbol);
   const balanceUsd = balance?.valueUsd ?? 0;
-  if (balanceUsd > 0 && balanceUsd < pos.amountUsd) {
-    console.log(`    [exit] Recorded cost basis $${pos.amountUsd.toFixed(2)} exceeds live balance $${balanceUsd.toFixed(2)} — sizing down`);
-    pos.amountUsd = balanceUsd;
+  const positionValueUsd = balanceUsd > 0 ? balanceUsd : marketValueUsd;
+  if (balanceUsd > 0 && Math.abs(balanceUsd - marketValueUsd) > 0.5) {
+    console.log(`    [exit] Price-implied value $${marketValueUsd.toFixed(2)} vs live balance $${balanceUsd.toFixed(2)} — using live balance`);
   }
 
-  if (pos.amountUsd < MIN_SWAP_USD) {
-    console.log(`    [exit] Live balance too small ($${pos.amountUsd.toFixed(2)}) to justify gas — deferring`);
+  // Never try to sell more than the wallet actually holds.
+  const sellUsd = Math.min(
+    positionValueUsd * sellFraction,
+    balanceUsd > 0 ? balanceUsd : Infinity
+  );
+
+  if (sellUsd < MIN_SWAP_USD) {
+    console.log(`    [exit] Sell size too small ($${sellUsd.toFixed(2)}) to justify gas — deferring`);
     return false;
   }
+
+  const amountInUsd = sellUsd.toFixed(2);
 
   // Primary: default slippage direct to BNB.
   const result = await twakExecutor.executeSwap({
     tokenIn: pos.symbol,
     tokenOut: "BNB",
-    amountIn: pos.amountUsd.toString(),
+    amountIn: amountInUsd,
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
   if (result.success) {
-    return finalizeExit(pos, result, verdict, timestamp);
+    return finalizeExit(pos, result, verdict, sellUsd, costBasisSoldUsd);
   }
   console.log(`    [exit] Primary exit failed: ${result.error}`);
 
@@ -498,11 +532,11 @@ async function closePosition(
     const hiSlipResult = await twakExecutor.executeSwap({
       tokenIn: pos.symbol,
       tokenOut: "BNB",
-      amountIn: pos.amountUsd.toString(),
+      amountIn: amountInUsd,
       slippageBps,
     });
     if (hiSlipResult.success) {
-      return finalizeExit(pos, hiSlipResult, verdict, timestamp);
+      return finalizeExit(pos, hiSlipResult, verdict, sellUsd, costBasisSoldUsd);
     }
     console.log(`    [exit] ${(slippageBps / 100).toFixed(0)}% slippage failed: ${hiSlipResult.error}`);
   }
@@ -512,12 +546,12 @@ async function closePosition(
   const usdcResult = await twakExecutor.executeSwap({
     tokenIn: pos.symbol,
     tokenOut: "USDC",
-    amountIn: pos.amountUsd.toString(),
+    amountIn: amountInUsd,
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
   if (usdcResult.success) {
     console.log(`    [exit] USDC leg succeeded — closing position (USDC held as stablecoin)`);
-    return finalizeExit(pos, usdcResult, verdict, timestamp);
+    return finalizeExit(pos, usdcResult, verdict, sellUsd, costBasisSoldUsd);
   }
   console.log(`    [exit] USDC route failed: ${usdcResult.error}`);
 
@@ -530,13 +564,13 @@ async function closePosition(
     console.log(`    [exit] ${pos.symbol} marked STUCK after ${pos.failedExitAttempts} failed exits; added to blocklist`);
     sendErrorAlert({
       cycle: state.cycle,
-      error: `${pos.symbol} marked STUCK after ${pos.failedExitAttempts} failed exits ($${pos.amountUsd.toFixed(2)}). Added to blocklist — treating as worthless/honeypot.`,
+      error: `${pos.symbol} marked STUCK after ${pos.failedExitAttempts} failed exits ($${sellUsd.toFixed(2)}). Added to blocklist — treating as worthless/honeypot.`,
     }).catch(() => {});
   } else {
-    console.log(`    [exit] All exit paths failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)}) — attempt ${pos.failedExitAttempts}/${STUCK_AFTER_FAILED_ATTEMPTS}`);
+    console.log(`    [exit] All exit paths failed for ${pos.symbol} ($${sellUsd.toFixed(2)}) — attempt ${pos.failedExitAttempts}/${STUCK_AFTER_FAILED_ATTEMPTS}`);
     sendErrorAlert({
       cycle: state.cycle,
-      error: `EXIT ${verdict.action} failed for ${pos.symbol} ($${pos.amountUsd.toFixed(2)}, ${verdict.unrealizedPnLPercent.toFixed(1)}% PnL). Attempt ${pos.failedExitAttempts}/${STUCK_AFTER_FAILED_ATTEMPTS}.`,
+      error: `EXIT ${verdict.action} failed for ${pos.symbol} ($${sellUsd.toFixed(2)}, ${verdict.unrealizedPnLPercent.toFixed(1)}% PnL). Attempt ${pos.failedExitAttempts}/${STUCK_AFTER_FAILED_ATTEMPTS}.`,
     }).catch(() => {});
   }
 
@@ -547,17 +581,22 @@ function finalizeExit(
   pos: HeldPosition,
   result: SwapResult,
   verdict: PositionVerdict,
-  timestamp: number
+  sellUsd: number,
+  costBasisSoldUsd: number
 ): boolean {
   state.executedTrades.push(result);
   state.totalTrades += 1;
-  state.totalVolumeUsd += pos.amountUsd;
+  state.totalVolumeUsd += sellUsd;
   state.totalGasSpentUsd += result.feeUsd ?? GAS_BUFFER_USD;
-  const exitValue = parseFloat(result.amountOut ?? "0");
-  const pnlUsd = exitValue - pos.amountUsd;
+  // P&L = sale proceeds − cost basis of the slice sold. When the CLI output
+  // has no parseable amountOut, fall back to the intended sell size rather
+  // than recording the whole sale as a loss.
+  const reportedOut = parseFloat(result.amountOut ?? "");
+  const proceedsUsd = Number.isFinite(reportedOut) && reportedOut > 0 ? reportedOut : sellUsd;
+  const pnlUsd = proceedsUsd - costBasisSoldUsd;
   state.realizedPnlUsd += pnlUsd;
   recordExitStats(pnlUsd);
-  guardrails.recordTrade(pos.amountUsd, true);
+  guardrails.recordTrade(sellUsd, true);
 
   // Surface this exit to Telegram so judges see live risk decisions, not
   // just terminal logs. Non-blocking; safe when Telegram is unconfigured.
@@ -568,7 +607,7 @@ function finalizeExit(
       action: verdict.action as "EXIT_STOP" | "EXIT_TRAIL" | "EXIT_PARTIAL",
       reason: verdict.reason,
       pnlPercent: verdict.unrealizedPnLPercent,
-      amountUsd: pos.amountUsd,
+      amountUsd: sellUsd,
       sellFraction: verdict.sellFraction,
       txHash: result.txHash,
     }).catch(() => {});
@@ -599,6 +638,12 @@ export async function harvestForBnb(): Promise<void> {
   // to recycle gas. Otherwise we need at least $1 of value to justify a swap.
   const minHarvestUsd = bnbValue < HARVEST_FLOOR * 0.5 ? DUST_USD : 1.0;
 
+  // Harvest decisions are made on CURRENT market value, not cost basis — a
+  // winner's basis understates what a sale actually raises (and vice versa).
+  const priceMap = buildPriceMap();
+  const currentValue = (p: HeldPosition): number =>
+    positionMarketValueUsd(p, priceMap.get(p.symbol.toUpperCase()) ?? 0);
+
   // Mature positions are the preferred harvest candidates.
   const maturePositions = state.heldPositions
     .filter(
@@ -607,7 +652,7 @@ export async function harvestForBnb(): Promise<void> {
         !stuckSymbols.has(p.symbol) &&
         p.cyclesHeld >= MIN_CYCLES_TO_HARVEST &&
         !unharvestableTokens.has(p.symbol) &&
-        p.amountUsd >= minHarvestUsd,
+        currentValue(p) >= minHarvestUsd,
     );
 
   // If we are at cap and have no mature positions, fall back to any non-stuck
@@ -621,7 +666,7 @@ export async function harvestForBnb(): Promise<void> {
             !stuckSymbols.has(p.symbol) &&
             p.cyclesHeld >= 2 &&
             !unharvestableTokens.has(p.symbol) &&
-            p.amountUsd >= minHarvestUsd,
+            currentValue(p) >= minHarvestUsd,
         )
     : [];
 
@@ -630,7 +675,7 @@ export async function harvestForBnb(): Promise<void> {
   // Sort order depends on why we are harvesting:
   //   - BNB low → sell the largest position to raise the most BNB.
   //   - At cap  → sell the smallest position to free a slot with minimal impact.
-  candidates.sort((a, b) => (bnbLow ? b.amountUsd - a.amountUsd : a.amountUsd - b.amountUsd));
+  candidates.sort((a, b) => (bnbLow ? currentValue(b) - currentValue(a) : currentValue(a) - currentValue(b)));
 
   if (candidates.length === 0) {
     const trigger = bnbLow ? `BNB low ($${bnbValue.toFixed(2)})` : `at cap (${state.heldPositions.length}/${POSITION_CAP})`;
@@ -639,14 +684,16 @@ export async function harvestForBnb(): Promise<void> {
   }
 
   const target = candidates[0];
+  const targetValueUsd = currentValue(target);
   const trigger = bnbLow
     ? `BNB low (balance: $${bnbValue.toFixed(2)}, floor: $${HARVEST_FLOOR})`
     : `at cap (${state.heldPositions.length}/${POSITION_CAP}) — freeing a slot`;
   const targetLabel = maturePositions.length > 0 ? "mature" : "young";
   console.log(`\n[4b/8] Harvesting — ${trigger}`);
-  console.log(`  Selling ${target.symbol} ($${target.amountUsd.toFixed(2)}) — ${targetLabel}, ${target.cyclesHeld} cycles held`);
+  console.log(`  Selling ${target.symbol} ($${targetValueUsd.toFixed(2)} value, $${target.amountUsd.toFixed(2)} basis) — ${targetLabel}, ${target.cyclesHeld} cycles held`);
 
-  const harvestAmountUsd = target.amountUsd * 0.95;
+  // Sell ~95% of CURRENT value (dust margin absorbs price drift + rounding).
+  const harvestAmountUsd = targetValueUsd * 0.95;
 
   const primary = await twakExecutor.executeSwap({
     tokenIn: target.symbol,
@@ -661,12 +708,15 @@ export async function harvestForBnb(): Promise<void> {
     );
     state.executedTrades.push(primary);
     state.totalTrades += 1;
-    state.totalVolumeUsd += target.amountUsd;
+    state.totalVolumeUsd += harvestAmountUsd;
     state.totalGasSpentUsd += primary.feeUsd ?? GAS_BUFFER_USD;
-    const harvestPnlUsd = parseFloat(primary.amountOut ?? "0") - target.amountUsd;
+    // P&L = proceeds vs the position's full cost basis (harvest removes it).
+    const reportedOut = parseFloat(primary.amountOut ?? "");
+    const proceedsUsd = Number.isFinite(reportedOut) && reportedOut > 0 ? reportedOut : harvestAmountUsd;
+    const harvestPnlUsd = proceedsUsd - target.amountUsd;
     state.realizedPnlUsd += harvestPnlUsd;
     recordExitStats(harvestPnlUsd);
-    guardrails.recordTrade(target.amountUsd, true);
+    guardrails.recordTrade(harvestAmountUsd, true);
     console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
     state.portfolio = await twakExecutor.getPortfolio();
     return;
@@ -675,7 +725,7 @@ export async function harvestForBnb(): Promise<void> {
   console.log(`  ⚠ Primary harvest failed: ${primary.error}`);
   console.log(`  [harvest] Fallback A: routing ${target.symbol} → USDC → BNB`);
 
-  const halfAmount = (target.amountUsd / 2).toFixed(2);
+  const halfAmount = (targetValueUsd / 2).toFixed(2);
   const toUsdc = await twakExecutor.executeSwap({
     tokenIn: target.symbol,
     tokenOut: "USDC",
@@ -699,8 +749,9 @@ export async function harvestForBnb(): Promise<void> {
         );
         state.executedTrades.push(toUsdc, usdcToBnb);
         state.totalTrades += 2;
-        state.totalVolumeUsd += target.amountUsd;
+        state.totalVolumeUsd += targetValueUsd;
         state.totalGasSpentUsd += (toUsdc.feeUsd ?? GAS_BUFFER_USD) + (usdcToBnb.feeUsd ?? GAS_BUFFER_USD);
+        // P&L vs the full cost basis — the position is removed either way.
         const hopPnlUsd = parseFloat(usdcToBnb.amountOut ?? "0") - target.amountUsd;
         state.realizedPnlUsd += hopPnlUsd;
         recordExitStats(hopPnlUsd);
@@ -737,13 +788,17 @@ export async function harvestForBnb(): Promise<void> {
       state.totalTrades += 2;
       state.totalVolumeUsd += 1.5;
       state.totalGasSpentUsd += (tinyTest.feeUsd ?? GAS_BUFFER_USD) + (retry.feeUsd ?? GAS_BUFFER_USD);
-      const probePnlUsd = parseFloat(retry.amountOut ?? "0") - 1.5;
+      // $1.50 of VALUE sold — the equivalent fraction of the cost basis comes
+      // off the ledger, and P&L is measured against that basis slice.
+      const soldFraction = targetValueUsd > 0 ? Math.min(1, 1.5 / targetValueUsd) : 1;
+      const basisSoldUsd = target.amountUsd * soldFraction;
+      const probePnlUsd = parseFloat(retry.amountOut ?? "0") - basisSoldUsd;
       state.realizedPnlUsd += probePnlUsd;
       recordExitStats(probePnlUsd);
       guardrails.recordTrade(1.5, true);
       const idx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
       if (idx >= 0) {
-        state.heldPositions[idx].amountUsd = Math.max(0, state.heldPositions[idx].amountUsd - 1.5);
+        state.heldPositions[idx].amountUsd = Math.max(0, state.heldPositions[idx].amountUsd - basisSoldUsd);
       }
       console.log(`  ✓ Harvested via size-probing (${tinyTest.txHash?.slice(0, 10)}, ${retry.txHash?.slice(0, 10)})`);
       state.portfolio = await twakExecutor.getPortfolio();
@@ -773,7 +828,15 @@ export async function createTradeProposals(): Promise<Array<{
 
   const convictionSignals = state.convictionSignals;
   const portfolio = state.portfolio;
-  const portfolioValue = portfolio?.totalValueUsd ?? AGENT_CONFIG.trading.maxPerTradeUsd * 3;
+
+  // Fail CLOSED: without a portfolio snapshot we cannot size trades against
+  // real capital — a phantom default would let entries through on bad data.
+  // Skip new entries this cycle; exits are unaffected.
+  if (!portfolio) {
+    console.log("  Portfolio data unavailable — skipping all new entries this cycle (fail closed).");
+    return [];
+  }
+  const portfolioValue = portfolio.totalValueUsd;
 
   if (state.heldPositions.length >= AGENT_CONFIG.trading.maxOpenPositions) {
     console.log(
@@ -902,7 +965,22 @@ export async function checkTradeGuardrails(
 }> {
   console.log("\n[6/8] Checking risk guardrails...");
 
-  const portfolioValue = state.portfolio?.totalValueUsd ?? 10000;
+  // Fail CLOSED: concentration and drawdown checks against a phantom
+  // portfolio value are meaningless. No portfolio snapshot → no new entries
+  // this cycle (exits never pass through this gate).
+  if (!state.portfolio) {
+    console.log("  GUARDRAILS BLOCKED: portfolio data unavailable — rejecting all entries this cycle (fail closed).");
+    const rejected = proposals.map((p) => ({
+      tokenSymbol: p.tokenSymbol,
+      reason: "Portfolio data unavailable — guardrails fail closed",
+    }));
+    if (rejected.length > 0) {
+      sendGuardrailBlocked({ cycle: state.cycle, rejected, blockedAll: true }).catch(() => {});
+    }
+    return { passed: [], rejected };
+  }
+
+  const portfolioValue = state.portfolio.totalValueUsd;
   const guardrailStatus = guardrails.getStatus(portfolioValue);
   console.log(`  ${guardrailStatus.tradesToday}/${AGENT_CONFIG.trading.maxDailyTrades} trades today, drawdown: ${guardrailStatus.drawdownPercent.toFixed(1)}%`);
 
@@ -1045,6 +1123,16 @@ export async function executeTrades(
 
   for (const proposal of proposals) {
     const amountInStr = proposal.amountInUsd.toString();
+
+    // Without a positive entry price we cannot record a HeldPosition, and a
+    // buy with no ledger entry becomes an orphaned, unmanaged holding (no
+    // stop, no trail, no harvest). Check BEFORE spending BNB on the swap.
+    const entryPriceUsd = priceMap.get(proposal.tokenSymbol.toUpperCase()) ?? 0;
+    if (entryPriceUsd <= 0) {
+      console.log(`  ○ Skipping ${proposal.tokenSymbol} — no entry price in this cycle's market data; buy would create an untracked holding`);
+      continue;
+    }
+
     console.log(`  → Buying $${amountInStr} ${proposal.tokenSymbol} (conviction: ${proposal.convictionScore})`);
 
     let result: SwapResult | null = null;
@@ -1119,17 +1207,28 @@ export async function executeTrades(
       guardrails.recordTrade(proposal.amountInUsd, true);
       state.totalGasSpentUsd += result.feeUsd ?? GAS_BUFFER_USD;
 
-      const entryPriceUsd = priceMap.get(proposal.tokenSymbol.toUpperCase()) ?? 0;
-      if (entryPriceUsd > 0) {
-        state.heldPositions.push(
-          openPosition({
-            symbol: proposal.tokenSymbol,
-            entryPriceUsd,
-            amountUsd: proposal.amountInUsd,
-            cycle: state.cycle,
-          })
-        );
-      }
+      state.heldPositions.push(
+        openPosition({
+          symbol: proposal.tokenSymbol,
+          entryPriceUsd,
+          amountUsd: proposal.amountInUsd,
+          cycle: state.cycle,
+        })
+      );
+
+      // Public trade narrative — broadcast the entry to the operator channel
+      // and all /start subscribers. Non-blocking; safe when unconfigured.
+      const signal = state.convictionSignals.find(
+        (s) => s.symbol.toUpperCase() === proposal.tokenSymbol.toUpperCase()
+      );
+      sendEntryAlert({
+        cycle: state.cycle,
+        symbol: proposal.tokenSymbol,
+        amountUsd: proposal.amountInUsd,
+        convictionScore: proposal.convictionScore,
+        rationale: signal?.rationale ?? "contrarian entry",
+        txHash: result.txHash,
+      }).catch(() => {});
     } else {
       console.log(`    ✗ Trade failed: ${result.error}`);
       guardrails.recordTrade(proposal.amountInUsd, false);
