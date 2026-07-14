@@ -137,7 +137,7 @@ src/lib/market.ts
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (151 tests across 10 files).
+- Tests live in `agent/__tests__/` — Vitest framework (249 tests across 17 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/holders.json` is a runtime cache — also gitignored.
 - `agent/docs/api/` is TypeDoc output — gitignored, regenerate via `npm run docs`.
@@ -279,6 +279,8 @@ cd agent
 ```
 
 The script runs on the server: `git fetch` → `git checkout -f <ref>` →
+`npm ci && npm run build` in `packages/conviction-core` (consumed via a `file:`
+dependency whose devDependencies are not installed by `npm ci` in the agent) →
 `npm ci` → `rm -rf dist && npm run build` → `pm2 reload earlynotwrong
 --update-env`. Build runs before the reload, so a failed build never restarts a
 working process. `npm run deploy` is an alias. Rollback = `git checkout <prev>`
