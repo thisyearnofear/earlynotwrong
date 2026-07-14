@@ -33,6 +33,14 @@ ssh "$HOST" bash -s "$REF" <<'EOF'
   # .env, node_modules, local-only docs) are intentionally left alone.
   git checkout -f "$REF"
 
+  # Build the shared conviction-core package first. It is consumed by the
+  # agent via a file: dependency; npm ci for file: deps does not install
+  # devDependencies, so we install + build it explicitly before the agent.
+  cd packages/conviction-core
+  npm ci
+  npm run build
+  cd ../..
+
   cd agent
   # Reproducible deps from the lockfile.
   npm ci
