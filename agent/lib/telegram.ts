@@ -248,7 +248,11 @@ export async function sendCycleSummary(params: {
     msg3.push(anchorLine);
   }
 
-  msg3.push(`<i>👛 <a href="https://bscscan.com/address/0xA1Dd482E4D6C8cf6f5f7BF80FEc6Bd3F11F5888a">0xA1Dd...888a</a> · BSC Mainnet</i>`);
+  const walletAddress = params.walletAddress ?? process.env.AGENT_WALLET_KEY ?? process.env.AGENT_WALLET_ADDRESS;
+  if (typeof walletAddress === "string" && /^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    const short = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+    msg3.push(`<i>👛 <a href="https://bscscan.com/address/${walletAddress}">${short}</a> · BSC Mainnet</i>`);
+  }
 
   await sendMessage(msg3.join("\n"));
 }
