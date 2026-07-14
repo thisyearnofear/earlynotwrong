@@ -9,6 +9,7 @@
  * blocking the event loop during CLI operations.
  *
  * Auth: TWAK_ACCESS_ID + TWAK_HMAC_SECRET (env vars, configured via Pinata secrets)
+ * Wallet password: TWAK_WALLET_PASSWORD (or OS keychain via `twak wallet keychain save`)
  *
  * Two modes:
  *   - live:   spawns `twak` CLI commands via child_process
@@ -19,11 +20,24 @@
  */
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { AGENT_CONFIG } from "./config.js";
 import { isEligibleToken } from "./config.js";
 
 const execFileAsync = promisify(execFile);
+
+// Common install locations for the Trust Wallet Agent Kit CLI. The installer
+// may place `twak` in ~/.local/bin on Linux or /usr/local/bin on macOS. Node's
+// PATH does not always include the user's shell profile paths, so we resolve
+// explicitly as a fallback.
+const TWAK_CANDIDATE_PATHS = [
+  `${process.env.HOME}/.local/bin/twak`,
+  `${process.env.HOME}/.twak/bin/twak`,
+  "/usr/local/bin/twak",
+  "/opt/twak/bin/twak",
+  "twak",
+];
 
 // =============================================================================
 // Types
@@ -145,6 +159,10 @@ interface TwakHealth {
   agentAddress?: string;
   mode: "live" | "simulator";
   testnet: boolean;
+  /** Ordered diagnostic checks performed during healthCheck(). */
+  diagnostics?: string[];
+  /** Actionable remediation hint when available=false. */
+  help?: string;
 }
 
 export interface DexLiquidity {
@@ -296,6 +314,12 @@ export class TwakExecutor {
       defaultSlippageBps: config.defaultSlippageBps ?? AGENT_CONFIG.trading.defaultSlippageBps,
     };
 
+    // Resolve the twak binary to an absolute path when possible. The installer
+    // commonly places it in ~/.local/bin, which may not be in Node's PATH.
+    this.twakCmd = config.execFileOverride
+      ? "twak" // overridden below
+      : TwakExecutor.resolveBinarySync();
+
     // Dependency injection: use custom execFile override for testing, or real one
     this.execFileAsync = config.execFileOverride
       ? (promisify(config.execFileOverride) as unknown as typeof execFileAsync)
@@ -305,6 +329,14 @@ export class TwakExecutor {
     if (this.config.simulator) {
       this.initSimulator();
     }
+  }
+
+  private static resolveBinarySync(): string {
+    for (const candidate of TWAK_CANDIDATE_PATHS) {
+      if (candidate === "twak") continue;
+      if (existsSync(candidate)) return candidate;
+    }
+    return "twak";
   }
 
   // ===========================================================================
@@ -449,7 +481,9 @@ export class TwakExecutor {
   }
 
   /**
-   * Check if TWAK is available and configured.
+   * Check if TWAK is available and configured. Returns detailed diagnostics
+   * so startup logs explain exactly what is missing (binary, credentials,
+   * wallet password, or network).
    */
   async healthCheck(): Promise<TwakHealth> {
     const mode = this.config.simulator ? "simulator" : "live";
@@ -463,25 +497,94 @@ export class TwakExecutor {
       };
     }
 
-    // Check if twak CLI is installed using execFile (non-blocking)
+    const diagnostics: string[] = [];
+
+    // 1. Binary present?
+    let version = "";
     try {
-      await this.execFileAsync("twak", ["--version"], {
+      const { stdout } = await this.execFileAsync(this.twakCmd, ["--version"], {
         env: this.getEnv(),
         timeout: 5000,
       });
-      return {
-        available: true,
-        mode,
-        testnet: this.config.testnet,
-        agentAddress: this.config.agentAddress,
-      };
-    } catch {
+      version = stdout.trim().split("\n")[0]?.trim() ?? "";
+      diagnostics.push(`binary=${this.twakCmd} version=${version}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      diagnostics.push(`binary=missing (${message})`);
       return {
         available: false,
         mode,
         testnet: this.config.testnet,
+        diagnostics,
+        help: "Install TWAK: curl -fsSL https://agent-kit.trustwallet.com/install.sh | bash",
       };
     }
+
+    // 2. Credentials configured?
+    if (!this.config.accessId || !this.config.hmacSecret) {
+      diagnostics.push("credentials=missing TWAK_ACCESS_ID / TWAK_HMAC_SECRET");
+      return {
+        available: false,
+        mode,
+        testnet: this.config.testnet,
+        version,
+        diagnostics,
+        help: "Set TWAK_ACCESS_ID and TWAK_HMAC_SECRET from portal.trustwallet.com",
+      };
+    }
+    diagnostics.push("credentials=ok");
+
+    // 3. Wallet address readable (read-only, no password needed for address)?
+    try {
+      const { stdout } = await this.execFileAsync(this.twakCmd, ["wallet", "address", "--chain=bsc", "--json"], {
+        env: this.getEnv(),
+        timeout: 10000,
+      });
+      const parsed = JSON.parse(stdout);
+      const address = typeof parsed === "string" ? parsed : parsed?.address;
+      if (address) {
+        diagnostics.push(`wallet_address=${address}`);
+        if (!this.config.agentAddress || this.config.agentAddress.toLowerCase() === address.toLowerCase()) {
+          return {
+            available: true,
+            mode,
+            testnet: this.config.testnet,
+            agentAddress: address,
+            version,
+            diagnostics,
+          };
+        }
+        diagnostics.push(`config_mismatch: AGENT_WALLET_KEY=${this.config.agentAddress} vs twak_address=${address}`);
+        return {
+          available: true,
+          mode,
+          testnet: this.config.testnet,
+          agentAddress: address,
+          version,
+          diagnostics,
+          help: `AGENT_WALLET_KEY differs from TWAK wallet. Consider unsetting AGENT_WALLET_KEY so the agent uses TWAK's derived address.`,
+        };
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      diagnostics.push(`wallet_address=unavailable (${message})`);
+      return {
+        available: false,
+        mode,
+        testnet: this.config.testnet,
+        version,
+        diagnostics,
+        help: "Create a TWAK wallet and set TWAK_WALLET_PASSWORD (or use OS keychain). See https://developer.trustwallet.com/developer/agent-sdk/key-management",
+      };
+    }
+
+    return {
+      available: false,
+      mode,
+      testnet: this.config.testnet,
+      version,
+      diagnostics,
+    };
   }
 
   // ===========================================================================
@@ -490,6 +593,9 @@ export class TwakExecutor {
 
   /** Shell-safe character whitelist for CLI parameters. */
   private static readonly SAFE_INPUT_RE = /^[a-zA-Z0-9._-]+$/;
+
+  /** Resolved path to the `twak` binary, or "twak" if not found in known locations. */
+  private twakCmd: string;
 
   /** In-memory cache: symbol -> BEP-20 contract address (resolved via twak search). */
   private static tokenAddressCache = new Map<string, string>();
@@ -547,6 +653,7 @@ export class TwakExecutor {
       ...process.env,
       TWAK_ACCESS_ID: this.config.accessId,
       TWAK_HMAC_SECRET: this.config.hmacSecret,
+      TWAK_WALLET_PASSWORD: process.env.TWAK_WALLET_PASSWORD,
     };
   }
 
@@ -584,7 +691,7 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput(chain, "chain");
 
       const slippagePercent = Math.max(0.1, Math.min(50, slippage / 100));
-      const { stdout } = await this.execFileAsync("twak", [
+      const { stdout } = await this.execFileAsync(this.twakCmd, [
         "swap",
         "--usd",
         request.amountIn,
@@ -647,7 +754,7 @@ export class TwakExecutor {
     if (symbol.startsWith("0x") && symbol.length === 42) return null;
 
     try {
-      const { stdout } = await this.execFileAsync("twak", [
+      const { stdout } = await this.execFileAsync(this.twakCmd, [
         "search",
         symbol,
         "--networks=bsc",
@@ -793,7 +900,7 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput("1", "amount");
       TwakExecutor.validateSafeInput(tokenParam, "tokenOut");
 
-      const { stdout, stderr } = await this.execFileAsync("twak", [
+      const { stdout, stderr } = await this.execFileAsync(this.twakCmd, [
         "swap",
         "--usd",
         "1",
@@ -855,7 +962,7 @@ export class TwakExecutor {
       TwakExecutor.validateSafeInput("1", "amount");
       TwakExecutor.validateSafeInput(tokenParam, "tokenIn");
 
-      const { stdout, stderr } = await this.execFileAsync("twak", [
+      const { stdout, stderr } = await this.execFileAsync(this.twakCmd, [
         "swap",
         "--usd",
         "1",
@@ -913,7 +1020,7 @@ export class TwakExecutor {
     TwakExecutor.validateSafeInput(request.tokenIn, "tokenIn");
     TwakExecutor.validateSafeInput(request.tokenOut, "tokenOut");
 
-    const { stdout } = await this.execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync(this.twakCmd, [
       "swap",
       "--usd",
       request.amountIn,
@@ -977,7 +1084,7 @@ export class TwakExecutor {
   }
 
   private async livePortfolio(): Promise<TwakPortfolio> {
-    const { stdout } = await this.execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync(this.twakCmd, [
       "wallet",
       "portfolio",
     ], {
@@ -989,7 +1096,7 @@ export class TwakExecutor {
   }
 
   private async liveHistory(limit: number): Promise<SwapResult[]> {
-    const { stdout } = await this.execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync(this.twakCmd, [
       "history",
       `--limit=${limit}`,
     ], {
@@ -1001,7 +1108,7 @@ export class TwakExecutor {
   }
 
   private async liveRegister(): Promise<RegistrationResult> {
-    const { stdout } = await this.execFileAsync("twak", [
+    const { stdout } = await this.execFileAsync(this.twakCmd, [
       "compete",
       "register",
     ], {

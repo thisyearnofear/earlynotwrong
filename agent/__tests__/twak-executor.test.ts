@@ -634,9 +634,7 @@ describe("TwakExecutor — Portfolio Parser", () => {
 
   it("falls back to an empty portfolio when the live TWAK CLI fails", async () => {
     const queue = createResponseQueue();
-    queue.queue.push((_err, result) => {
-      result.error = new Error("spawn twak ENOENT");
-    });
+    queueError(queue.queue, "spawn twak ENOENT");
 
     const executor = new TwakExecutor({
       simulator: false,
@@ -650,6 +648,49 @@ describe("TwakExecutor — Portfolio Parser", () => {
     expect(portfolio.positions).toEqual([]);
     expect(portfolio.chains).toEqual(["bsc"]);
     expect(typeof portfolio.lastUpdated).toBe("number");
+  });
+});
+
+// =============================================================================
+// healthCheck — diagnostics and remediation hints
+// =============================================================================
+
+describe("TwakExecutor — healthCheck", () => {
+  it("reports binary-missing with install hint", async () => {
+    const queue = createResponseQueue();
+    queueError(queue.queue, "spawn twak ENOENT");
+
+    const executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      execFileOverride: queue.execFileOverride,
+    });
+
+    const health = await executor.healthCheck();
+    expect(health.available).toBe(false);
+    expect(health.diagnostics?.some((d) => d.includes("binary=missing"))).toBe(true);
+    expect(health.help).toContain("agent-kit.trustwallet.com/install.sh");
+  });
+
+  it("reports credentials-missing when env vars are empty", async () => {
+    const queue = createResponseQueue();
+    queue.queue.push((_err, result) => {
+      result.stdout = "twak v0.12.0";
+      result.stderr = "";
+    });
+
+    const executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      accessId: "",
+      hmacSecret: "",
+      execFileOverride: queue.execFileOverride,
+    });
+
+    const health = await executor.healthCheck();
+    expect(health.available).toBe(false);
+    expect(health.diagnostics?.some((d) => d.includes("credentials=missing"))).toBe(true);
+    expect(health.help).toContain("TWAK_ACCESS_ID");
   });
 });
 

@@ -32,6 +32,7 @@ import "./lib/env-bootstrap.js";
 import { state, getBnbUsd, stuckSymbols, tickUnharvestableCooldowns } from "./lib/agent-state.js";
 import {
   augmentPortfolioOnchain,
+  augmentNativeBnbOnchain,
   fetchMarketData,
   analyzeConviction,
   manageOpenPositions,
@@ -87,6 +88,14 @@ async function startupCheck(): Promise<{
   ]);
 
   console.log(`  TWAK:        ${twakHealth.available ? "✓" : "○"} (${twakHealth.mode})`);
+  if (twakHealth.diagnostics) {
+    for (const d of twakHealth.diagnostics) {
+      console.log(`               ${d}`);
+    }
+  }
+  if (twakHealth.help) {
+    console.log(`  TWAK help:   ${twakHealth.help}`);
+  }
   console.log(`  CMC REST:    ${cmcHealth ? "✓" : "○"} (${cmcHealth ? "connected" : "unavailable — using cached/stub data"})`);
   console.log(`  SoSoValue:   ${ssvHealth ? "✓" : "○"} (${ssvHealth ? "connected" : "offline — CMC fallback only"})`);
 
@@ -150,6 +159,10 @@ async function runCycle(): Promise<void> {
     // Step 2: Fetch market data from CMC
     await fetchMarketData();
 
+    // Step 2b: If TWAK portfolio failed earlier, fill native BNB from chain
+    // now that we have a BNB price from market data.
+    await augmentNativeBnbOnchain();
+
     // Step 3: Score market regime + token conviction (contrarian)
     const { regime, convictionSignals } = await analyzeConviction();
 
@@ -200,6 +213,7 @@ async function runCycle(): Promise<void> {
       // Value held BEP-20s on-chain (contract-priced) so peak/drawdown track
       // REAL portfolio value, not just the native BNB + USDC TWAK reports.
       await augmentPortfolioOnchain();
+      await augmentNativeBnbOnchain();
       guardrails.updatePeakValue(state.portfolio.totalValueUsd);
     } catch (err) {
       // If the refresh fails, fall back to the cached value rather than

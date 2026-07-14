@@ -126,6 +126,7 @@ src/lib/market.ts
 - **Bankroll management**: BNB reserve + adaptive interval doubling (4h → 8h) when BNB drops below `targetBnbUsd`.
 - **Position reconciliation**: at startup, `restoreSnapshot()` cross-checks `state.heldPositions` against live TWAK portfolio and drops ghost positions.
 - **Portfolio parser**: Reads `$USD` column from TWAK's column-aligned output. Covered by regression test in `__tests__/twak-executor.test.ts`.
+- **TWAK reliability**: The agent resolves the `twak` binary from common install paths (`~/.local/bin`, `~/.twak/bin`, `/usr/local/bin`) in addition to `PATH`. If TWAK is missing, misconfigured, or the wallet is locked, startup diagnostics print the exact failure and a remediation hint. The cycle still runs: portfolio falls back to the on-chain reader, and trades are skipped rather than crashing the loop.
 - **Agent-to-agent (A2A)**:
   - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 5 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`.
   - CROO CAP client connects to the CROO network via WebSocket and advertises 4 reputation services (`reputation-latest`, `reputation-history`, `reputation-cross-chain`, `reputation-agent`) settled in USDC on Base.
@@ -164,6 +165,53 @@ SoSoValue rate limits: **20 req/min**, **100,000 req/month** per API key. The ag
   - `fetchKlinesBySymbol` is only called for the top 10 conviction candidates and only when `SOSOVALUE_API_KEY` is set.
 
 If you rotate the key, restart the process so the singleton client picks it up and resets the suspension.
+
+---
+
+## TWAK Troubleshooting
+
+TWAK is the Trust Wallet Agent Kit CLI (`twak`). The agent uses it for BSC swaps, token search, and wallet reads.
+
+### Install / update
+
+```bash
+curl -fsSL https://agent-kit.trustwallet.com/install.sh | bash
+```
+
+Common install paths: `~/.local/bin/twak`, `~/.twak/bin/twak`, `/usr/local/bin/twak`. The agent checks these automatically in addition to `PATH`.
+
+### Required env vars
+
+| Var | Purpose |
+|-----|---------|
+| `TWAK_ACCESS_ID` | API access ID from portal.trustwallet.com |
+| `TWAK_HMAC_SECRET` | API HMAC secret from portal.trustwallet.com |
+| `TWAK_WALLET_PASSWORD` | Password for the TWAK agent wallet (or use `twak wallet keychain save`) |
+| `AGENT_WALLET_KEY` | Optional address override. If unset, the agent reads `twak wallet address --chain=bsc`. |
+| `TWAK_TESTNET=1` | Optional — point swaps at BSC testnet instead of mainnet. |
+
+### Wallet must exist
+
+If `twak wallet address --chain=bsc` fails, create a wallet:
+
+```bash
+twak wallet create --password <pw>
+```
+
+Then either save it to the OS keychain (`twak wallet keychain save`) or set `TWAK_WALLET_PASSWORD`.
+
+### Diagnostics
+
+On startup the agent runs `twakExecutor.healthCheck()` and prints each check:
+
+```
+TWAK:        ○ (live)
+              binary=~/.local/bin/twak version=twak v0.12.0
+              credentials=ok
+              wallet_address=0xA1Dd...
+```
+
+If a step fails, the log includes a `TWAK help:` line with the exact fix. The cycle continues in degraded mode (no trades, but analysis + anchoring still run) rather than crashing.
 
 ---
 

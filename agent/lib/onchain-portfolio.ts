@@ -14,7 +14,7 @@
  * is the last resort. A token that none of them can price contributes $0.
  */
 
-import { createPublicClient, http, getAddress, type PublicClient } from "viem";
+import { createPublicClient, http, getAddress, type PublicClient, formatEther } from "viem";
 import { bsc } from "viem/chains";
 
 const ERC20_ABI = [
@@ -53,6 +53,17 @@ export class OnchainPortfolio {
 
   constructor(rpcUrl: string = resolveRpcUrl()) {
     this.client = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+  }
+
+  /** Native BNB balance for the wallet (human-readable). 0 on any error. */
+  async getNativeBalance(wallet: string): Promise<number> {
+    try {
+      const owner = getAddress(wallet);
+      const raw = await this.client.getBalance({ address: owner });
+      return Number(formatEther(raw));
+    } catch {
+      return 0;
+    }
   }
 
   /** Live balanceOf for a single token (human-readable). 0 on any error. */

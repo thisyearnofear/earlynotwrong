@@ -368,6 +368,50 @@ export async function augmentPortfolioOnchain(): Promise<void> {
   }
 }
 
+/**
+ * Read native BNB balance on-chain and merge it into state.portfolio.
+ * This is called after market data is fetched so we can price BNB using the
+ * same source the rest of the cycle uses.
+ */
+export async function augmentNativeBnbOnchain(): Promise<void> {
+  if (!state.portfolio) return;
+  const wallet = process.env.AGENT_WALLET_KEY || process.env.AGENT_WALLET_ADDRESS;
+  if (!wallet) return;
+
+  const bnbPrice = state.marketData?.tokenPrices?.find(
+    (t) => t.symbol.toUpperCase() === "BNB"
+  )?.price;
+  if (!bnbPrice || bnbPrice <= 0) return;
+
+  try {
+    const onchain = new OnchainPortfolio();
+    const balance = await onchain.getNativeBalance(wallet);
+    if (balance <= 0) return;
+
+    const valueUsd = balance * bnbPrice;
+    const existing = state.portfolio.positions.find((p) => p.symbol.toUpperCase() === "BNB");
+    if (existing) {
+      existing.balance = balance.toString();
+      existing.valueUsd = valueUsd;
+    } else {
+      state.portfolio.positions.push({
+        token: "BNB",
+        symbol: "BNB",
+        balance: balance.toString(),
+        valueUsd,
+        chain: "bsc",
+      });
+    }
+    state.portfolio.totalValueUsd = state.portfolio.positions.reduce(
+      (sum, p) => sum + (p.valueUsd > 0.01 ? p.valueUsd : 0),
+      0,
+    );
+    console.log(`  [onchain] Native BNB ${balance.toFixed(4)} × $${bnbPrice.toFixed(2)} = $${valueUsd.toFixed(2)}`);
+  } catch {
+    // Non-fatal
+  }
+}
+
 // =============================================================================
 // Step 4: Manage Open Positions
 // =============================================================================
