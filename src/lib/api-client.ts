@@ -4,7 +4,12 @@
  * Replaces direct external API calls from the client.
  */
 
-import { TokenTransaction, TokenPosition, ConvictionMetrics } from "./market";
+import {
+  TokenTransaction,
+  TokenPosition,
+  ConvictionMetrics,
+} from "./market";
+import { groupEntriesIntoPositions } from "conviction-core";
 
 export interface PositionAnalysis {
   tokenAddress: string;
@@ -194,58 +199,7 @@ class ApiClient {
   groupTransactionsIntoPositions(
     transactions: TokenTransaction[]
   ): TokenPosition[] {
-    const positionMap = new Map<string, TokenPosition>();
-
-    for (const tx of transactions) {
-      const key = tx.tokenAddress;
-
-      if (!positionMap.has(key)) {
-        positionMap.set(key, {
-          tokenAddress: tx.tokenAddress,
-          tokenSymbol: tx.tokenSymbol,
-          entries: [],
-          exits: [],
-          avgEntryPrice: 0,
-          totalInvested: 0,
-          totalRealized: 0,
-          remainingBalance: 0,
-          isActive: false,
-        });
-      }
-
-      const position = positionMap.get(key)!;
-
-      if (tx.type === "buy") {
-        position.entries.push(tx);
-        position.totalInvested += tx.valueUsd;
-      } else {
-        position.exits.push(tx);
-        position.totalRealized += tx.valueUsd;
-      }
-    }
-
-    for (const position of positionMap.values()) {
-      if (position.entries.length > 0) {
-        position.avgEntryPrice =
-          position.totalInvested /
-          position.entries.reduce((sum, entry) => sum + entry.amount, 0);
-      }
-
-      const totalBought = position.entries.reduce(
-        (sum, entry) => sum + entry.amount,
-        0
-      );
-      const totalSold = position.exits.reduce(
-        (sum, exit) => sum + exit.amount,
-        0
-      );
-      position.remainingBalance = totalBought - totalSold;
-      position.isActive = position.remainingBalance > 0;
-    }
-
-    return Array.from(positionMap.values()).filter(
-      (p) => p.entries.length > 0 && p.totalInvested > 0
-    );
+    return groupEntriesIntoPositions(transactions);
   }
 
   async verifyAleoProof(transactionId: string): Promise<{

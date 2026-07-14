@@ -1,4 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  calculatePatienceTax as calculatePatienceTaxCore,
+  type PatienceTaxResult,
+  type PricePoint,
+} from "conviction-core";
 import { APP_CONFIG } from "@/lib/config";
 import { serverCache, CacheKeys, CacheTTL } from "@/lib/server-cache";
 import { TokenTransaction } from "@/lib/market";
@@ -23,19 +28,6 @@ export interface PriceAnalysis {
   volume24h?: number;
   marketCap?: number;
   lastUpdated: number;
-}
-
-export interface PricePoint {
-  timestamp: number;
-  price: number;
-}
-
-export interface PatienceTaxResult {
-  patienceTax: number;
-  maxMissedGain: number;
-  maxMissedGainDate: number;
-  currentMissedGain?: number;
-  wouldBeValue: number;
 }
 
 export interface TransactionParams {
@@ -266,7 +258,10 @@ export class MarketService {
   }
 
   /**
-   * Calculate patience tax for a position
+   * Calculate patience tax for a position.
+   *
+   * The pure calculation lives in conviction-core; this method is the web's
+   * I/O wrapper that fetches the post-exit price history and feeds it in.
    */
   async calculatePatienceTax(
     tokenAddress: string,
@@ -288,36 +283,13 @@ export class MarketService {
       endTimestamp
     );
 
-    if (priceHistory.length === 0) {
-      return {
-        patienceTax: 0,
-        maxMissedGain: 0,
-        maxMissedGainDate: exitTimestamp,
-        wouldBeValue: positionSize,
-      };
-    }
-
-    let maxPrice = exitPrice;
-    let maxPriceDate = exitTimestamp;
-
-    for (const point of priceHistory) {
-      if (point.price > maxPrice) {
-        maxPrice = point.price;
-        maxPriceDate = point.timestamp;
-      }
-    }
-
-    const maxMissedGainMultiplier = maxPrice / exitPrice;
-    const maxMissedGain = (maxMissedGainMultiplier - 1) * 100;
-    const patienceTax = positionSize * (maxMissedGainMultiplier - 1);
-    const wouldBeValue = positionSize * maxMissedGainMultiplier;
-
-    return {
-      patienceTax: Math.max(0, patienceTax),
-      maxMissedGain,
-      maxMissedGainDate: maxPriceDate,
-      wouldBeValue,
-    };
+    return calculatePatienceTaxCore(
+      exitPrice,
+      positionSize,
+      priceHistory,
+      windowDays,
+      exitTimestamp
+    );
   }
 
   /**

@@ -29,7 +29,8 @@ import type {
 } from "../lib/conviction-signal.js";
 import type { MarketNarrative } from "../lib/market-narrative.js";
 import type { MacroPauseSignal } from "../lib/sosovalue-signals.js";
-import type { TradeStats } from "../lib/agent-state.js";
+import type { TradeStats, ReputationMetrics } from "../lib/agent-state.js";
+import type { LedgerEntry } from "conviction-core";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware } from "./mcp/x402.js";
 import { PRICING as MCP_PRICING } from "./mcp/pricing.js";
@@ -83,6 +84,10 @@ export interface AgentServerState {
    * value, faking a drawdown against the augmented peak).
    */
   portfolio: TwakPortfolio | null;
+  /** Behavioral conviction score the agent assigned itself this cycle. */
+  behavioralMetrics: ReputationMetrics | null;
+  /** Canonical ledger of agent entries/exits used for self-analysis. */
+  ledger: LedgerEntry[];
 }
 
 let agentState: AgentServerState = {
@@ -117,6 +122,8 @@ let agentState: AgentServerState = {
   heldPositions: [],
   positionVerdicts: [],
   portfolio: null,
+  behavioralMetrics: null,
+  ledger: [],
 };
 
 /**
@@ -294,6 +301,7 @@ app.get("/status", async (c) => {
       largestLossUsd: stats.largestLossUsd,
       profitFactor,
     },
+    behavioralMetrics: agentState.behavioralMetrics,
   };
 
   return c.json(body);

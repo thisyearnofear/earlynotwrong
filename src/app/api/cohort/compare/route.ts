@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCohortStats, getRealPercentile } from "@/lib/db/postgres";
+import { getCohortStats, getCohortPercentile } from "@/lib/db/postgres";
 import { requireEthosScore, getEthosTier } from "@/lib/ethos-gates";
 
 /**
@@ -24,16 +24,17 @@ export async function GET(request: NextRequest) {
   if ("error" in gate) return gate.error;
 
   try {
-    const [cohortStats, percentile] = await Promise.all([
+    const [cohortStats, percentileResult] = await Promise.all([
       getCohortStats(chain),
-      score > 0 ? getRealPercentile(score, chain) : Promise.resolve(50),
+      score > 0 ? getCohortPercentile(score, chain) : Promise.resolve(null),
     ]);
 
     const tier = getEthosTier(gate.score);
 
     return NextResponse.json({
       cohort: cohortStats,
-      percentile,
+      percentile: percentileResult?.topPercent ?? null,
+      cohortSize: percentileResult?.cohortSize ?? null,
       tier,
       gate: { score: gate.score, tier: gate.tier },
     });

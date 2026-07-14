@@ -8,17 +8,7 @@ interface TransactionRequest {
   minTradeValue: number;
 }
 
-interface TokenTransaction {
-  hash: string;
-  timestamp: number;
-  tokenAddress: string;
-  tokenSymbol?: string;
-  type: "buy" | "sell";
-  amount: number;
-  priceUsd: number;
-  valueUsd: number;
-  blockNumber: number;
-}
+import type { TokenTransaction } from "@/lib/market";
 
 // Token patterns to exclude (LP tokens, NFTs, etc.)
 function shouldExcludeToken(

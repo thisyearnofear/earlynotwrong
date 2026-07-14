@@ -209,38 +209,6 @@ export async function getCohortPercentile(
 }
 
 /**
- * Get real cohort percentile based on all stored analyses
- */
-export async function getRealPercentile(
-  score: number,
-  chain?: "solana" | "base"
-): Promise<number> {
-  try {
-    const result = chain
-      ? await sql`
-          SELECT COUNT(*) as total,
-                 COUNT(*) FILTER (WHERE score < ${score}) as below
-          FROM conviction_analyses
-          WHERE chain = ${chain}
-            AND analyzed_at > NOW() - INTERVAL '90 days'
-        `
-      : await sql`
-          SELECT COUNT(*) as total,
-                 COUNT(*) FILTER (WHERE score < ${score}) as below
-          FROM conviction_analyses
-          WHERE analyzed_at > NOW() - INTERVAL '90 days'
-        `;
-
-    const { total, below } = result.rows[0];
-    if (total === 0) return 50; // Default if no data
-    return Math.round((below / total) * 100);
-  } catch (error) {
-    console.warn("Failed to calculate real percentile:", error);
-    return 50;
-  }
-}
-
-/**
  * Get cohort statistics for comparison
  */
 export async function getCohortStats(

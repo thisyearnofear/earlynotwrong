@@ -76,6 +76,16 @@ interface AgentStatus {
     largestLossUsd: number;
     profitFactor: number;
   };
+  behavioralMetrics?: {
+    score: number;
+    archetype: string;
+    winRate: number;
+    avgHoldingPeriod: number;
+    totalPositions: number;
+    earlyExits: number;
+    upsideCapture: number;
+    patienceTax: number;
+  } | null;
 }
 
 interface Trade {
@@ -801,6 +811,64 @@ function Dashboard({
                   <p className="text-foreground">{formatCurrency(status.metrics?.totalGasSpentUsd ?? 0)}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.16, duration: 0.35 }}
+        >
+          <Card className="bg-surface/30 border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-signal" />
+                Agent Conviction Index
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {status.behavioralMetrics ? (
+                <>
+                  <div className={cn(
+                    "text-2xl sm:text-3xl font-bold tabular-nums",
+                    (status.behavioralMetrics.score ?? 0) >= 60 ? "text-patience" : "text-impatience"
+                  )}>
+                    {status.behavioralMetrics.score}
+                    <span className="text-xs font-normal text-foreground-muted ml-2">/ 100</span>
+                  </div>
+                  <div className="text-sm font-medium text-foreground">
+                    {status.behavioralMetrics.archetype}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                      <span className="text-foreground-muted">Win Rate</span>
+                      <p className="text-foreground">{status.behavioralMetrics.winRate}%</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Avg Hold</span>
+                      <p className="text-foreground">{status.behavioralMetrics.avgHoldingPeriod}d</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Positions</span>
+                      <p className="text-foreground">{status.behavioralMetrics.totalPositions}</p>
+                    </div>
+                    <div>
+                      <span className="text-foreground-muted">Early Exits</span>
+                      <p className={cn(
+                        status.behavioralMetrics.earlyExits === 0 ? "text-patience" : "text-impatience"
+                      )}>
+                        {status.behavioralMetrics.earlyExits}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-foreground-muted">
+                  Insufficient closed positions yet. The agent will score its
+                  own behavior once it has a few exits.
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

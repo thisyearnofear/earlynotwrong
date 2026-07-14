@@ -34,6 +34,11 @@ import {
   fetchNewsSentimentSignal,
 } from "./sosovalue-signals.js";
 import type { MacroPauseSignal } from "./sosovalue-signals.js";
+import {
+  recordAgentEntry,
+  recordAgentExit,
+  analyzeAgentBehavior,
+} from "./self-analysis.js";
 
 // =============================================================================
 // Trade statistics helpers
@@ -522,7 +527,7 @@ async function closePosition(
     slippageBps: AGENT_CONFIG.trading.defaultSlippageBps,
   });
   if (result.success) {
-    return finalizeExit(pos, result, verdict, sellUsd, costBasisSoldUsd);
+    return finalizeExit(pos, result, verdict, sellUsd, costBasisSoldUsd, currentPriceUsd);
   }
   console.log(`    [exit] Primary exit failed: ${result.error}`);
 
@@ -536,7 +541,7 @@ async function closePosition(
       slippageBps,
     });
     if (hiSlipResult.success) {
-      return finalizeExit(pos, hiSlipResult, verdict, sellUsd, costBasisSoldUsd);
+      return finalizeExit(pos, hiSlipResult, verdict, sellUsd, costBasisSoldUsd, currentPriceUsd);
     }
     console.log(`    [exit] ${(slippageBps / 100).toFixed(0)}% slippage failed: ${hiSlipResult.error}`);
   }
@@ -551,7 +556,7 @@ async function closePosition(
   });
   if (usdcResult.success) {
     console.log(`    [exit] USDC leg succeeded — closing position (USDC held as stablecoin)`);
-    return finalizeExit(pos, usdcResult, verdict, sellUsd, costBasisSoldUsd);
+    return finalizeExit(pos, usdcResult, verdict, sellUsd, costBasisSoldUsd, currentPriceUsd);
   }
   console.log(`    [exit] USDC route failed: ${usdcResult.error}`);
 
@@ -582,7 +587,8 @@ function finalizeExit(
   result: SwapResult,
   verdict: PositionVerdict,
   sellUsd: number,
-  costBasisSoldUsd: number
+  costBasisSoldUsd: number,
+  exitPriceUsd: number
 ): boolean {
   state.executedTrades.push(result);
   state.totalTrades += 1;
@@ -597,6 +603,15 @@ function finalizeExit(
   state.realizedPnlUsd += pnlUsd;
   recordExitStats(pnlUsd);
   guardrails.recordTrade(sellUsd, true);
+
+  // Record in the canonical ledger for self-analysis.
+  recordAgentExit({
+    symbol: pos.symbol,
+    priceUsd: exitPriceUsd,
+    amountUsd: sellUsd,
+    timestamp: result.timestamp,
+    txHash: result.txHash,
+  });
 
   // Surface this exit to Telegram so judges see live risk decisions, not
   // just terminal logs. Non-blocking; safe when Telegram is unconfigured.
@@ -717,6 +732,17 @@ export async function harvestForBnb(): Promise<void> {
     state.realizedPnlUsd += harvestPnlUsd;
     recordExitStats(harvestPnlUsd);
     guardrails.recordTrade(harvestAmountUsd, true);
+    const exitPriceUsd =
+      target.entryPriceUsd > 0
+        ? (targetValueUsd * target.entryPriceUsd) / target.amountUsd
+        : 0;
+    recordAgentExit({
+      symbol: target.symbol,
+      priceUsd: exitPriceUsd,
+      amountUsd: harvestAmountUsd,
+      timestamp: primary.timestamp,
+      txHash: primary.txHash,
+    });
     console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
     state.portfolio = await twakExecutor.getPortfolio();
     return;
@@ -756,6 +782,17 @@ export async function harvestForBnb(): Promise<void> {
         state.realizedPnlUsd += hopPnlUsd;
         recordExitStats(hopPnlUsd);
         guardrails.recordTrade(target.amountUsd, true);
+        const exitPriceUsd =
+          target.entryPriceUsd > 0
+            ? (targetValueUsd * target.entryPriceUsd) / target.amountUsd
+            : 0;
+        recordAgentExit({
+          symbol: target.symbol,
+          priceUsd: exitPriceUsd,
+          amountUsd: targetValueUsd,
+          timestamp: toUsdc.timestamp,
+          txHash: toUsdc.txHash,
+        });
         console.log(`  ✓ Harvested via USDC hop (${toUsdc.txHash?.slice(0, 10)} → ${usdcToBnb.txHash?.slice(0, 10)})`);
         state.portfolio = await twakExecutor.getPortfolio();
         return;
@@ -796,6 +833,17 @@ export async function harvestForBnb(): Promise<void> {
       state.realizedPnlUsd += probePnlUsd;
       recordExitStats(probePnlUsd);
       guardrails.recordTrade(1.5, true);
+      const exitPriceUsd =
+        target.entryPriceUsd > 0
+          ? (targetValueUsd * target.entryPriceUsd) / target.amountUsd
+          : 0;
+      recordAgentExit({
+        symbol: target.symbol,
+        priceUsd: exitPriceUsd,
+        amountUsd: 1.5,
+        timestamp: retry.timestamp,
+        txHash: retry.txHash,
+      });
       const idx = state.heldPositions.findIndex((p) => p.symbol === target.symbol);
       if (idx >= 0) {
         state.heldPositions[idx].amountUsd = Math.max(0, state.heldPositions[idx].amountUsd - basisSoldUsd);
@@ -1215,6 +1263,15 @@ export async function executeTrades(
           cycle: state.cycle,
         })
       );
+
+      // Record in the canonical ledger for self-analysis.
+      recordAgentEntry({
+        symbol: proposal.tokenSymbol,
+        priceUsd: entryPriceUsd,
+        amountUsd: proposal.amountInUsd,
+        timestamp: result.timestamp,
+        txHash: result.txHash,
+      });
 
       // Public trade narrative — broadcast the entry to the operator channel
       // and all /start subscribers. Non-blocking; safe when unconfigured.

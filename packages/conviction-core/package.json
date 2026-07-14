@@ -1,0 +1,26 @@
+{
+  "name": "conviction-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared pure conviction framework used by the ENW agent and web app",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

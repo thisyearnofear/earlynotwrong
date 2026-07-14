@@ -6,6 +6,12 @@
  * (step functions).
  */
 
+import type {
+  LedgerEntry,
+  LedgerPosition,
+  BehavioralMetrics,
+  Subject,
+} from "conviction-core";
 import type { CmcMarketData } from "./data-providers.js";
 import type { SwapResult, TwakPortfolio } from "./twak-executor.js";
 import type { GuardrailResult } from "./risk-guardrails.js";
@@ -24,73 +30,14 @@ import { AGENT_CONFIG } from "./config.js";
 // Shared Type Definitions
 // =============================================================================
 
-/**
- * A single token transaction (buy or sell). Used by the conviction analysis
- * engine to track entry/exit history and compute patience-tax metrics.
- */
-export interface TokenTransaction {
-  hash: string;
-  timestamp: number;
-  tokenAddress: string;
-  tokenSymbol?: string;
-  type: "buy" | "sell";
-  amount: number;
-  priceUsd: number;
-  valueUsd: number;
-  blockNumber: number;
-}
+/** Alias to the shared ledger entry type. */
+export type TokenTransaction = LedgerEntry;
 
-/**
- * A token position with full entry/exit history. The conviction engine
- * uses these to compute patience-tax, upside capture, and archetype.
- */
-export interface TokenPosition {
-  tokenAddress: string;
-  tokenSymbol?: string;
-  entries: TokenTransaction[];
-  exits: TokenTransaction[];
-  avgEntryPrice: number;
-  totalInvested: number;
-  totalRealized: number;
-  remainingBalance: number;
-  isActive: boolean;
-  patienceTaxAnalysis?: {
-    patienceTax: number;
-    maxMissedGain: number;
-    wouldBeValue: number;
-  };
-}
+/** Alias to the shared ledger position type. */
+export type TokenPosition = LedgerPosition;
 
-/** Result of a conviction analysis — exit timing quality metric. */
-export interface ConvictionAnalysis {
-  exitPrice: number;
-  postExitHigh: number;
-  potentialGain: number;
-  patienceTax: number;
-  isEarlyExit: boolean;
-  daysHeld: number;
-}
-
-/**
- * Aggregate conviction metrics for a wallet/subject. Used by the MCP
- * server to surface reputation scores and archetype classification.
- */
-export interface ConvictionMetrics {
-  score: number;
-  patienceTax: number;
-  upsideCapture: number;
-  earlyExits: number;
-  convictionWins: number;
-  percentile: number;
-  archetype?:
-    | "Iron Pillar"
-    | "Profit Phantom"
-    | "Exit Voyager"
-    | "Diamond Hand";
-  totalPositions: number;
-  avgHoldingPeriod: number;
-  winRate: number;
-}
+/** Alias to the shared behavioral metrics type. */
+export type ReputationMetrics = BehavioralMetrics;
 
 /** A prepared trade ready for execution. */
 export interface TradeExecution {
@@ -220,6 +167,10 @@ export const state = {
   narrative: null as MarketNarrative | null,
   macroPause: null as MacroPauseSignal | null,
   anchorResults: [] as AnchorResult[],
+  /** Self-analysis behavioral metrics, computed after each cycle's exits. */
+  behavioralMetrics: null as BehavioralMetrics | null,
+  /** Canonical ledger of all agent entries and exits for self-analysis. */
+  ledger: [] as LedgerEntry[],
 };
 
 // =============================================================================

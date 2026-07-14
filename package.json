@@ -12,6 +12,7 @@
     "postinstall": "test -d node_modules/@lightprotocol/hasher.rs/dist && cp node_modules/@lightprotocol/hasher.rs/dist/hasher_wasm_simd_bg.wasm node_modules/@lightprotocol/hasher.rs/dist/browser-fat/es/ && cp node_modules/@lightprotocol/hasher.rs/dist/light_wasm_hasher_bg.wasm node_modules/@lightprotocol/hasher.rs/dist/browser-fat/es/ || true"
   },
   "dependencies": {
+    "conviction-core": "file:./packages/conviction-core",
     "@farcaster/miniapp-sdk": "^0.3.0",
     "@google/generative-ai": "^0.24.1",
     "@lightprotocol/hasher.rs": "^0.2.1",

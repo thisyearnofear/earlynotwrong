@@ -50,6 +50,7 @@ import {
   OnchainPortfolio,
 } from "./lib/onchain-portfolio.js";
 import { guardrails } from "./lib/risk-guardrails.js";
+import { analyzeAgentBehavior } from "./lib/self-analysis.js";
 import { setAgentState, startServer } from "./src/server.js";
 import { startCapClient, stopCapClient, getCapStatus } from "./src/cap/client.js";
 import {
@@ -209,6 +210,17 @@ async function runCycle(): Promise<void> {
       }
     }
 
+    // Step 8c: Agent self-analysis — measure the agent's own trading behavior
+    // using the same conviction engine that analyzes user wallets.
+    const selfAnalysis = analyzeAgentBehavior();
+    if (selfAnalysis) {
+      state.behavioralMetrics = selfAnalysis;
+      console.log(`\n[8c/8] Agent behavioral conviction: ${selfAnalysis.score} — ${selfAnalysis.archetype}`);
+    } else {
+      state.behavioralMetrics = null;
+      console.log("\n[8c/8] Agent self-analysis: insufficient closed positions");
+    }
+
     printCycleSummary(cycleStart);
 
     // Send cycle summary to Telegram (non-blocking, skip if not configured)
@@ -345,6 +357,13 @@ async function restoreSnapshot(): Promise<void> {
       };
     }
 
+    // Restore the canonical ledger so self-analysis remains continuous across restarts.
+    const persistedLedger = (persisted?.agent as { ledger?: typeof state.ledger } | undefined)?.ledger;
+    if (Array.isArray(persistedLedger)) {
+      state.ledger = persistedLedger;
+      console.log(`  Snapshot: restored ${persistedLedger.length} ledger entries`);
+    }
+
     if (state.heldPositions.length > 0 && AGENT_MODE === "live") {
       try {
         const onchain = new OnchainPortfolio();
@@ -421,6 +440,8 @@ function syncServerState(): void {
     narrative: state.narrative,
     macroPause: state.macroPause,
     portfolio: state.portfolio,
+    behavioralMetrics: state.behavioralMetrics,
+    ledger: state.ledger,
   };
 
   setAgentState(agentSnapshot);

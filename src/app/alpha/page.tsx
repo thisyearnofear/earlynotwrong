@@ -11,10 +11,6 @@ import { useAlphaData } from "@/hooks/use-alpha-data";
 import { useAppStore } from "@/lib/store";
 import { ALPHA_GATE_SCORE } from "@/lib/alpha/constants";
 import {
-  SHOWCASE_ALPHA_TRADERS,
-  SHOWCASE_TOKEN_HEATMAP,
-} from "@/lib/alpha/showcase";
-import {
   Zap,
   Flame,
   TrendingUp,
@@ -43,18 +39,8 @@ export default function AlphaPage() {
     chain: effectiveChain,
   });
 
-  // When gated or DB-empty, each list independently falls back to showcase
-  // (fabricated example) data. Any tab rendering showcase data must say so
-  // loudly — see the ShowcaseBanner rendered above the lists below.
-  const tradersAreShowcase = data.traders.length === 0;
-  const tokensAreShowcase = data.tokens.length === 0;
-
-  const displayTraders = tradersAreShowcase
-    ? SHOWCASE_ALPHA_TRADERS
-    : data.traders;
-  const displayTokens = tokensAreShowcase
-    ? SHOWCASE_TOKEN_HEATMAP
-    : data.tokens;
+  const displayTraders = data.traders;
+  const displayTokens = data.tokens;
 
   const tabs: { key: AlphaTab; label: string; icon: typeof Zap }[] = [
     { key: "traders", label: "High-Conviction Traders", icon: TrendingUp },
@@ -102,22 +88,9 @@ export default function AlphaPage() {
               feature="Alpha Discovery"
               description="Reputation-weighted trader list and token heatmap. Analyze a wallet to build your Ethos score and unlock this feature."
               preview={
-                <div className="space-y-2">
-                  {SHOWCASE_ALPHA_TRADERS.slice(0, 3).map((t) => (
-                    <div
-                      key={t.address}
-                      className="flex items-center justify-between p-3 rounded-lg bg-surface border border-border"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">
-                          {t.displayName ?? t.address.slice(0, 8)}
-                        </span>
-                      </div>
-                      <span className="text-sm font-mono text-signal">
-                        {t.weightedScore}
-                      </span>
-                    </div>
-                  ))}
+                <div className="p-4 rounded-lg bg-surface border border-border text-sm text-foreground-muted">
+                  Analyze a wallet to build your Ethos score and unlock
+                  reputation-weighted alpha. No fabricated preview data.
                 </div>
               }
             />
@@ -186,9 +159,6 @@ export default function AlphaPage() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
               >
-                {tradersAreShowcase && (
-                  <ShowcaseBanner note="example traders, not live analysis" />
-                )}
 
                 {/* Stat strip */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -216,7 +186,7 @@ export default function AlphaPage() {
                   <StatStrip
                     icon={<Database className="w-3.5 h-3.5" />}
                     label="Source"
-                    value={tradersAreShowcase ? "Showcase" : "Live"}
+                    value="Live"
                   />
                 </div>
 
@@ -239,10 +209,6 @@ export default function AlphaPage() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
               >
-                {tokensAreShowcase && (
-                  <ShowcaseBanner note="example tokens, not live analysis" />
-                )}
-
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                   <StatStrip
                     icon={<Flame className="w-3.5 h-3.5" />}
@@ -268,7 +234,7 @@ export default function AlphaPage() {
                   <StatStrip
                     icon={<Database className="w-3.5 h-3.5" />}
                     label="Source"
-                    value={tokensAreShowcase ? "Showcase" : "Live"}
+                    value="Live"
                   />
                 </div>
 
@@ -280,24 +246,6 @@ export default function AlphaPage() {
 
       </div>
     </main>
-  );
-}
-
-/**
- * Loud disclosure for fabricated fallback data. Mirrors the SHOWCASE MODE
- * chip on the home page score card, expanded into a banner so it can't be
- * missed above the lists.
- */
-function ShowcaseBanner({ note }: { note: string }) {
-  return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg border border-signal/20 bg-signal/5">
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-signal/10 text-signal border border-signal/20">
-        SHOWCASE DATA
-      </span>
-      <span className="text-xs text-foreground-muted">
-        {note} — scan a wallet to populate the live conviction ledger.
-      </span>
-    </div>
   );
 }
 

@@ -10,6 +10,13 @@ export interface ShowcaseWallet {
   farcasterFid?: number; // Manual FID mapping when showcase wallet != verified wallet
 }
 
+/**
+ * Demo wallets used for the "Demo Mode" onboarding path.
+ *
+ * These are real public addresses; analyses run against live data. They are NOT
+ * fabricated fallback data and must not be used to populate empty leaderboards.
+ */
+
 export const SHOWCASE_WALLETS: ShowcaseWallet[] = [
   {
     id: "base-jesse",
