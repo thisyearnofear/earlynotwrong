@@ -538,8 +538,6 @@ function saveSsvCache(cache: SsvPersistentCache): void {
   if (!dir) return;
   try {
     writeFileSync(join(dir, SSV_CACHE_FILE), JSON.stringify(cache), "utf-8");
-    const entries = (cache.currencyIdCache?.length ?? 0) + (cache.snapshotCache?.length ?? 0) + (cache.klineCache?.length ?? 0);
-    console.log(`[SoSoValue] Persisted cache: ${entries} currency/snapshot/klines entries, news=${cache.hotNewsCache ? 1 : 0}/${cache.featuredNewsCache ? 1 : 0}, macro=${cache.macroEventsCache ? 1 : 0}`);
   } catch (err) {
     console.warn("[SoSoValue] Failed to persist cache:", (err as Error)?.message || String(err));
   }
@@ -802,7 +800,6 @@ export class SosovalueClient implements MarketDataProvider {
         if (id && c.symbol) this.currencyIdCache.set(c.symbol.toUpperCase(), { id, symbol: c.symbol, name: c.name });
       }
       this.currencyCacheLastFetched = now;
-      console.log(`[SoSoValue] Caching ${this.currencyIdCache.size}/${currencies.length} currency IDs`);
       this.saveCache();
     }
     return currencies;
