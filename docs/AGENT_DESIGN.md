@@ -7,20 +7,24 @@ This document covers the autonomous BSC trading agent at the core of Early, Not 
 ## Architecture
 
 ```
-CMC Agent Hub ──► Conviction Engine ──► Bankroll-Aware Sizer ──► TWAK Execution ──► Mantle Anchoring
+CMC Agent Hub ──► Conviction Engine ──► Bankroll-Aware Sizer ──► TWAK Execution ──► Mantle + Casper Anchoring
      (data)           (scoring)              (filters)           (swaps)            (proof)
+                                          │
+                              DexScreener │ Honeypot/illiquid pair screen
+                              SoSoValue   │ News + macro + SSI regime overlay
+                              NodeReal    │ On-chain holder counts
 ```
 
 The agent is implemented as a standalone Node.js process running autonomously on a VPS (self-hosted, not Pinata). Each 4-hour cycle:
 
 1. **Portfolio State** — Fetches real BNB balance via TWAK (`bsc (BNB) Total: 0.0156 BNB ≈ $9.03`, plus 0.65 USDC and held tokens)
 2. **Market Data** — Pulls Fear & Greed Index, funding rates, and token prices from the CMC Pro REST API
-3. **Conviction Scoring** — Scores 147 eligible BEP-20 tokens using a 6-factor signal (contrarian + RSI timing + quality + regime + holder growth − volatility penalty)
-4. **Liquidity Screening** — Checks DEX liquidity via TWAK swap quotes for the top 20 candidates, keeping up to top-2 with real liquidity
-5. **Bankroll-Aware Sizing** — Per-trade cap = `min(portfolio × 15%, (BNB − $5 reserve) × 50%)`. Entries skipped entirely when BNB < $10. Loop interval doubles to 8h when BNB < $25 to preserve anchor gas.
+3. **Conviction Scoring** — Scores ~147 eligible BEP-20 tokens using a 6-factor signal (contrarian + RSI timing + quality + regime + holder growth − volatility penalty). SoSoValue overlays SSI indices, news sentiment, and macro events.
+4. **Liquidity & Honeypot Screening** — DexScreener pool depth + 24h volume gate; TWAK quote-only sell check; for thin-liquidity tokens (< $20k pool) a real buy/sell execution probe verifies the route is swappable before committing capital.
+5. **Bankroll-Aware Sizing** — Per-trade cap = `min(portfolio × 15%, (BNB − $2.5 reserve) × 50%)`. Entries skipped entirely when BNB < $4.5. Loop interval doubles to 8h when BNB is low to preserve gas.
 6. **Risk Guardrails** — 8 checks: trading window, portfolio minimum, drawdown (25% hard stop), token allowlist, per-trade limit ($1K), daily limit (6), concentration (20%), conviction floor (58)
-7. **TWAK Execution** — Live swaps via Agent Wallet Mode (self-custody, autonomous signing). Pre-flight rechecks live BNB and refuses if the trade would breach the $5 reserve.
-8. **Mantle Anchoring** — Analysis hash, conviction score, and archetype written to ERC-8004 registry on Mantle Sepolia (every cycle, even when no trades execute)
+7. **TWAK Execution** — Live swaps via Agent Wallet Mode (self-custody, autonomous signing). Pre-flight rechecks live BNB and refuses if the trade would breach the reserve. Exit/harvest fallback ladder: default → 10% → 20% → 49% slippage → USDC pair → size probe.
+8. **Dual-Chain Anchoring** — Analysis hash, conviction score, and archetype written to Mantle ERC-8004 registry and Casper ConvictionRegistry. Casper anchors are gated by operator balance and skip unchanged theses.
 
 ## Position Management ("The Soul")
 
@@ -30,7 +34,9 @@ The agent embodies "Early, Not Wrong" through four exit tiers:
 - **EXIT_STOP** at −35% — thesis invalidated, cap the loss
 - **EXIT_TRAIL** at +100% peak → 30% give-back — lock the asymmetry
 
-When the EXIT_STOP swap reverts on a thin pool (we hit this on a $3 HOME position pre-fix), an **exit fallback ladder** kicks in: primary swap → 5% slippage → USDC pair → Telegram alert. Same shape on the **harvest ladder** for the self-funding loop (sell weakest 8+ cycle position → BNB direct → USDC intermediate → size probe → alert + cooldown).
+When an exit or harvest swap reverts on a thin pool, an **exit/harvest fallback ladder** runs: primary swap at default slippage → 10% → 20% → 49% slippage → USDC route → tiny size probe. If every path fails, the position is marked **stuck** and its symbol is added to a blocklist so the agent stops wasting gas and stops re-entering. Stuck positions are kept in the ledger for accounting but excluded from the active position cap.
+
+For new entries, quote-only checks are followed by a real **buy/sell execution probe** on thin-liquidity tokens (< $20k DexScreener pool). The probe buys a small amount and immediately sells it back; if the sell leg reverts or the round-trip loss is too high, the token is rejected and blocklisted.
 
 ## Bankroll Discipline
 

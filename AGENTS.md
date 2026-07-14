@@ -16,6 +16,30 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ---
 
+## Current Operational Status
+
+> Last updated: 2026-07-14. Live commit on `nuncio-vultr`: `a92c0c7e`.
+
+### Recently shipped
+
+- **Casper anchoring guardrails** — balance gate + thesis-hash deduplication so anchors stop failing when operator CSPR is low and stop paying gas for unchanged theses.
+- **TWAK harvest hardening** — harvest retries now mirror the exit fallback ladder (default → 10% → 20% → 49% slippage → USDC hop → size probe). Persistently unharvestable positions are marked **stuck** and blocklisted.
+- **Stuck positions excluded from cap** — `maxOpenPositions` now counts only active positions, so dead/honeypot tokens stop silently consuming slots.
+- **Pre-entry execution probe** — tokens with DexScreener liquidity below $20k are probed with a real buy/sell round-trip before opening a full position. This catches quote-only false positives like the UAI `SafeTransferFromFailed` allowance/spender mismatch.
+
+### Active ledger notes
+
+- **UAI** was manually sold after the harvest fix. The remaining ~$0.01 dust was removed from the held-positions ledger. UAI is no longer counted toward the position cap.
+- **BSB** and **GWEI** remain marked stuck from prior cycles and are excluded from portfolio valuation and the active position cap.
+- Current open positions after cleanup: **FET, USDC, SIREN, NEX, SLX** (active) plus **BSB, GWEI** (stuck).
+
+### Ongoing watchlist
+
+- TWAK/LiquidMesh sometimes routes through pools where the wallet only has allowance on a different spender (e.g., 1inch `0x0000001fF...` vs LiquidMesh router `0x3d90...`). The entry probe now detects this before a full entry.
+- SoSoValue API is occasionally rate-limiting the agent (HTTP 429). The agent suspends SoSoValue for 15 min and falls back to CMC/fallback data.
+
+---
+
 ## Agent Architecture (`agent/`)
 
 ### Entry Points
