@@ -386,7 +386,9 @@ export const cmcClient = new CmcClient();
 /** A listed currency on SoSoValue. */
 export interface SosovalueCurrency {
   /** SoSoValue internal currency ID. */
-  id: string;
+  id?: string;
+  /** SoSoValue internal currency ID (alternate field name returned by /currencies). */
+  currency_id?: string;
   symbol: string;
   name: string;
   /** Optional market cap rank. */
@@ -795,9 +797,12 @@ export class SosovalueClient implements MarketDataProvider {
     const currencies = extractList<SosovalueCurrency>(raw);
     if (currencies.length > 0) {
       this.currencyIdCache.clear();
-      for (const c of currencies) { if (c.id && c.symbol) this.currencyIdCache.set(c.symbol.toUpperCase(), { id: c.id, symbol: c.symbol, name: c.name }); }
+      for (const c of currencies) {
+        const id = c.id || c.currency_id;
+        if (id && c.symbol) this.currencyIdCache.set(c.symbol.toUpperCase(), { id, symbol: c.symbol, name: c.name });
+      }
       this.currencyCacheLastFetched = now;
-      console.log(`[SoSoValue] Caching ${this.currencyIdCache.size} currency IDs`);
+      console.log(`[SoSoValue] Caching ${this.currencyIdCache.size}/${currencies.length} currency IDs`);
       this.saveCache();
     }
     return currencies;
