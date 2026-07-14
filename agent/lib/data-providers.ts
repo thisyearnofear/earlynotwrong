@@ -536,6 +536,8 @@ function saveSsvCache(cache: SsvPersistentCache): void {
   if (!dir) return;
   try {
     writeFileSync(join(dir, SSV_CACHE_FILE), JSON.stringify(cache), "utf-8");
+    const entries = (cache.currencyIdCache?.length ?? 0) + (cache.snapshotCache?.length ?? 0) + (cache.klineCache?.length ?? 0);
+    console.log(`[SoSoValue] Persisted cache: ${entries} currency/snapshot/klines entries, news=${cache.hotNewsCache ? 1 : 0}/${cache.featuredNewsCache ? 1 : 0}, macro=${cache.macroEventsCache ? 1 : 0}`);
   } catch (err) {
     console.warn("[SoSoValue] Failed to persist cache:", (err as Error)?.message || String(err));
   }
@@ -671,7 +673,12 @@ export class SosovalueClient implements MarketDataProvider {
     this.loadCache();
   }
 
-  /** Persist all caches to disk so restarts don't trigger cold-start bursts. */
+  private saveCacheTimer: NodeJS.Timeout | null = null;
+  private pendingSavePayload: SsvPersistentCache | null = null;
+
+  /** Persist all caches to disk so restarts don't trigger cold-start bursts.
+   *  Writes are debounced: many rapid cache updates coalesce into one file write.
+   */
   private saveCache(): void {
     const payload: SsvPersistentCache = {
       currencyIdCache: this.currencyIdCache.size > 0 ? Array.from(this.currencyIdCache.entries()) : null,
@@ -685,18 +692,25 @@ export class SosovalueClient implements MarketDataProvider {
       indexSnapshotCache: this.indexSnapshotCache.size > 0 ? Array.from(this.indexSnapshotCache.entries()) : null,
       indexConstituentCache: this.indexConstituentCache.size > 0 ? Array.from(this.indexConstituentCache.entries()) : null,
     };
-    saveSsvCache(payload);
+    this.pendingSavePayload = payload;
+    if (this.saveCacheTimer) return;
+    this.saveCacheTimer = setTimeout(() => {
+      this.saveCacheTimer = null;
+      if (this.pendingSavePayload) {
+        saveSsvCache(this.pendingSavePayload);
+        this.pendingSavePayload = null;
+      }
+    }, 500);
+    this.saveCacheTimer.unref?.();
   }
 
   private loadCache(): void {
     const raw = loadSsvCache();
     if (!raw) return;
     const now = Date.now();
-    if (raw.currencyCacheLastFetched) {
+    if (raw.currencyCacheLastFetched && raw.currencyIdCache && raw.currencyIdCache.length > 0) {
       this.currencyCacheLastFetched = raw.currencyCacheLastFetched;
-      if (raw.currencyIdCache) {
-        for (const [k, v] of raw.currencyIdCache) this.currencyIdCache.set(k, { id: v.id, symbol: v.symbol, name: v.name ?? "" });
-      }
+      for (const [k, v] of raw.currencyIdCache) this.currencyIdCache.set(k, { id: v.id, symbol: v.symbol, name: v.name ?? "" });
     }
     if (raw.snapshotCache) {
       for (const [k, v] of raw.snapshotCache) {
@@ -783,6 +797,7 @@ export class SosovalueClient implements MarketDataProvider {
       this.currencyIdCache.clear();
       for (const c of currencies) { if (c.id && c.symbol) this.currencyIdCache.set(c.symbol.toUpperCase(), { id: c.id, symbol: c.symbol, name: c.name }); }
       this.currencyCacheLastFetched = now;
+      console.log(`[SoSoValue] Caching ${this.currencyIdCache.size} currency IDs`);
       this.saveCache();
     }
     return currencies;
