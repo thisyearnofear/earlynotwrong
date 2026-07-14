@@ -369,18 +369,36 @@ export class TwakExecutor {
 
   /**
    * Get portfolio state (all positions, total value, chain distribution).
+   *
+   * If the live TWAK CLI fails, we return an empty portfolio so the cycle can
+   * continue with the on-chain fallback in `augmentPortfolioOnchain`. TWAK's
+   * native+USDC-only view is not the source of truth for the agent's BEP-20
+   * positions anyway.
    */
   async getPortfolio(): Promise<TwakPortfolio> {
     if (this.config.simulator) {
       return this.simulatorPortfolio;
     }
 
-    return withRetry(() => this.livePortfolio(), {
-      label: "portfolio",
-      maxRetries: 2,
-      baseDelayMs: 1000,
-      timeoutMs: 15000,
-    });
+    try {
+      return await withRetry(() => this.livePortfolio(), {
+        label: "portfolio",
+        maxRetries: 2,
+        baseDelayMs: 1000,
+        timeoutMs: 15000,
+      });
+    } catch (err) {
+      console.warn(
+        `  [twak] wallet portfolio failed, falling back to on-chain reader:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      return {
+        totalValueUsd: 0,
+        positions: [],
+        chains: ["bsc"],
+        lastUpdated: Date.now(),
+      };
+    }
   }
 
   /**

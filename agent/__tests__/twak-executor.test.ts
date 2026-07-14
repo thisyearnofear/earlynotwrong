@@ -631,6 +631,26 @@ describe("TwakExecutor — Portfolio Parser", () => {
     // Total should sum to $38.68
     expect(portfolio.totalValueUsd).toBeCloseTo(38.68, 1);
   });
+
+  it("falls back to an empty portfolio when the live TWAK CLI fails", async () => {
+    const queue = createResponseQueue();
+    queue.queue.push((_err, result) => {
+      result.error = new Error("spawn twak ENOENT");
+    });
+
+    const executor = new TwakExecutor({
+      simulator: false,
+      testnet: true,
+      execFileOverride: queue.execFileOverride,
+    });
+
+    const portfolio = await executor.getPortfolio();
+
+    expect(portfolio.totalValueUsd).toBe(0);
+    expect(portfolio.positions).toEqual([]);
+    expect(portfolio.chains).toEqual(["bsc"]);
+    expect(typeof portfolio.lastUpdated).toBe("number");
+  });
 });
 
 // =============================================================================
