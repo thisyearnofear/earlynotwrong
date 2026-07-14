@@ -129,6 +129,13 @@ function getRegistryHash(): string {
 export class CasperAnchorAdapter implements AnchorAdapter {
   readonly name = "casper";
 
+  // Circuit breaker: after 5 consecutive anchor failures, skip Casper for
+  // SKIP_AFTER_FAILURES cycles to avoid wasting RPC quota and polluting logs.
+  private consecutiveFailures = 0;
+  private lastFailureAt = 0;
+  private static readonly CIRCUIT_THRESHOLD = 5;
+  private static readonly CIRCUIT_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
+
   isAvailable(): boolean {
     if (!process.env.CSPR_CLOUD_TOKEN) return false;
     if (!process.env.CASPER_OPERATOR_PEM) return false;
@@ -136,7 +143,25 @@ export class CasperAnchorAdapter implements AnchorAdapter {
     return true;
   }
 
+  private isCircuitOpen(): boolean {
+    if (this.consecutiveFailures < CasperAnchorAdapter.CIRCUIT_THRESHOLD) return false;
+    const cooledDown = Date.now() - this.lastFailureAt > CasperAnchorAdapter.CIRCUIT_COOLDOWN_MS;
+    if (cooledDown) {
+      this.consecutiveFailures = 0;
+      return false;
+    }
+    return true;
+  }
+
   async anchor(record: ConvictionRecord): Promise<AnchorResult> {
+    if (this.isCircuitOpen()) {
+      return {
+        adapter: this.name,
+        status: "skipped",
+        error: `Circuit open after ${CasperAnchorAdapter.CIRCUIT_THRESHOLD} consecutive failures; retrying in ${CasperAnchorAdapter.CIRCUIT_COOLDOWN_MS / 60000}m`,
+      };
+    }
+
     let key: PrivateKey;
     try {
       key = loadOperatorKey();
@@ -206,6 +231,9 @@ export class CasperAnchorAdapter implements AnchorAdapter {
         ?? result.transactionHash?.deploy?.toHex?.()
         ?? "";
 
+      this.consecutiveFailures = 0;
+      this.lastFailureAt = 0;
+
       return {
         adapter: this.name,
         // Casper considers a submission "accepted" — confirmation requires
@@ -217,10 +245,17 @@ export class CasperAnchorAdapter implements AnchorAdapter {
         gasUsed: AGENT_CONFIG.casper.testnet.paymentMotes,
       };
     } catch (err) {
+      this.consecutiveFailures += 1;
+      this.lastFailureAt = Date.now();
+      const raw = typeof (err as { data?: unknown })?.data === "object" && (err as { data?: unknown }).data
+        ? JSON.stringify((err as { data?: unknown }).data)
+        : "";
+      const message = err instanceof Error ? err.message : String(err);
+      const detail = raw && raw !== message ? `${message} | data: ${raw}` : message;
       return {
         adapter: this.name,
         status: "failed",
-        error: err instanceof Error ? err.message : String(err),
+        error: detail,
       };
     }
   }

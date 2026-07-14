@@ -22,6 +22,9 @@ import { getStatePath } from "./persistence.js";
 const TELEGRAM_API = "https://api.telegram.org/bot";
 const SUBSCRIBERS_FILE = "telegram-subscribers.json";
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
+const LONG_POLL_TIMEOUT_SECONDS = 30;
+const REQUEST_TIMEOUT_MS = 45_000;
+const MAX_BACKOFF_MS = 300_000;
 
 // =============================================================================
 // Types
@@ -198,9 +201,22 @@ async function replyTo(chatId: string, text: string): Promise<void> {
 // =============================================================================
 
 /**
+ * Abortable fetch wrapper. Telegram long-polling can hang on gateway issues,
+ * so we never wait longer than REQUEST_TIMEOUT_MS.
+ */
+function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+/**
  * Consume pending updates once: subscribe on /start, unsubscribe on /stop,
  * ignore everything else. The offset is persisted after each poll so each
  * update is handled exactly once across restarts. Never throws.
+ *
+ * Uses long-polling (timeout=30s) so Telegram holds the connection until
+ * there is an update, which is far gentler than hammering every 60s.
  */
 export async function pollTelegramUpdates(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -210,10 +226,10 @@ export async function pollTelegramUpdates(): Promise<void> {
     const state = loadState();
     const params = new URLSearchParams({
       offset: String(state.offset),
-      timeout: "0",
+      timeout: String(LONG_POLL_TIMEOUT_SECONDS),
       allowed_updates: JSON.stringify(["message"]),
     });
-    const res = await fetch(`${TELEGRAM_API}${token}/getUpdates?${params}`);
+    const res = await fetchWithTimeout(`${TELEGRAM_API}${token}/getUpdates?${params}`);
     if (!res.ok) {
       const body = await res.text().catch(() => "(no body)");
       console.error(`[telegram-subs] getUpdates failed (${res.status}): ${body}`);
@@ -254,7 +270,12 @@ export async function pollTelegramUpdates(): Promise<void> {
   } catch (err) {
     // Never let the poller take the trading loop down with it.
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[telegram-subs] poll error: ${message}`);
+    // AbortController timeouts are expected noise; keep other errors visible.
+    if (message.includes("AbortError") || message.includes("The operation was aborted")) {
+      console.log("[telegram-subs] getUpdates timed out, will retry");
+    } else {
+      console.error(`[telegram-subs] poll error: ${message}`);
+    }
   }
 }
 
@@ -263,6 +284,36 @@ export async function pollTelegramUpdates(): Promise<void> {
 // =============================================================================
 
 let pollTimer: NodeJS.Timeout | null = null;
+let isPolling = false;
+let consecutiveErrors = 0;
+
+/**
+ * Schedule the next poll. Long-polling + overlap guard means we won't start a
+ * second getUpdates while one is already in flight (the 409 conflict the logs
+ * were showing). After consecutive failures we back off up to MAX_BACKOFF_MS.
+ */
+function scheduleNextPoll(intervalMs: number): void {
+  if (pollTimer) return;
+  const backoff = Math.min(intervalMs * Math.max(1, consecutiveErrors), MAX_BACKOFF_MS);
+  pollTimer = setTimeout(async () => {
+    pollTimer = null;
+    if (isPolling) {
+      scheduleNextPoll(intervalMs);
+      return;
+    }
+    isPolling = true;
+    try {
+      await pollTelegramUpdates();
+      consecutiveErrors = 0;
+    } catch {
+      consecutiveErrors += 1;
+    } finally {
+      isPolling = false;
+      scheduleNextPoll(intervalMs);
+    }
+  }, backoff);
+  pollTimer.unref?.();
+}
 
 /**
  * Start the subscriber polling loop. No-ops when TELEGRAM_BOT_TOKEN is unset.
@@ -281,17 +332,14 @@ export function startSubscriberPolling(intervalMs: number = DEFAULT_POLL_INTERVA
   fetchBotUsername().catch(() => {});
   pollTelegramUpdates().catch(() => {});
 
-  pollTimer = setInterval(() => {
-    pollTelegramUpdates().catch(() => {});
-  }, intervalMs);
-  pollTimer.unref?.();
+  scheduleNextPoll(intervalMs);
 
-  console.log(`[telegram-subs] Polling for /start subscribers every ${Math.round(intervalMs / 1000)}s (${getSubscriberCount()} subscribed)`);
+  console.log(`[telegram-subs] Long-polling for /start subscribers every ${Math.round(intervalMs / 1000)}s (${getSubscriberCount()} subscribed)`);
 }
 
 export function stopSubscriberPolling(): void {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
 }

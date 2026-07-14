@@ -761,7 +761,7 @@ export class SosovalueClient implements MarketDataProvider {
   /** Fetch the latest news feed. @param limit — Max items. Default 20. */
   async fetchFeeds(limit: number = 20): Promise<SosovalueFeedItem[]> {
     if (!this.isAvailable()) return [];
-    const raw = await ssvRestGet<unknown>(`/news?limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const raw = await ssvRestGet<unknown>(`/news?page=1&page_size=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     return extractList<SosovalueFeedItem>(raw);
   }
 
@@ -770,7 +770,7 @@ export class SosovalueClient implements MarketDataProvider {
     if (!this.isAvailable()) return [];
     const now = Date.now();
     if (this.hotNewsCache && now - this.hotNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) return this.hotNewsCache.items.slice(0, limit);
-    const raw = await ssvRestGet<unknown>(`/news/hot?limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const raw = await ssvRestGet<unknown>(`/news/hot?page=1&page_size=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const items = extractList<SosovalueFeedItem>(raw);
     if (items.length > 0) this.hotNewsCache = { items, fetchedAt: now };
     return items;
@@ -781,7 +781,7 @@ export class SosovalueClient implements MarketDataProvider {
     if (!this.isAvailable()) return [];
     const now = Date.now();
     if (this.featuredNewsCache && now - this.featuredNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) return this.featuredNewsCache.items.slice(0, limit);
-    const raw = await ssvRestGet<unknown>(`/news/featured?limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
+    const raw = await ssvRestGet<unknown>(`/news/pick?page=1&page_size=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const items = extractList<SosovalueFeedItem>(raw);
     if (items.length > 0) this.featuredNewsCache = { items, fetchedAt: now };
     return items;
