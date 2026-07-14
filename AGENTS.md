@@ -171,6 +171,16 @@ If you rotate the key, restart the process so the singleton client picks it up a
 
 ---
 
+## Casper Anchoring
+
+The agent publishes conviction records to a Casper testnet contract. Because every anchor is an on-chain transaction, the operator key (`CASPER_OPERATOR_PEM`) must hold enough CSPR to pay the deploy's gas reserve.
+
+- **Payment cap vs. actual cost:** `AGENT_CONFIG.casper.testnet.paymentMotes` is the *maximum* gas the deploy may consume (currently 50 CSPR). Casper refunds unused gas, so the actual execution cost is much lower. Do not treat `paymentMotes` as spent gas.
+- **Balance gate:** `CasperAnchorAdapter.anchor()` queries the operator's main-purse balance before building the transaction. If the balance is below `minOperatorBalanceMotes` (currently 100 CSPR), the adapter returns `skipped` with a clear message instead of submitting a guaranteed-failure transaction. This preserves RPC quota and avoids log noise.
+- **If anchors start failing with `-32016 Invalid transaction`:** the operator account is likely empty or below the minimum balance. Fund it from the Casper testnet faucet, or remove `casper` from `AGENT_CONFIG.anchoring.adapters` to disable it.
+
+---
+
 ## TWAK Troubleshooting
 
 TWAK is the Trust Wallet Agent Kit CLI (`twak`). The agent uses it for BSC swaps, token search, and wallet reads.

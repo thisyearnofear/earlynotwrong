@@ -136,6 +136,10 @@ export class CasperAnchorAdapter implements AnchorAdapter {
   private static readonly CIRCUIT_THRESHOLD = 5;
   private static readonly CIRCUIT_COOLDOWN_MS = 30 * 60 * 1000; // 30 min
 
+  // Balance cache so we don't query the operator's main purse on every cycle.
+  private balanceCache: { balance: bigint; fetchedAt: number } | null = null;
+  private static readonly BALANCE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+
   isAvailable(): boolean {
     if (!process.env.CSPR_CLOUD_TOKEN) return false;
     if (!process.env.CASPER_OPERATOR_PEM) return false;
@@ -151,6 +155,34 @@ export class CasperAnchorAdapter implements AnchorAdapter {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Query the operator's main-purse balance. Returns 0 if the account doesn't
+   * exist or the RPC call fails, so an unfunded key is treated the same as a
+   * depleted one. Result is cached for a few minutes to avoid an extra RPC
+   * round-trip every cycle.
+   */
+  private async checkOperatorBalance(): Promise<{ sufficient: boolean; balance: bigint; minimum: bigint }> {
+    const now = Date.now();
+    const minimum = BigInt(AGENT_CONFIG.casper.testnet.minOperatorBalanceMotes);
+    if (this.balanceCache && now - this.balanceCache.fetchedAt < CasperAnchorAdapter.BALANCE_CACHE_TTL_MS) {
+      return { sufficient: this.balanceCache.balance >= minimum, balance: this.balanceCache.balance, minimum };
+    }
+    try {
+      const key = loadOperatorKey();
+      const token = process.env.CSPR_CLOUD_TOKEN!;
+      const res = await rpc("query_balance", {
+        purse_identifier: { main_purse_under_public_key: key.publicKey.toHex() },
+      }, token);
+      const balance = BigInt(res?.balance ?? "0");
+      this.balanceCache = { balance, fetchedAt: now };
+      return { sufficient: balance >= minimum, balance, minimum };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[Casper] Balance check failed: ${message}`);
+      return { sufficient: false, balance: 0n, minimum };
+    }
   }
 
   async anchor(record: ConvictionRecord): Promise<AnchorResult> {
@@ -174,6 +206,19 @@ export class CasperAnchorAdapter implements AnchorAdapter {
     }
 
     const callerPublicKey: PublicKey = key.publicKey;
+
+    // Verify the operator account can actually pay for the deploy before we
+    // build and submit it. This avoids guaranteed "Invalid transaction" errors
+    // when the testnet key runs dry and saves RPC quota.
+    const balanceCheck = await this.checkOperatorBalance();
+    if (!balanceCheck.sufficient) {
+      return {
+        adapter: this.name,
+        status: "skipped",
+        error: `Operator balance too low: ${balanceCheck.balance.toString()} motes, need ${balanceCheck.minimum.toString()} motes`,
+      };
+    }
+
     let contractHash: string;
     try {
       contractHash = getRegistryHash();
@@ -242,7 +287,8 @@ export class CasperAnchorAdapter implements AnchorAdapter {
         status: "success",
         txHash: deployHash,
         explorerUrl: deployHash ? getCasperExplorerTxUrl(deployHash) : undefined,
-        gasUsed: AGENT_CONFIG.casper.testnet.paymentMotes,
+        // We don't report paymentMotes as gasUsed because unused gas is
+        // refunded; the real execution cost is only known after confirmation.
       };
     } catch (err) {
       this.consecutiveFailures += 1;

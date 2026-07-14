@@ -204,11 +204,17 @@ export const AGENT_CONFIG = {
       // Populated post-deploy by `casper/scripts/deploy.ts`. Until then, the
       // adapter reports `isAvailable() = false` and the orchestrator skips it.
       registryHash: "",
-      // Payment for one anchor_conviction entry-point call, in motes
-      // (1 CSPR = 1e9 motes). 50 CSPR is the verified working amount —
-      // 5 CSPR was rejected as "Invalid transaction" (below testnet floor);
-      // 50 CSPR landed on-chain with 13 effects + event emission.
+      // Payment cap for one anchor_conviction entry-point call, in motes
+      // (1 CSPR = 1e9 motes). Unused gas is refunded; this is the maximum
+      // the deploy is allowed to consume, not the actual cost. 50 CSPR is the
+      // verified working amount — 5 CSPR was rejected as below the testnet
+      // floor, and 50 CSPR landed with 13 effects + event emission.
       paymentMotes: "50000000000",
+      // Minimum operator balance required before we attempt an anchor.
+      // If balance is below this, the adapter skips to avoid guaranteed
+      // "Invalid transaction" failures and wasted RPC calls. Defaults to
+      // 2x the payment cap so a failed/repriced deploy doesn't drain the key.
+      minOperatorBalanceMotes: "100000000000",
     },
   },
 
