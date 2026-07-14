@@ -18,9 +18,8 @@
     "prepare": "npm run build"
   },
   "dependencies": {
-    "@noble/hashes": "^2.2.0"
-  },
-  "devDependencies": {
+    "@noble/hashes": "^2.2.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "devDependencies": {}
 }
