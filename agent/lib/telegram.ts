@@ -136,6 +136,8 @@ export async function sendCycleSummary(params: {
   } | null;
   /** Whether any trades used SoDEX execution this cycle. */
   usedSodex?: boolean;
+  /** BSC wallet address to link in the footer. */
+  walletAddress?: string;
 }): Promise<void> {
   if (!isConfigured()) return;
 

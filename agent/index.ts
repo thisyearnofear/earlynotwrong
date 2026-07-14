@@ -284,6 +284,7 @@ async function runCycle(): Promise<void> {
         } : null;
       })(),
       usedSodex: state.executedTrades.some(t => t.txHash?.startsWith("0xSODEX_")),
+      walletAddress: process.env.AGENT_WALLET_KEY || process.env.AGENT_WALLET_ADDRESS || undefined,
     }).catch(() => {});
   } catch (error) {
     state.status = "error";
