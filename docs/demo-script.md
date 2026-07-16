@@ -33,12 +33,14 @@ and Casper explorer visible.
 
 ## Demo Setup
 
-1. Agent running in **simulator mode** (or live mode if credentials are set):
+1. Agent running live on VPS (or simulator locally):
    `AGENT_MODE=simulator npm run --prefix agent dev`
-2. Dashboard open: https://earlynotwrong.vercel.app/agent
-3. Casper Testnet explorer open:
+2. **Landing page** open: https://earlynotwrong.vercel.app/
+3. **Dashboard** open in a second tab: https://earlynotwrong.vercel.app/agent
+4. Casper Testnet explorer open:
    https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa
-4. Terminal ready with the one-curl commands below.
+5. Terminal ready with the curl commands below (also copy-pasteable from Act 4 on
+   the dashboard).
 
 ## Demo Flow
 
@@ -50,7 +52,39 @@ and Casper explorer visible.
 > anchors every decision to the chain; other agents query it through MCP and pay
 > per call with x402."
 
-### 2. The Contract on Casper Testnet (30 seconds)
+### 2. Landing Page — 4-Act Story (45 seconds)
+
+On https://earlynotwrong.vercel.app/ point out:
+
+- Hero: **"Being early feels like being wrong"** + live agent indicator (cycle count, last run).
+- **4 Acts** cards: Score → Trade → Anchor → Verify — each with a live data point.
+- **Early, Not Wrong** callout: either the full arc (scored → dipped → held → now) when a
+  position qualifies, or the **"awaiting proof"** empty state explaining the thesis.
+- Primary CTA: **Enter the Dashboard** → `/agent`.
+
+> "The landing page has one job: tell the story in four acts and hand off to the
+> dashboard. Everything you see is live from the agent's public API."
+
+### 3. Dashboard — Acts 1–4 (90 seconds)
+
+On https://earlynotwrong.vercel.app/agent scroll through the guided narrative:
+
+| Act | What to show |
+|-----|----------------|
+| **Act 1 · Live** | Status cards, portfolio, guardrails, behavioral self-score. Per-cycle pipeline strip maps **A1 data→score · A2 manage→execute · A3 anchor**. |
+| **Act 2 · Score & Trade** | Conviction Signals (6-factor breakdown) + Conviction Ledger (held positions, proven callout or awaiting proof). |
+| **Act 3 · Anchor** | Multi-chain anchor panel (Casper · Mantle · Aleo) with explorer links. |
+| **Act 4 · Verify** | Casper Wallet connect + anchor form; **Agent-to-Agent Reputation** card with **Try it now** curl blocks. |
+
+On mobile, use the **sticky act nav** (Act 1–4 pills) to jump between sections.
+
+Expand **Technical details** (collapsed by default) only if time permits — trades, market
+narrative, resources, pipeline diagram live there.
+
+> "Acts 1–3 are what the agent does autonomously every cycle. Act 4 is where a
+> human or another agent verifies and anchors their own record."
+
+### 4. The Contract on Casper Testnet (30 seconds)
 
 Navigate to the Casper Testnet explorer link above. Point out:
 
@@ -62,30 +96,31 @@ Navigate to the Casper Testnet explorer link above. Point out:
 > Testnet. It stores conviction records — subject hash, thesis hash, score,
 > archetype, timestamp — and emits CES events every time the agent anchors."
 
-### 3. Free MCP Query — Live On-Chain Read (45 seconds)
+### 5. Free MCP Query — Trust Decision (45 seconds)
 
-Run the free `get_latest_conviction` curl:
+Run the free `get_agent_reputation` curl (or click **Copy curl** on the dashboard):
 
 ```bash
 curl -sS -X POST http://144.202.117.160:31777/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_latest_conviction","arguments":{"subjectHash":"0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_agent_reputation","arguments":{"subjectHash":"0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"}}}'
 ```
 
 Narrate as the JSON comes back:
 
-> "This is a live MCP tool call. No wallet, no payment, no gas. The server
-> reads the contract's CES event log directly from Casper state — free
-> state queries — and returns the most recent conviction record anchored by
-> the agent."
+> "This is deliberately **free** — it's the trust-decision query. Before any agent
+> pays for live signals, it can check aggregate reputation: total anchors, mean
+> score, dual-chain presence. No wallet, no payment, no gas."
 
-### 4. Paid MCP Query — x402 in Action (60 seconds)
+Optional quick follow-up — `get_latest_conviction` with the same subject hash (also free).
 
-Run the paid `get_agent_reputation` curl:
+### 6. Paid MCP Query — x402 in Action (60 seconds)
+
+Run the paid `get_live_signals` curl (use **Copy curl** on the dashboard; `-i` shows status):
 
 ```bash
-curl -sS -X POST http://144.202.117.160:31777/mcp \
+curl -sS -i -X POST http://144.202.117.160:31777/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
   -d '{
@@ -93,10 +128,8 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
     "id": 1,
     "method": "tools/call",
     "params": {
-      "name": "get_agent_reputation",
-      "arguments": {
-        "subjectHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"
-      }
+      "name": "get_live_signals",
+      "arguments": {}
     }
   }'
 ```
@@ -112,38 +145,25 @@ object:
     "network": "casper:casper-test",
     "asset": "9824d60dc3a5c44a20b9fd260a412437933835b52fc683d8ae36e4ec2114843e",
     "payTo": "23058a429ae31f0de556b5747546cc6d7817a559afe2657f297186dc509cd30a",
-    "amount": "20",
+    "amount": "50",
     "extra": { "name": "Cep18x402", "symbol": "CSPR", "decimals": "2", "version": "1" }
-  }]
+  }],
+  "error": "payment required for this MCP tool"
 }
 ```
 
 Narrate:
 
-> "This is the x402 paywall. The MCP tool is real and live, but it's paid.
-> Instead of a subscription or an API key, the server returns an HTTP 402 with
-> a signed-payment requirement. The client would sign a CEP-18 transfer
-> authorization, re-POST it in the `X-PAYMENT` header, and the cspr.cloud
-> facilitator settles the transfer on-chain — including the gas."
+> "This is the **paid product** — the agent's current-cycle conviction signals,
+> the tradeable data. The server returns HTTP 402 with a signed-payment requirement
+> for 0.5 CSPR. The client signs a CEP-18 transfer authorization, re-POSTs it in
+> the `X-PAYMENT` header, and the cspr.cloud facilitator settles on-chain — including
+> the gas."
 
 Optional (if you can obtain testnet `Cep18x402` tokens): record the full
 settled round trip by constructing and sending the `X-PAYMENT` header.
 
-### 5. Dashboard — Reputation API Panel (45 seconds)
-
-Switch to the live dashboard at `/agent`. Scroll to the "Agent Reputation API"
-panel. Point out:
-
-- MCP endpoint URL.
-- Free vs paid tool breakdown.
-- Live query stats: queries served, paid queries, fees collected.
-- Latest anchor link back to the Casper explorer.
-
-> "The dashboard is the human-readable window into the same infrastructure.
-> Agents don't need this UI — they talk MCP directly — but operators can see
-> that the marketplace is live and earning CSPR per query."
-
-### 6. Why Casper (30 seconds)
+### 7. Why Casper (30 seconds)
 
 Show the comparison from `docs/CASPER_INTEGRATION.md`:
 
@@ -158,14 +178,19 @@ Agent-discoverable surface    via custom API      ✓  via MCP
 Facilitator pays the gas      ✗                   ✓
 ```
 
-> "We anchor to both Mantle and Casper for redundancy. But the reputation
-> *marketplace* — paid per-request access over MCP — only works natively on
 > Casper because of x402 and the facilitator. EVM would need separate services
 > bolted on. That's why we submitted this layer for the Casper Buildathon."
 
-### 7. The Agentic Loop (60 seconds)
+### 8. The Agentic Loop (60 seconds)
 
-Return to the terminal. If running live, show a cycle reaching step 8:
+Return to the terminal or dashboard pipeline strip. If running live, show a cycle:
+
+```
+Per-cycle pipeline · Acts 1–3:
+  A1 ✓ data → ✓ score · A2 ✓ manage → ✓ execute · A3 ✓ anchor · ✓ narrate
+```
+
+Or terminal output reaching step 8:
 
 ```
 [8/8] Anchoring to Mantle + Casper...
@@ -176,13 +201,12 @@ Return to the terminal. If running live, show a cycle reaching step 8:
 
 Explain:
 
-> "The agent runs an 8-step loop every few hours. It fetches market data,
-> scores contrarian conviction, manages open positions, proposes entries, runs
-> guardrails, executes trades, and then anchors a record of its thesis to both
-> Mantle and Casper. The record on Casper is what the MCP server exposes to
-> other agents."
+> "The agent runs an 8-step loop every ~4 hours. Acts 1–3 map directly: score
+> the market, manage and execute trades, anchor the thesis to Casper and Mantle.
+> Act 4 — verify — is what you do in the browser with Casper Wallet. The record
+> on Casper is what the MCP server exposes to other agents."
 
-### 8. Conclusion (30 seconds)
+### 9. Conclusion (30 seconds)
 
 > "What we built for the Casper Buildathon is the trust layer between agents:
 > verifiable reputation, queryable over MCP, paid with x402. The trading agent
@@ -199,12 +223,16 @@ Cut to the closing slide with:
 ## Demo Tips
 
 - Keep the terminal font large; the curls return compact JSON.
+- Pre-open the landing page and dashboard in separate tabs before recording.
 - Pre-open the Casper explorer so the latest deploy hash is visible.
+- On mobile recording, use the sticky Act 1–4 nav on `/agent`.
+- The dashboard **Try it now** curls match this script — copy from Act 4 if you
+  don't want to type them.
 - If the paid round trip isn't fully funded, the `402` challenge alone is a
   valid, impressive demonstration — the facilitator and server-side flow are
   live.
-- The free tool call should respond in under 300 ms on first hit and <10 ms
-  when cached; mention that speed if true.
+- The free `get_agent_reputation` call should respond in under 10 s; mention
+  aggregate stats (total anchors, mean score) when narrating.
 
 ---
 
@@ -471,9 +499,10 @@ This document provides a step-by-step script for demonstrating the **Aleo-First 
 
 ### 3. Minting Your ZK-CI (1 minute)
 
-- Perform a wallet scan for a Solana/Base address in the **"Analyzer"** tab.
-- Once results appear, scroll to the **Aleo Conviction Card**.
-- Click **"Mint ZK-CI"**.
+- Open **Wallet Analyzer** at `/analyzer` and scan a Solana/Base address.
+- Once results appear, switch to the **ANCHOR** tab for public Aleo minting, or
+  **ADVANCED** for private thesis commits.
+- On the **ANCHOR** tab, use the **Aleo Conviction Card** and click **"Mint ZK-CI"**.
 - **Explain**: "We are taking the calculated Conviction Index and committing it to the Aleo blockchain as a private record. This record belongs only to you and is hidden by default from everyone else."
 - Confirm the transaction in the Shield Wallet.
 
@@ -486,9 +515,10 @@ This document provides a step-by-step script for demonstrating the **Aleo-First 
 
 ### 5. Private Strategist Mode (1 minute)
 
-- Switch to the **"Strategist"** tab.
+- From `/analyzer`, open the **ADVANCED** tab (or use the pre-scan **STRATEGIST**
+  mode toggle before running a scan).
 - Enter a trade thesis (e.g., "Accumulating $SOL based on 4H support flip").
-- Click **"Commit Private Thesis"**.
+- Click **"Commit Private Thesis"** on the Aleo Private Thesis card.
 - **Explain**: "In the Strategist mode, traders can commit their intents to Aleo as encrypted records. This prevents front-running and copy-trading while creating a verifiable trail of their decision-making process."
 - Show the transaction success message.
 

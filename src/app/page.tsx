@@ -428,6 +428,39 @@ export default function Home() {
           </motion.section>
         )}
 
+        {/* ── "Early, Not Wrong" — empty state when thesis not yet proven ─── */}
+        {convictionData && !convictionProven && isLive && (
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55, duration: 0.4 }}
+            className="relative z-10 mb-16"
+          >
+            <div className="rounded-xl border border-dashed border-patience/30 bg-patience/5 p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-patience/80">
+                  ◆ Early, Not Wrong
+                </span>
+                <span className="text-[10px] font-mono text-foreground-dim">
+                  — awaiting proof
+                </span>
+              </div>
+              <p className="text-[11px] md:text-xs font-mono text-foreground-muted leading-relaxed max-w-2xl">
+                No open position has held through ≥10% drawdown and recovered yet.
+                The agent holds by design — conviction is tested when you&apos;re
+                early, not when you&apos;re obviously right.
+              </p>
+              <Link
+                href="/agent#act-2"
+                className="mt-4 inline-flex items-center gap-1 text-[11px] font-mono text-signal hover:underline"
+              >
+                Watch the conviction ledger on the dashboard
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </motion.section>
+        )}
+
         {/* ── Live conviction preview ──────────────────────────────────────── */}
         {signals.length > 0 && (
           <motion.section

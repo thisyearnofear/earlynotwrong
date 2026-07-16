@@ -152,6 +152,28 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 Returns a live Casper `PaymentRequirements` object. A client with the testnet `Cep18x402` token can then sign and re-POST with `X-PAYMENT` to complete the paid round trip.
 
+### Live 402 evidence (captured 2026-07-17)
+
+Direct POST to the agent MCP endpoint — no payment header:
+
+```bash
+curl -sS -i -X POST http://144.202.117.160:31777/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_live_signals","arguments":{}}}'
+```
+
+Response:
+
+```
+HTTP/1.1 402 Payment Required
+content-type: application/json
+
+{"x402Version":2,"accepts":[{"scheme":"exact","network":"casper:casper-test","payTo":"23058a429ae31f0de556b5747546cc6d7817a559afe2657f297186dc509cd30a","amount":"50","asset":"9824d60dc3a5c44a20b9fd260a412437933835b52fc683d8ae36e4ec2114843e","maxTimeoutSeconds":300,"extra":{"name":"Cep18x402","version":"1","decimals":"2","symbol":"CSPR"}}],"error":"payment required for this MCP tool"}
+```
+
+`amount: "50"` with 2-decimal CEP-18 = **0.5 CSPR** per `get_live_signals` call. The trust-decision query `get_agent_reputation` remains free (returns live aggregate stats with no wallet).
+
 Free tools work immediately without payment:
 
 ```bash

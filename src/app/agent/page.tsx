@@ -31,6 +31,7 @@ import {
   Signal,
   Network,
   Send,
+  Copy,
 } from "lucide-react";
 
 // ─── Types ───
@@ -542,6 +543,36 @@ function ErrorState({
   );
 }
 
+// ─── Mobile act navigation (sticky below navbar) ───
+
+const ACT_SECTIONS = [
+  { id: "act-1", label: "Act 1 · Live" },
+  { id: "act-2", label: "Act 2 · Score & Trade" },
+  { id: "act-3", label: "Act 3 · Anchor" },
+  { id: "act-4", label: "Act 4 · Verify" },
+] as const;
+
+function ActStickyNav() {
+  return (
+    <nav
+      aria-label="Dashboard acts"
+      className="lg:hidden sticky top-16 z-30 -mx-4 sm:-mx-6 lg:mx-0 px-4 sm:px-6 py-2 mb-4 border-b border-border/40 bg-background/90 backdrop-blur-md"
+    >
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {ACT_SECTIONS.map((act) => (
+          <a
+            key={act.id}
+            href={`#${act.id}`}
+            className="shrink-0 px-3 py-1.5 rounded-full border border-border/50 bg-surface/40 text-[10px] font-mono uppercase tracking-wider text-foreground-muted hover:text-signal hover:border-signal/30 transition-colors"
+          >
+            {act.label}
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 // ─── Dashboard ───
 
 function Dashboard({
@@ -560,6 +591,8 @@ function Dashboard({
       transition={{ duration: 0.4 }}
       className="space-y-6"
     >
+      <ActStickyNav />
+
       {/* Row 0: Orientation — what cold visitors see first.
           The 4-act narrative: the agent is live → it scores conviction →
           it anchors on-chain → you can anchor your own. */}
@@ -684,6 +717,7 @@ function Dashboard({
 
       {/* Row 1 — Act 1: Agent is live (status, portfolio, guardrails, self-score) */}
       <motion.div
+        id="act-1"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05, duration: 0.4 }}
@@ -936,6 +970,7 @@ function Dashboard({
 
       {/* Row 2 — Act 1 Score + Act 2 Trade: conviction signals + held positions */}
       <motion.div
+        id="act-2"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.14, duration: 0.4 }}
@@ -1229,27 +1264,28 @@ function Dashboard({
           <CardContent>
             {conviction && conviction.heldPositions.length > 0 ? (
               <div className="space-y-1.5">
-                {/* ── "Early, Not Wrong" — conviction proven callout ──
-                    Positions held through significant drawdown that are now
-                    profitable. This is the product thesis made visible. */}
-                {conviction.heldPositions
-                  .map((p) => {
-                    const verdict = conviction.positionVerdicts.find(
-                      (v) => v.symbol === p.symbol
-                    );
-                    const signal = conviction.signals.find(
-                      (s) => s.symbol === p.symbol
-                    );
-                    const isProven =
-                      verdict?.heldThroughDrawdown &&
-                      p.maxUnderwaterPercent <= -10 &&
-                      (verdict?.unrealizedPnLPercent ?? 0) > 0 &&
-                      !p.stuck;
-                    return { position: p, verdict, signal, isProven };
-                  })
-                  .filter((x) => x.isProven)
-                  .slice(0, 1)
-                  .map(({ position: p, verdict, signal }) => (
+                {/* ── "Early, Not Wrong" — conviction proven callout ── */}
+                {(() => {
+                  const proven = conviction.heldPositions
+                    .map((p) => {
+                      const verdict = conviction.positionVerdicts.find(
+                        (v) => v.symbol === p.symbol,
+                      );
+                      const signal = conviction.signals.find(
+                        (s) => s.symbol === p.symbol,
+                      );
+                      const isProven =
+                        verdict?.heldThroughDrawdown &&
+                        p.maxUnderwaterPercent <= -10 &&
+                        (verdict?.unrealizedPnLPercent ?? 0) > 0 &&
+                        !p.stuck;
+                      return { position: p, verdict, signal, isProven };
+                    })
+                    .filter((x) => x.isProven);
+
+                  if (proven.length > 0) {
+                    const { position: p, verdict, signal } = proven[0]!;
+                    return (
                     <motion.div
                       key={`proven-${p.symbol}`}
                       initial={{ opacity: 0, scale: 0.97 }}
@@ -1299,7 +1335,22 @@ function Dashboard({
                         </p>
                       )}
                     </motion.div>
-                  ))}
+                    );
+                  }
+
+                  return (
+                    <div className="rounded-lg border border-dashed border-patience/25 bg-patience/5 p-3 mb-1">
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-patience/80">
+                        ◆ Early, Not Wrong — awaiting proof
+                      </p>
+                      <p className="text-[10px] font-mono text-foreground-muted mt-1.5 leading-relaxed">
+                        No open position has held through ≥10% drawdown and recovered
+                        yet. The agent holds by design — conviction is tested when
+                        you&apos;re early, not when you&apos;re obviously right.
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {conviction.heldPositions.map((p, i) => {
                   const verdict = conviction.positionVerdicts.find(
@@ -1398,6 +1449,7 @@ function Dashboard({
 
       {/* Row 3 — Act 3: On-chain anchor history (Casper · Mantle · Aleo) */}
       <motion.div
+        id="act-3"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.22, duration: 0.4 }}
@@ -1407,6 +1459,7 @@ function Dashboard({
 
       {/* Row 3b — Act 4: Anchor your own + agent reputation API */}
       <motion.div
+        id="act-4"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.26, duration: 0.4 }}
@@ -1874,10 +1927,29 @@ const MCP_CONFIG_SNIPPET = `{
   }
 }`;
 
+const MCP_ENDPOINT = "http://144.202.117.160:31777/mcp";
+
+const MCP_CURL_FREE = `curl -sS -X POST ${MCP_ENDPOINT} \\
+  -H 'content-type: application/json' \\
+  -H 'accept: application/json, text/event-stream' \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_agent_reputation","arguments":{"subjectHash":"0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a"}}}'`;
+
+const MCP_CURL_PAID = `curl -sS -i -X POST ${MCP_ENDPOINT} \\
+  -H 'content-type: application/json' \\
+  -H 'accept: application/json, text/event-stream' \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_live_signals","arguments":{}}}'`;
+
 function ReputationApiCard() {
   const [stats, setStats] = useState<ReputationStats | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"config" | "free" | "paid" | null>(null);
+
+  const copySnippet = (key: "config" | "free" | "paid", text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
 
   useEffect(() => {
     let stale = false;
@@ -1982,6 +2054,58 @@ function ReputationApiCard() {
           </table>
         </div>
 
+        {/* Try it — copy-paste curls for judges and integrators */}
+        <div className="mt-4 space-y-3">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim">
+            Try it now
+          </p>
+
+          <div className="rounded-lg border border-border/40 bg-surface/30 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-mono text-foreground">
+                <span className="text-patience">Free</span> ·{" "}
+                <code className="text-foreground-muted">get_agent_reputation</code>
+              </p>
+              <button
+                type="button"
+                onClick={() => copySnippet("free", MCP_CURL_FREE)}
+                className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded bg-surface/60 border border-border/50 hover:border-signal/40 text-foreground-muted hover:text-signal transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                {copied === "free" ? "Copied!" : "Copy curl"}
+              </button>
+            </div>
+            <pre className="p-2 rounded bg-black/40 text-[9px] text-foreground-muted overflow-x-auto font-mono leading-relaxed">
+              {MCP_CURL_FREE}
+            </pre>
+          </div>
+
+          <div className="rounded-lg border border-signal/30 bg-signal/5 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-mono text-foreground">
+                <span className="text-signal">Paid · 402</span> ·{" "}
+                <code className="text-foreground-muted">get_live_signals</code>
+              </p>
+              <button
+                type="button"
+                onClick={() => copySnippet("paid", MCP_CURL_PAID)}
+                className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded bg-surface/60 border border-border/50 hover:border-signal/40 text-foreground-muted hover:text-signal transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                {copied === "paid" ? "Copied!" : "Copy curl"}
+              </button>
+            </div>
+            <pre className="p-2 rounded bg-black/40 text-[9px] text-foreground-muted overflow-x-auto font-mono leading-relaxed">
+              {MCP_CURL_PAID}
+            </pre>
+            <p className="text-[10px] font-mono text-foreground-dim leading-relaxed">
+              Returns HTTP 402 + Casper x402 PaymentRequirements (0.5 CSPR). Re-POST
+              with a signed <code className="text-foreground-muted">X-PAYMENT</code>{" "}
+              header to settle via cspr.cloud facilitator.
+            </p>
+          </div>
+        </div>
+
         {/* Claude Desktop integration — promoted inline (was a collapsed
             <details>) since this is the single highest-conversion element
             on the page: a passing developer can grab this and try it. */}
@@ -1992,15 +2116,10 @@ function ReputationApiCard() {
             </p>
             <button
               type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(MCP_CONFIG_SNIPPET).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                });
-              }}
+              onClick={() => copySnippet("config", MCP_CONFIG_SNIPPET)}
               className="text-[10px] font-mono px-2 py-1 rounded bg-surface/60 border border-border/50 hover:border-signal/40 text-foreground-muted hover:text-signal transition-colors"
             >
-              {copied ? "Copied!" : "Copy"}
+              {copied === "config" ? "Copied!" : "Copy"}
             </button>
           </div>
           <pre className="p-3 rounded bg-black/50 text-foreground-muted text-[10px] overflow-x-auto font-mono leading-relaxed">{MCP_CONFIG_SNIPPET}</pre>
