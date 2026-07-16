@@ -293,13 +293,14 @@ describe("x402 middleware — request gating", () => {
   it("serves get_live_signals (regime + signals) when the payment settles", async () => {
     const { Hono } = await import("hono");
     const { x402Middleware } = await import("../src/mcp/x402.js");
-    const { getLiveSignals } = await import("../src/mcp/tools.js");
+    const { getLiveSignalsV1 } = await import("../src/mcp/tools.js");
     const { state } = await import("../lib/agent-state.js");
     const app = new Hono();
     app.use("/mcp", x402Middleware());
-    // Downstream handler returns the live-signals payload directly, so the
-    // test asserts on the actual tool output behind the paywall.
-    app.post("/mcp", async (c) => c.json(await getLiveSignals()));
+    app.post("/mcp", async (c) => c.json(await getLiveSignalsV1({
+      settlementRail: "mcp-x402",
+      tool: "get_live_signals",
+    })));
 
     vi.stubEnv("CSPR_CLOUD_TOKEN", "test-token");
 
@@ -360,15 +361,18 @@ describe("x402 middleware — request gating", () => {
       });
       expect(res.status).toBe(200);
       expect(res.headers.get("x-payment-response")).toBeTruthy();
-      const body = await res.json() as Awaited<ReturnType<typeof getLiveSignals>>;
-      expect(body.cycle).toBe(7);
-      expect(body.lastRunAt).toBe(1_700_000_000_000);
+      const body = await res.json() as Awaited<ReturnType<typeof getLiveSignalsV1>>;
+      expect(body.schema).toBe("signals-live/v1");
+      expect(body.freshness.cycle).toBe(7);
+      expect(body.freshness.lastRunAt).toBe(1_700_000_000_000);
       expect(body.regime?.score).toBe(72);
       expect(body.regime?.fearGreedIndex).toBe(18);
       expect(body.signals).toHaveLength(1);
       expect(body.signals[0].symbol).toBe("CAKE");
       expect(body.signals[0].breakdown.contrarian).toBe(30);
       expect(body.signals[0].rationale).toContain("drawdown");
+      expect(body.meta.settlementRail).toBe("mcp-x402");
+      expect(body.meta.tool).toBe("get_live_signals");
     } finally {
       globalThis.fetch = originalFetch;
       state.cycle = saved.cycle;
@@ -380,6 +384,75 @@ describe("x402 middleware — request gating", () => {
 });
 
 // ─── get_live_signals — live in-process state ────────────────────────────────
+
+describe("getLiveSignalsV1", () => {
+  it("returns a well-formed empty v1 envelope before the first cycle", async () => {
+    const { getLiveSignalsV1 } = await import("../src/mcp/tools.js");
+    const { state } = await import("../lib/agent-state.js");
+    const saved = {
+      cycle: state.cycle,
+      lastRunAt: state.lastRunAt,
+      nextRunAt: state.nextRunAt,
+      marketRegime: state.marketRegime,
+      convictionSignals: state.convictionSignals,
+      macroPause: state.macroPause,
+    };
+    state.cycle = 0;
+    state.lastRunAt = null;
+    state.nextRunAt = null;
+    state.marketRegime = null;
+    state.convictionSignals = [];
+    state.macroPause = null;
+    try {
+      const result = await getLiveSignalsV1({
+        settlementRail: "croo-cap",
+        tool: "signals-live",
+      });
+      expect(result.schema).toBe("signals-live/v1");
+      expect(result.freshness.cycle).toBe(0);
+      expect(result.freshness.lastRunAt).toBeNull();
+      expect(result.freshness.stale).toBe(false);
+      expect(result.regime).toBeNull();
+      expect(result.signals).toEqual([]);
+      expect(result.macroPause).toBeNull();
+      expect(result.meta.settlementRail).toBe("croo-cap");
+      expect(result.meta.tool).toBe("signals-live");
+      expect(result.agent.name).toBe("Early, Not Wrong");
+      expect(result.agent.subjectHash).toMatch(/^0x[0-9a-f]{64}$/);
+    } finally {
+      Object.assign(state, saved);
+    }
+  });
+
+  it("marks freshness stale when lastRunAt exceeds 1.5× cycle interval", async () => {
+    const { wrapLiveSignalsV1, getLiveSignals } = await import("../src/mcp/tools.js");
+    const { state } = await import("../lib/agent-state.js");
+    const intervalMs = 14_400_000;
+    const now = 1_700_000_000_000;
+    vi.setSystemTime(now);
+    const saved = {
+      cycle: state.cycle,
+      lastRunAt: state.lastRunAt,
+      nextRunAt: state.nextRunAt,
+    };
+    state.cycle = 10;
+    state.lastRunAt = now - intervalMs * 2;
+    state.nextRunAt = state.lastRunAt + intervalMs;
+    try {
+      const core = await getLiveSignals();
+      const wrapped = wrapLiveSignalsV1(
+        core,
+        { settlementRail: "mcp-x402", tool: "get_live_signals" },
+        now,
+      );
+      expect(wrapped.freshness.stale).toBe(true);
+      expect(wrapped.freshness.staleReason).toContain("Last cycle completed");
+    } finally {
+      vi.useRealTimers();
+      Object.assign(state, saved);
+    }
+  });
+});
 
 describe("getLiveSignals", () => {
   it("returns a well-formed empty response before the first cycle (simulator mode)", async () => {
@@ -443,6 +516,7 @@ describe("getLiveSignals", () => {
     try {
       const result = await getLiveSignals();
       expect(result.signals.map((s) => s.symbol)).toEqual(["B", "D", "F", "C", "E"]);
+      expect(result.signals[0].weights).toBeDefined();
       expect(result.macroPause).toEqual({
         clear: false,
         skipEntries: true,

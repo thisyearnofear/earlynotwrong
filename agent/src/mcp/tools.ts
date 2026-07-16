@@ -14,14 +14,15 @@
 import {
   lookupLatestCrossChain,
   lookupSubjectCrossChain,
+  computeSubjectHash,
   type AnchoredRecord,
   type Bytes32Hex,
 } from "../../lib/anchors/index.js";
 import { MantleAnchorAdapter } from "../../lib/anchors/mantle.js";
 import { CasperAnchorAdapter } from "../../lib/anchors/casper.js";
-import { AGENT_CONFIG } from "../../lib/config.js";
-import { state as liveAgentState } from "../../lib/agent-state.js";
-import type { ConvictionSignal, MarketRegime } from "../../lib/conviction-signal.js";
+import { AGENT_CONFIG, AGENT_MODE } from "../../lib/config.js";
+import { getBnbUsd, state as liveAgentState } from "../../lib/agent-state.js";
+import type { ConvictionSignal, MarketRegime, SignalWeights } from "../../lib/conviction-signal.js";
 
 // Two adapter instances are sufficient — they're stateless wrappers; the
 // CasperAnchorAdapter caches reads internally. We don't reach into the
@@ -253,10 +254,16 @@ export interface LiveSignalEntry {
   score: number;
   /** Per-factor score breakdown (contrarian, rsi, quality, regime, …). */
   breakdown: ConvictionSignal["breakdown"];
+  /** Active factor weights for this regime — included when available. */
+  weights?: SignalWeights;
+  holderCount?: number | null;
+  holderGrowthPercent?: number | null;
+  newsSentiment?: number | null;
   /** Human-readable "why" behind the score. */
   rationale: string;
 }
 
+/** Legacy v0 core payload — superseded by {@link SignalsLiveV1} for delivery. */
 export interface GetLiveSignalsResult {
   /** Cycle metadata — which run produced this data. */
   cycle: number;
@@ -275,6 +282,99 @@ export interface GetLiveSignalsResult {
   } | null;
 }
 
+export type SettlementRail = "mcp-x402" | "croo-cap";
+export type LiveSignalsTool = "get_live_signals" | "signals-live";
+
+export interface GetLiveSignalsV1Options {
+  settlementRail: SettlementRail;
+  tool: LiveSignalsTool;
+}
+
+export interface SignalsLiveV1 {
+  schema: "signals-live/v1";
+  generatedAt: string;
+  agent: {
+    name: "Early, Not Wrong";
+    subjectHash: Bytes32Hex;
+    mode: "live" | "simulator";
+  };
+  freshness: {
+    cycle: number;
+    lastRunAt: number | null;
+    nextRunAt: number | null;
+    cycleIntervalMs: number;
+    stale: boolean;
+    staleReason: string | null;
+  };
+  regime: MarketRegime | null;
+  signals: LiveSignalEntry[];
+  macroPause: GetLiveSignalsResult["macroPause"];
+  meta: {
+    topN: typeof LIVE_SIGNALS_TOP_N;
+    settlementRail: SettlementRail;
+    tool: LiveSignalsTool;
+  };
+}
+
+function resolveCycleIntervalMs(): number {
+  const { lastRunAt, nextRunAt } = liveAgentState;
+  if (lastRunAt != null && nextRunAt != null && nextRunAt > lastRunAt) {
+    return nextRunAt - lastRunAt;
+  }
+  const baseIntervalMs = AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+  const cfg = AGENT_CONFIG.trading.bankroll;
+  if (cfg.adaptiveInterval) {
+    const bnbUsd = getBnbUsd(liveAgentState.portfolio);
+    if (bnbUsd > 0 && bnbUsd < cfg.targetBnbUsd) {
+      return baseIntervalMs * 2;
+    }
+  }
+  return baseIntervalMs;
+}
+
+function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1["freshness"] {
+  const { cycle, lastRunAt, nextRunAt } = liveAgentState;
+  let stale = false;
+  let staleReason: string | null = null;
+  if (lastRunAt != null) {
+    const ageMs = now - lastRunAt;
+    if (ageMs > cycleIntervalMs * 1.5) {
+      stale = true;
+      const ageHours = ageMs / 3_600_000;
+      staleReason =
+        `Last cycle completed ${ageHours.toFixed(1)}h ago; agent may be degraded or between adaptive intervals`;
+    }
+  }
+  return { cycle, lastRunAt, nextRunAt, cycleIntervalMs, stale, staleReason };
+}
+
+/** Wrap a v0 core payload in the versioned signals-live/v1 envelope. */
+export function wrapLiveSignalsV1(
+  core: GetLiveSignalsResult,
+  options: GetLiveSignalsV1Options,
+  now = Date.now(),
+): SignalsLiveV1 {
+  const cycleIntervalMs = resolveCycleIntervalMs();
+  return {
+    schema: "signals-live/v1",
+    generatedAt: new Date(now).toISOString(),
+    agent: {
+      name: "Early, Not Wrong",
+      subjectHash: computeSubjectHash("bsc", AGENT_CONFIG.competition.identityRegistry),
+      mode: AGENT_MODE,
+    },
+    freshness: buildFreshness(now, cycleIntervalMs),
+    regime: core.regime,
+    signals: core.signals,
+    macroPause: core.macroPause,
+    meta: {
+      topN: LIVE_SIGNALS_TOP_N,
+      settlementRail: options.settlementRail,
+      tool: options.tool,
+    },
+  };
+}
+
 export async function getLiveSignals(): Promise<GetLiveSignalsResult> {
   const signals = [...liveAgentState.convictionSignals]
     .sort((a, b) => b.score - a.score)
@@ -283,6 +383,10 @@ export async function getLiveSignals(): Promise<GetLiveSignalsResult> {
       symbol: s.symbol,
       score: s.score,
       breakdown: s.breakdown,
+      weights: s.weights,
+      holderCount: s.holderCount,
+      holderGrowthPercent: s.holderGrowthPercent,
+      newsSentiment: s.newsSentiment,
       rationale: s.rationale,
     }));
   const macro = liveAgentState.macroPause;
@@ -301,4 +405,11 @@ export async function getLiveSignals(): Promise<GetLiveSignalsResult> {
         }
       : null,
   };
+}
+
+/** Premium delivery shape for MCP x402 and CROO CAP signals-live. */
+export async function getLiveSignalsV1(
+  options: GetLiveSignalsV1Options,
+): Promise<SignalsLiveV1> {
+  return wrapLiveSignalsV1(await getLiveSignals(), options);
 }

@@ -13,7 +13,7 @@ import {
   getSubjectHistory,
   crossChainLookup,
   getAgentReputation,
-  getLiveSignals,
+  getLiveSignalsV1,
 } from "../mcp/tools.js";
 import { recordCall } from "../payment-stats.js";
 import { pricingForToolName, toolNameForService } from "./pricing.js";
@@ -77,7 +77,10 @@ export async function fulfillCapOrder(
       // Live current-cycle data — reads shared in-process agent state; no
       // subjectHash needed. `signals-live` must be registered on the CROO
       // Store before orders for it can arrive here.
-      deliverable = JSON.stringify(await getLiveSignals());
+      deliverable = JSON.stringify(await getLiveSignalsV1({
+        settlementRail: "croo-cap",
+        tool: "signals-live",
+      }));
       break;
     default:
       throw new Error(`Unsupported CAP reputation tool: ${toolName}`);

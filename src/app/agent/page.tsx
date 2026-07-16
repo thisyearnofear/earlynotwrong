@@ -1477,9 +1477,10 @@ function Dashboard({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.30, duration: 0.35 }}
-          className="lg:col-span-2"
+          className="lg:col-span-2 space-y-4"
         >
           <ReputationApiCard />
+          <CrooCapCard />
         </motion.div>
       </motion.div>
 
@@ -1903,7 +1904,30 @@ interface ReputationStats {
   feesCollectedBaseUnits: string;
   pricing: Record<string, { paid: boolean; amountBaseUnits: string; description: string }>;
   byTool: Record<string, { calls: number; paidCalls: number; baseUnits: string }>;
+  providers?: {
+    x402: {
+      queriesServed: number;
+      paidQueries: number;
+      feesCollectedBaseUnits: string;
+      pricing: Record<string, { paid: boolean; amountBaseUnits: string; description: string }>;
+      byTool: Record<string, { calls: number; paidCalls: number; baseUnits: string }>;
+    };
+    cap: {
+      queriesServed: number;
+      paidQueries: number;
+      feesCollectedBaseUnits: string;
+      pricing: Record<string, { paid: boolean; amountUsdcBaseUnits: string; description: string }>;
+      byTool: Record<string, { calls: number; paidCalls: number; baseUnits: string }>;
+    };
+  };
 }
+
+interface CapStatusResponse {
+  connected: boolean;
+  services: Record<string, string>;
+}
+
+type CapProviderStats = NonNullable<ReputationStats["providers"]>["cap"];
 
 /** Format Casper CEP-18 base units as CSPR. The Cep18x402 token uses 2
  *  decimals (matches the cspr.cloud testnet asset), so 20 base units = 0.20 CSPR. */
@@ -1918,6 +1942,20 @@ function formatCspr(baseUnits: string | undefined, decimals = 2): string {
   const fracStr = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
   return fracStr ? `${whole}.${fracStr} CSPR` : `${whole} CSPR`;
 }
+
+/** Format USDC base units (6 decimals on Base). */
+function formatUsdc(baseUnits: string | undefined, decimals = 6): string {
+  if (!baseUnits) return "—";
+  const n = BigInt(baseUnits);
+  if (n === BigInt(0)) return "$0";
+  const divisor = BigInt(10) ** BigInt(decimals);
+  const whole = n / divisor;
+  const fraction = n % divisor;
+  const fracStr = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fracStr ? `$${whole}.${fracStr} USDC` : `$${whole} USDC`;
+}
+
+const CROO_STORE_URL = "https://agent.croo.network";
 
 const MCP_CONFIG_SNIPPET = `{
   "mcpServers": {
@@ -1939,10 +1977,43 @@ const MCP_CURL_PAID = `curl -sS -i -X POST ${MCP_ENDPOINT} \\
   -H 'accept: application/json, text/event-stream' \\
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_live_signals","arguments":{}}}'`;
 
+const CROO_CAP_REQUESTER_SNIPPET = `import { AgentClient, EventType } from "@croo-network/sdk";
+
+const client = new AgentClient(
+  { baseURL: "https://api.croo.network", wsURL: "wss://api.croo.network/ws" },
+  process.env.CROO_SDK_KEY!,
+);
+
+const stream = await client.connectWebSocket();
+
+stream.on(EventType.OrderCreated, async (e) => {
+  await client.payOrder(e.order_id!);
+});
+
+stream.on(EventType.OrderCompleted, async (e) => {
+  const delivery = await client.getDelivery(e.order_id!);
+  console.log(JSON.parse(delivery.deliverableText));
+  stream.close();
+});
+
+// Store-listed service — no subjectHash required
+await client.negotiateOrder({
+  serviceId: "signals-live",
+  requirements: JSON.stringify({}),
+});`;
+
 function ReputationApiCard() {
   const [stats, setStats] = useState<ReputationStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"config" | "free" | "paid" | null>(null);
+
+  const x402 = stats?.providers?.x402 ?? (stats ? {
+    queriesServed: stats.queriesServed,
+    paidQueries: stats.paidQueries,
+    feesCollectedBaseUnits: stats.feesCollectedBaseUnits,
+    pricing: stats.pricing,
+    byTool: stats.byTool,
+  } : null);
 
   const copySnippet = (key: "config" | "free" | "paid", text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -1976,25 +2047,24 @@ function ReputationApiCard() {
       <CardHeader className="pb-2">
         <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
           <Network className="w-3.5 h-3.5 text-signal" />
-          Agent-to-Agent Reputation
+          MCP · x402
           <span className="ml-auto text-[10px] text-foreground-dim">
-            MCP · x402 · CROO CAP
+            Casper settlement
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Hero strip — three numbers + a one-liner explaining the surface. */}
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
             <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Queries served</p>
             <p className="text-2xl font-semibold tabular-nums">
-              {stats?.queriesServed ?? "—"}
+              {x402?.queriesServed ?? "—"}
             </p>
           </div>
           <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
             <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Paid</p>
             <p className="text-2xl font-semibold tabular-nums text-signal">
-              {stats?.paidQueries ?? "—"}
+              {x402?.paidQueries ?? "—"}
             </p>
           </div>
           <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
@@ -2003,18 +2073,16 @@ function ReputationApiCard() {
               <span className="text-foreground-dim normal-case">(testnet)</span>
             </p>
             <p className="text-2xl font-semibold tabular-nums text-patience">
-              {formatCspr(stats?.feesCollectedBaseUnits)}
+              {formatCspr(x402?.feesCollectedBaseUnits)}
             </p>
           </div>
         </div>
 
         <p className="text-[11px] text-foreground-muted mb-3 leading-relaxed">
-          Other AI agents query this agent&apos;s verifiable track record over{" "}
-          <span className="font-mono text-foreground">Model Context Protocol</span>,
-          paying per call through <span className="font-mono text-foreground">x402</span>{" "}
-          micropayments on Casper. The agent also advertises reputation services on
-          the <span className="font-mono text-foreground">CROO</span> network,
-          settled in USDC on Base — agent-to-agent commerce, no human in the loop.
+          Query over{" "}
+          <span className="font-mono text-foreground">Model Context Protocol</span>{" "}
+          with per-call <span className="font-mono text-foreground">x402</span>{" "}
+          micropayments on Casper — the rail for agents that speak HTTP + MCP natively.
         </p>
 
         {/* Tools table */}
@@ -2028,9 +2096,9 @@ function ReputationApiCard() {
               </tr>
             </thead>
             <tbody>
-              {stats &&
-                Object.entries(stats.pricing).map(([tool, p]) => {
-                  const called = stats.byTool[tool];
+              {x402 &&
+                Object.entries(x402.pricing).map(([tool, p]) => {
+                  const called = x402.byTool[tool];
                   return (
                     <tr key={tool} className="border-t border-border/30">
                       <td className="px-3 py-2 text-foreground">{tool}</td>
@@ -2130,6 +2198,182 @@ function ReputationApiCard() {
 
         {error && (
           <p className="mt-3 text-[10px] text-impatience font-mono">stats: {error}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CrooCapCard() {
+  const [capStatus, setCapStatus] = useState<CapStatusResponse | null>(null);
+  const [capStats, setCapStats] = useState<CapProviderStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let stale = false;
+    async function load() {
+      try {
+        const [statusRes, statsRes] = await Promise.all([
+          fetch("/api/agent/proxy?endpoint=cap/status"),
+          fetch("/api/agent/proxy?endpoint=reputation/stats"),
+        ]);
+        if (!statusRes.ok) throw new Error(`cap/status returned ${statusRes.status}`);
+        const statusData = (await statusRes.json()) as CapStatusResponse;
+        if (!stale) setCapStatus(statusData);
+
+        if (statsRes.ok) {
+          const statsData = (await statsRes.json()) as ReputationStats;
+          if (!stale) setCapStats(statsData.providers?.cap ?? null);
+        }
+      } catch (e) {
+        if (!stale) setError(e instanceof Error ? e.message : "failed to load");
+      }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      stale = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const signalsLive = capStats?.pricing["signals-live"];
+  const signalsCalls = capStats?.byTool["signals-live"];
+
+  return (
+    <Card className="bg-surface/30 border-border/50 border-[#65b3ae]/20">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2 flex-wrap">
+          <DollarSign className="w-3.5 h-3.5 text-[#65b3ae]" />
+          CROO · CAP
+          <span className="ml-auto text-[10px] text-foreground-dim">
+            USDC on Base
+          </span>
+          {capStatus && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider border",
+                capStatus.connected
+                  ? "border-patience/30 bg-patience/10 text-patience"
+                  : "border-impatience/30 bg-impatience/10 text-impatience",
+              )}
+            >
+              <span
+                className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  capStatus.connected ? "bg-patience" : "bg-impatience",
+                )}
+              />
+              {capStatus.connected ? "Connected" : "Offline"}
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Orders fulfilled</p>
+            <p className="text-2xl font-semibold tabular-nums">
+              {capStats?.queriesServed ?? "—"}
+            </p>
+          </div>
+          <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Paid</p>
+            <p className="text-2xl font-semibold tabular-nums text-[#65b3ae]">
+              {capStats?.paidQueries ?? "—"}
+            </p>
+          </div>
+          <div className="rounded-lg bg-surface/40 border border-border/40 p-3">
+            <p className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">USDC earned</p>
+            <p className="text-2xl font-semibold tabular-nums text-patience">
+              {formatUsdc(capStats?.feesCollectedBaseUnits)}
+            </p>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-foreground-muted mb-3 leading-relaxed">
+          Hire this agent on the{" "}
+          <a
+            href={CROO_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-[#65b3ae] hover:underline"
+          >
+            CROO Agent Store
+          </a>
+          . Negotiation, payment, and delivery run over the CROO Agent Protocol — same
+          conviction data as MCP, settled in USDC on Base.
+        </p>
+
+        {/* Store-listed premium SKU */}
+        <div className="rounded-lg border border-[#65b3ae]/30 bg-[#65b3ae]/5 p-3 mb-4 space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-[11px] font-mono text-foreground font-semibold">
+                signals-live
+                <span className="ml-2 text-[#65b3ae]">$0.05 USDC</span>
+              </p>
+              <p className="text-[10px] font-mono text-foreground-muted mt-0.5">
+                Live conviction signals for the current cycle — no subjectHash required
+              </p>
+            </div>
+            <a
+              href={CROO_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded border border-[#65b3ae]/40 text-[#65b3ae] hover:bg-[#65b3ae]/10 transition-colors"
+            >
+              Hire on CROO
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+          {signalsLive && (
+            <p className="text-[10px] font-mono text-foreground-dim">
+              {signalsCalls?.calls ?? 0} fulfillment
+              {(signalsCalls?.paidCalls ?? 0) > 0
+                ? ` (${signalsCalls?.paidCalls} paid)`
+                : ""}
+              {" · "}
+              maps to MCP <code className="text-foreground-muted">get_live_signals</code>
+            </p>
+          )}
+        </div>
+
+        {/* Requester snippet */}
+        <div className="rounded-lg border border-border/40 bg-surface/30 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-mono text-foreground">
+              <span className="text-[#65b3ae]">▸</span> Requester agent (CAP SDK)
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(CROO_CAP_REQUESTER_SNIPPET).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded bg-surface/60 border border-border/50 hover:border-[#65b3ae]/40 text-foreground-muted hover:text-[#65b3ae] transition-colors"
+            >
+              <Copy className="w-3 h-3" />
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <pre className="p-2 rounded bg-black/40 text-[9px] text-foreground-muted overflow-x-auto font-mono leading-relaxed max-h-48">
+            {CROO_CAP_REQUESTER_SNIPPET}
+          </pre>
+          <p className="text-[10px] font-mono text-foreground-dim leading-relaxed">
+            Requires a CROO SDK key from{" "}
+            <a href={CROO_STORE_URL} className="text-[#65b3ae] hover:underline" target="_blank" rel="noopener noreferrer">
+              agent.croo.network
+            </a>
+            . Four additional reputation services are negotiable directly (MCP-only on the Store).
+          </p>
+        </div>
+
+        {error && (
+          <p className="mt-3 text-[10px] text-impatience font-mono">cap: {error}</p>
         )}
       </CardContent>
     </Card>

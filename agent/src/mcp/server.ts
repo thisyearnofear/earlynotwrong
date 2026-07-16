@@ -22,7 +22,7 @@ import {
   getAgentReputation,
   getByThesis,
   getLatestConviction,
-  getLiveSignals,
+  getLiveSignalsV1,
   getSubjectHistory,
 } from "./tools.js";
 
@@ -127,7 +127,10 @@ export function buildMcpServer(): McpServer {
       inputSchema: {},
     },
     async () => {
-      const result = await getLiveSignals();
+      const result = await getLiveSignalsV1({
+        settlementRail: "mcp-x402",
+        tool: "get_live_signals",
+      });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );

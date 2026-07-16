@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://earlynotwrong.vercel.app/schemas/signals-live-v1.schema.json",
+  "title": "signals-live/v1",
+  "description": "Live conviction signals for the agent's current trading cycle. Returned by MCP get_live_signals (x402 on Casper) and CROO CAP service signals-live (USDC on Base).",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "agent",
+    "freshness",
+    "regime",
+    "signals",
+    "macroPause",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "signals-live/v1",
+      "description": "Schema version. Integrators should reject unknown major versions."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp when this payload was assembled (not necessarily on-chain anchor time)."
+    },
+    "agent": {
+      "type": "object",
+      "required": ["name", "subjectHash", "mode"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "const": "Early, Not Wrong"
+        },
+        "subjectHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "Keccak256 subject hash for this agent's conviction namespace (cross-chain lookup key)."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["live", "simulator"],
+          "description": "Whether the agent is executing real trades or running in simulator mode."
+        }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "required": [
+        "cycle",
+        "lastRunAt",
+        "nextRunAt",
+        "cycleIntervalMs",
+        "stale",
+        "staleReason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cycle": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Monotonic cycle counter incremented after each completed agent loop."
+        },
+        "lastRunAt": {
+          "type": ["integer", "null"],
+          "description": "Unix epoch milliseconds when the last cycle finished. null before the first run."
+        },
+        "nextRunAt": {
+          "type": ["integer", "null"],
+          "description": "Unix epoch milliseconds when the next cycle is scheduled. null when unknown."
+        },
+        "cycleIntervalMs": {
+          "type": "integer",
+          "minimum": 60000,
+          "description": "Nominal cycle period in ms (default 14_400_000 = 4h; may double when BNB is low)."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "true when lastRunAt is older than 1.5× cycleIntervalMs — data may not reflect the latest cycle."
+        },
+        "staleReason": {
+          "type": ["string", "null"],
+          "description": "Human-readable explanation when stale is true; null when fresh."
+        }
+      }
+    },
+    "regime": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/marketRegime" }
+      ],
+      "description": "Contrarian market regime for the current cycle. null before first scoring run."
+    },
+    "signals": {
+      "type": "array",
+      "maxItems": 5,
+      "description": "Top conviction candidates this cycle, ranked by score descending.",
+      "items": { "$ref": "#/$defs/liveSignal" }
+    },
+    "macroPause": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/macroPause" }
+      ],
+      "description": "Macro event gate affecting new entries. null when no macro overlay this cycle."
+    },
+    "meta": {
+      "type": "object",
+      "required": ["topN", "settlementRail", "tool"],
+      "additionalProperties": false,
+      "properties": {
+        "topN": {
+          "type": "integer",
+          "const": 5,
+          "description": "Maximum number of signals returned per call."
+        },
+        "settlementRail": {
+          "type": "string",
+          "enum": ["mcp-x402", "croo-cap"],
+          "description": "Payment rail that unlocked this response."
+        },
+        "tool": {
+          "type": "string",
+          "enum": ["get_live_signals", "signals-live"],
+          "description": "Internal tool (MCP) or CAP serviceId that produced this payload."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "marketRegime": {
+      "type": "object",
+      "required": ["score", "label", "fearGreedIndex", "fearLevel", "ssiConfirmation"],
+      "additionalProperties": false,
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Contrarian opportunity score — higher means more fear, better entry conditions."
+        },
+        "label": {
+          "type": "string",
+          "examples": ["DEEP FEAR — PRIME CONTRARIAN", "FEAR — FAVORABLE ENTRY"]
+        },
+        "fearGreedIndex": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "fearLevel": {
+          "type": "string",
+          "enum": [
+            "extreme-fear",
+            "fear",
+            "neutral",
+            "greed",
+            "extreme-greed",
+            "unknown"
+          ]
+        },
+        "ssiConfirmation": {
+          "type": ["number", "null"],
+          "minimum": -1,
+          "maximum": 1,
+          "description": "SoSoValue SSI 7d confirmation in [-1, +1]. null when unavailable."
+        }
+      }
+    },
+    "signalBreakdown": {
+      "type": "object",
+      "required": [
+        "contrarian",
+        "rsi",
+        "quality",
+        "regime",
+        "holders",
+        "volatilityPenalty",
+        "news"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contrarian": { "type": "number" },
+        "rsi": { "type": "number" },
+        "quality": { "type": "number" },
+        "regime": { "type": "number" },
+        "holders": { "type": "number" },
+        "volatilityPenalty": { "type": "number", "description": "Subtracted from total (stored as positive magnitude)." },
+        "news": { "type": "number", "description": "Signed SoSoValue news adjustment (±newsMax)." }
+      }
+    },
+    "signalWeights": {
+      "type": "object",
+      "required": [
+        "contrarian",
+        "rsi",
+        "quality",
+        "regime",
+        "holders",
+        "volatilityPenaltyMax",
+        "newsMax"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contrarian": { "type": "integer" },
+        "rsi": { "type": "integer" },
+        "quality": { "type": "integer" },
+        "regime": { "type": "integer" },
+        "holders": { "type": "integer" },
+        "volatilityPenaltyMax": { "type": "integer" },
+        "newsMax": { "type": "integer" }
+      }
+    },
+    "liveSignal": {
+      "type": "object",
+      "required": ["symbol", "score", "breakdown", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16,
+          "description": "BEP-20 ticker symbol (uppercase)."
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Conviction to OPEN a position this cycle."
+        },
+        "breakdown": { "$ref": "#/$defs/signalBreakdown" },
+        "weights": {
+          "$ref": "#/$defs/signalWeights",
+          "description": "Active factor weights for this regime. Optional in v1.0 delivery; included when available."
+        },
+        "holderCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "holderGrowthPercent": {
+          "type": ["number", "null"],
+          "description": "7d holder growth fraction when history exists."
+        },
+        "newsSentiment": {
+          "type": ["number", "null"],
+          "minimum": -1,
+          "maximum": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable summary for logs and dashboards."
+        }
+      }
+    },
+    "macroPause": {
+      "type": "object",
+      "required": ["clear", "skipEntries", "sizeMultiplier", "hoursUntilNext", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "clear": {
+          "type": "boolean",
+          "description": "true when no macro gate is active."
+        },
+        "skipEntries": {
+          "type": "boolean",
+          "description": "true when new entries are blocked this cycle."
+        },
+        "sizeMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Trade size scaler when entries are allowed but damped (e.g. 0.5 before CPI)."
+        },
+        "hoursUntilNext": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Hours until the next high-impact macro event, or null."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Plain-language macro gate explanation."
+        }
+      }
+    }
+  }
+}

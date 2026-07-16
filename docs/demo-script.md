@@ -3,6 +3,7 @@
 This document contains demo scripts for different aspects of the platform.
 
 - [Casper Agentic Buildathon Demo](#casper-agentic-buildathon-demo) — Odra reputation registry, MCP, x402 paywall
+- [CROO Agent Hackathon Demo](#croo-agent-hackathon-demo) — CAP + USDC on Base, `signals-live` on the Agent Store
 - [SoSoValue Buildathon Demo](#sosovalue-buildathon-demo) — Multi-source market data, SoDEX execution, AI narrative
 - [Aleo ZK-Privacy Demo](#aleo-zk-privacy-demo) — Private behavioral data on Aleo
 
@@ -74,7 +75,7 @@ On https://earlynotwrong.vercel.app/agent scroll through the guided narrative:
 | **Act 1 · Live** | Status cards, portfolio, guardrails, behavioral self-score. Per-cycle pipeline strip maps **A1 data→score · A2 manage→execute · A3 anchor**. |
 | **Act 2 · Score & Trade** | Conviction Signals (6-factor breakdown) + Conviction Ledger (held positions, proven callout or awaiting proof). |
 | **Act 3 · Anchor** | Multi-chain anchor panel (Casper · Mantle · Aleo) with explorer links. |
-| **Act 4 · Verify** | Casper Wallet connect + anchor form; **Agent-to-Agent Reputation** card with **Try it now** curl blocks. |
+| **Act 4 · Verify** | Casper Wallet connect + anchor form; **MCP · x402** card (curl blocks) + **CROO · CAP** card (Store link, requester snippet). |
 
 On mobile, use the **sticky act nav** (Act 1–4 pills) to jump between sections.
 
@@ -233,6 +234,145 @@ Cut to the closing slide with:
   live.
 - The free `get_agent_reputation` call should respond in under 10 s; mention
   aggregate stats (total anchors, mean score) when narrating.
+
+---
+
+# CROO Agent Hackathon Demo
+
+## Overview
+
+This walkthrough demonstrates the **same reputation marketplace** as the Casper
+demo, exposed through the **CROO Agent Protocol (CAP)** with **USDC settlement
+on Base**. Early, Not Wrong is listed on the [CROO Agent Store](https://agent.croo.network)
+as **signals-live** ($0.05 USDC) — the premium live-signal product, parallel to
+MCP's paid `get_live_signals` (0.5 CSPR on Casper).
+
+**Target length:** 2–3 minutes.  
+**Recommended recording:** CROO Agent Store + dashboard Act 4 CAP panel + terminal/SDK.
+
+## Demo Objectives
+
+- Show the agent is **discoverable and hireable** on the CROO Agent Store.
+- Prove the CAP WebSocket client is **connected and fulfilling** on the VPS.
+- Walk through **negotiate → pay → deliver** for `signals-live`.
+- Explain why Casper (x402) and CROO (USDC) are **two rails, one API**.
+
+## Demo Setup
+
+1. **CROO Agent Store** open: https://agent.croo.network — search **Early, Not Wrong**
+2. **Dashboard Act 4** open: https://earlynotwrong.vercel.app/agent#act-4 — scroll to **CROO · CAP** card
+3. **CAP status** (optional terminal check):
+
+```bash
+curl -sS http://144.202.117.160:31777/cap/status
+```
+
+Expect `"connected": true` and five advertised services (one Store-listed).
+
+4. **Requester SDK key** from CROO (for live purchase demo) — or narrate from the copy-paste snippet on the dashboard.
+
+## Demo Flow
+
+### 1. Hook (15 seconds)
+
+> "The same conviction data our Casper MCP server exposes is also hireable on
+> the CROO network — discovered on the Agent Store, paid in USDC on Base, delivered
+> over the CROO Agent Protocol. No human in the loop."
+
+### 2. CROO Agent Store (45 seconds)
+
+On https://agent.croo.network, find **Early, Not Wrong**. Point out:
+
+- **Service:** `signals-live` — $0.05 USDC
+- **Description:** live conviction signals for the current trading cycle
+- **No subjectHash required** — cold buyers can hire without knowing ENW internals
+
+> "We only list one service on the Store on purpose. Everything else either needs
+> a subject hash the buyer wouldn't have, or is the free trust check — which stays
+> on MCP. `signals-live` is the product: the same tradeable data as MCP's paid
+> `get_live_signals`."
+
+### 3. Dashboard — CAP Panel (45 seconds)
+
+On `/agent#act-4`, below **MCP · x402**, show the **CROO · CAP** card:
+
+- **Connected** indicator (green = WebSocket live on VPS)
+- Orders fulfilled / USDC earned counters
+- **Hire on CROO** link → Agent Store
+- **Requester agent** snippet — copy from dashboard
+
+> "Operators see both settlement rails side by side: Casper x402 for MCP-native
+> agents, CROO CAP for USDC-on-Base commerce. Same tools under the hood in
+> `agent/src/mcp/tools.ts`."
+
+### 4. Live CAP Purchase (60 seconds)
+
+If you have a CROO SDK key, run the requester flow (also on the dashboard):
+
+```typescript
+import { AgentClient, EventType } from "@croo-network/sdk";
+
+const client = new AgentClient(
+  { baseURL: "https://api.croo.network", wsURL: "wss://api.croo.network/ws" },
+  process.env.CROO_SDK_KEY!,
+);
+
+const stream = await client.connectWebSocket();
+
+stream.on(EventType.OrderCreated, async (e) => {
+  await client.payOrder(e.order_id!);
+});
+
+stream.on(EventType.OrderCompleted, async (e) => {
+  const delivery = await client.getDelivery(e.order_id!);
+  console.log(JSON.parse(delivery.deliverableText));
+  stream.close();
+});
+
+await client.negotiateOrder({
+  serviceId: "signals-live",
+  requirements: JSON.stringify({}),
+});
+```
+
+Narrate the lifecycle:
+
+> "Negotiate with serviceId `signals-live` → CROO creates an order → requester
+> pays USDC on Base → our agent receives `OrderPaid` over WebSocket → runs
+> `get_live_signals` → delivers JSON via `deliverOrder`. Payment stats increment
+> at `GET /reputation/stats` under `providers.cap`."
+
+If you cannot run a live purchase, the Store listing + connected CAP status +
+dashboard counters are sufficient.
+
+### 5. Two Rails, One Marketplace (30 seconds)
+
+| Rail | Discovery | Payment | Premium SKU |
+|------|-----------|---------|-------------|
+| **MCP + x402** | HTTP POST `/mcp` | CSPR (Casper) | `get_live_signals` · 0.5 CSPR |
+| **CROO CAP** | Agent Store | USDC (Base) | `signals-live` · $0.05 |
+
+> "Casper agents pay with x402. EVM-native agents hire on CROO with USDC.
+> The autonomous BSC trading agent is the reputation source for both."
+
+### 6. Conclusion (15 seconds)
+
+> "Early, Not Wrong is live on the CROO Agent Store today. Hire `signals-live`
+> for the current cycle's conviction signals — the same asymmetric, contrarian
+> data that drives our own trades."
+
+Cut to:
+
+- CROO Store: https://agent.croo.network
+- Dashboard: https://earlynotwrong.vercel.app/agent#act-4
+- Docs: [`docs/CROO_INTEGRATION.md`](./CROO_INTEGRATION.md)
+
+## Demo Tips
+
+- Record the Store search + service page before the dashboard — judges often
+  discover you on DoraHacks first.
+- The CAP **Connected** badge must be green; if offline, check `CROO_SDK_KEY` on the VPS.
+- Mention the [CROO hackathon buidl page](https://dorahacks.io/hackathon/croo-hackathon/buidl) if presenting to those judges specifically.
 
 ---
 
