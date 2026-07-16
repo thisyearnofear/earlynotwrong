@@ -76,36 +76,30 @@ export function Navbar() {
   const nextUnlocks = getNextTierUnlocks(currentScore);
 
   const handleWalletSelected = async (identity: ResolvedIdentity) => {
-    console.log("Selected wallet:", identity);
     setSearchOpen(false);
 
-    // Update store with resolved identity data
     const { setEthosData, setFarcasterIdentity } = useAppStore.getState();
-
-    // Update Ethos data (score and profile together)
     setEthosData(
       identity.ethos?.score || null,
       identity.ethos?.profile || null,
     );
-
-    // Update Farcaster identity if available
     if (identity.farcaster) {
       setFarcasterIdentity(identity.farcaster);
     }
 
-    // Trigger conviction analysis
-    await analyzeWallet(identity.address);
+    const wallet = identity.address;
 
-    // If we're not on the home page, navigate there
-    if (typeof window !== "undefined" && window.location.pathname !== "/") {
-      router.push("/");
+    if (pathname === "/analyzer") {
+      await analyzeWallet(wallet);
+      setTimeout(() => {
+        document
+          .getElementById("conviction-results")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 500);
+      return;
     }
 
-    // Scroll to results after analysis starts
-    setTimeout(() => {
-      const resultsSection = document.getElementById("conviction-results");
-      resultsSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 500);
+    router.push(`/analyzer?wallet=${encodeURIComponent(wallet)}`);
   };
 
   return (
@@ -149,20 +143,6 @@ export function Navbar() {
 
             <div className="hidden lg:flex items-center gap-1">
               <Link
-                href="/leaderboard"
-                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
-              >
-                <TrendingUp className="w-3.5 h-3.5" />
-                Leaderboard
-              </Link>
-              <Link
-                href="/alpha"
-                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Alpha
-              </Link>
-              <Link
                 href="/analyzer"
                 className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
               >
@@ -175,6 +155,19 @@ export function Navbar() {
               >
                 <Activity className="w-3.5 h-3.5" />
                 Agent
+              </Link>
+              <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
+              <Link
+                href="/leaderboard"
+                className="px-2 py-2.5 text-xs font-mono text-foreground-dim hover:text-foreground-muted transition-colors min-h-[44px]"
+              >
+                Leaderboard
+              </Link>
+              <Link
+                href="/alpha"
+                className="px-2 py-2.5 text-xs font-mono text-foreground-dim hover:text-foreground-muted transition-colors min-h-[44px]"
+              >
+                Alpha
               </Link>
             </div>
           </div>
@@ -341,23 +334,6 @@ export function Navbar() {
             className="fixed top-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-b border-border lg:hidden"
           >
             <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
-              {/* Mobile Navigation Links */}
-              <Link
-                href="/leaderboard"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-foreground hover:bg-surface/50 transition-colors min-h-[48px]"
-              >
-                <TrendingUp className="w-5 h-5" />
-                Leaderboard
-              </Link>
-              <Link
-                href="/alpha"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-signal hover:bg-surface/50 transition-colors min-h-[48px]"
-              >
-                <Zap className="w-5 h-5" />
-                Alpha Discovery
-              </Link>
               <Link
                 href="/analyzer"
                 onClick={() => setMobileMenuOpen(false)}
@@ -373,6 +349,26 @@ export function Navbar() {
               >
                 <Activity className="w-5 h-5" />
                 Agent Dashboard
+              </Link>
+
+              <p className="px-4 pt-2 text-[10px] font-mono uppercase tracking-widest text-foreground-dim">
+                More
+              </p>
+              <Link
+                href="/leaderboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-mono text-foreground-dim hover:text-foreground-muted hover:bg-surface/30 transition-colors min-h-[44px]"
+              >
+                <TrendingUp className="w-4 h-4" />
+                Leaderboard
+              </Link>
+              <Link
+                href="/alpha"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-mono text-foreground-dim hover:text-foreground-muted hover:bg-surface/30 transition-colors min-h-[44px]"
+              >
+                <Zap className="w-4 h-4" />
+                Alpha Discovery
               </Link>
 
               {/* Mobile Demo Toggle */}

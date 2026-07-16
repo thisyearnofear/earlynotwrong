@@ -147,6 +147,7 @@ export function CasperWalletNavButton({ className }: { className?: string }) {
       )}
       onClick={connect}
       disabled={status.kind === "connecting"}
+      title="Sign conviction records on Casper Testnet"
     >
       {status.kind === "connecting" ? (
         <>

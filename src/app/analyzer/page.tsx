@@ -26,7 +26,8 @@ import {
   Share2,
   Copy,
   Check,
-  ChevronDown,
+  Anchor,
+  Sparkles,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { keccak256, toBytes } from "viem";
@@ -118,7 +119,7 @@ export default function AnalyzerPage() {
   }, [analysisChain, targetAddress]);
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
-  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [resultsTab, setResultsTab] = useState<"anchor" | "advanced">("anchor");
   const hasScanned = !isAnalyzing && logs.length > 0;
   const [hasEverScanned, setHasEverScanned] = useState(false);
 
@@ -198,6 +199,29 @@ export default function AnalyzerPage() {
       <Navbar />
 
       <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[calc(100vh-6rem)] flex flex-col">
+        {/* Orientation — same conviction lens as the autonomous agent */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="relative z-10 max-w-3xl mx-auto w-full mb-8 border-l-2 border-signal/40 pl-4 py-1"
+        >
+          <p className="text-sm text-foreground leading-relaxed">
+            The same{" "}
+            <span className="font-mono text-foreground">conviction-core</span>{" "}
+            framework that scores the{" "}
+            <Link href="/agent" className="text-signal hover:underline">
+              autonomous agent&apos;s trades
+            </Link>{" "}
+            — applied to any wallet. Paste an address to get a behavioral
+            conviction score, archetype, and position-by-position analysis.
+          </p>
+          <p className="text-[10px] font-mono text-foreground-dim mt-1.5">
+            Optional: anchor your analysis to Casper or Mantle via Verify &amp; Anchor
+            after a scan completes.
+          </p>
+        </motion.div>
+
         {/* Header Section */}
         <motion.section
           layout
@@ -661,7 +685,7 @@ export default function AnalyzerPage() {
                     hidden: { opacity: 0, y: 20 },
                     visible: { opacity: 1, y: 0 },
                   }}
-                  className="col-span-1 md:col-span-6 lg:col-span-8 h-full"
+                  className="col-span-1 md:col-span-6 lg:col-span-12 h-full"
                 >
                   <Card className="glass-panel border-border/50 bg-surface/40 h-full min-h-75 flex flex-col justify-between overflow-hidden group relative">
                     <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -805,86 +829,7 @@ export default function AnalyzerPage() {
                   </Card>
                 </motion.div>
 
-                {/* Reputation Hub (Ethos, Tiers, Cohort) */}
-                <motion.div
-                  layoutId="ethos-reputation-card"
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-4 h-full"
-                >
-                  <ReputationHub
-                    isConnected={isConnected}
-                    activeAddress={activeAddress}
-                    isShowcaseMode={isShowcaseMode}
-                  />
-                </motion.div>
-
-                {/* Verify & Anchor — on-chain infrastructure behind progressive
-                    disclosure so the behavioral payoff stays front and center. */}
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  className="col-span-1 md:col-span-6 lg:col-span-12"
-                >
-                  <button
-                    onClick={() => setVerifyOpen((v) => !v)}
-                    aria-expanded={verifyOpen}
-                    className="w-full flex items-center justify-between p-3 rounded-lg bg-surface/40 border border-border hover:border-signal/40 transition-colors"
-                  >
-                    <span className="text-xs font-mono uppercase tracking-widest text-foreground-muted">
-                      Verify &amp; Anchor On-Chain
-                      <span className="ml-2 normal-case tracking-normal text-foreground-dim">
-                        Casper · {mantle.isMantleMode ? "Mantle · " : ""}Aleo · Privacy Cash
-                      </span>
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <Link
-                        href="/agent"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[10px] font-mono text-signal hover:underline"
-                      >
-                        Connect Casper Wallet →
-                      </Link>
-                      <ChevronDown
-                        className={cn(
-                          "w-4 h-4 text-foreground-muted transition-transform",
-                          verifyOpen && "rotate-180",
-                        )}
-                      />
-                    </div>
-                  </button>
-                  <AnimatePresence initial={false}>
-                    {verifyOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
-                          {mantle.isMantleMode && (
-                            <MantleConvictionCard
-                              thesisHash={thesisHash}
-                              subjectHash={subjectHash}
-                              subjectLabel={targetAddress ?? "No wallet selected"}
-                              convictionScore={convictionMetrics?.score ?? 0}
-                              archetype={convictionMetrics?.archetype ?? "Unclassified"}
-                            />
-                          )}
-                          {mantle.isMantleMode && <MantleStrategyLens />}
-                          <AleoConvictionCard />
-                          <PrivateBalanceCard />
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-
-                {/* Position Explorer */}
+                {/* Position Explorer — core results */}
                 <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 20 },
@@ -898,6 +843,118 @@ export default function AnalyzerPage() {
                       chain={analysisChain || "solana"}
                     />
                   )}
+                </motion.div>
+
+                {/* Anchor / Advanced — optional layers below core score + positions */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  className="col-span-1 md:col-span-6 lg:col-span-12 space-y-4"
+                >
+                  <div className="inline-flex p-1 rounded-full bg-surface border border-border">
+                    <button
+                      type="button"
+                      onClick={() => setResultsTab("anchor")}
+                      className={cn(
+                        "px-5 py-1.5 rounded-full text-xs font-mono transition-all flex items-center gap-1.5",
+                        resultsTab === "anchor"
+                          ? "bg-foreground text-background"
+                          : "text-foreground-muted hover:text-foreground",
+                      )}
+                    >
+                      <Anchor className="w-3 h-3" />
+                      ANCHOR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResultsTab("advanced")}
+                      className={cn(
+                        "px-5 py-1.5 rounded-full text-xs font-mono transition-all flex items-center gap-1.5",
+                        resultsTab === "advanced"
+                          ? "bg-signal text-black"
+                          : "text-foreground-muted hover:text-foreground",
+                      )}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      ADVANCED
+                    </button>
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    {resultsTab === "anchor" ? (
+                      <motion.div
+                        key="anchor-tab"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-4"
+                      >
+                        <p className="text-[11px] font-mono text-foreground-muted leading-relaxed max-w-2xl">
+                          Anchor this analysis on-chain. Casper anchoring uses the{" "}
+                          <Link href="/agent" className="text-signal hover:underline">
+                            agent dashboard
+                          </Link>{" "}
+                          wallet panel; Mantle and Aleo cards below mirror the same
+                          conviction record.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {mantle.isMantleMode && (
+                            <MantleConvictionCard
+                              thesisHash={thesisHash}
+                              subjectHash={subjectHash}
+                              subjectLabel={targetAddress ?? "No wallet selected"}
+                              convictionScore={convictionMetrics?.score ?? 0}
+                              archetype={convictionMetrics?.archetype ?? "Unclassified"}
+                            />
+                          )}
+                          <AleoConvictionCard />
+                          {!mantle.isMantleMode && (
+                            <div className="rounded-lg border border-dashed border-border/50 bg-surface/20 p-4 flex flex-col justify-center gap-2">
+                              <p className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim">
+                                Mantle mirror
+                              </p>
+                              <p className="text-[11px] text-foreground-muted leading-relaxed">
+                                Enable Mantle mode in nav settings to anchor an EVM
+                                mirror of this analysis.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="advanced-tab"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-6"
+                      >
+                        <p className="text-[11px] font-mono text-foreground-muted leading-relaxed max-w-2xl">
+                          Ethos reputation, private Aleo thesis commits, and
+                          privacy-cash tooling — optional layers on top of the
+                          behavioral score.
+                        </p>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          <div className="lg:col-span-1">
+                            <ReputationHub
+                              isConnected={isConnected}
+                              activeAddress={activeAddress}
+                              isShowcaseMode={isShowcaseMode}
+                            />
+                          </div>
+                          <div className="lg:col-span-2 space-y-6">
+                            {mantle.isMantleMode && <MantleStrategyLens />}
+                            <AleoPrivateThesis />
+                            <PrivateBalanceCard />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               </motion.div>
             )}

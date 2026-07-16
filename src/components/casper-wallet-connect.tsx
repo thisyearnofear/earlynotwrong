@@ -296,6 +296,10 @@ export function CasperWalletConnect() {
             {connected ? "Connected" : status?.kind === "not-installed" ? "Not installed" : status?.kind === "conflict" ? "Conflict" : "Testnet"}
           </span>
         </CardTitle>
+        <p className="text-[10px] font-mono text-foreground-dim leading-relaxed pt-1">
+          Casper Wallet signs conviction records on testnet — separate from
+          Solana/EVM wallets used elsewhere in the app.
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
         <AnimatePresence mode="wait">

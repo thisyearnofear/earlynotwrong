@@ -588,27 +588,56 @@ function Dashboard({
           <Link href="/analyzer" className="text-signal hover:underline">wallet analyzer</Link>.
         </p>
 
-        {/* Cycle pipeline strip — the 8-step autonomous loop */}
+        {/* Per-cycle pipeline — maps to Acts 1–3 (Act 4 Verify is user-initiated) */}
         {status && (
-          <div className="mt-3 flex items-center gap-1 flex-wrap text-[9px] font-mono">
-            <span className="text-foreground-dim uppercase tracking-wider mr-1">Cycle {status.cycle}:</span>
-            {[
-              { label: "data", icon: "✓" },
-              { label: "score", icon: "✓" },
-              { label: "manage", icon: "✓" },
-              { label: "execute", icon: "✓" },
-              { label: "anchor", icon: "✓" },
-              { label: "narrate", icon: "✓" },
-            ].map((step, i) => (
-              <span key={step.label} className="flex items-center gap-0.5">
-                <span className="text-patience">{step.icon}</span>
-                <span className="text-foreground-muted">{step.label}</span>
-                {i < 5 && <span className="text-foreground-dim mx-0.5">→</span>}
+          <div className="mt-3 space-y-1">
+            <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">
+              Per-cycle pipeline · Acts 1–3 below · Act 4 is your wallet
+            </p>
+            <div className="flex items-center gap-1 flex-wrap text-[9px] font-mono">
+              <span className="text-foreground-dim uppercase tracking-wider mr-1">
+                Cycle {status.cycle}:
               </span>
-            ))}
-            <span className="text-foreground-dim ml-2">
-              · next in {status.nextRunAt ? Math.max(0, Math.round((status.nextRunAt - Date.now()) / 60_000)) : "—"}m
-            </span>
+              {[
+                { act: 1, title: "Score", steps: ["data", "score"] as const },
+                { act: 2, title: "Trade", steps: ["manage", "execute"] as const },
+                { act: 3, title: "Anchor", steps: ["anchor"] as const },
+              ].map((group, gi) => (
+                <span key={group.act} className="flex items-center gap-0.5">
+                  {gi > 0 && (
+                    <span className="text-foreground-dim mx-1">·</span>
+                  )}
+                  <span
+                    className="text-signal/80 uppercase tracking-wider"
+                    title={`Act ${group.act}: ${group.title}`}
+                  >
+                    A{group.act}
+                  </span>
+                  {group.steps.map((step, si) => (
+                    <span key={step} className="flex items-center gap-0.5">
+                      {si > 0 && (
+                        <span className="text-foreground-dim mx-0.5">→</span>
+                      )}
+                      <span className="text-patience">✓</span>
+                      <span className="text-foreground-muted">{step}</span>
+                    </span>
+                  ))}
+                </span>
+              ))}
+              <span className="text-foreground-dim mx-1">·</span>
+              <span className="text-patience">✓</span>
+              <span className="text-foreground-muted">narrate</span>
+              <span className="text-foreground-dim ml-2">
+                · next in{" "}
+                {status.nextRunAt
+                  ? Math.max(
+                      0,
+                      Math.round((status.nextRunAt - Date.now()) / 60_000),
+                    )
+                  : "—"}
+                m
+              </span>
+            </div>
           </div>
         )}
       </motion.div>
@@ -653,7 +682,7 @@ function Dashboard({
         </motion.div>
       )}
 
-      {/* Row 1: Agent Status + Portfolio + Guardrails + Performance */}
+      {/* Row 1 — Act 1: Agent is live (status, portfolio, guardrails, self-score) */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -905,8 +934,7 @@ function Dashboard({
         </motion.div>
       </motion.div>
 
-      {/* Row 2: Conviction Signals (the thesis, visible) + Held Positions (the proof)
-          Act 2 of the narrative: the agent scores conviction and holds through drawdown. */}
+      {/* Row 2 — Act 1 Score + Act 2 Trade: conviction signals + held positions */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1368,9 +1396,7 @@ function Dashboard({
         </motion.div>
       </motion.div>
 
-      {/* Row 3: On-Chain Anchor History (Act 3: it anchors on-chain).
-          Shows recent conviction records the agent has anchored across
-          Casper, Mantle, and Aleo — proof this is a live system. */}
+      {/* Row 3 — Act 3: On-chain anchor history (Casper · Mantle · Aleo) */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1379,9 +1405,7 @@ function Dashboard({
         <RecentAnchors />
       </motion.div>
 
-      {/* Row 3b: Casper Wallet detail card + Agent Reputation API (Act 4: anchor your own).
-          The connect button lives in the navbar (where users expect it);
-          this card shows balance, anchor form, and sign proof once connected. */}
+      {/* Row 3b — Act 4: Anchor your own + agent reputation API */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1406,6 +1430,34 @@ function Dashboard({
         </motion.div>
       </motion.div>
 
+      {/* ── Narrative complete — appendix below ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.32, duration: 0.35 }}
+      >
+        <details className="group rounded-xl border border-border/40 bg-surface/20">
+          <summary
+            className={cn(
+              "flex items-center gap-2 rounded-xl p-4",
+              "text-xs font-mono uppercase tracking-wider",
+              "text-foreground-muted hover:text-signal cursor-pointer",
+              "select-none list-none transition-colors",
+            )}
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-signal shrink-0" />
+            <span>Technical details</span>
+            <span className="text-[10px] text-foreground-dim font-normal normal-case">
+              trades · market data · narrative · resources · architecture
+            </span>
+            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case group-open:hidden">
+              Expand
+            </span>
+            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case hidden group-open:inline">
+              Collapse
+            </span>
+          </summary>
+          <div className="px-4 pb-4 space-y-6 border-t border-border/30 pt-4">
       {/* Row 4: Recent Activity + Market Data */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -1703,39 +1755,17 @@ function Dashboard({
         </Card>
       </motion.div>
 
-      {/* Row 5: Links */}
+      {/* Resources */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.44, duration: 0.4 }}
       >
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.44, duration: 0.35 }}
-        >
-        {/* Resources — collapsed by default, shows count of links when closed */}
-        <details className="group">
-          <summary
-            className={cn(
-              "flex items-center gap-2 rounded-lg border border-border/50",
-              "bg-surface/40 p-3",
-              "text-xs font-mono uppercase tracking-wider",
-              "text-foreground-muted hover:text-signal hover:border-signal/20 cursor-pointer",
-              "select-none list-none transition-colors"
-            )}
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-signal shrink-0" />
-            <span>Resources</span>
-            <span className="text-[10px] text-foreground-dim font-normal normal-case">5 links</span>
-            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case group-open:hidden">
-              Click to expand
-            </span>
-            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case hidden group-open:inline">
-              Collapse
-            </span>
-          </summary>
-          <div className="mt-1 space-y-1">
+        <p className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim mb-2 flex items-center gap-2">
+          <ExternalLink className="w-3 h-3 text-signal" />
+          Resources
+        </p>
+        <div className="space-y-1">
             {[
               {
                 label: "GitHub Repository",
@@ -1779,42 +1809,28 @@ function Dashboard({
                 <ExternalLink className="w-3.5 h-3.5 text-foreground-muted group-hover:text-signal shrink-0 ml-2" />
               </a>
             ))}
-          </div>
-        </details>
-        </motion.div>
+        </div>
       </motion.div>
 
-      {/* Row 6: Pipeline Architecture (collapsed by default) */}
+      {/* Pipeline architecture */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.52, duration: 0.4 }}
       >
-      <details className="group">
-        <summary
-          className={cn(
-            "flex items-center gap-2 text-xs font-mono uppercase tracking-wider",
-            "text-foreground-muted hover:text-signal cursor-pointer",
-            "select-none list-none transition-colors"
-          )}
-        >
-          <Zap className="w-3.5 h-3.5 text-signal" />
-          Pipeline Architecture
-          <span className="ml-auto text-[10px] text-foreground-dim group-open:hidden">
-            Click to expand
-          </span>
-          <span className="ml-auto text-[10px] text-foreground-dim hidden group-open:inline">
-            Collapse
-          </span>
-        </summary>
-        <div className="mt-3">
-          <Card className="bg-surface/30 border-border/50">
-            <CardContent className="pt-4">
-              <PipelineGrid />
-            </CardContent>
-          </Card>
-        </div>
-      </details>
+        <p className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim mb-2 flex items-center gap-2">
+          <Zap className="w-3 h-3 text-signal" />
+          Pipeline architecture
+        </p>
+        <Card className="bg-surface/30 border-border/50">
+          <CardContent className="pt-4">
+            <PipelineGrid />
+          </CardContent>
+        </Card>
+      </motion.div>
+
+          </div>
+        </details>
       </motion.div>
     </motion.div>
   );

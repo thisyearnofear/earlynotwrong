@@ -275,6 +275,15 @@ export default function Home() {
               Aleo
             </span>
           </motion.div>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.4 }}
+            className="text-[10px] font-mono text-foreground-dim max-w-md leading-relaxed"
+            title="Each chain plays a distinct role in the conviction stack"
+          >
+            Casper = public registry · Mantle = EVM mirror · Aleo = privacy proof
+          </motion.p>
         </motion.section>
 
         {/* ── The 4 Acts — how it works ────────────────────────────────────── */}
@@ -474,10 +483,10 @@ export default function Home() {
         {/* ── Footer links ─────────────────────────────────────────────────── */}
         <section className="relative z-10 mt-auto pt-8 border-t border-border/30">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-mono text-foreground-dim">
-            <span className="uppercase tracking-wider">
-              Early, Not Wrong — BNB Hack: AI Trading Agent Edition
+            <span className="uppercase tracking-wider text-center sm:text-left">
+              Autonomous conviction, anchored on-chain
             </span>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-end">
               <Link href="/agent" className="hover:text-signal transition-colors">
                 Dashboard
               </Link>
@@ -486,6 +495,9 @@ export default function Home() {
               </Link>
               <Link href="/leaderboard" className="hover:text-signal transition-colors">
                 Leaderboard
+              </Link>
+              <Link href="/alpha" className="hover:text-signal transition-colors">
+                Alpha
               </Link>
             </div>
           </div>
