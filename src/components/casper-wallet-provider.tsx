@@ -42,7 +42,7 @@ interface CasperWalletProvider {
   on(eventType: string, handler: (event: { detail: string }) => void): () => void;
 }
 
-type CasperWalletProviderConstructor = new (opts?: { timeout: number }) => CasperWalletProvider;
+type CasperWalletProviderFactory = (opts?: { timeout: number }) => CasperWalletProvider;
 
 interface CasperWalletState {
   isLocked: boolean;
@@ -53,7 +53,7 @@ interface CasperWalletState {
 
 declare global {
   interface Window {
-    CasperWalletProvider?: CasperWalletProviderConstructor;
+    CasperWalletProvider?: CasperWalletProviderFactory;
     CasperWalletEventTypes?: Record<string, string>;
   }
 }
@@ -106,26 +106,28 @@ export function CasperWalletProvider({ children }: { children: ReactNode }) {
 
   // ── Resolve the injected provider (async) ──
   // The Casper Wallet extension injects `window.CasperWalletProvider` as a
-  // constructor. However, other wallet extensions (notably HashPack) can
-  // overwrite it with a non-function object. We poll aggressively at the start
-  // to grab the constructor before another extension clobbers it. If we detect
-  // a non-function `CasperWalletProvider` after timeout, we show a conflict
-  // error instead of a generic "not installed" message.
+  // **factory function** (NOT a constructor — call without `new`), and
+  // `window.CasperWalletEventTypes` as an object. We detect the extension via
+  // `CasperWalletEventTypes` (more reliable — it's an object, less likely to
+  // be overwritten by other extensions like HashPack).
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
-    const maxAttempts = 60; // ~12s at 200ms intervals (extended for slow extensions)
+    const maxAttempts = 60; // ~12s at 200ms intervals
 
     const poll = setInterval(() => {
       attempts += 1;
-      const raw = typeof window !== "undefined" ? window.CasperWalletProvider : undefined;
+      const hasEventTypes =
+        typeof window !== "undefined" && window.CasperWalletEventTypes != null;
+      const factory =
+        typeof window !== "undefined" ? window.CasperWalletProvider : undefined;
 
-      if (raw && typeof raw === "function") {
-        // ✅ Constructor found — instantiate before another extension overwrites it.
+      if (hasEventTypes && factory && typeof factory === "function") {
         clearInterval(poll);
         if (cancelled) return;
         try {
-          const provider = new raw();
+          // ⚠️ Call WITHOUT `new` — it's a factory function, not a class.
+          const provider = factory();
           provider
             .isConnected()
             .then(async (connected) => {
@@ -162,9 +164,7 @@ export function CasperWalletProvider({ children }: { children: ReactNode }) {
       } else if (attempts >= maxAttempts) {
         clearInterval(poll);
         if (cancelled) return;
-        // If the global exists but isn't a function, another extension
-        // (likely HashPack) overwrote it. Show a conflict error.
-        if (raw && typeof raw !== "function") {
+        if (hasEventTypes && (!factory || typeof factory !== "function")) {
           setStatus({ kind: "conflict" });
         } else {
           setStatus({ kind: "not-installed" });
