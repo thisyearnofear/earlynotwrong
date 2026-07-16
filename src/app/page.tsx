@@ -250,13 +250,19 @@ export default function Home() {
               href="/agent"
               className="group flex flex-col gap-2 p-4 rounded-lg border border-border/40 bg-surface/30 hover:border-signal/40 hover:bg-surface/50 transition-all text-left"
             >
-              <Activity className="w-5 h-5 text-signal" />
-              <span className="text-sm font-semibold text-foreground group-hover:text-signal transition-colors">
-                Trading Agent
-              </span>
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-signal" />
+                <span className="text-sm font-semibold text-foreground group-hover:text-signal transition-colors">
+                  Trading Agent
+                </span>
+                <span className="ml-auto px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wider bg-signal/15 text-signal border border-signal/30">
+                  Casper
+                </span>
+              </div>
               <span className="text-[10px] font-mono text-foreground-muted leading-relaxed">
                 An autonomous agent that scores conviction, manages positions,
-                and anchors every decision on-chain.
+                and anchors every decision on-chain across Mantle, Casper &
+                Aleo.
               </span>
               <span className="text-[10px] font-mono text-signal mt-auto">
                 Visit Dashboard →
@@ -282,6 +288,28 @@ export default function Home() {
                 Start Analysis →
               </span>
             </button>
+          </motion.div>
+
+          {/* ── On-chain anchors strip — surfaces Casper + Mantle + Aleo ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45, duration: 0.4 }}
+            className="flex items-center gap-3 flex-wrap justify-center text-[10px] font-mono text-foreground-dim pt-1"
+          >
+            <span className="uppercase tracking-wider">Anchored on:</span>
+            <Link
+              href="/agent"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-signal/30 bg-signal/10 text-signal hover:bg-signal/20 transition-colors"
+            >
+              Casper Testnet
+            </Link>
+            <span className="px-2 py-0.5 rounded-full border border-border/40 bg-surface/30 text-foreground-muted">
+              Mantle Sepolia
+            </span>
+            <span className="px-2 py-0.5 rounded-full border border-border/40 bg-surface/30 text-foreground-muted">
+              Aleo
+            </span>
           </motion.div>
 
           {/* Action Buttons - Hide during analysis, show after scan for new scan option */}
@@ -887,7 +915,7 @@ export default function Home() {
                     <span className="text-xs font-mono uppercase tracking-widest text-foreground-muted">
                       Verify &amp; Anchor On-Chain
                       <span className="ml-2 normal-case tracking-normal text-foreground-dim">
-                        {mantle.isMantleMode ? "Mantle · " : ""}Aleo · Privacy Cash
+                        Casper · {mantle.isMantleMode ? "Mantle · " : ""}Aleo · Privacy Cash
                       </span>
                     </span>
                     <div className="flex items-center gap-3">
@@ -896,7 +924,7 @@ export default function Home() {
                         onClick={(e) => e.stopPropagation()}
                         className="text-[10px] font-mono text-signal hover:underline"
                       >
-                        Casper Wallet →
+                        Connect Casper Wallet →
                       </Link>
                       <ChevronDown
                         className={cn(
