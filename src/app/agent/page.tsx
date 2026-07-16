@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
+import { CasperWalletConnect } from "@/components/casper-wallet-connect";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -874,15 +875,33 @@ function Dashboard({
         </motion.div>
       </motion.div>
 
-      {/* Row 2: Agent Reputation API — Casper-native MCP + x402 marketplace.
-          Promoted above conviction signals so a 60-second visitor sees the
-          marketplace surface before anything else. */}
+      {/* Row 2: Casper Wallet connection + Agent Reputation API.
+          The wallet connect sits beside the Casper-native MCP + x402
+          marketplace so a visitor can connect their Casper Wallet right where
+          the reputation surface lives. Promoted above conviction signals so a
+          60-second visitor sees the marketplace surface before anything else. */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.14, duration: 0.4 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
       >
-        <ReputationApiCard />
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.16, duration: 0.35 }}
+          className="lg:col-span-1"
+        >
+          <CasperWalletConnect />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18, duration: 0.35 }}
+          className="lg:col-span-2"
+        >
+          <ReputationApiCard />
+        </motion.div>
       </motion.div>
 
       {/* Row 3: Conviction Signals (the thesis, visible) + Held Positions (the proof) */}

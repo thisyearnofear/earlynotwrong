@@ -317,6 +317,7 @@ If a step fails, the log includes a `TWAK help:` line with the exact fix. The cy
 | `position-explorer.tsx` | Detailed position table |
 | `aleo-conviction-card.tsx` | Aleo private ZK proof card |
 | `mantle-conviction-card.tsx` | Mantle anchored conviction card |
+| `casper-wallet-connect.tsx` | In-browser Casper Wallet connect + sign proof (uses `window.CasperWalletProvider` injected by the extension) |
 
 ## Common Tasks
 

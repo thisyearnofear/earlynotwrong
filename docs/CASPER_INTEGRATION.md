@@ -84,6 +84,29 @@ for (let i = 0; i < totalEvents; i++) {
 
 MCP queries return live records in 200-300 ms (cold) / <10 ms (cached).
 
+## Connecting a Casper Wallet (in-browser)
+
+The dashboard exposes a **Connect Casper Wallet** panel (`src/components/casper-wallet-connect.tsx`)
+so any visitor with the [Casper Wallet](https://www.casperwallet.io/) browser extension can connect
+their account directly in the web app — no server-side key, no operator PEM.
+
+```
+Visitor (browser)
+  └─ window.CasperWalletProvider  (injected async by the extension)
+       ├─ requestConnection()      → wallet popup, user approves
+       ├─ getActivePublicKey()     → Ed25519/Secp256k1 public key hex
+       ├─ signMessage(msg, pubKey) → wallet signs, returns signature (proof)
+       └─ events: Connected / Disconnected / ActiveKeyChanged / Locked / Unlocked
+```
+
+The component polls for the injected provider (the extension's content script loads after the
+page), syncs UI to all wallet lifecycle events, shows the active account's public key with a
+link to its `testnet.cspr.live` explorer page, and offers a **Sign proof message** action that
+proves the connection is live end-to-end (the wallet pops a signing prompt and returns a
+verifiable signature). The extension is the sole signer — no private keys ever leave the
+browser. This is the user-facing Casper Wallet integration; the operator PEM anchoring is the
+server-side counterpart.
+
 ## Casper Toolkit Components Used
 
 ```
@@ -92,6 +115,7 @@ MCP queries return live records in 200-300 ms (cold) / <10 ms (cached).
 ✅ CSPR.cloud x402 Facilitator       Paywall settle (CEP-18 transfers + gas)
 ✅ Model Context Protocol            @modelcontextprotocol/sdk v1.29 — tool surface
 ✅ casper-js-sdk v5.0.12             SessionBuilder + ContractCallBuilder + reads
+✅ Casper Wallet (browser extension) In-browser connect + message signing (user-facing)
 ✅ CSPR.live explorer                Verification UI
 ```
 
@@ -109,7 +133,8 @@ MCP queries return live records in 200-300 ms (cold) / <10 ms (cached).
 | `agent/src/mcp/pricing.ts` | Per-tool pricing table |
 | `agent/scripts/casper-deploy.mjs` | Odra contract install via SessionBuilder |
 | `agent/scripts/casper-transfer.mjs` | Native CSPR transfer (operator → recipient) |
-| `src/app/agent/page.tsx` | Dashboard "Reputation API" panel — live MCP + x402 stats |
+| `src/components/casper-wallet-connect.tsx` | Dashboard "Casper Wallet" panel — in-browser wallet connect + sign proof |
+| `src/app/agent/page.tsx` | Dashboard "Reputation API" panel — live MCP + x402 stats + wallet connect |
 
 ## How Other Agents Use This
 

@@ -97,7 +97,7 @@ This makes the reputation marketplace **self-funding at the API-request level**.
 
 ### 5. Next.js Dashboard
 
-The agent dashboard surfaces live Casper status: contract hash, latest anchor, MCP query stats, and x402 fees collected.
+The agent dashboard surfaces live Casper status: contract hash, latest anchor, MCP query stats, and x402 fees collected. It also exposes a **Connect Casper Wallet** panel — any visitor with the Casper Wallet browser extension can connect their account in-browser, view their active public key, and sign a proof message to verify the connection end-to-end. The extension is the sole signer; no private keys leave the browser.
 
 ---
 
