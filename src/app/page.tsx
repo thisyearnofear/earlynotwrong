@@ -890,12 +890,21 @@ export default function Home() {
                         {mantle.isMantleMode ? "Mantle · " : ""}Aleo · Privacy Cash
                       </span>
                     </span>
-                    <ChevronDown
-                      className={cn(
-                        "w-4 h-4 text-foreground-muted transition-transform",
-                        verifyOpen && "rotate-180",
-                      )}
-                    />
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href="/agent"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] font-mono text-signal hover:underline"
+                      >
+                        Casper Wallet →
+                      </Link>
+                      <ChevronDown
+                        className={cn(
+                          "w-4 h-4 text-foreground-muted transition-transform",
+                          verifyOpen && "rotate-180",
+                        )}
+                      />
+                    </div>
                   </button>
                   <AnimatePresence initial={false}>
                     {verifyOpen && (

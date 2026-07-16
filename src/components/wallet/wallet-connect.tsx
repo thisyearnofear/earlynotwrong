@@ -22,7 +22,7 @@ function shortenAddress(address: string | null | undefined) {
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 
-export function WalletConnect({ className }: { className?: string }) {
+export function WalletConnect({ className, hiddenOnAgent }: { className?: string; hiddenOnAgent?: boolean }) {
   const { isWalletModalOpen: isOpen, setWalletModalOpen: setIsOpen } = useAppStore();
   const [copied, setCopied] = React.useState(false);
   const [isClient, setIsClient] = React.useState(false);
@@ -101,6 +101,8 @@ export function WalletConnect({ className }: { className?: string }) {
       </Button>
     );
   }
+
+  if (hiddenOnAgent) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>

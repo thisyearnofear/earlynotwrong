@@ -18,7 +18,7 @@ import {
 import { WalletSearchInput } from "@/components/wallet/wallet-search-input";
 import type { ResolvedIdentity } from "@/lib/services/identity-resolver";
 import { useConviction } from "@/hooks/use-conviction";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useWallet as useAleoWallet } from "@provablehq/aleo-wallet-adaptor-react";
 import {
   getEthosTier,
@@ -63,6 +63,11 @@ export function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  // The /agent page has its own Casper Wallet connect panel; hide the
+  // Solana/EVM/Aleo WalletConnect button there to avoid confusing visitors
+  // with two unrelated wallet systems.
+  const isAgentPage = pathname === "/agent";
 
   const currentScore = mounted ? (isShowcaseMode ? 9999 : (ethosScore?.score || 0)) : 0;
   const tier = getEthosTier(currentScore);
@@ -291,7 +296,7 @@ export function Navbar() {
 
             <NavSettingsMenu className="hidden md:inline-flex" />
 
-            <WalletConnect className="h-10 px-3 hidden sm:flex" />
+            <WalletConnect className="h-10 px-3 hidden sm:flex" hiddenOnAgent={isAgentPage} />
 
             {/* Mobile Menu Button */}
             <Button
@@ -393,10 +398,12 @@ export function Navbar() {
                 </button>
               </div>
 
-              {/* Mobile Wallet Connect */}
+              {/* Mobile Wallet Connect — hidden on /agent (Casper Wallet panel there) */}
+              {!isAgentPage && (
               <div className="px-4 py-3 sm:hidden">
                 <WalletConnect className="w-full h-12 justify-center" />
               </div>
+              )}
 
             </div>
           </motion.div>

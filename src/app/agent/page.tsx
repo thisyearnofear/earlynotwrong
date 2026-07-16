@@ -879,7 +879,9 @@ function Dashboard({
           The wallet connect sits beside the Casper-native MCP + x402
           marketplace so a visitor can connect their Casper Wallet right where
           the reputation surface lives. Promoted above conviction signals so a
-          60-second visitor sees the marketplace surface before anything else. */}
+          60-second visitor sees the marketplace surface before anything else.
+          The Casper panel gets a signal ring + badge to make it the obvious
+          primary action for buildathon judges. */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -890,9 +892,15 @@ function Dashboard({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.16, duration: 0.35 }}
-          className="lg:col-span-1"
+          className="lg:col-span-1 relative"
         >
-          <CasperWalletConnect />
+          {/* Buildathon badge — floats above the card to draw the eye */}
+          <div className="absolute -top-2.5 left-3 z-10 px-2 py-0.5 rounded-full bg-signal text-black text-[9px] font-mono font-bold uppercase tracking-wider shadow-[0_0_15px_-3px_var(--signal)]">
+            Connect Casper Wallet
+          </div>
+          <div className="rounded-xl ring-2 ring-signal/30 ring-offset-2 ring-offset-background shadow-[0_0_30px_-10px_var(--signal-glow)]">
+            <CasperWalletConnect />
+          </div>
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 8 }}
