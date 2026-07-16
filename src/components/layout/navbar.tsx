@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
+import { CasperWalletNavButton } from "@/components/casper-wallet-nav-button";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Activity, Menu, X } from "lucide-react";
@@ -296,7 +297,12 @@ export function Navbar() {
 
             <NavSettingsMenu className="hidden md:inline-flex" />
 
-            <WalletConnect className="h-10 px-3 hidden sm:flex" hiddenOnAgent={isAgentPage} />
+            {/* On /agent: Casper Wallet button. Elsewhere: Solana/EVM/Aleo. */}
+            {isAgentPage ? (
+              <CasperWalletNavButton className="h-10 px-3 hidden sm:flex" />
+            ) : (
+              <WalletConnect className="h-10 px-3 hidden sm:flex" />
+            )}
 
             {/* Mobile Menu Button */}
             <Button
@@ -398,12 +404,14 @@ export function Navbar() {
                 </button>
               </div>
 
-              {/* Mobile Wallet Connect — hidden on /agent (Casper Wallet panel there) */}
-              {!isAgentPage && (
+              {/* Mobile Wallet Connect — Casper on /agent, Solana/EVM elsewhere */}
               <div className="px-4 py-3 sm:hidden">
-                <WalletConnect className="w-full h-12 justify-center" />
+                {isAgentPage ? (
+                  <CasperWalletNavButton className="w-full h-12 justify-center" />
+                ) : (
+                  <WalletConnect className="w-full h-12 justify-center" />
+                )}
               </div>
-              )}
 
             </div>
           </motion.div>

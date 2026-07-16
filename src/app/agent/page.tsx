@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { CasperWalletConnect } from "@/components/casper-wallet-connect";
+import { CasperWalletProvider } from "@/components/casper-wallet-provider";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -875,13 +876,9 @@ function Dashboard({
         </motion.div>
       </motion.div>
 
-      {/* Row 2: Casper Wallet connection + Agent Reputation API.
-          The wallet connect sits beside the Casper-native MCP + x402
-          marketplace so a visitor can connect their Casper Wallet right where
-          the reputation surface lives. Promoted above conviction signals so a
-          60-second visitor sees the marketplace surface before anything else.
-          The Casper panel gets a signal ring + badge to make it the obvious
-          primary action for buildathon judges. */}
+      {/* Row 2: Casper Wallet detail card + Agent Reputation API.
+          The connect button lives in the navbar (where users expect it);
+          this card shows balance, sign proof, and anchor UI once connected. */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -892,15 +889,9 @@ function Dashboard({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.16, duration: 0.35 }}
-          className="lg:col-span-1 relative"
+          className="lg:col-span-1"
         >
-          {/* Buildathon badge — floats above the card to draw the eye */}
-          <div className="absolute -top-2.5 left-3 z-10 px-2 py-0.5 rounded-full bg-signal text-black text-[9px] font-mono font-bold uppercase tracking-wider shadow-[0_0_15px_-3px_var(--signal)]">
-            Connect Casper Wallet
-          </div>
-          <div className="rounded-xl ring-2 ring-signal/30 ring-offset-2 ring-offset-background shadow-[0_0_30px_-10px_var(--signal-glow)]">
-            <CasperWalletConnect />
-          </div>
+          <CasperWalletConnect />
         </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -1891,6 +1882,7 @@ export default function AgentDashboard() {
   const showDashboard = !loading && !error && status;
 
   return (
+    <CasperWalletProvider>
     <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
       <TunnelBackground />
       <Navbar />
@@ -1992,5 +1984,6 @@ export default function AgentDashboard() {
         </div>
       </main>
     </div>
+    </CasperWalletProvider>
   );
 }

@@ -1,22 +1,12 @@
 "use client";
 
 /**
- * Casper Wallet connection component.
+ * Casper Wallet detail card.
  *
- * The Casper Wallet browser extension injects `window.CasperWalletProvider`
- * (asynchronously — the content script loads after the page). This component
- * polls for it, exposes a Connect button, keeps the UI in sync with wallet
- * lifecycle events (Connected / Disconnected / ActiveKeyChanged / Locked /
- * Unlocked), and provides three user-facing actions:
- *
- *   1. Sign proof message — proves the connection is live end-to-end.
- *   2. Balance — queries the connected account's CSPR testnet balance via
- *      the agent server proxy (CSPR_CLOUD_TOKEN stays server-side).
- *   3. Anchor to Casper — builds an anchor_conviction transaction on the
- *      server, signs it with the wallet, and submits it to the live
- *      ConvictionRegistry contract. The user pays gas from their own account.
- *
- * The extension is the sole signer — no private keys leave the browser.
+ * Renders the full Casper Wallet interaction surface: balance, sign proof,
+ * and anchor-to-Casper form. Uses the shared CasperWalletProvider context
+ * for connection state — the navbar button handles connect/disconnect; this
+ * card shows the details once connected.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -31,7 +21,6 @@ import {
   Copy,
   Loader2,
   Lock,
-  Unlock,
   KeyRound,
   ShieldCheck,
   AlertTriangle,
@@ -39,79 +28,19 @@ import {
   Anchor,
   RefreshCw,
 } from "lucide-react";
-
-// ─── Casper Wallet provider types ───────────────────────────────────────────
-// Mirrors the injected globals from make-software/casper-wallet-sdk. The SDK
-// is not an npm dependency — the extension injects these at runtime.
-
-interface SignatureResponse {
-  signature?: string;
-  cancelled?: boolean;
-  error?: string;
-  errorCode?: number;
-}
-
-interface CasperWalletProvider {
-  requestConnection(): Promise<boolean>;
-  requestSwitchAccount(): Promise<boolean>;
-  disconnectFromSite(): Promise<boolean>;
-  isConnected(): Promise<boolean>;
-  getActivePublicKey(): Promise<string>;
-  getActivePublicKeySupports(): Promise<string[]>;
-  getVersion(): Promise<string>;
-  sign(transactionJson: string, signingPublicKeyHex: string): Promise<SignatureResponse>;
-  signMessage(message: string, signingPublicKeyHex: string): Promise<SignatureResponse>;
-  on(eventType: string, handler: (event: { detail: string }) => void): () => void;
-}
-
-type CasperWalletProviderConstructor = new (opts?: { timeout: number }) => CasperWalletProvider;
-
-interface CasperWalletState {
-  isLocked: boolean;
-  isConnected: boolean | undefined;
-  activeKey: string | undefined;
-  activeKeySupports: string[] | undefined;
-}
-
-declare global {
-  interface Window {
-    CasperWalletProvider?: CasperWalletProviderConstructor;
-    CasperWalletEventTypes?: Record<string, string>;
-  }
-}
-
-// Casper Wallet event type names. The extension also exposes
-// `window.CasperWalletEventTypes`, but the string literals are stable and we
-// don't want to depend on the global being present before subscribing.
-const EVENT = {
-  connected: "connected",
-  disconnected: "disconnected",
-  activeKeyChanged: "activeKeyChanged",
-  tabUpdated: "tabUpdated",
-  locked: "locked",
-  unlocked: "unlocked",
-} as const;
+import { useCasperWallet } from "@/components/casper-wallet-provider";
 
 const CASPER_WALLET_INSTALL_URL = "https://www.casperwallet.io/";
 const CASPER_TESTNET_EXPLORER = "https://testnet.cspr.live";
 const PROXY_BASE = "/api/agent/proxy";
-
-type Status =
-  | { kind: "loading" } // waiting for the extension to inject
-  | { kind: "not-installed" }
-  | { kind: "disconnected"; provider: CasperWalletProvider }
-  | { kind: "connecting"; provider: CasperWalletProvider }
-  | { kind: "connected"; provider: CasperWalletProvider; publicKey: string; version?: string }
-  | { kind: "locked"; provider: CasperWalletProvider };
 
 function shortKey(hex: string): string {
   if (hex.length <= 14) return hex;
   return `${hex.slice(0, 8)}…${hex.slice(-6)}`;
 }
 
-/** SHA-256 a string and return 0x-prefixed 32-byte hex. The contract stores
- *  any 32 bytes; we use SHA-256 (available natively via crypto.subtle) rather
- *  than keccak256 to avoid bundling a hash library in the browser. */
+/** SHA-256 a string → 0x-prefixed 32-byte hex. Uses crypto.subtle (no
+ *  keccak library needed in the browser). */
 async function hashTo0x32(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const buf = await crypto.subtle.digest("SHA-256", data);
@@ -127,9 +56,7 @@ function archetypeForScore(score: number): string {
 }
 
 export function CasperWalletConnect() {
-  const [status, setStatus] = useState<Status>({ kind: "loading" });
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const ctx = useCasperWallet();
 
   // Sign proof state
   const [signing, setSigning] = useState(false);
@@ -149,119 +76,23 @@ export function CasperWalletConnect() {
   const [anchorResult, setAnchorResult] = useState<{ txHash: string; explorerUrl: string } | null>(null);
   const [anchorError, setAnchorError] = useState<string | null>(null);
 
-  // ── Resolve the injected provider (async) ──
-  useEffect(() => {
-    let cancelled = false;
-    let attempts = 0;
-    const maxAttempts = 40; // ~8s at 200ms intervals
+  const [copied, setCopied] = useState(false);
 
-    const poll = setInterval(() => {
-      attempts += 1;
-      if (typeof window !== "undefined" && window.CasperWalletProvider) {
-        clearInterval(poll);
-        if (cancelled) return;
-        const provider = new window.CasperWalletProvider();
-        // Sync initial state.
-        provider
-          .isConnected()
-          .then(async (connected) => {
-            if (cancelled) return;
-            if (!connected) {
-              setStatus({ kind: "disconnected", provider });
-              return;
-            }
-            try {
-              const publicKey = await provider.getActivePublicKey();
-              if (cancelled) return;
-              let version: string | undefined;
-              try {
-                version = await provider.getVersion();
-              } catch {
-                /* version is best-effort */
-              }
-              setStatus({ kind: "connected", provider, publicKey, version });
-            } catch (err) {
-              // Connected but locked, or not yet site-approved.
-              if (cancelled) return;
-              if (isLockedError(err)) {
-                setStatus({ kind: "locked", provider });
-              } else {
-                setStatus({ kind: "disconnected", provider });
-              }
-            }
-          })
-          .catch(() => {
-            if (!cancelled) setStatus({ kind: "disconnected", provider });
-          });
-      } else if (attempts >= maxAttempts) {
-        clearInterval(poll);
-        if (!cancelled) setStatus({ kind: "not-installed" });
-      }
-    }, 200);
+  const status = ctx?.status;
+  const connected = status?.kind === "connected";
+  const publicKey = status?.kind === "connected" ? status.publicKey : undefined;
 
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-    };
-  }, []);
-
-  // ── Subscribe to wallet lifecycle events ──
-  useEffect(() => {
-    if (status.kind === "loading" || status.kind === "not-installed") return;
-    const provider = status.provider;
-
-    const unsubscribers: Array<() => void> = [];
-
-    const parse = (event: { detail: string }): CasperWalletState | null => {
-      try {
-        return JSON.parse(event.detail) as CasperWalletState;
-      } catch {
-        return null;
-      }
-    };
-
-    const syncFromState = (state: CasperWalletState | null) => {
-      if (!state) return;
-      if (state.isLocked) {
-        setStatus({ kind: "locked", provider });
-        return;
-      }
-      if (!state.isConnected || !state.activeKey) {
-        setStatus({ kind: "disconnected", provider });
-        return;
-      }
-      setStatus({ kind: "connected", provider, publicKey: state.activeKey });
-    };
-
-    unsubscribers.push(provider.on(EVENT.connected, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.disconnected, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.activeKeyChanged, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.tabUpdated, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.locked, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.unlocked, (e) => syncFromState(parse(e))));
-
-    return () => {
-      for (const off of unsubscribers) {
-        try {
-          off();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-  }, [status]);
-
-  // ── Fetch balance when connected ──
-  const fetchBalance = useCallback(async (publicKey: string) => {
+  // ── Fetch balance ──
+  const fetchBalance = useCallback(async (pubKey: string) => {
     setBalanceLoading(true);
     setBalanceError(null);
     try {
-      const res = await fetch(`${PROXY_BASE}?endpoint=casper/balance&publicKey=${publicKey}`);
+      const res = await fetch(`${PROXY_BASE}?endpoint=casper/balance&publicKey=${pubKey}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
       }
-      const data = (await res.json()) as { balanceCspr: string; balanceMotes: string };
+      const data = (await res.json()) as { balanceCspr: string };
       setBalance(data.balanceCspr);
     } catch (err) {
       setBalanceError(err instanceof Error ? err.message : "Failed to fetch balance.");
@@ -272,64 +103,34 @@ export function CasperWalletConnect() {
 
   // Auto-fetch balance on connect
   useEffect(() => {
-    if (status.kind === "connected") {
-      fetchBalance(status.publicKey);
+    if (publicKey) {
+      fetchBalance(publicKey);
     } else {
       setBalance(null);
       setBalanceError(null);
     }
-  }, [status, fetchBalance]);
+  }, [publicKey, fetchBalance]);
 
-  const connect = useCallback(async () => {
-    if (status.kind !== "disconnected" && status.kind !== "locked") return;
-    const provider = status.provider;
-    setStatus({ kind: "connecting", provider });
-    setError(null);
-    try {
-      const accepted = await provider.requestConnection();
-      if (!accepted) {
-        setStatus({ kind: "disconnected", provider });
-        setError("Connection request was declined in the wallet.");
-        return;
-      }
-      const publicKey = await provider.getActivePublicKey();
-      let version: string | undefined;
-      try {
-        version = await provider.getVersion();
-      } catch {
-        /* best-effort */
-      }
-      setStatus({ kind: "connected", provider, publicKey, version });
-    } catch (err) {
-      setStatus({ kind: "disconnected", provider });
-      setError(err instanceof Error ? err.message : "Failed to connect.");
+  // Clear ephemeral state on disconnect
+  useEffect(() => {
+    if (!connected) {
+      setSignature(null);
+      setSignError(null);
+      setAnchorResult(null);
+      setAnchorError(null);
     }
-  }, [status]);
+  }, [connected]);
 
-  const disconnect = useCallback(async () => {
-    if (status.kind !== "connected") return;
-    const provider = status.provider;
-    try {
-      await provider.disconnectFromSite();
-    } catch {
-      /* ignore — UI syncs via the Disconnected event anyway */
-    }
-    setStatus({ kind: "disconnected", provider });
-    setSignature(null);
-    setSignError(null);
-    setAnchorResult(null);
-    setAnchorError(null);
-  }, [status]);
+  // ── Actions ──
 
   const signProof = useCallback(async () => {
-    if (status.kind !== "connected") return;
-    const { provider, publicKey } = status;
+    if (!ctx || status?.kind !== "connected") return;
     setSigning(true);
     setSignError(null);
     setSignature(null);
     try {
       const message = `Early, Not Wrong — Casper reputation proof @ ${new Date().toISOString()}`;
-      const res = await provider.signMessage(message, publicKey);
+      const res = await ctx.signMessage(message);
       if (res.cancelled) {
         setSignError("Signing cancelled in the wallet.");
       } else if (res.error) {
@@ -344,16 +145,15 @@ export function CasperWalletConnect() {
     } finally {
       setSigning(false);
     }
-  }, [status]);
+  }, [ctx, status]);
 
   const anchorToCasper = useCallback(async () => {
-    if (status.kind !== "connected") return;
-    const { provider, publicKey } = status;
+    if (!ctx || status?.kind !== "connected") return;
+    const pubKey = status.publicKey;
     setAnchoring(true);
     setAnchorError(null);
     setAnchorResult(null);
     try {
-      // 1. Hash subject + thesis to 32-byte hex (SHA-256 via crypto.subtle).
       const subjectHash = await hashTo0x32(anchorSubject);
       const thesisHash = await hashTo0x32(anchorThesis);
       const record = {
@@ -364,11 +164,11 @@ export function CasperWalletConnect() {
         timestamp: Date.now(),
       };
 
-      // 2. Ask the server to build the unsigned transaction.
+      // 1. Server builds the unsigned transaction.
       const buildRes = await fetch(`${PROXY_BASE}?endpoint=casper/build-anchor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicKey, record }),
+        body: JSON.stringify({ publicKey: pubKey, record }),
       });
       if (!buildRes.ok) {
         const body = await buildRes.json().catch(() => ({}));
@@ -376,8 +176,8 @@ export function CasperWalletConnect() {
       }
       const { transaction } = (await buildRes.json()) as { transaction: unknown };
 
-      // 3. Ask the wallet to sign the transaction.
-      const signRes = await provider.sign(JSON.stringify(transaction), publicKey);
+      // 2. Wallet signs the transaction.
+      const signRes = await ctx.signTransaction(JSON.stringify(transaction));
       if (signRes.cancelled) {
         setAnchorError("Signing cancelled in the wallet.");
         return;
@@ -386,11 +186,11 @@ export function CasperWalletConnect() {
         throw new Error(signRes.error ?? "Wallet returned no signature.");
       }
 
-      // 4. Submit the signed transaction via the server.
+      // 3. Server submits the signed transaction.
       const submitRes = await fetch(`${PROXY_BASE}?endpoint=casper/submit-anchor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction, signature: signRes.signature, publicKey }),
+        body: JSON.stringify({ transaction, signature: signRes.signature, publicKey: pubKey }),
       });
       if (!submitRes.ok) {
         const body = await submitRes.json().catch(() => ({}));
@@ -398,25 +198,23 @@ export function CasperWalletConnect() {
       }
       const result = (await submitRes.json()) as { txHash: string; explorerUrl: string };
       setAnchorResult(result);
-      // Refresh balance after anchoring (gas was spent).
-      fetchBalance(publicKey);
+      fetchBalance(pubKey); // refresh balance after gas spend
     } catch (err) {
       setAnchorError(err instanceof Error ? err.message : "Anchoring failed.");
     } finally {
       setAnchoring(false);
     }
-  }, [status, anchorSubject, anchorThesis, anchorScore, fetchBalance]);
+  }, [ctx, status, anchorSubject, anchorThesis, anchorScore, fetchBalance]);
 
   const copyKey = useCallback(() => {
-    if (status.kind !== "connected") return;
-    navigator.clipboard.writeText(status.publicKey).then(() => {
+    if (!publicKey) return;
+    navigator.clipboard.writeText(publicKey).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  }, [status]);
+  }, [publicKey]);
 
   // ── Render ──
-  const connected = status.kind === "connected";
 
   return (
     <Card className="bg-surface/30 border-border/50">
@@ -425,21 +223,21 @@ export function CasperWalletConnect() {
           <Wallet className="w-3.5 h-3.5 text-signal" />
           Casper Wallet
           <span className="ml-auto text-[10px] text-foreground-dim">
-            {connected ? "Connected" : status.kind === "not-installed" ? "Not installed" : "Testnet"}
+            {connected ? "Connected" : status?.kind === "not-installed" ? "Not installed" : "Testnet"}
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[11px] text-foreground-muted leading-relaxed">
-          Connect your Casper Wallet to check your CSPR balance, sign a proof
-          message, and anchor your own conviction record to the live
-          ConvictionRegistry contract on Casper Testnet. The wallet extension
-          is the sole signer — no keys leave the browser.
+          Check your CSPR balance, sign a proof message, and anchor your own
+          conviction record to the live ConvictionRegistry contract on Casper
+          Testnet. Use the <span className="text-signal">Connect Casper</span>{" "}
+          button in the header to connect.
         </p>
 
         <AnimatePresence mode="wait">
-          {/* Loading — extension still injecting */}
-          {status.kind === "loading" && (
+          {/* Loading */}
+          {(!status || status.kind === "loading") && (
             <motion.div
               key="loading"
               initial={{ opacity: 0 }}
@@ -453,7 +251,7 @@ export function CasperWalletConnect() {
           )}
 
           {/* Not installed */}
-          {status.kind === "not-installed" && (
+          {status?.kind === "not-installed" && (
             <motion.div
               key="not-installed"
               initial={{ opacity: 0 }}
@@ -477,10 +275,10 @@ export function CasperWalletConnect() {
             </motion.div>
           )}
 
-          {/* Disconnected / locked / connecting → Connect button */}
-          {(status.kind === "disconnected" || status.kind === "locked" || status.kind === "connecting") && (
+          {/* Disconnected / locked / connecting → hint to use navbar */}
+          {(status?.kind === "disconnected" || status?.kind === "locked" || status?.kind === "connecting") && (
             <motion.div
-              key="connect"
+              key="connect-hint"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -492,36 +290,29 @@ export function CasperWalletConnect() {
                   Wallet is locked — unlock it, then connect.
                 </div>
               )}
-              <Button
-                size="sm"
-                variant="default"
-                onClick={connect}
-                disabled={status.kind === "connecting"}
-                className="w-full"
-              >
-                {status.kind === "connecting" ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    Connecting…
-                  </>
-                ) : (
-                  <>
-                    <Wallet className="w-3.5 h-3.5 mr-1.5" />
-                    Connect Casper Wallet
-                  </>
-                )}
-              </Button>
-              {error && (
+              {status.kind === "disconnected" && (
+                <div className="flex items-center gap-2 text-[11px] font-mono text-foreground-muted">
+                  <Wallet className="w-3.5 h-3.5 text-signal" />
+                  Click <span className="text-signal">Connect Casper</span> in the header to start.
+                </div>
+              )}
+              {status.kind === "connecting" && (
+                <div className="flex items-center gap-2 text-[11px] font-mono text-foreground-muted">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-signal" />
+                  Connecting…
+                </div>
+              )}
+              {ctx?.error && (
                 <p className="text-[10px] font-mono text-impatience flex items-center gap-1.5">
                   <AlertTriangle className="w-3 h-3 shrink-0" />
-                  {error}
+                  {ctx.error}
                 </p>
               )}
             </motion.div>
           )}
 
           {/* Connected → account + balance + actions */}
-          {status.kind === "connected" && (
+          {status?.kind === "connected" && (
             <motion.div
               key="connected"
               initial={{ opacity: 0 }}
@@ -723,26 +514,10 @@ export function CasperWalletConnect() {
                   </p>
                 )}
               </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <Button size="sm" variant="ghost" onClick={disconnect} className="text-foreground-muted">
-                  <Unlock className="w-3 h-3 mr-1.5" />
-                  Disconnect
-                </Button>
-              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </CardContent>
     </Card>
   );
-}
-
-// Casper Wallet throws errors with a numeric `code` when locked (1) or not
-// site-approved (2). We treat code 1 as "locked" so we can show a tailored
-// prompt instead of a generic failure.
-function isLockedError(err: unknown): boolean {
-  if (!err) return false;
-  const code = (err as { code?: number }).code;
-  return code === 1;
 }
