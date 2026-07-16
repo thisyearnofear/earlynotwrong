@@ -17,14 +17,17 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 | Odra `ConvictionRegistry` on Casper Testnet | Deployed |
 | MCP server (5 tools) | Live |
 | x402 paid paywall via cspr.cloud facilitator | Live |
-| Next.js dashboard | Live |
+| Next.js web app — landing page, dashboard, wallet analyzer | Live |
+| Cross-chain anchoring — Casper + Mantle + Aleo | Live |
 | Test suite (Vitest) | 12 files, ~2,820 lines |
 
 ---
 
 ## Live Links
 
-- **Dashboard** — https://earlynotwrong.vercel.app/agent
+- **Landing page** — https://earlynotwrong.vercel.app/
+- **Agent dashboard** — https://earlynotwrong.vercel.app/agent
+- **Wallet analyzer** — https://earlynotwrong.vercel.app/analyzer
 - **Casper contract package** — https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa
 - **MCP endpoint** — `POST http://144.202.117.160:31777/mcp`
 - **Agent API** — `GET http://144.202.117.160:31777/status`
@@ -95,9 +98,38 @@ The trust-decision query (`get_agent_reputation`) is free so evaluators can deci
 
 This makes the reputation marketplace **self-funding at the API-request level**.
 
-### 5. Next.js Dashboard
+### 5. Next.js Web App — 3-Page Architecture
 
-The agent dashboard surfaces live Casper status: contract hash, latest anchor, MCP query stats, and x402 fees collected. It also exposes a **Connect Casper Wallet** panel — any visitor with the Casper Wallet browser extension can connect their account in-browser, view their active public key and CSPR testnet balance, sign a proof message, and anchor their own conviction record to the live `ConvictionRegistry` contract directly from the browser. The server builds the transaction; the wallet signs it; the server submits it. The extension is the sole signer; no private keys leave the browser.
+The web app is structured as a guided narrative across three routes, each with a single job:
+
+#### Landing page (`/`)
+
+A single-narrative landing page that tells the product story in 4 acts and gets visitors to click "Enter the Dashboard". It fetches live agent status and conviction signals on mount, so a visitor sees real data before clicking through:
+
+- **Hero**: "Being early feels like being wrong." + live indicator ("Agent live · cycle 127 · 12m ago") + chain strip (Casper · Mantle · Aleo)
+- **4 Acts**: Score → Trade → Anchor → Verify, each card with a live data point (top signal scores, trade count, chain count, wallet link)
+- **Live conviction preview**: top 4 signals with scores and rationale from the current cycle
+- **Primary CTA**: "Enter the Dashboard" → `/agent`; secondary: "Wallet Analyzer" → `/analyzer`
+
+#### Agent dashboard (`/agent`)
+
+A 4-act guided scroll that mirrors the landing page's narrative but with full depth. Each act surfaces progressively more detail:
+
+- **Act 1 — Agent is live**: Orientation text + cycle timeline strip (`✓ data → ✓ score → ✓ manage → ✓ execute → ✓ anchor → ✓ narrate · next in 47m`) + 4 status cards (portfolio, guardrails, performance, behavioral self-score)
+- **Act 2 — It scores conviction**: Conviction Signals card (6-factor breakdown per token, regime score, signal weights) + Conviction Ledger card (held positions with the conviction score that motivated each entry). Includes the **"Early, Not Wrong" callout** — when a position was held through ≥10% drawdown and is now profitable, a highlighted box shows the full arc: `FET · scored 72 → entered cycle 124 → dipped −15.2% → held 3 cycles → now +38.4%`. This is the product thesis made visible in one data point.
+- **Act 3 — It anchors on-chain**: Multi-chain anchor panel showing all three chains (Casper, Mantle, Aleo) with equal visual weight — each with its own colored status card, latest tx hash, and explorer link. Chain legend explains why three chains: `Casper = public registry · Mantle = EVM mirror · Aleo = privacy proof`. Rolling history list below with per-chain color coding.
+- **Act 4 — Anchor your own**: Casper Wallet connect panel (balance, anchor form pre-filled from the agent's live conviction data, sign proof) + Agent-to-Agent Reputation card (MCP query stats, x402 fees collected, CROO CAP services). The wallet extension is the sole signer; no private keys leave the browser.
+- **Supporting detail**: Recent trades, market data (Fear & Greed, funding rates, BTC dominance), AI market narrative, pipeline architecture diagram, resource links.
+
+The same `conviction-core` framework that scores the agent's trades also powers the wallet analyzer — this connection is surfaced explicitly in the orientation text.
+
+#### Wallet analyzer (`/analyzer`)
+
+The behavioral wallet analyzer — a separate tool that applies the same conviction lens to any wallet. Users paste a BSC address, and the analyzer fetches on-chain transaction history, builds a canonical ledger, and runs `conviction-core`'s `calculateBehavioralMetrics` to produce a behavioral conviction score, archetype classification, and position-by-position analysis. Includes showcase wallets, deep-link support (`?wallet=0x...`), and a "Verify & Anchor" disclosure that lets users anchor their analysis to Casper/Mantle.
+
+#### Shared design system
+
+All three pages share a distinctive aesthetic: a tunnel-gradient background, a signal/patience/impatience color system (green/purple/red), monospace labels with uppercase tracking, glass-panel cards with subtle borders, and staggered motion reveals. The visual language is consistent across the landing page, dashboard, and analyzer.
 
 ---
 
@@ -133,9 +165,9 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 ## Why This Fits the Buildathon
 
-- **Agentic AI**: the agent autonomously fetches market data, scores conviction, manages positions, executes trades, and anchors theses to Casper without human intervention.
+- **Agentic AI**: the agent autonomously fetches market data, scores conviction, manages positions, executes trades, and anchors theses to Casper without human intervention. The dashboard surfaces the full cycle in real time — conviction signals, held positions, on-chain anchors, and the agent's own behavioral self-score.
 - **DeFi**: the agent trades BSC assets with self-custody execution, and the reputation layer applies directly to DeFi agents (yield bots, oracles, treasury managers).
-- **Casper-native**: uses Odra, MCP, x402, CSPR.cloud, and casper-js-sdk — the toolkit the buildathon explicitly promotes.
+- **Casper-native**: uses Odra, MCP, x402, CSPR.cloud, and casper-js-sdk — the toolkit the buildathon explicitly promotes. Casper is the primary anchor chain; the agent also mirrors to Mantle (EVM verification) and commits to Aleo (privacy-preserving thesis proof), giving each chain a distinct role in the conviction stack.
 - **Cannot be replicated on EVM**: the x402 + MCP + facilitator combination is Casper's native agent-economy stack. We document this explicitly in `docs/CASPER_INTEGRATION.md`.
 
 ---

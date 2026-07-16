@@ -1045,6 +1045,59 @@ function Dashboard({
 
             {conviction && conviction.signals.length > 0 ? (
               <div className="space-y-1.5">
+                {/* ── 6-factor breakdown bar chart for the top signal ── */}
+                {(() => {
+                  const top = conviction.signals[0];
+                  const factors = [
+                    { label: "Contrarian", value: top.breakdown.contrarian, color: "bg-signal", text: "text-signal" },
+                    { label: "RSI", value: top.breakdown.rsi, color: "bg-cyan-400", text: "text-cyan-400" },
+                    { label: "Quality", value: top.breakdown.quality, color: "bg-patience", text: "text-patience" },
+                    { label: "Regime", value: top.breakdown.regime, color: "bg-blue-400", text: "text-blue-400" },
+                    { label: "Holders", value: top.breakdown.holders, color: "bg-amber-400", text: "text-amber-400" },
+                    ...(top.breakdown.volatilityPenalty > 0
+                      ? [{ label: "Vol penalty", value: -top.breakdown.volatilityPenalty, color: "bg-impatience", text: "text-impatience" }]
+                      : []),
+                    ...(top.breakdown.news !== 0
+                      ? [{ label: "News", value: top.breakdown.news, color: top.breakdown.news > 0 ? "bg-emerald-400" : "bg-impatience", text: top.breakdown.news > 0 ? "text-emerald-400" : "text-impatience" }]
+                      : []),
+                  ];
+                  const maxAbs = Math.max(...factors.map((f) => Math.abs(f.value)), 30);
+                  return (
+                    <div className="p-3 rounded-lg bg-surface/50 border border-border/30 mb-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim">
+                          {top.symbol} · score composition
+                        </span>
+                        <span className="text-sm font-bold tabular-nums text-signal ml-auto">
+                          {top.score}
+                        </span>
+                      </div>
+                      {/* Stacked horizontal bar — each factor proportional to its contribution */}
+                      <div className="flex h-3 rounded-full overflow-hidden bg-surface/60 gap-px">
+                        {factors.map((f, i) => (
+                          <div
+                            key={i}
+                            className={f.color}
+                            style={{ width: `${(Math.abs(f.value) / maxAbs) * 100}%` }}
+                            title={`${f.label}: ${f.value > 0 ? "+" : ""}${f.value}`}
+                          />
+                        ))}
+                      </div>
+                      {/* Factor labels with values */}
+                      <div className="flex items-center gap-2 flex-wrap mt-2 text-[9px] font-mono">
+                        {factors.map((f, i) => (
+                          <span key={i} className="flex items-center gap-1">
+                            <span className={`w-1.5 h-1.5 rounded-full ${f.color}`} />
+                            <span className="text-foreground-dim">{f.label}</span>
+                            <span className={f.text}>
+                              {f.value > 0 ? "+" : ""}{f.value}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {conviction.signals.slice(0, 6).map((s, i) => (
                   <motion.div
                     key={s.symbol}

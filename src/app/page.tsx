@@ -45,6 +45,28 @@ interface ConvictionSignal {
   rationale: string;
 }
 
+interface HeldPosition {
+  symbol: string;
+  entryCycle: number;
+  cyclesHeld: number;
+  maxUnderwaterPercent: number;
+  amountUsd: number;
+  stuck?: boolean;
+}
+
+interface PositionVerdict {
+  symbol: string;
+  unrealizedPnLPercent: number;
+  heldThroughDrawdown: boolean;
+  reason: string;
+}
+
+interface ConvictionResponse {
+  signals: ConvictionSignal[];
+  heldPositions: HeldPosition[];
+  positionVerdicts: PositionVerdict[];
+}
+
 function timeAgo(epochMs: number | null): string {
   if (!epochMs) return "";
   const diff = Date.now() - epochMs;
@@ -93,8 +115,9 @@ const ACTS = [
 export default function Home() {
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [signals, setSignals] = useState<ConvictionSignal[]>([]);
+  const [convictionData, setConvictionData] = useState<ConvictionResponse | null>(null);
 
-  // Fetch agent live status + top conviction signals
+  // Fetch agent live status + conviction data (signals + held positions + verdicts)
   useEffect(() => {
     let cancelled = false;
 
@@ -110,7 +133,8 @@ export default function Home() {
           setAgentStatus(data as AgentStatus);
         }
         if (!cancelled && convRes.ok) {
-          const data = (await convRes.json()) as { signals: ConvictionSignal[] };
+          const data = (await convRes.json()) as ConvictionResponse;
+          setConvictionData(data);
           if (data.signals?.length) setSignals(data.signals.slice(0, 4));
         }
       } catch {
@@ -122,6 +146,24 @@ export default function Home() {
     const id = setInterval(fetchAll, 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  // Find a "conviction proven" position — held through ≥10% drawdown, now profitable
+  const convictionProven = convictionData?.heldPositions
+    .map((p) => {
+      const verdict = convictionData.positionVerdicts.find(
+        (v) => v.symbol === p.symbol
+      );
+      const signal = convictionData.signals.find(
+        (s) => s.symbol === p.symbol
+      );
+      const isProven =
+        verdict?.heldThroughDrawdown &&
+        p.maxUnderwaterPercent <= -10 &&
+        (verdict?.unrealizedPnLPercent ?? 0) > 0 &&
+        !p.stuck;
+      return { position: p, verdict, signal, isProven };
+    })
+    .find((x) => x.isProven);
 
   const isLive = agentStatus?.status === "running";
 
@@ -310,6 +352,72 @@ export default function Home() {
             })}
           </div>
         </section>
+
+        {/* ── "Early, Not Wrong" — the product thesis proven live ──────────── */}
+        {convictionProven && convictionProven.verdict && (
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55, duration: 0.4 }}
+            className="relative z-10 mb-16"
+          >
+            <div className="rounded-2xl border-2 border-patience/40 bg-patience/8 p-6 shadow-[0_0_30px_-10px_var(--patience-dim)]">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-patience">
+                  ◆ Early, Not Wrong
+                </span>
+                <span className="text-[10px] font-mono text-foreground-dim">
+                  — conviction proven, live on-chain
+                </span>
+              </div>
+
+              {/* The full arc: scored → entered → dipped → held → now */}
+              <div className="flex items-center gap-2 flex-wrap text-sm md:text-base font-mono mb-3">
+                <span className="text-foreground font-semibold text-lg">
+                  {convictionProven.position.symbol}
+                </span>
+                {convictionProven.signal && (
+                  <>
+                    <span className="text-foreground-dim">·</span>
+                    <span className="text-signal" title={convictionProven.signal.rationale}>
+                      scored {convictionProven.signal.score}
+                    </span>
+                  </>
+                )}
+                <span className="text-foreground-dim">→</span>
+                <span className="text-foreground-muted">
+                  entered cycle {convictionProven.position.entryCycle}
+                </span>
+                <span className="text-foreground-dim">→</span>
+                <span className="text-impatience font-semibold">
+                  dipped −{convictionProven.position.maxUnderwaterPercent.toFixed(1)}%
+                </span>
+                <span className="text-foreground-dim">→</span>
+                <span className="text-patience font-semibold">
+                  held {convictionProven.position.cyclesHeld} cycles
+                </span>
+                <span className="text-foreground-dim">→</span>
+                <span className="text-patience font-bold text-lg">
+                  now +{convictionProven.verdict.unrealizedPnLPercent.toFixed(1)}%
+                </span>
+              </div>
+
+              {convictionProven.verdict.reason && (
+                <p className="text-[11px] md:text-xs font-mono text-foreground-muted leading-relaxed max-w-2xl">
+                  {convictionProven.verdict.reason}
+                </p>
+              )}
+
+              <Link
+                href="/agent"
+                className="mt-4 inline-flex items-center gap-1 text-[11px] font-mono text-signal hover:underline"
+              >
+                See the full conviction ledger
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </motion.section>
+        )}
 
         {/* ── Live conviction preview ──────────────────────────────────────── */}
         {signals.length > 0 && (
