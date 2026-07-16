@@ -57,6 +57,18 @@ import { AnimatedScore } from "@/components/ui/animated-score";
 import { EthosReputationSkeleton } from "@/components/ui/ethos-skeleton";
 import Link from "next/link";
 
+/** Human-readable "x ago" for an epoch-ms timestamp. */
+function timeAgo(epochMs: number): string {
+  const diff = Date.now() - epochMs;
+  if (diff < 60_000) return "just now";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function Home() {
   const {
     analyzeWallet,
@@ -88,6 +100,26 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"analyzer" | "strategist">("analyzer");
 
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+
+  // ── Agent live status (for the "Agent is live" indicator on the hero) ──
+  const [agentLive, setAgentLive] = useState<{ status: string; lastRunAt: number | null; cycle: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch("/api/agent/proxy?endpoint=status");
+        if (!res.ok) return;
+        const data = (await res.json()) as { status: string; lastRunAt: number | null; cycle: number };
+        if (!cancelled) setAgentLive(data);
+      } catch {
+        /* best-effort — indicator just won't show */
+      }
+    };
+    fetchStatus();
+    const id = setInterval(fetchStatus, 60_000); // refresh every minute
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   const dailyLimit = useMemo(
     () => getFeatureAccess(ethosScore?.score ?? 0).dailyAnalysisLimit,
@@ -264,6 +296,21 @@ export default function Home() {
                 and anchors every decision on-chain across Mantle, Casper &
                 Aleo.
               </span>
+              {/* Live indicator */}
+              {agentLive && agentLive.status === "running" && (
+                <div className="flex items-center gap-1.5 text-[9px] font-mono text-patience">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-patience opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-patience" />
+                  </span>
+                  <span className="uppercase tracking-wider">Agent live</span>
+                  {agentLive.lastRunAt && (
+                    <span className="text-foreground-dim">
+                      · cycle {agentLive.cycle} · {timeAgo(agentLive.lastRunAt)}
+                    </span>
+                  )}
+                </div>
+              )}
               <span className="text-[10px] font-mono text-signal mt-auto">
                 Visit Dashboard →
               </span>

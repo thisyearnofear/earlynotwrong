@@ -97,7 +97,13 @@ export function CasperWalletConnect() {
   const [anchorThesis, setAnchorThesis] = useState("Contrarian entry: quality AI asset down 7d during fear");
   const [anchorScore, setAnchorScore] = useState(72);
   const [anchoring, setAnchoring] = useState(false);
-  const [anchorResult, setAnchorResult] = useState<{ txHash: string; explorerUrl: string } | null>(null);
+  const [anchorResult, setAnchorResult] = useState<{
+    txHash: string;
+    explorerUrl: string;
+    subject: string;
+    score: number;
+    archetype: string;
+  } | null>(null);
   const [anchorError, setAnchorError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
@@ -256,7 +262,12 @@ export function CasperWalletConnect() {
         throw new Error(body.error || `Submit failed: HTTP ${submitRes.status}`);
       }
       const result = (await submitRes.json()) as { txHash: string; explorerUrl: string };
-      setAnchorResult(result);
+      setAnchorResult({
+        ...result,
+        subject: anchorSubject,
+        score: anchorScore,
+        archetype: archetypeForScore(anchorScore),
+      });
       fetchBalance(pubKey); // refresh balance after gas spend
     } catch (err) {
       setAnchorError(err instanceof Error ? err.message : "Anchoring failed.");
@@ -575,21 +586,49 @@ export function CasperWalletConnect() {
                   )}
                 </Button>
                 {anchorResult && (
-                  <div className="rounded-lg border border-patience/40 bg-patience/5 p-2.5 space-y-1">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-patience uppercase tracking-wider">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Anchored successfully
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="rounded-xl border-2 border-patience/50 bg-patience/10 p-4 space-y-3 shadow-[0_0_25px_-8px_var(--patience-dim)]"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-mono text-patience uppercase tracking-wider">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Conviction record anchored to Casper Testnet
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-surface/40 border border-border/30 p-2">
+                        <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">Subject</p>
+                        <p className="text-[11px] font-mono text-foreground truncate" title={anchorResult.subject}>
+                          {anchorResult.subject}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-surface/40 border border-border/30 p-2">
+                        <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">Score</p>
+                        <p className="text-lg font-bold font-mono text-signal tabular-nums">
+                          {anchorResult.score}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-surface/40 border border-border/30 p-2">
+                        <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">Archetype</p>
+                        <p className="text-[9px] font-mono text-foreground-muted leading-tight">
+                          {anchorResult.archetype}
+                        </p>
+                      </div>
                     </div>
                     <a
                       href={anchorResult.explorerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[10px] font-mono text-signal hover:underline"
+                      className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg border border-signal/40 bg-signal/10 text-signal text-[11px] font-mono hover:bg-signal/20 transition-colors"
                     >
-                      {anchorResult.txHash.slice(0, 20)}…
-                      <ExternalLink className="w-2.5 h-2.5" />
+                      View transaction on cspr.live
+                      <ExternalLink className="w-3 h-3" />
                     </a>
-                  </div>
+                    <p className="text-[9px] font-mono text-foreground-dim text-center break-all">
+                      {anchorResult.txHash}
+                    </p>
+                  </motion.div>
                 )}
                 {anchorError && (
                   <p className="text-[10px] font-mono text-impatience flex items-center gap-1.5">
