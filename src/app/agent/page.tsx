@@ -1531,59 +1531,16 @@ function Dashboard({
         </Card>
       </motion.div>
 
-      {/* Row 5: Demo Video + Links */}
+      {/* Row 5: Links */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.44, duration: 0.4 }}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
       >
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.44, duration: 0.35 }}
-        >
-          <Card className="bg-surface/30 border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-signal" />
-              Demo Recording
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg overflow-hidden border border-border/50 bg-black">
-              {/* Inline asciinema embed — click play to watch in-place.
-                  No autoplay (intrusive). Fallback link opens the player full-page. */}
-              <iframe
-                src="https://asciinema.org/a/ox0AlPA1AN7uwfWJ/embed?preload=1&autoplay=0&speed=1&theme=monokai"
-                title="Early, Not Wrong — live dual-chain anchoring demo"
-                className="w-full block"
-                style={{ height: 380, border: 0 }}
-                allow="autoplay; fullscreen"
-              />
-              <div className="px-4 py-3 flex items-center justify-between gap-3 border-t border-border/50 bg-surface/40">
-                <p className="text-[11px] text-foreground-muted font-mono">
-                  pm2 status · /status · /conviction.anchorResults (Mantle + Casper) · live log
-                </p>
-                <a
-                  href="https://asciinema.org/a/ox0AlPA1AN7uwfWJ"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-foreground-muted hover:text-signal inline-flex items-center gap-1 shrink-0"
-                >
-                  Open full <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.48, duration: 0.35 }}
         >
         {/* Resources — collapsed by default, shows count of links when closed */}
         <details className="group">
