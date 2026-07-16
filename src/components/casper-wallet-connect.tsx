@@ -7,12 +7,16 @@
  * (asynchronously — the content script loads after the page). This component
  * polls for it, exposes a Connect button, keeps the UI in sync with wallet
  * lifecycle events (Connected / Disconnected / ActiveKeyChanged / Locked /
- * Unlocked), and offers a "Sign message" action that proves the connection is
- * live end-to-end (the wallet pops a signing prompt and returns a signature).
+ * Unlocked), and provides three user-facing actions:
  *
- * No server round-trip is required for connect or sign — the extension is the
- * sole signer. The public key it returns is the canonical Casper account
- * identity (the same hex shown on testnet.cspr.live).
+ *   1. Sign proof message — proves the connection is live end-to-end.
+ *   2. Balance — queries the connected account's CSPR testnet balance via
+ *      the agent server proxy (CSPR_CLOUD_TOKEN stays server-side).
+ *   3. Anchor to Casper — builds an anchor_conviction transaction on the
+ *      server, signs it with the wallet, and submits it to the live
+ *      ConvictionRegistry contract. The user pays gas from their own account.
+ *
+ * The extension is the sole signer — no private keys leave the browser.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -31,6 +35,9 @@ import {
   KeyRound,
   ShieldCheck,
   AlertTriangle,
+  Coins,
+  Anchor,
+  RefreshCw,
 } from "lucide-react";
 
 // ─── Casper Wallet provider types ───────────────────────────────────────────
@@ -87,6 +94,7 @@ const EVENT = {
 
 const CASPER_WALLET_INSTALL_URL = "https://www.casperwallet.io/";
 const CASPER_TESTNET_EXPLORER = "https://testnet.cspr.live";
+const PROXY_BASE = "/api/agent/proxy";
 
 type Status =
   | { kind: "loading" } // waiting for the extension to inject
@@ -101,13 +109,45 @@ function shortKey(hex: string): string {
   return `${hex.slice(0, 8)}…${hex.slice(-6)}`;
 }
 
+/** SHA-256 a string and return 0x-prefixed 32-byte hex. The contract stores
+ *  any 32 bytes; we use SHA-256 (available natively via crypto.subtle) rather
+ *  than keccak256 to avoid bundling a hash library in the browser. */
+async function hashTo0x32(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return "0x" + Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function archetypeForScore(score: number): string {
+  if (score >= 80) return "DEEP FEAR — PRIME CONTRARIAN";
+  if (score >= 60) return "FEAR — CONTRARIAN WINDOW";
+  if (score >= 40) return "NEUTRAL — WAIT";
+  if (score >= 20) return "GREED — CAUTION";
+  return "EXTREME GREED — AVOID";
+}
+
 export function CasperWalletConnect() {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Sign proof state
   const [signing, setSigning] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [signError, setSignError] = useState<string | null>(null);
+
+  // Balance state
+  const [balance, setBalance] = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  // Anchor state
+  const [anchorSubject, setAnchorSubject] = useState("FET — Fetch.ai on BSC");
+  const [anchorThesis, setAnchorThesis] = useState("Contrarian entry: quality AI asset down 7d during fear");
+  const [anchorScore, setAnchorScore] = useState(72);
+  const [anchoring, setAnchoring] = useState(false);
+  const [anchorResult, setAnchorResult] = useState<{ txHash: string; explorerUrl: string } | null>(null);
+  const [anchorError, setAnchorError] = useState<string | null>(null);
 
   // ── Resolve the injected provider (async) ──
   useEffect(() => {
@@ -211,6 +251,35 @@ export function CasperWalletConnect() {
     };
   }, [status]);
 
+  // ── Fetch balance when connected ──
+  const fetchBalance = useCallback(async (publicKey: string) => {
+    setBalanceLoading(true);
+    setBalanceError(null);
+    try {
+      const res = await fetch(`${PROXY_BASE}?endpoint=casper/balance&publicKey=${publicKey}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { balanceCspr: string; balanceMotes: string };
+      setBalance(data.balanceCspr);
+    } catch (err) {
+      setBalanceError(err instanceof Error ? err.message : "Failed to fetch balance.");
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, []);
+
+  // Auto-fetch balance on connect
+  useEffect(() => {
+    if (status.kind === "connected") {
+      fetchBalance(status.publicKey);
+    } else {
+      setBalance(null);
+      setBalanceError(null);
+    }
+  }, [status, fetchBalance]);
+
   const connect = useCallback(async () => {
     if (status.kind !== "disconnected" && status.kind !== "locked") return;
     const provider = status.provider;
@@ -248,6 +317,8 @@ export function CasperWalletConnect() {
     setStatus({ kind: "disconnected", provider });
     setSignature(null);
     setSignError(null);
+    setAnchorResult(null);
+    setAnchorError(null);
   }, [status]);
 
   const signProof = useCallback(async () => {
@@ -275,6 +346,67 @@ export function CasperWalletConnect() {
     }
   }, [status]);
 
+  const anchorToCasper = useCallback(async () => {
+    if (status.kind !== "connected") return;
+    const { provider, publicKey } = status;
+    setAnchoring(true);
+    setAnchorError(null);
+    setAnchorResult(null);
+    try {
+      // 1. Hash subject + thesis to 32-byte hex (SHA-256 via crypto.subtle).
+      const subjectHash = await hashTo0x32(anchorSubject);
+      const thesisHash = await hashTo0x32(anchorThesis);
+      const record = {
+        subjectHash,
+        thesisHash,
+        convictionScore: anchorScore,
+        archetype: archetypeForScore(anchorScore),
+        timestamp: Date.now(),
+      };
+
+      // 2. Ask the server to build the unsigned transaction.
+      const buildRes = await fetch(`${PROXY_BASE}?endpoint=casper/build-anchor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKey, record }),
+      });
+      if (!buildRes.ok) {
+        const body = await buildRes.json().catch(() => ({}));
+        throw new Error(body.error || `Build failed: HTTP ${buildRes.status}`);
+      }
+      const { transaction } = (await buildRes.json()) as { transaction: unknown };
+
+      // 3. Ask the wallet to sign the transaction.
+      const signRes = await provider.sign(JSON.stringify(transaction), publicKey);
+      if (signRes.cancelled) {
+        setAnchorError("Signing cancelled in the wallet.");
+        return;
+      }
+      if (signRes.error || !signRes.signature) {
+        throw new Error(signRes.error ?? "Wallet returned no signature.");
+      }
+
+      // 4. Submit the signed transaction via the server.
+      const submitRes = await fetch(`${PROXY_BASE}?endpoint=casper/submit-anchor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transaction, signature: signRes.signature, publicKey }),
+      });
+      if (!submitRes.ok) {
+        const body = await submitRes.json().catch(() => ({}));
+        throw new Error(body.error || `Submit failed: HTTP ${submitRes.status}`);
+      }
+      const result = (await submitRes.json()) as { txHash: string; explorerUrl: string };
+      setAnchorResult(result);
+      // Refresh balance after anchoring (gas was spent).
+      fetchBalance(publicKey);
+    } catch (err) {
+      setAnchorError(err instanceof Error ? err.message : "Anchoring failed.");
+    } finally {
+      setAnchoring(false);
+    }
+  }, [status, anchorSubject, anchorThesis, anchorScore, fetchBalance]);
+
   const copyKey = useCallback(() => {
     if (status.kind !== "connected") return;
     navigator.clipboard.writeText(status.publicKey).then(() => {
@@ -299,9 +431,10 @@ export function CasperWalletConnect() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[11px] text-foreground-muted leading-relaxed">
-          Connect your Casper Wallet to verify ownership of a Casper account and
-          sign a proof message. The wallet extension is the sole signer — no
-          keys leave the browser.
+          Connect your Casper Wallet to check your CSPR balance, sign a proof
+          message, and anchor your own conviction record to the live
+          ConvictionRegistry contract on Casper Testnet. The wallet extension
+          is the sole signer — no keys leave the browser.
         </p>
 
         <AnimatePresence mode="wait">
@@ -387,7 +520,7 @@ export function CasperWalletConnect() {
             </motion.div>
           )}
 
-          {/* Connected → account + actions */}
+          {/* Connected → account + balance + actions */}
           {status.kind === "connected" && (
             <motion.div
               key="connected"
@@ -396,6 +529,7 @@ export function CasperWalletConnect() {
               exit={{ opacity: 0 }}
               className="space-y-3"
             >
+              {/* Account info */}
               <div className="rounded-lg bg-surface/40 border border-border/40 p-3 space-y-2">
                 <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
                   <CheckCircle2 className="w-3 h-3 text-patience" />
@@ -417,6 +551,32 @@ export function CasperWalletConnect() {
                   >
                     {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-patience" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
+                </div>
+                {/* Balance row */}
+                <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                  <Coins className="w-3.5 h-3.5 text-patience shrink-0" />
+                  <span className="text-[11px] font-mono text-foreground-muted">Balance</span>
+                  <span className="text-[11px] font-mono text-foreground tabular-nums ml-auto">
+                    {balanceLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline" />
+                    ) : balance !== null ? (
+                      `${balance} CSPR`
+                    ) : balanceError ? (
+                      <span className="text-impatience">{balanceError}</span>
+                    ) : (
+                      "—"
+                    )}
+                  </span>
+                  {!balanceLoading && (
+                    <button
+                      type="button"
+                      onClick={() => fetchBalance(status.publicKey)}
+                      className="text-foreground-muted hover:text-signal transition-colors shrink-0"
+                      title="Refresh balance"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
                 <a
                   href={`${CASPER_TESTNET_EXPLORER}/account/${status.publicKey}`}
@@ -466,6 +626,100 @@ export function CasperWalletConnect() {
                   <p className="text-[10px] font-mono text-impatience flex items-center gap-1.5">
                     <AlertTriangle className="w-3 h-3 shrink-0" />
                     {signError}
+                  </p>
+                )}
+              </div>
+
+              {/* Anchor to Casper */}
+              <div className="space-y-2 pt-2 border-t border-border/30">
+                <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+                  <Anchor className="w-3 h-3 text-signal" />
+                  Anchor conviction to Casper
+                </div>
+                <p className="text-[10px] text-foreground-muted leading-relaxed">
+                  Build a transaction on the server, sign it with your wallet,
+                  and submit it to the live ConvictionRegistry. You pay gas
+                  from your connected account.
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Subject</label>
+                    <input
+                      type="text"
+                      value={anchorSubject}
+                      onChange={(e) => setAnchorSubject(e.target.value)}
+                      disabled={anchoring}
+                      className="w-full mt-0.5 px-2 py-1.5 rounded bg-surface/60 border border-border/50 text-[11px] font-mono text-foreground focus:outline-none focus:border-signal/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Thesis</label>
+                    <input
+                      type="text"
+                      value={anchorThesis}
+                      onChange={(e) => setAnchorThesis(e.target.value)}
+                      disabled={anchoring}
+                      className="w-full mt-0.5 px-2 py-1.5 rounded bg-surface/60 border border-border/50 text-[11px] font-mono text-foreground focus:outline-none focus:border-signal/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
+                      Conviction score: <span className="text-signal">{anchorScore}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={anchorScore}
+                      onChange={(e) => setAnchorScore(Number(e.target.value))}
+                      disabled={anchoring}
+                      className="w-full mt-1 accent-signal"
+                    />
+                    <p className="text-[10px] font-mono text-foreground-dim mt-0.5">
+                      Archetype: {archetypeForScore(anchorScore)}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={anchorToCasper}
+                  disabled={anchoring}
+                  className="w-full"
+                >
+                  {anchoring ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Awaiting wallet approval…
+                    </>
+                  ) : (
+                    <>
+                      <Anchor className="w-3.5 h-3.5 mr-1.5" />
+                      Anchor to Casper Testnet
+                    </>
+                  )}
+                </Button>
+                {anchorResult && (
+                  <div className="rounded-lg border border-patience/40 bg-patience/5 p-2.5 space-y-1">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-patience uppercase tracking-wider">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Anchored successfully
+                    </div>
+                    <a
+                      href={anchorResult.explorerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] font-mono text-signal hover:underline"
+                    >
+                      {anchorResult.txHash.slice(0, 20)}…
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                )}
+                {anchorError && (
+                  <p className="text-[10px] font-mono text-impatience flex items-center gap-1.5">
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    {anchorError}
                   </p>
                 )}
               </div>

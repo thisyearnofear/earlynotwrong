@@ -93,6 +93,21 @@
       "path": "/api/cap/status",
       "port": 31777,
       "public": false
+    },
+    {
+      "path": "/api/casper/balance",
+      "port": 31777,
+      "public": false
+    },
+    {
+      "path": "/api/casper/build-anchor",
+      "port": 31777,
+      "public": false
+    },
+    {
+      "path": "/api/casper/submit-anchor",
+      "port": 31777,
+      "public": false
     }
   ],
   "scripts": {

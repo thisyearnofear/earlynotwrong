@@ -36,7 +36,9 @@ const {
   HttpHandler,
   KeyAlgorithm,
   PrivateKey,
+  PublicKey,
   RpcClient,
+  Transaction,
 } = casperSdk;
 type CLValue = CLValueT;
 type PrivateKey = PrivateKeyT;
@@ -498,6 +500,87 @@ function decodeAnchoredEvent(bytes: Uint8Array): AnchoredRecord | null {
     anchoredBy: addr.hex,
     explorerUrl: undefined,
   };
+}
+
+// =============================================================================
+// Exported helpers — used by the HTTP server for browser-wallet flows
+// (balance query, build-anchor, submit-anchor). These keep CSPR_CLOUD_TOKEN
+// and the contract config on the server side; the browser only signs.
+// =============================================================================
+
+/**
+ * Query the CSPR balance (in motes) of any public key via the cspr.cloud RPC.
+ * Returns 0n for unfunded or non-existent accounts. Does NOT require the
+ * operator PEM — only CSPR_CLOUD_TOKEN.
+ */
+export async function queryBalance(publicKeyHex: string): Promise<bigint> {
+  const token = process.env.CSPR_CLOUD_TOKEN;
+  if (!token) throw new Error("CSPR_CLOUD_TOKEN not set");
+  try {
+    const res = await rpc("query_balance", {
+      purse_identifier: { main_purse_under_public_key: publicKeyHex },
+    }, token);
+    return BigInt(res?.balance ?? "0");
+  } catch {
+    // Account doesn't exist yet on-chain → balance is 0.
+    return 0n;
+  }
+}
+
+/**
+ * Build an unsigned anchor_conviction Transaction for a given caller's public
+ * key. The server builds it (it has the contract hash + chain config); the
+ * browser signs it with the Casper Wallet extension. Returns the transaction
+ * as JSON (what the wallet's `sign()` method expects).
+ */
+export function buildAnchorTransaction(
+  record: ConvictionRecord,
+  callerPublicKeyHex: string,
+): unknown {
+  const contractHash = getRegistryHash();
+  const callerPublicKey = PublicKey.fromHex(callerPublicKeyHex);
+
+  const args = Args.fromMap({
+    subject_hash: hexToBytesArg(record.subjectHash),
+    thesis_hash: hexToBytesArg(record.thesisHash),
+    conviction_score: CLValue.newCLUint8(Math.min(100, Math.max(0, record.convictionScore))),
+    archetype: CLValue.newCLString(sanitizeAscii(record.archetype)),
+    timestamp: CLValue.newCLUint64(BigInt(record.timestamp)),
+  });
+
+  const transaction = new ContractCallBuilder()
+    .from(callerPublicKey)
+    .byPackageHash(contractHash)
+    .entryPoint("anchor_conviction")
+    .runtimeArgs(args)
+    .chainName(AGENT_CONFIG.casper.testnet.chainName)
+    .payment(Number(AGENT_CONFIG.casper.testnet.paymentMotes))
+    .build();
+
+  return transaction.toJSON();
+}
+
+/**
+ * Reconstruct a Transaction from JSON, attach a wallet-provided signature,
+ * and submit it to the Casper Testnet RPC. Returns the deploy/transaction hash.
+ */
+export async function submitSignedTransaction(
+  transactionJson: unknown,
+  signatureHex: string,
+  signerPublicKeyHex: string,
+): Promise<{ txHash: string; explorerUrl: string }> {
+  const transaction = Transaction.fromJSON(transactionJson);
+  const sigBytes = hexToUint8(signatureHex);
+  const pubKey = PublicKey.fromHex(signerPublicKeyHex);
+  transaction.setSignature(sigBytes, pubKey);
+
+  const client = buildRpcClient();
+  const result = await client.putTransaction(transaction);
+  const txHash = result.transactionHash?.transactionV1?.toHex?.()
+    ?? result.transactionHash?.deploy?.toHex?.()
+    ?? "";
+  if (!txHash) throw new Error("RPC accepted the transaction but returned no hash");
+  return { txHash, explorerUrl: getCasperExplorerTxUrl(txHash) };
 }
 
 // ─── Byte primitives ─────────────────────────────────────────────────────────

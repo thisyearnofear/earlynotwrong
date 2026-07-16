@@ -97,7 +97,7 @@ This makes the reputation marketplace **self-funding at the API-request level**.
 
 ### 5. Next.js Dashboard
 
-The agent dashboard surfaces live Casper status: contract hash, latest anchor, MCP query stats, and x402 fees collected. It also exposes a **Connect Casper Wallet** panel — any visitor with the Casper Wallet browser extension can connect their account in-browser, view their active public key, and sign a proof message to verify the connection end-to-end. The extension is the sole signer; no private keys leave the browser.
+The agent dashboard surfaces live Casper status: contract hash, latest anchor, MCP query stats, and x402 fees collected. It also exposes a **Connect Casper Wallet** panel — any visitor with the Casper Wallet browser extension can connect their account in-browser, view their active public key and CSPR testnet balance, sign a proof message, and anchor their own conviction record to the live `ConvictionRegistry` contract directly from the browser. The server builds the transaction; the wallet signs it; the server submits it. The extension is the sole signer; no private keys leave the browser.
 
 ---
 

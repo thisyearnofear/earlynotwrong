@@ -96,16 +96,59 @@ Visitor (browser)
        ├─ requestConnection()      → wallet popup, user approves
        ├─ getActivePublicKey()     → Ed25519/Secp256k1 public key hex
        ├─ signMessage(msg, pubKey) → wallet signs, returns signature (proof)
+       ├─ sign(txJson, pubKey)     → wallet signs transaction, returns signature
        └─ events: Connected / Disconnected / ActiveKeyChanged / Locked / Unlocked
 ```
 
 The component polls for the injected provider (the extension's content script loads after the
 page), syncs UI to all wallet lifecycle events, shows the active account's public key with a
-link to its `testnet.cspr.live` explorer page, and offers a **Sign proof message** action that
-proves the connection is live end-to-end (the wallet pops a signing prompt and returns a
-verifiable signature). The extension is the sole signer — no private keys ever leave the
-browser. This is the user-facing Casper Wallet integration; the operator PEM anchoring is the
-server-side counterpart.
+link to its `testnet.cspr.live` explorer page, and provides three user-facing actions:
+
+1. **Sign proof message** — proves the connection is live end-to-end (the wallet pops a signing
+   prompt and returns a verifiable signature).
+2. **CSPR balance** — queries the connected account's testnet balance via the agent server
+   proxy. `CSPR_CLOUD_TOKEN` stays server-side; the browser never sees it.
+3. **Anchor to Casper** — lets the user anchor their own conviction record to the live
+   `ConvictionRegistry` contract. The flow is:
+
+```
+Browser                     Server (agent)                Casper Testnet
+  │                            │                              │
+  │  POST /casper/build-anchor │                              │
+  │  { publicKey, record }     │                              │
+  │───────────────────────────►│                              │
+  │  { transaction (JSON) }    │                              │
+  │◄───────────────────────────│                              │
+  │                            │                              │
+  │  provider.sign(tx, pubKey) │                              │
+  │  → wallet popup → signature│                              │
+  │                            │                              │
+  │  POST /casper/submit-anchor│                              │
+  │  { transaction, signature, │                              │
+  │    publicKey }              │                              │
+  │───────────────────────────►│  putTransaction              │
+  │                            │─────────────────────────────►│
+  │                            │  { txHash }                  │
+  │  { txHash, explorerUrl }   │◄─────────────────────────────│
+  │◄───────────────────────────│                              │
+```
+
+The server builds the transaction (it has the contract hash + chain config); the browser signs
+it with the wallet; the server submits the signed transaction. The user pays gas from their own
+account. The extension is the sole signer — no private keys ever leave the browser. This is the
+user-facing Casper Wallet integration; the operator PEM anchoring is the server-side counterpart.
+
+### Server endpoints for browser-wallet flows
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/casper/balance?publicKey=…` | GET | CSPR balance for any public key (motes + CSPR) |
+| `/casper/build-anchor` | POST | Build unsigned `anchor_conviction` transaction JSON |
+| `/casper/submit-anchor` | POST | Submit signed transaction to Casper Testnet RPC |
+
+These are proxied through the Next.js API route `/api/agent/proxy?endpoint=…` so the browser
+never contacts the VPS directly. The proxy forwards query params (for balance) and request
+bodies (for build/submit) to the agent server.
 
 ## Casper Toolkit Components Used
 
@@ -133,8 +176,9 @@ server-side counterpart.
 | `agent/src/mcp/pricing.ts` | Per-tool pricing table |
 | `agent/scripts/casper-deploy.mjs` | Odra contract install via SessionBuilder |
 | `agent/scripts/casper-transfer.mjs` | Native CSPR transfer (operator → recipient) |
-| `src/components/casper-wallet-connect.tsx` | Dashboard "Casper Wallet" panel — in-browser wallet connect + sign proof |
+| `src/components/casper-wallet-connect.tsx` | Dashboard "Casper Wallet" panel — connect, sign proof, balance, anchor to Casper |
 | `src/app/agent/page.tsx` | Dashboard "Reputation API" panel — live MCP + x402 stats + wallet connect |
+| `src/app/api/agent/proxy/route.ts` | Next.js proxy — forwards GET + POST to agent server (balance, build-anchor, submit-anchor) |
 
 ## How Other Agents Use This
 

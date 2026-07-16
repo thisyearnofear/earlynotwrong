@@ -39,6 +39,7 @@ import { CAP_PRICING } from "./cap/pricing.js";
 import { getCapStatus } from "./cap/client.js";
 import { getBotUsername, getSubscriberCount } from "../lib/telegram-subscribers.js";
 import { aleoSignHmacMiddleware, handleSignVoucher } from "./aleo/sign-service.js";
+import { queryBalance, buildAnchorTransaction, submitSignedTransaction } from "../lib/anchors/casper.js";
 
 // =============================================================================
 // Shared agent state — populated by index.ts before starting the server
@@ -238,6 +239,88 @@ app.get("/reputation/stats", (c) => {
       },
     },
   });
+});
+
+// ===========================================================================
+// Casper Wallet routes — browser-wallet flows (balance, build-anchor, submit)
+// ===========================================================================
+//
+// These endpoints let a visitor with the Casper Wallet browser extension
+// interact with the live ConvictionRegistry contract from the dashboard.
+// The server holds CSPR_CLOUD_TOKEN and the contract hash; the browser holds
+// the signing key. The flow is:
+//   1. GET  /casper/balance?publicKey=…        → CSPR balance in motes
+//   2. POST /casper/build-anchor               → unsigned transaction JSON
+//   3. POST /casper/submit-anchor              → submit signed transaction
+
+app.get("/casper/balance", async (c) => {
+  const publicKey = c.req.query("publicKey");
+  if (!publicKey || !/^0[12][0-9a-fA-F]{64}$/.test(publicKey)) {
+    return c.json({ error: "Missing or invalid publicKey" }, 400);
+  }
+  try {
+    const balanceMotes = await queryBalance(publicKey);
+    return c.json({
+      publicKey,
+      balanceMotes: balanceMotes.toString(),
+      balanceCspr: (Number(balanceMotes) / 1e9).toFixed(4),
+    });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Balance query failed" }, 502);
+  }
+});
+
+app.post("/casper/build-anchor", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { publicKey, record } = body as {
+      publicKey: string;
+      record: {
+        subjectHash: string;
+        thesisHash: string;
+        convictionScore: number;
+        archetype: string;
+        timestamp: number;
+      };
+    };
+    if (!publicKey || !/^0[12][0-9a-fA-F]{64}$/.test(publicKey)) {
+      return c.json({ error: "Missing or invalid publicKey" }, 400);
+    }
+    if (!record?.subjectHash || !record?.thesisHash) {
+      return c.json({ error: "Missing conviction record fields" }, 400);
+    }
+    const transactionJson = buildAnchorTransaction(
+      {
+        subjectHash: record.subjectHash as `0x${string}`,
+        thesisHash: record.thesisHash as `0x${string}`,
+        convictionScore: record.convictionScore,
+        archetype: record.archetype,
+        timestamp: record.timestamp,
+      },
+      publicKey,
+    );
+    return c.json({ transaction: transactionJson });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Build failed" }, 500);
+  }
+});
+
+app.post("/casper/submit-anchor", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { transaction, signature, publicKey } = body as {
+      transaction: unknown;
+      signature: string;
+      publicKey: string;
+    };
+    if (!transaction || !signature || !publicKey) {
+      return c.json({ error: "Missing transaction, signature, or publicKey" }, 400);
+    }
+    const result = await submitSignedTransaction(transaction, signature, publicKey);
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Submit failed" }, 500);
+  }
 });
 
 // ===========================================================================
@@ -485,6 +568,9 @@ export function startServer(
       console.log(`  GET /status     — Agent status and guardrails`);
       console.log(`  GET /trades     — Trade history`);
       console.log(`  GET /conviction — Market data and conviction scores`);
+      console.log(`  GET /casper/balance    — CSPR balance for a public key`);
+      console.log(`  POST /casper/build-anchor  — Build unsigned anchor transaction`);
+      console.log(`  POST /casper/submit-anchor  — Submit signed anchor transaction`);
 
       return server;
     } catch (err) {
