@@ -1,23 +1,45 @@
 "use client";
 
 /**
- * Recent Anchors — shows the agent's recent on-chain anchor history.
+ * Multi-Chain Anchor Panel.
  *
- * Fetches from /api/agent/proxy?endpoint=casper/anchors and displays a
- * compact list of recent conviction records anchored across all chains
- * (Casper, Mantle, etc.). Each entry shows the chain, status, cycle,
- * timestamp, and an explorer link.
+ * Shows the agent's cross-chain anchoring status across Casper, Mantle, and
+ * Aleo. Each chain gets equal visual weight — a 3-column status panel showing
+ * the latest anchor for each, plus a rolling history list below.
  *
- * This is "Act 3" of the dashboard narrative — proof that the agent is
- * anchoring in production, not just when a judge clicks the button.
+ * This is "Act 3" of the dashboard narrative — proof that the agent anchors
+ * every conviction record on-chain across three chains, not just Casper.
+ *
+ * Data sources:
+ *   - /conviction (anchorResults — latest cycle's per-adapter results)
+ *   - /casper/anchors (rolling anchor history)
  */
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, Anchor, Loader2, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
+import {
+  ExternalLink,
+  Anchor,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  MinusCircle,
+  Link2,
+} from "lucide-react";
 
-interface AnchorEntry {
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface AnchorResult {
+  adapter: string;
+  status: "success" | "skipped" | "failed";
+  txHash?: string;
+  blockNumber?: number;
+  explorerUrl?: string;
+  error?: string;
+}
+
+interface AnchorHistoryEntry {
   adapter: string;
   status: "success" | "skipped" | "failed";
   txHash?: string;
@@ -25,6 +47,41 @@ interface AnchorEntry {
   timestamp: number;
   cycle: number;
 }
+
+interface ConvictionData {
+  anchorResults?: AnchorResult[];
+}
+
+// ─── Chain metadata ─────────────────────────────────────────────────────────
+
+const CHAINS = [
+  {
+    id: "casper",
+    label: "Casper",
+    role: "Public conviction registry",
+    color: "text-signal",
+    border: "border-signal/30",
+    bg: "bg-signal/5",
+  },
+  {
+    id: "mantle",
+    label: "Mantle",
+    role: "EVM verification",
+    color: "text-blue-400",
+    border: "border-blue-400/30",
+    bg: "bg-blue-400/5",
+  },
+  {
+    id: "aleo",
+    label: "Aleo",
+    role: "Privacy-preserving thesis proof",
+    color: "text-purple-400",
+    border: "border-purple-400/30",
+    bg: "bg-purple-400/5",
+  },
+] as const;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function timeAgo(epochMs: number): string {
   const diff = Date.now() - epochMs;
@@ -37,56 +94,73 @@ function timeAgo(epochMs: number): string {
   return `${days}d ago`;
 }
 
-function chainLabel(adapter: string): string {
-  const map: Record<string, string> = {
-    casper: "Casper",
-    mantle: "Mantle",
-    aleo: "Aleo",
+function chainMeta(adapter: string) {
+  return CHAINS.find((c) => c.id === adapter.toLowerCase()) ?? {
+    id: adapter,
+    label: adapter,
+    role: "",
+    color: "text-foreground-muted",
+    border: "border-border/40",
+    bg: "bg-surface/30",
   };
-  return map[adapter.toLowerCase()] ?? adapter;
 }
 
-function chainColor(adapter: string): string {
-  const map: Record<string, string> = {
-    casper: "text-signal",
-    mantle: "text-blue-400",
-    aleo: "text-purple-400",
-  };
-  return map[adapter.toLowerCase()] ?? "text-foreground-muted";
+function statusIcon(status: string) {
+  if (status === "success") return <CheckCircle2 className="w-3.5 h-3.5 text-patience shrink-0" />;
+  if (status === "failed") return <XCircle className="w-3.5 h-3.5 text-impatience shrink-0" />;
+  return <MinusCircle className="w-3.5 h-3.5 text-foreground-dim shrink-0" />;
 }
+
+function statusLabel(status: string): string {
+  if (status === "success") return "Anchored";
+  if (status === "failed") return "Failed";
+  return "Skipped";
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export function RecentAnchors() {
-  const [anchors, setAnchors] = useState<AnchorEntry[]>([]);
+  const [conviction, setConviction] = useState<ConvictionData | null>(null);
+  const [history, setHistory] = useState<AnchorHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const fetchAnchors = async () => {
+    const fetchAll = async () => {
       try {
-        const res = await fetch("/api/agent/proxy?endpoint=casper/anchors");
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+        const [convRes, histRes] = await Promise.all([
+          fetch("/api/agent/proxy?endpoint=conviction"),
+          fetch("/api/agent/proxy?endpoint=casper/anchors"),
+        ]);
+
+        if (!cancelled && convRes.ok) {
+          const data = (await convRes.json()) as ConvictionData;
+          setConviction(data);
         }
-        const data = (await res.json()) as { anchors: AnchorEntry[] };
-        if (!cancelled) {
-          setAnchors(data.anchors ?? []);
-          setError(null);
+        if (!cancelled && histRes.ok) {
+          const data = (await histRes.json()) as { anchors: AnchorHistoryEntry[] };
+          setHistory(data.anchors ?? []);
         }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load anchors.");
-        }
+      } catch {
+        /* best-effort */
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
-    fetchAnchors();
-    const id = setInterval(fetchAnchors, 60_000);
+    fetchAll();
+    const id = setInterval(fetchAll, 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const successCount = anchors.filter((a) => a.status === "success").length;
+  // Latest result per chain (from this cycle's anchorResults)
+  const latestByChain = CHAINS.map((chain) => {
+    const result = conviction?.anchorResults?.find(
+      (r) => r.adapter.toLowerCase() === chain.id
+    );
+    return { ...chain, result };
+  });
+
+  const successCount = history.filter((a) => a.status === "success").length;
 
   return (
     <Card className="bg-surface/30 border-border/50">
@@ -99,66 +173,118 @@ export function RecentAnchors() {
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* ── 3-column chain status panel ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {latestByChain.map((chain) => (
+            <div
+              key={chain.id}
+              className={`rounded-xl border ${chain.border} ${chain.bg} p-3 space-y-2`}
+            >
+              <div className="flex items-center gap-2">
+                <Link2 className={`w-3.5 h-3.5 ${chain.color}`} />
+                <span className={`text-xs font-mono font-bold uppercase tracking-wider ${chain.color}`}>
+                  {chain.label}
+                </span>
+                {chain.result && (
+                  <span className="ml-auto">
+                    {statusIcon(chain.result.status)}
+                  </span>
+                )}
+              </div>
+              <p className="text-[9px] font-mono text-foreground-dim leading-tight">
+                {chain.role}
+              </p>
+              {chain.result ? (
+                <div className="space-y-1 pt-1 border-t border-border/20">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                    <span className={chain.color}>{statusLabel(chain.result.status)}</span>
+                    {chain.result.explorerUrl && (
+                      <a
+                        href={chain.result.explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto text-signal hover:underline inline-flex items-center gap-0.5"
+                      >
+                        tx
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                  {chain.result.txHash && (
+                    <p className="text-[9px] font-mono text-foreground-dim break-all">
+                      {chain.result.txHash.slice(0, 24)}…
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[10px] font-mono text-foreground-dim pt-1 border-t border-border/20">
+                  {loading ? "Loading…" : "No anchor this cycle"}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* ── Chain legend ── */}
+        <div className="flex items-center gap-3 flex-wrap text-[9px] font-mono text-foreground-dim">
+          <span className="uppercase tracking-wider">Why three chains:</span>
+          <span className="text-signal">Casper = public registry</span>
+          <span className="text-foreground-dim">·</span>
+          <span className="text-blue-400">Mantle = EVM mirror</span>
+          <span className="text-foreground-dim">·</span>
+          <span className="text-purple-400">Aleo = privacy proof</span>
+        </div>
+
+        {/* ── Rolling history list ── */}
         {loading ? (
-          <div className="flex items-center gap-2 text-[11px] font-mono text-foreground-muted py-4">
+          <div className="flex items-center gap-2 text-[11px] font-mono text-foreground-muted py-2">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-signal" />
             Loading anchor history…
           </div>
-        ) : error ? (
-          <p className="text-[11px] font-mono text-foreground-muted py-4">
-            Anchor history unavailable.
-          </p>
-        ) : anchors.length === 0 ? (
-          <p className="text-[11px] font-mono text-foreground-muted py-4">
+        ) : history.length === 0 ? (
+          <p className="text-[11px] font-mono text-foreground-muted py-2">
             No anchors yet. The agent anchors conviction records at the end of each cycle.
           </p>
         ) : (
-          <div className="space-y-1.5 max-h-64 overflow-y-auto">
-            {anchors.slice(0, 20).map((anchor, i) => (
-              <motion.div
-                key={`${anchor.cycle}-${anchor.adapter}-${i}`}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface/30 border border-border/30 hover:border-border/50 transition-colors"
-              >
-                {/* Status icon */}
-                {anchor.status === "success" ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-patience shrink-0" />
-                ) : anchor.status === "failed" ? (
-                  <XCircle className="w-3.5 h-3.5 text-impatience shrink-0" />
-                ) : (
-                  <MinusCircle className="w-3.5 h-3.5 text-foreground-dim shrink-0" />
-                )}
-
-                {/* Chain label */}
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${chainColor(anchor.adapter)}`}>
-                  {chainLabel(anchor.adapter)}
-                </span>
-
-                {/* Cycle + time */}
-                <span className="text-[10px] font-mono text-foreground-dim">
-                  cycle {anchor.cycle}
-                </span>
-                <span className="text-[10px] font-mono text-foreground-dim ml-auto">
-                  {timeAgo(anchor.timestamp)}
-                </span>
-
-                {/* Explorer link */}
-                {anchor.explorerUrl && (
-                  <a
-                    href={anchor.explorerUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-signal hover:underline shrink-0"
-                    title="View on explorer"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-              </motion.div>
-            ))}
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider px-1 pb-1">
+              Recent history
+            </p>
+            {history.slice(0, 15).map((anchor, i) => {
+              const meta = chainMeta(anchor.adapter);
+              return (
+                <motion.div
+                  key={`${anchor.cycle}-${anchor.adapter}-${i}`}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Math.min(i * 0.02, 0.2) }}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface/20 border border-border/20 hover:border-border/40 transition-colors"
+                >
+                  {statusIcon(anchor.status)}
+                  <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${meta.color}`}>
+                    {meta.label}
+                  </span>
+                  <span className="text-[10px] font-mono text-foreground-dim">
+                    cycle {anchor.cycle}
+                  </span>
+                  <span className="text-[10px] font-mono text-foreground-dim ml-auto">
+                    {timeAgo(anchor.timestamp)}
+                  </span>
+                  {anchor.explorerUrl && (
+                    <a
+                      href={anchor.explorerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-signal hover:underline shrink-0"
+                      title="View on explorer"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </CardContent>

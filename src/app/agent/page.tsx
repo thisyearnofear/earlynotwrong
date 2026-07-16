@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -581,8 +582,35 @@ function Dashboard({
         <p className="text-xs text-foreground-muted mt-1.5 leading-relaxed">
           Scroll to see the agent&apos;s conviction signals, held positions,
           on-chain anchor history, and connect your Casper Wallet to anchor
-          your own conviction record.
+          your own conviction record. The same{" "}
+          <span className="font-mono text-foreground">conviction-core</span>{" "}
+          framework that scores the agent&apos;s trades also powers the{" "}
+          <Link href="/analyzer" className="text-signal hover:underline">wallet analyzer</Link>.
         </p>
+
+        {/* Cycle pipeline strip — the 8-step autonomous loop */}
+        {status && (
+          <div className="mt-3 flex items-center gap-1 flex-wrap text-[9px] font-mono">
+            <span className="text-foreground-dim uppercase tracking-wider mr-1">Cycle {status.cycle}:</span>
+            {[
+              { label: "data", icon: "✓" },
+              { label: "score", icon: "✓" },
+              { label: "manage", icon: "✓" },
+              { label: "execute", icon: "✓" },
+              { label: "anchor", icon: "✓" },
+              { label: "narrate", icon: "✓" },
+            ].map((step, i) => (
+              <span key={step.label} className="flex items-center gap-0.5">
+                <span className="text-patience">{step.icon}</span>
+                <span className="text-foreground-muted">{step.label}</span>
+                {i < 5 && <span className="text-foreground-dim mx-0.5">→</span>}
+              </span>
+            ))}
+            <span className="text-foreground-dim ml-2">
+              · next in {status.nextRunAt ? Math.max(0, Math.round((status.nextRunAt - Date.now()) / 60_000)) : "—"}m
+            </span>
+          </div>
+        )}
       </motion.div>
 
       {/* Row 0b: Watch this agent — public Telegram alerts. Only rendered
@@ -1098,6 +1126,9 @@ function Dashboard({
               <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
                 <Shield className="w-3.5 h-3.5 text-patience" />
                 Conviction Ledger
+                <span className="ml-1.5 text-[9px] font-mono normal-case tracking-normal text-foreground-dim hidden sm:inline">
+                  positions ← signals
+                </span>
               {conviction && (
                 <span className="ml-auto text-foreground-dim text-[10px] font-mono">
                   {conviction.heldPositions.length} held ·{" "}
@@ -1122,6 +1153,10 @@ function Dashboard({
                     (v) => v.symbol === p.symbol
                   );
                   const currentPnl = verdict?.unrealizedPnLPercent ?? 0;
+                  // Match this position to the signal that motivated entry
+                  const entrySignal = conviction.signals.find(
+                    (s) => s.symbol === p.symbol
+                  );
                   return (
                     <motion.div
                       key={p.symbol}
@@ -1168,6 +1203,14 @@ function Dashboard({
                             <span className="text-foreground-dim">
                               −{p.maxUnderwaterPercent.toFixed(1)}% worst dip
                             </span>
+                            {entrySignal && (
+                              <>
+                                <span>·</span>
+                                <span className="text-signal" title={entrySignal.rationale}>
+                                  scored {entrySignal.score}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                         <div className={cn(
@@ -1720,9 +1763,9 @@ function ReputationApiCard() {
       <CardHeader className="pb-2">
         <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
           <Network className="w-3.5 h-3.5 text-signal" />
-          Agent Reputation API
+          Agent-to-Agent Reputation
           <span className="ml-auto text-[10px] text-foreground-dim">
-            Casper MCP · x402 paid
+            MCP · x402 · CROO CAP
           </span>
         </CardTitle>
       </CardHeader>
@@ -1753,10 +1796,12 @@ function ReputationApiCard() {
         </div>
 
         <p className="text-[11px] text-foreground-muted mb-3 leading-relaxed">
-          Other agents query this agent's verifiable reputation via an MCP server
-          hosted alongside the trading loop. Free tier covers fast point lookups;
-          paid tools settle via <span className="font-mono">x402</span> on Casper Testnet —
-          one signed CEP-18 transfer per call, the facilitator covers gas.
+          Other AI agents query this agent&apos;s verifiable track record over{" "}
+          <span className="font-mono text-foreground">Model Context Protocol</span>,
+          paying per call through <span className="font-mono text-foreground">x402</span>{" "}
+          micropayments on Casper. The agent also advertises reputation services on
+          the <span className="font-mono text-foreground">CROO</span> network,
+          settled in USDC on Base — agent-to-agent commerce, no human in the loop.
         </p>
 
         {/* Tools table */}
