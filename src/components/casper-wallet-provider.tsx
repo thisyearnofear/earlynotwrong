@@ -39,7 +39,6 @@ interface CasperWalletProvider {
   getVersion(): Promise<string>;
   sign(transactionJson: string, signingPublicKeyHex: string): Promise<SignatureResponse>;
   signMessage(message: string, signingPublicKeyHex: string): Promise<SignatureResponse>;
-  on(eventType: string, handler: (event: { detail: string }) => void): () => void;
 }
 
 type CasperWalletProviderFactory = (opts?: { timeout: number }) => CasperWalletProvider;
@@ -54,17 +53,29 @@ interface CasperWalletState {
 declare global {
   interface Window {
     CasperWalletProvider?: CasperWalletProviderFactory;
-    CasperWalletEventTypes?: Record<string, string>;
+    CasperWalletEventTypes?: {
+      Connected: string;
+      Disconnected: string;
+      ActiveKeyChanged: string;
+      ActiveKeySupportsChanged: string;
+      TabChanged: string;
+      Locked: string;
+      Unlocked: string;
+    };
   }
 }
 
+// Fallback event type names — used if window.CasperWalletEventTypes isn't
+// available. Keys match the extension's capitalized property names so the
+// union type is homogeneous.
 const EVENT = {
-  connected: "connected",
-  disconnected: "disconnected",
-  activeKeyChanged: "activeKeyChanged",
-  tabUpdated: "tabUpdated",
-  locked: "locked",
-  unlocked: "unlocked",
+  Connected: "connected",
+  Disconnected: "disconnected",
+  ActiveKeyChanged: "activeKeyChanged",
+  ActiveKeySupportsChanged: "activeKeySupportsChanged",
+  TabChanged: "tabChanged",
+  Locked: "locked",
+  Unlocked: "unlocked",
 } as const;
 
 // ─── Context type ───────────────────────────────────────────────────────────
@@ -179,15 +190,22 @@ export function CasperWalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Subscribe to wallet lifecycle events ──
+  // The Casper Wallet extension dispatches events on `window` via
+  // `window.addEventListener(CasperWalletEventTypes.Connected, …)` — NOT via
+  // `provider.on()`. The provider returned by the factory does not have an
+  // `.on()` method. See the official playground's wallet-service.tsx.
   useEffect(() => {
     if (status.kind === "loading" || status.kind === "not-installed" || status.kind === "conflict") return;
     const provider = status.provider;
 
-    const unsubscribers: Array<() => void> = [];
+    // Resolve event type names. The extension exposes them as
+    // `window.CasperWalletEventTypes` (an object with string values). We fall
+    // back to our own constants if the global isn't present.
+    const ET = (typeof window !== "undefined" && window.CasperWalletEventTypes) || EVENT;
 
-    const parse = (event: { detail: string }): CasperWalletState | null => {
+    const parse = (event: Event): CasperWalletState | null => {
       try {
-        return JSON.parse(event.detail) as CasperWalletState;
+        return JSON.parse((event as CustomEvent).detail) as CasperWalletState;
       } catch {
         return null;
       }
@@ -206,20 +224,22 @@ export function CasperWalletProvider({ children }: { children: ReactNode }) {
       setStatus({ kind: "connected", provider, publicKey: state.activeKey });
     };
 
-    unsubscribers.push(provider.on(EVENT.connected, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.disconnected, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.activeKeyChanged, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.tabUpdated, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.locked, (e) => syncFromState(parse(e))));
-    unsubscribers.push(provider.on(EVENT.unlocked, (e) => syncFromState(parse(e))));
+    const handlers: Record<string, (e: Event) => void> = {
+      [ET.Connected]: (e) => syncFromState(parse(e)),
+      [ET.Disconnected]: (e) => syncFromState(parse(e)),
+      [ET.ActiveKeyChanged]: (e) => syncFromState(parse(e)),
+      [ET.TabChanged]: (e) => syncFromState(parse(e)),
+      [ET.Locked]: (e) => syncFromState(parse(e)),
+      [ET.Unlocked]: (e) => syncFromState(parse(e)),
+    };
+
+    for (const [eventType, handler] of Object.entries(handlers)) {
+      window.addEventListener(eventType, handler);
+    }
 
     return () => {
-      for (const off of unsubscribers) {
-        try {
-          off();
-        } catch {
-          /* ignore */
-        }
+      for (const [eventType, handler] of Object.entries(handlers)) {
+        window.removeEventListener(eventType, handler);
       }
     };
   }, [status]);
