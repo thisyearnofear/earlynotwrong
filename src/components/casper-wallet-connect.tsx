@@ -3,10 +3,14 @@
 /**
  * Casper Wallet detail card.
  *
- * Renders the full Casper Wallet interaction surface: balance, sign proof,
- * and anchor-to-Casper form. Uses the shared CasperWalletProvider context
- * for connection state — the navbar button handles connect/disconnect; this
- * card shows the details once connected.
+ * Renders the full Casper Wallet interaction surface: balance, anchor-to-Casper
+ * form (primary), and sign-proof (secondary). Uses the shared
+ * CasperWalletProvider context for connection state — the navbar button handles
+ * connect/disconnect; this card shows the details once connected.
+ *
+ * The anchor form can be pre-filled from the agent's live conviction data —
+ * the same signals the agent uses to trade — so a judge can anchor the exact
+ * record the agent just scored.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -27,6 +31,8 @@ import {
   Coins,
   Anchor,
   RefreshCw,
+  Zap,
+  ChevronDown,
 } from "lucide-react";
 import { useCasperWallet } from "@/components/casper-wallet-provider";
 
@@ -55,6 +61,18 @@ function archetypeForScore(score: number): string {
   return "EXTREME GREED — AVOID";
 }
 
+// ─── Agent conviction signal type (subset of /conviction response) ──────────
+
+interface ConvictionSignal {
+  symbol: string;
+  score: number;
+  rationale: string;
+}
+
+interface ConvictionResponse {
+  signals: ConvictionSignal[];
+}
+
 export function CasperWalletConnect() {
   const ctx = useCasperWallet();
 
@@ -62,11 +80,17 @@ export function CasperWalletConnect() {
   const [signing, setSigning] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [signError, setSignError] = useState<string | null>(null);
+  const [showSignProof, setShowSignProof] = useState(false);
 
   // Balance state
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  // Agent conviction signals (for pre-filling the anchor form)
+  const [signals, setSignals] = useState<ConvictionSignal[]>([]);
+  const [signalsLoading, setSignalsLoading] = useState(false);
+  const [signalsSource, setSignalsSource] = useState<"agent" | "default">("default");
 
   // Anchor state
   const [anchorSubject, setAnchorSubject] = useState("FET — Fetch.ai on BSC");
@@ -101,6 +125,28 @@ export function CasperWalletConnect() {
     }
   }, []);
 
+  // ── Fetch agent's live conviction signals ──
+  const fetchSignals = useCallback(async () => {
+    setSignalsLoading(true);
+    try {
+      const res = await fetch(`${PROXY_BASE}?endpoint=conviction`);
+      if (!res.ok) return;
+      const data = (await res.json()) as ConvictionResponse;
+      if (data.signals && data.signals.length > 0) {
+        setSignals(data.signals);
+      }
+    } catch {
+      /* best-effort — form still works with default values */
+    } finally {
+      setSignalsLoading(false);
+    }
+  }, []);
+
+  // Fetch signals on mount (regardless of connection — so they're ready)
+  useEffect(() => {
+    fetchSignals();
+  }, [fetchSignals]);
+
   // Auto-fetch balance on connect
   useEffect(() => {
     if (publicKey) {
@@ -120,6 +166,19 @@ export function CasperWalletConnect() {
       setAnchorError(null);
     }
   }, [connected]);
+
+  // ── Pre-fill anchor form from agent's latest conviction ──
+  const useAgentConviction = useCallback(
+    (signal: ConvictionSignal) => {
+      setAnchorSubject(signal.symbol);
+      setAnchorThesis(signal.rationale || `Contrarian conviction signal for ${signal.symbol}`);
+      setAnchorScore(signal.score);
+      setSignalsSource("agent");
+      setAnchorResult(null);
+      setAnchorError(null);
+    },
+    [],
+  );
 
   // ── Actions ──
 
@@ -228,13 +287,6 @@ export function CasperWalletConnect() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-[11px] text-foreground-muted leading-relaxed">
-          Check your CSPR balance, sign a proof message, and anchor your own
-          conviction record to the live ConvictionRegistry contract on Casper
-          Testnet. Use the <span className="text-signal">Connect Casper</span>{" "}
-          button in the header to connect.
-        </p>
-
         <AnimatePresence mode="wait">
           {/* Loading */}
           {(!status || status.kind === "loading") && (
@@ -259,6 +311,9 @@ export function CasperWalletConnect() {
               exit={{ opacity: 0 }}
               className="space-y-2"
             >
+              <p className="text-[11px] text-foreground-muted leading-relaxed">
+                Connect your Casper Wallet to anchor conviction records on-chain.
+              </p>
               <div className="flex items-center gap-2 text-[11px] font-mono text-impatience">
                 <XCircle className="w-3.5 h-3.5" />
                 Casper Wallet extension not detected.
@@ -303,7 +358,7 @@ export function CasperWalletConnect() {
             </motion.div>
           )}
 
-          {/* Disconnected / locked / connecting → hint to use navbar */}
+          {/* Disconnected / locked / connecting → one-liner + hint */}
           {(status?.kind === "disconnected" || status?.kind === "locked" || status?.kind === "connecting") && (
             <motion.div
               key="connect-hint"
@@ -312,6 +367,9 @@ export function CasperWalletConnect() {
               exit={{ opacity: 0 }}
               className="space-y-2"
             >
+              <p className="text-[11px] text-foreground-muted leading-relaxed">
+                Connect your Casper Wallet to anchor conviction records on-chain.
+              </p>
               {status.kind === "locked" && (
                 <div className="flex items-center gap-2 text-[11px] font-mono text-impatience">
                   <Lock className="w-3.5 h-3.5" />
@@ -339,7 +397,7 @@ export function CasperWalletConnect() {
             </motion.div>
           )}
 
-          {/* Connected → account + balance + actions */}
+          {/* Connected → account + balance + anchor (primary) + sign proof (secondary) */}
           {status?.kind === "connected" && (
             <motion.div
               key="connected"
@@ -408,65 +466,63 @@ export function CasperWalletConnect() {
                 </a>
               </div>
 
-              {/* Sign proof */}
+              {/* ── Anchor to Casper (PRIMARY action) ── */}
               <div className="space-y-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={signProof}
-                  disabled={signing}
-                  className="w-full"
-                >
-                  {signing ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                      Awaiting wallet approval…
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
-                      Sign proof message
-                    </>
-                  )}
-                </Button>
-
-                {signature && (
-                  <div className="rounded-lg border border-patience/40 bg-patience/5 p-2.5 space-y-1">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-patience uppercase tracking-wider">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Signature verified
-                    </div>
-                    <code className="block text-[10px] font-mono text-foreground-muted break-all leading-relaxed">
-                      {signature.slice(0, 96)}…
-                    </code>
-                  </div>
-                )}
-                {signError && (
-                  <p className="text-[10px] font-mono text-impatience flex items-center gap-1.5">
-                    <AlertTriangle className="w-3 h-3 shrink-0" />
-                    {signError}
-                  </p>
-                )}
-              </div>
-
-              {/* Anchor to Casper */}
-              <div className="space-y-2 pt-2 border-t border-border/30">
                 <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider">
                   <Anchor className="w-3 h-3 text-signal" />
                   Anchor conviction to Casper
                 </div>
-                <p className="text-[10px] text-foreground-muted leading-relaxed">
-                  Build a transaction on the server, sign it with your wallet,
-                  and submit it to the live ConvictionRegistry. You pay gas
-                  from your connected account.
-                </p>
+
+                {/* Pre-fill from agent's live signals */}
+                {signals.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-foreground-dim">
+                      <Zap className="w-3 h-3 text-signal" />
+                      Anchor the agent's live conviction:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {signals.slice(0, 5).map((s) => (
+                        <button
+                          key={s.symbol}
+                          type="button"
+                          onClick={() => useAgentConviction(s)}
+                          disabled={anchoring}
+                          className={`px-2 py-1 rounded text-[10px] font-mono border transition-colors ${
+                            anchorSubject === s.symbol && signalsSource === "agent"
+                              ? "border-signal/50 bg-signal/15 text-signal"
+                              : "border-border/40 bg-surface/40 text-foreground-muted hover:border-signal/30 hover:text-signal"
+                          }`}
+                          title={s.rationale}
+                        >
+                          {s.symbol} · {s.score}
+                        </button>
+                      ))}
+                    </div>
+                    {signalsSource === "agent" && (
+                      <p className="text-[9px] font-mono text-foreground-dim">
+                        Pre-filled from agent's latest cycle. Edit fields below or pick another signal.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {signalsLoading && signals.length === 0 && (
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-foreground-dim">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading agent conviction signals…
+                  </div>
+                )}
+
+                {/* Anchor form */}
                 <div className="space-y-2">
                   <div>
                     <label className="text-[10px] font-mono text-foreground-muted uppercase tracking-wider">Subject</label>
                     <input
                       type="text"
                       value={anchorSubject}
-                      onChange={(e) => setAnchorSubject(e.target.value)}
+                      onChange={(e) => {
+                        setAnchorSubject(e.target.value);
+                        setSignalsSource("default");
+                      }}
                       disabled={anchoring}
                       className="w-full mt-0.5 px-2 py-1.5 rounded bg-surface/60 border border-border/50 text-[11px] font-mono text-foreground focus:outline-none focus:border-signal/50"
                     />
@@ -541,6 +597,69 @@ export function CasperWalletConnect() {
                     {anchorError}
                   </p>
                 )}
+              </div>
+
+              {/* ── Sign proof (SECONDARY — collapsible) ── */}
+              <div className="pt-1 border-t border-border/30">
+                <button
+                  type="button"
+                  onClick={() => setShowSignProof((v) => !v)}
+                  className="w-full flex items-center gap-2 text-[10px] font-mono text-foreground-muted uppercase tracking-wider hover:text-foreground transition-colors py-1"
+                >
+                  <ShieldCheck className="w-3 h-3" />
+                  Sign proof message
+                  <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${showSignProof ? "rotate-180" : ""}`} />
+                </button>
+                <AnimatePresence initial={false}>
+                  {showSignProof && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden space-y-2"
+                    >
+                      <p className="text-[10px] text-foreground-dim leading-relaxed pt-1">
+                        Prove wallet ownership by signing a timestamped message.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={signProof}
+                        disabled={signing}
+                        className="w-full"
+                      >
+                        {signing ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                            Awaiting wallet approval…
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+                            Sign proof
+                          </>
+                        )}
+                      </Button>
+                      {signature && (
+                        <div className="rounded-lg border border-patience/40 bg-patience/5 p-2.5 space-y-1">
+                          <div className="flex items-center gap-1.5 text-[10px] font-mono text-patience uppercase tracking-wider">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Signature verified
+                          </div>
+                          <code className="block text-[10px] font-mono text-foreground-muted break-all leading-relaxed">
+                            {signature.slice(0, 96)}…
+                          </code>
+                        </div>
+                      )}
+                      {signError && (
+                        <p className="text-[10px] font-mono text-impatience flex items-center gap-1.5">
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                          {signError}
+                        </p>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.div>
           )}
