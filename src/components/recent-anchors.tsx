@@ -175,7 +175,7 @@ export function RecentAnchors() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* ── 3-column chain status panel ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {latestByChain.map((chain) => (
             <div
               key={chain.id}
@@ -243,9 +243,15 @@ export function RecentAnchors() {
             Loading anchor history…
           </div>
         ) : history.length === 0 ? (
-          <p className="text-[11px] font-mono text-foreground-muted py-2">
-            No anchors yet. The agent anchors conviction records at the end of each cycle.
-          </p>
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <Anchor className="w-6 h-6 text-foreground-dim mb-2 opacity-40" />
+            <p className="text-[11px] font-mono text-foreground-muted">
+              No anchors recorded yet
+            </p>
+            <p className="text-[10px] font-mono text-foreground-dim mt-1 max-w-xs">
+              The agent anchors conviction records to Casper, Mantle, and Aleo at the end of each ~4h cycle. History will appear here after the next cycle completes.
+            </p>
+          </div>
         ) : (
           <div className="space-y-1 max-h-48 overflow-y-auto">
             <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider px-1 pb-1">

@@ -1148,6 +1148,78 @@ function Dashboard({
           <CardContent>
             {conviction && conviction.heldPositions.length > 0 ? (
               <div className="space-y-1.5">
+                {/* ── "Early, Not Wrong" — conviction proven callout ──
+                    Positions held through significant drawdown that are now
+                    profitable. This is the product thesis made visible. */}
+                {conviction.heldPositions
+                  .map((p) => {
+                    const verdict = conviction.positionVerdicts.find(
+                      (v) => v.symbol === p.symbol
+                    );
+                    const signal = conviction.signals.find(
+                      (s) => s.symbol === p.symbol
+                    );
+                    const isProven =
+                      verdict?.heldThroughDrawdown &&
+                      p.maxUnderwaterPercent <= -10 &&
+                      (verdict?.unrealizedPnLPercent ?? 0) > 0 &&
+                      !p.stuck;
+                    return { position: p, verdict, signal, isProven };
+                  })
+                  .filter((x) => x.isProven)
+                  .slice(0, 1)
+                  .map(({ position: p, verdict, signal }) => (
+                    <motion.div
+                      key={`proven-${p.symbol}`}
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4 }}
+                      className="rounded-xl border-2 border-patience/40 bg-patience/8 p-3.5 space-y-2.5 shadow-[0_0_20px_-8px_var(--patience-dim)]"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-patience">
+                          ◆ Early, Not Wrong
+                        </span>
+                        <span className="text-[9px] font-mono text-foreground-dim">
+                          conviction proven
+                        </span>
+                      </div>
+                      {/* The full arc: scored → entered → dipped → held → now */}
+                      <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-mono">
+                        <span className="text-foreground font-semibold">{p.symbol}</span>
+                        {signal && (
+                          <>
+                            <span className="text-foreground-dim">·</span>
+                            <span className="text-signal" title={signal.rationale}>
+                              scored {signal.score}
+                          </span>
+                          </>
+                        )}
+                        <span className="text-foreground-dim">→</span>
+                        <span className="text-foreground-muted">
+                          entered cycle {p.entryCycle}
+                        </span>
+                        <span className="text-foreground-dim">→</span>
+                        <span className="text-impatience">
+                          dipped −{p.maxUnderwaterPercent.toFixed(1)}%
+                        </span>
+                        <span className="text-foreground-dim">→</span>
+                        <span className="text-patience font-semibold">
+                          held {p.cyclesHeld} cycles
+                        </span>
+                        <span className="text-foreground-dim">→</span>
+                        <span className="text-patience font-bold text-sm">
+                          now +{verdict!.unrealizedPnLPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                      {verdict?.reason && (
+                        <p className="text-[10px] font-mono text-foreground-muted leading-relaxed">
+                          {verdict.reason}
+                        </p>
+                      )}
+                    </motion.div>
+                  ))}
+
                 {conviction.heldPositions.map((p, i) => {
                   const verdict = conviction.positionVerdicts.find(
                     (v) => v.symbol === p.symbol
@@ -1195,7 +1267,7 @@ function Dashboard({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted">
+                          <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted flex-wrap">
                             <span>${p.amountUsd.toFixed(0)} entry</span>
                             <span>·</span>
                             <span>{p.cyclesHeld} cycles held</span>
