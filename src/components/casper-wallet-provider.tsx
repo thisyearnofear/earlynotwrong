@@ -72,6 +72,7 @@ const EVENT = {
 export type CasperStatus =
   | { kind: "loading" }
   | { kind: "not-installed" }
+  | { kind: "conflict" }
   | { kind: "disconnected"; provider: CasperWalletProvider }
   | { kind: "connecting"; provider: CasperWalletProvider }
   | { kind: "connected"; provider: CasperWalletProvider; publicKey: string; version?: string }
@@ -104,53 +105,70 @@ export function CasperWalletProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   // ── Resolve the injected provider (async) ──
+  // The Casper Wallet extension injects `window.CasperWalletProvider` as a
+  // constructor. However, other wallet extensions (notably HashPack) can
+  // overwrite it with a non-function object. We poll aggressively at the start
+  // to grab the constructor before another extension clobbers it. If we detect
+  // a non-function `CasperWalletProvider` after timeout, we show a conflict
+  // error instead of a generic "not installed" message.
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
-    const maxAttempts = 40; // ~8s at 200ms intervals
+    const maxAttempts = 60; // ~12s at 200ms intervals (extended for slow extensions)
 
     const poll = setInterval(() => {
       attempts += 1;
-      if (
-        typeof window !== "undefined" &&
-        typeof window.CasperWalletProvider === "function" // ← must be a constructor
-      ) {
+      const raw = typeof window !== "undefined" ? window.CasperWalletProvider : undefined;
+
+      if (raw && typeof raw === "function") {
+        // ✅ Constructor found — instantiate before another extension overwrites it.
         clearInterval(poll);
         if (cancelled) return;
-        const provider = new window.CasperWalletProvider();
-        provider
-          .isConnected()
-          .then(async (connected) => {
-            if (cancelled) return;
-            if (!connected) {
-              setStatus({ kind: "disconnected", provider });
-              return;
-            }
-            try {
-              const publicKey = await provider.getActivePublicKey();
+        try {
+          const provider = new raw();
+          provider
+            .isConnected()
+            .then(async (connected) => {
               if (cancelled) return;
-              let version: string | undefined;
-              try {
-                version = await provider.getVersion();
-              } catch {
-                /* best-effort */
-              }
-              setStatus({ kind: "connected", provider, publicKey, version });
-            } catch (err) {
-              if (cancelled) return;
-              if (isLockedError(err)) {
-                setStatus({ kind: "locked", provider });
-              } else {
+              if (!connected) {
                 setStatus({ kind: "disconnected", provider });
+                return;
               }
-            }
-          })
-          .catch(() => {
-            if (!cancelled) setStatus({ kind: "disconnected", provider });
-          });
+              try {
+                const publicKey = await provider.getActivePublicKey();
+                if (cancelled) return;
+                let version: string | undefined;
+                try {
+                  version = await provider.getVersion();
+                } catch {
+                  /* best-effort */
+                }
+                setStatus({ kind: "connected", provider, publicKey, version });
+              } catch (err) {
+                if (cancelled) return;
+                if (isLockedError(err)) {
+                  setStatus({ kind: "locked", provider });
+                } else {
+                  setStatus({ kind: "disconnected", provider });
+                }
+              }
+            })
+            .catch(() => {
+              if (!cancelled) setStatus({ kind: "disconnected", provider });
+            });
+        } catch {
+          if (!cancelled) setStatus({ kind: "conflict" });
+        }
       } else if (attempts >= maxAttempts) {
         clearInterval(poll);
-        if (!cancelled) setStatus({ kind: "not-installed" });
+        if (cancelled) return;
+        // If the global exists but isn't a function, another extension
+        // (likely HashPack) overwrote it. Show a conflict error.
+        if (raw && typeof raw !== "function") {
+          setStatus({ kind: "conflict" });
+        } else {
+          setStatus({ kind: "not-installed" });
+        }
       }
     }, 200);
 
@@ -162,7 +180,7 @@ export function CasperWalletProvider({ children }: { children: ReactNode }) {
 
   // ── Subscribe to wallet lifecycle events ──
   useEffect(() => {
-    if (status.kind === "loading" || status.kind === "not-installed") return;
+    if (status.kind === "loading" || status.kind === "not-installed" || status.kind === "conflict") return;
     const provider = status.provider;
 
     const unsubscribers: Array<() => void> = [];

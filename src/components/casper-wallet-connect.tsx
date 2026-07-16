@@ -223,7 +223,7 @@ export function CasperWalletConnect() {
           <Wallet className="w-3.5 h-3.5 text-signal" />
           Casper Wallet
           <span className="ml-auto text-[10px] text-foreground-dim">
-            {connected ? "Connected" : status?.kind === "not-installed" ? "Not installed" : "Testnet"}
+            {connected ? "Connected" : status?.kind === "not-installed" ? "Not installed" : status?.kind === "conflict" ? "Conflict" : "Testnet"}
           </span>
         </CardTitle>
       </CardHeader>
@@ -272,6 +272,34 @@ export function CasperWalletConnect() {
                 Install Casper Wallet
                 <ExternalLink className="w-3 h-3" />
               </a>
+            </motion.div>
+          )}
+
+          {/* Conflict — another extension (HashPack) overwrote the global */}
+          {status?.kind === "conflict" && (
+            <motion.div
+              key="conflict"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-2"
+            >
+              <div className="flex items-center gap-2 text-[11px] font-mono text-impatience">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Wallet extension conflict detected.
+              </div>
+              <p className="text-[10px] font-mono text-foreground-muted leading-relaxed">
+                Another wallet extension (likely HashPack) is overwriting the
+                Casper Wallet provider. To connect:
+              </p>
+              <ol className="text-[10px] font-mono text-foreground-muted leading-relaxed list-decimal list-inside space-y-1">
+                <li>Disable HashPack (or other Casper wallet extensions) in your browser</li>
+                <li>Refresh this page</li>
+                <li>Connect with the Casper Wallet extension</li>
+              </ol>
+              <p className="text-[10px] font-mono text-foreground-dim">
+                You can re-enable HashPack after connecting.
+              </p>
             </motion.div>
           )}
 

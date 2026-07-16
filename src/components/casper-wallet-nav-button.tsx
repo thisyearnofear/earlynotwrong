@@ -49,7 +49,7 @@ export function CasperWalletNavButton({ className }: { className?: string }) {
   }
 
   // Not installed — link to install page
-  if (status.kind === "not-installed") {
+  if (status.kind === "not-installed" || status.kind === "conflict") {
     return (
       <a
         href={CASPER_WALLET_INSTALL_URL}
