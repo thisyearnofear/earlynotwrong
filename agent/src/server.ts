@@ -89,6 +89,22 @@ export interface AgentServerState {
   behavioralMetrics: ReputationMetrics | null;
   /** Canonical ledger of agent entries/exits used for self-analysis. */
   ledger: LedgerEntry[];
+  /** Rolling history of recent anchor results (most recent first, capped at 50). */
+  anchorHistory: AnchorHistoryEntry[];
+}
+
+/** Compact history entry for the /casper/anchors endpoint. */
+export interface AnchorHistoryEntry {
+  adapter: string;
+  status: "success" | "skipped" | "failed";
+  txHash?: string;
+  explorerUrl?: string;
+  timestamp: number;
+  cycle: number;
+  /** The conviction record that was anchored (if available). */
+  subjectHash?: string;
+  convictionScore?: number;
+  archetype?: string;
 }
 
 let agentState: AgentServerState = {
@@ -125,6 +141,7 @@ let agentState: AgentServerState = {
   portfolio: null,
   behavioralMetrics: null,
   ledger: [],
+  anchorHistory: [],
 };
 
 /**
@@ -137,9 +154,27 @@ async function resolvePortfolio(): Promise<TwakPortfolio> {
 
 /**
  * Update the shared state (called from index.ts after each cycle).
+ * When new anchorResults are provided, they're prepended to anchorHistory.
  */
 export function setAgentState(state: Partial<AgentServerState>): void {
-  agentState = { ...agentState, ...state };
+  // If new anchor results came in, append them to the rolling history.
+  if (state.anchorResults && state.anchorResults.length > 0) {
+    const newEntries: AnchorHistoryEntry[] = state.anchorResults.map((r) => ({
+      adapter: r.adapter,
+      status: r.status,
+      txHash: r.txHash,
+      explorerUrl: r.explorerUrl,
+      timestamp: Date.now(),
+      cycle: agentState.cycle,
+    }));
+    agentState = {
+      ...agentState,
+      ...state,
+      anchorHistory: [...newEntries, ...agentState.anchorHistory].slice(0, 50),
+    };
+  } else {
+    agentState = { ...agentState, ...state };
+  }
 }
 
 // =============================================================================
@@ -252,6 +287,11 @@ app.get("/reputation/stats", (c) => {
 //   1. GET  /casper/balance?publicKey=…        → CSPR balance in motes
 //   2. POST /casper/build-anchor               → unsigned transaction JSON
 //   3. POST /casper/submit-anchor              → submit signed transaction
+//   4. GET  /casper/anchors                    → recent anchor history
+
+app.get("/casper/anchors", (c) => {
+  return c.json({ anchors: agentState.anchorHistory });
+});
 
 app.get("/casper/balance", async (c) => {
   const publicKey = c.req.query("publicKey");

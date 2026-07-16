@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { CasperWalletConnect } from "@/components/casper-wallet-connect";
 import { CasperWalletProvider } from "@/components/casper-wallet-provider";
+import { RecentAnchors } from "@/components/recent-anchors";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -559,7 +560,8 @@ function Dashboard({
       className="space-y-6"
     >
       {/* Row 0: Orientation — what cold visitors see first.
-          One sentence per beat: trading agent, dual-chain anchor, marketplace. */}
+          The 4-act narrative: the agent is live → it scores conviction →
+          it anchors on-chain → you can anchor your own. */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -577,10 +579,9 @@ function Dashboard({
           ~4h cycles: data → score → manage → execute → anchor → narrate
         </p>
         <p className="text-xs text-foreground-muted mt-1.5 leading-relaxed">
-          Other AI agents query the agent's verifiable track record over{" "}
-          <span className="font-mono">Model Context Protocol</span>, paying per
-          call through <span className="font-mono">x402</span> micropayments
-          on Casper — see the Reputation API panel below.
+          Scroll to see the agent&apos;s conviction signals, held positions,
+          on-chain anchor history, and connect your Casper Wallet to anchor
+          your own conviction record.
         </p>
       </motion.div>
 
@@ -876,38 +877,12 @@ function Dashboard({
         </motion.div>
       </motion.div>
 
-      {/* Row 2: Casper Wallet detail card + Agent Reputation API.
-          The connect button lives in the navbar (where users expect it);
-          this card shows balance, sign proof, and anchor UI once connected. */}
+      {/* Row 2: Conviction Signals (the thesis, visible) + Held Positions (the proof)
+          Act 2 of the narrative: the agent scores conviction and holds through drawdown. */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.14, duration: 0.4 }}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.16, duration: 0.35 }}
-          className="lg:col-span-1"
-        >
-          <CasperWalletConnect />
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18, duration: 0.35 }}
-          className="lg:col-span-2"
-        >
-          <ReputationApiCard />
-        </motion.div>
-      </motion.div>
-
-      {/* Row 3: Conviction Signals (the thesis, visible) + Held Positions (the proof) */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.22, duration: 0.4 }}
         className="grid grid-cols-1 lg:grid-cols-2 gap-4"
       >
         <motion.div
@@ -1222,6 +1197,44 @@ function Dashboard({
             )}
           </CardContent>
         </Card>
+        </motion.div>
+      </motion.div>
+
+      {/* Row 3: On-Chain Anchor History (Act 3: it anchors on-chain).
+          Shows recent conviction records the agent has anchored across
+          Casper, Mantle, and Aleo — proof this is a live system. */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.22, duration: 0.4 }}
+      >
+        <RecentAnchors />
+      </motion.div>
+
+      {/* Row 3b: Casper Wallet detail card + Agent Reputation API (Act 4: anchor your own).
+          The connect button lives in the navbar (where users expect it);
+          this card shows balance, anchor form, and sign proof once connected. */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.26, duration: 0.4 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28, duration: 0.35 }}
+          className="lg:col-span-1"
+        >
+          <CasperWalletConnect />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.30, duration: 0.35 }}
+          className="lg:col-span-2"
+        >
+          <ReputationApiCard />
         </motion.div>
       </motion.div>
 

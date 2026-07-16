@@ -95,6 +95,11 @@
       "public": false
     },
     {
+      "path": "/api/casper/anchors",
+      "port": 31777,
+      "public": false
+    },
+    {
       "path": "/api/casper/balance",
       "port": 31777,
       "public": false

@@ -163,6 +163,13 @@ export function Navbar() {
                 Alpha
               </Link>
               <Link
+                href="/analyzer"
+                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
+              >
+                <Search className="w-3.5 h-3.5" />
+                Analyzer
+              </Link>
+              <Link
                 href="/agent"
                 className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
               >
@@ -350,6 +357,14 @@ export function Navbar() {
               >
                 <Zap className="w-5 h-5" />
                 Alpha Discovery
+              </Link>
+              <Link
+                href="/analyzer"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-signal hover:bg-surface/50 transition-colors min-h-[48px]"
+              >
+                <Search className="w-5 h-5" />
+                Wallet Analyzer
               </Link>
               <Link
                 href="/agent"

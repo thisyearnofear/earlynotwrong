@@ -10,6 +10,7 @@ const VALID_GET_ENDPOINTS = [
   "reputation/stats",
   "cap/status",
   "casper/balance",
+  "casper/anchors",
 ] as const;
 
 const VALID_POST_ENDPOINTS = [
