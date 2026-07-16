@@ -10,7 +10,7 @@
 - CROO test/whitelist wallet generated: `0x5d3d23679DFb6b01107b50A840b3c2EbB45AeE2C`.
 - Wallet private key stored in `agent/.env` locally and on the production VPS (`nuncio-vultr`).
 - `CROO_SDK_KEY` is set; the agent is connected — `[cap] Connected to CROO CAP`, confirmed live at `GET /cap/status`.
-- Store listing: `signals-live` ($0.05) is registered and live on the CROO Agent Store — searchable at https://agent.croo.network as "Early, Not Wrong". `reputation-agent` and the three subject-lookup services are intentionally **not** Store-listed — see "Why only one service is Store-listed" below.
+- **Store listing:** pending re-submission. Paste-ready copy in [`docs/croo-store-listing.md`](croo-store-listing.md). Delivery schema: **signals-live/v1.1** (signals + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
 
 ---
 

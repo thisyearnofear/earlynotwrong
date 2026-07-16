@@ -1,0 +1,14 @@
+{
+  "name": "early-not-wrong-croo-requester",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference CROO CAP requester — hires signals-live and prints buyer guidance",
+  "scripts": {
+    "start": "node index.mjs",
+    "dry-run": "node index.mjs --dry-run"
+  },
+  "dependencies": {
+    "@croo-network/sdk": "^0.2.1"
+  }
+}

@@ -285,13 +285,72 @@ export interface GetLiveSignalsResult {
 export type SettlementRail = "mcp-x402" | "croo-cap";
 export type LiveSignalsTool = "get_live_signals" | "signals-live";
 
+/** Current delivery schema version and public JSON Schema URL (CAP Schema deliverables). */
+export const SIGNALS_LIVE_SCHEMA = "signals-live/v1.1" as const;
+export const SIGNALS_LIVE_SCHEMA_URL =
+  "https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json";
+
 export interface GetLiveSignalsV1Options {
   settlementRail: SettlementRail;
   tool: LiveSignalsTool;
 }
 
-export interface SignalsLiveV1 {
-  schema: "signals-live/v1";
+export interface SignalsProvenance {
+  /** Most recent thesis hash anchored (or cached) this cycle. */
+  latestThesisHash: Bytes32Hex | null;
+  /** Unix ms when the thesis was last anchored, or last cycle if cached. */
+  anchoredAt: number | null;
+  /** How the latest thesis was published. */
+  anchorMode: "on-chain" | "reverted" | "off-chain" | "simulator" | "cached" | null;
+  /** In-process behavioral score from the agent's own trade ledger. */
+  behavioral: {
+    score: number;
+    archetype: string;
+    winRate: number;
+    totalPositions: number;
+    upsideCapture: number;
+  } | null;
+  /** Cross-chain anchor summary for this agent's subject hash. */
+  reputation: {
+    totalAnchors: number;
+    meanConvictionScore: number;
+    dualChain: boolean;
+    latestArchetype: string | null;
+  };
+  /** Verify-on-chain links for auditors and buyer agents. */
+  explorerUrls: {
+    casper: string | null;
+    mantle: string | null;
+    dashboard: string;
+    mcp: string;
+  };
+  /** Lightweight operational counters (not P&L marketing). */
+  trackRecord: {
+    totalTrades: number;
+    entries: number;
+    exits: number;
+    activePositions: number;
+  };
+}
+
+export type BuyerRecommendedAction = "skip_entries" | "evaluate" | "wait";
+
+export interface BuyerGuidance {
+  /** What a hiring agent should do with this payload. */
+  recommendedAction: BuyerRecommendedAction;
+  /** Plain-language explanation for logs and automation. */
+  reason: string;
+  /** Highest-ranked symbol when action is evaluate, else null. */
+  topCandidate: string | null;
+  /** Apply to entry sizing when evaluate is allowed (macro dampening). */
+  sizeMultiplier: number;
+}
+
+/** @deprecated Alias — use {@link SignalsLiveV1_1}. */
+export type SignalsLiveV1 = SignalsLiveV1_1;
+
+export interface SignalsLiveV1_1 {
+  schema: typeof SIGNALS_LIVE_SCHEMA;
   generatedAt: string;
   agent: {
     name: "Early, Not Wrong";
@@ -309,10 +368,15 @@ export interface SignalsLiveV1 {
   regime: MarketRegime | null;
   signals: LiveSignalEntry[];
   macroPause: GetLiveSignalsResult["macroPause"];
+  /** Trust bundle — on-chain proof + behavioral score + track record. */
+  provenance: SignalsProvenance;
+  /** Action contract for cold Store buyers / allocator agents. */
+  guidance: BuyerGuidance;
   meta: {
     topN: typeof LIVE_SIGNALS_TOP_N;
     settlementRail: SettlementRail;
     tool: LiveSignalsTool;
+    schemaUrl: typeof SIGNALS_LIVE_SCHEMA_URL;
   };
 }
 
@@ -332,7 +396,7 @@ function resolveCycleIntervalMs(): number {
   return baseIntervalMs;
 }
 
-function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1["freshness"] {
+function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1_1["freshness"] {
   const { cycle, lastRunAt, nextRunAt } = liveAgentState;
   let stale = false;
   let staleReason: string | null = null;
@@ -348,29 +412,127 @@ function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1["fr
   return { cycle, lastRunAt, nextRunAt, cycleIntervalMs, stale, staleReason };
 }
 
-/** Wrap a v0 core payload in the versioned signals-live/v1 envelope. */
+function buildProvenance(
+  subjectHash: Bytes32Hex,
+  reputation: GetAgentReputationResult,
+): SignalsProvenance {
+  const bm = liveAgentState.behavioralMetrics;
+  const anchoring = liveAgentState.anchoring;
+  const thesisHash =
+    (liveAgentState.lastAnchoredThesisHash ??
+      liveAgentState.lastAnchoredHash ??
+      anchoring?.hash ??
+      null) as Bytes32Hex | null;
+
+  const casperHash = AGENT_CONFIG.casper.testnet.registryHash;
+  const mantleAddr = AGENT_CONFIG.mantle.sepolia.registryAddress;
+
+  return {
+    latestThesisHash: thesisHash,
+    anchoredAt: reputation.latestAnchor?.timestamp ?? liveAgentState.lastRunAt,
+    anchorMode: anchoring?.mode ?? null,
+    behavioral: bm
+      ? {
+          score: bm.score,
+          archetype: bm.archetype,
+          winRate: Math.round(bm.winRate * 10) / 10,
+          totalPositions: bm.totalPositions,
+          upsideCapture: Math.round(bm.upsideCapture * 10) / 10,
+        }
+      : null,
+    reputation: {
+      totalAnchors: reputation.totalAnchors,
+      meanConvictionScore: reputation.meanConvictionScore,
+      dualChain: reputation.dualChain,
+      latestArchetype: reputation.latestAnchor?.archetype ?? null,
+    },
+    explorerUrls: {
+      casper: casperHash
+        ? `${AGENT_CONFIG.casper.testnet.explorerUrl}/contract-package/${casperHash}`
+        : null,
+      mantle: `${AGENT_CONFIG.mantle.sepolia.explorerUrl}/address/${mantleAddr}`,
+      dashboard: "https://earlynotwrong.vercel.app/agent",
+      mcp: "http://144.202.117.160:31777/mcp",
+    },
+    trackRecord: {
+      totalTrades: liveAgentState.totalTrades,
+      entries: liveAgentState.tradeStats.entriesCount,
+      exits: liveAgentState.tradeStats.exitsCount,
+      activePositions: liveAgentState.heldPositions.filter(
+        (p) => !p.stuck,
+      ).length,
+    },
+  };
+}
+
+export function buildBuyerGuidance(
+  macro: GetLiveSignalsResult["macroPause"],
+  signals: LiveSignalEntry[],
+  stale: boolean,
+): BuyerGuidance {
+  const sizeMultiplier = macro?.sizeMultiplier ?? 1;
+  if (stale) {
+    return {
+      recommendedAction: "wait",
+      reason: "Signal data is stale; wait for the next agent cycle before acting",
+      topCandidate: null,
+      sizeMultiplier: 0,
+    };
+  }
+  if (macro?.skipEntries) {
+    return {
+      recommendedAction: "skip_entries",
+      reason: macro.reason,
+      topCandidate: signals[0]?.symbol ?? null,
+      sizeMultiplier,
+    };
+  }
+  if (signals.length === 0) {
+    return {
+      recommendedAction: "wait",
+      reason: "No conviction candidates ranked this cycle",
+      topCandidate: null,
+      sizeMultiplier,
+    };
+  }
+  const top = signals[0];
+  return {
+    recommendedAction: "evaluate",
+    reason:
+      `Top candidate ${top.symbol} (conviction ${top.score}/100) — apply your sizing and risk rules`,
+    topCandidate: top.symbol,
+    sizeMultiplier,
+  };
+}
+
+/** Wrap a v0 core payload in the versioned signals-live/v1.1 envelope. */
 export function wrapLiveSignalsV1(
   core: GetLiveSignalsResult,
   options: GetLiveSignalsV1Options,
+  extras: { provenance: SignalsProvenance; guidance: BuyerGuidance },
   now = Date.now(),
-): SignalsLiveV1 {
+): SignalsLiveV1_1 {
   const cycleIntervalMs = resolveCycleIntervalMs();
+  const freshness = buildFreshness(now, cycleIntervalMs);
   return {
-    schema: "signals-live/v1",
+    schema: SIGNALS_LIVE_SCHEMA,
     generatedAt: new Date(now).toISOString(),
     agent: {
       name: "Early, Not Wrong",
       subjectHash: computeSubjectHash("bsc", AGENT_CONFIG.competition.identityRegistry),
       mode: AGENT_MODE,
     },
-    freshness: buildFreshness(now, cycleIntervalMs),
+    freshness,
     regime: core.regime,
     signals: core.signals,
     macroPause: core.macroPause,
+    provenance: extras.provenance,
+    guidance: extras.guidance,
     meta: {
       topN: LIVE_SIGNALS_TOP_N,
       settlementRail: options.settlementRail,
       tool: options.tool,
+      schemaUrl: SIGNALS_LIVE_SCHEMA_URL,
     },
   };
 }
@@ -410,6 +572,13 @@ export async function getLiveSignals(): Promise<GetLiveSignalsResult> {
 /** Premium delivery shape for MCP x402 and CROO CAP signals-live. */
 export async function getLiveSignalsV1(
   options: GetLiveSignalsV1Options,
-): Promise<SignalsLiveV1> {
-  return wrapLiveSignalsV1(await getLiveSignals(), options);
+): Promise<SignalsLiveV1_1> {
+  const core = await getLiveSignals();
+  const subjectHash = computeSubjectHash("bsc", AGENT_CONFIG.competition.identityRegistry);
+  const reputation = await getAgentReputation({ subjectHash });
+  const cycleIntervalMs = resolveCycleIntervalMs();
+  const freshness = buildFreshness(Date.now(), cycleIntervalMs);
+  const provenance = buildProvenance(subjectHash, reputation);
+  const guidance = buildBuyerGuidance(core.macroPause, core.signals, freshness.stale);
+  return wrapLiveSignalsV1(core, options, { provenance, guidance });
 }

@@ -14,6 +14,7 @@ import {
   crossChainLookup,
   getAgentReputation,
   getLiveSignalsV1,
+  SIGNALS_LIVE_SCHEMA_URL,
 } from "../mcp/tools.js";
 import { recordCall } from "../payment-stats.js";
 import { pricingForToolName, toolNameForService } from "./pricing.js";
@@ -60,36 +61,43 @@ export async function fulfillCapOrder(
   const { subjectHash } = parseRequirements(requirements);
 
   let deliverable: string;
+  let deliverReq: { deliverableType: string; deliverableText: string; deliverableSchema?: string };
+
   switch (toolName) {
     case "get_latest_conviction":
       deliverable = JSON.stringify(await getLatestConviction({ subjectHash }));
+      deliverReq = { deliverableType: DeliverableType.Text, deliverableText: deliverable };
       break;
     case "get_subject_history":
       deliverable = JSON.stringify(await getSubjectHistory({ subjectHash }));
+      deliverReq = { deliverableType: DeliverableType.Text, deliverableText: deliverable };
       break;
     case "cross_chain_lookup":
       deliverable = JSON.stringify(await crossChainLookup({ subjectHash }));
+      deliverReq = { deliverableType: DeliverableType.Text, deliverableText: deliverable };
       break;
     case "get_agent_reputation":
       deliverable = JSON.stringify(await getAgentReputation({ subjectHash }));
+      deliverReq = { deliverableType: DeliverableType.Text, deliverableText: deliverable };
       break;
-    case "get_live_signals":
-      // Live current-cycle data — reads shared in-process agent state; no
-      // subjectHash needed. `signals-live` must be registered on the CROO
-      // Store before orders for it can arrive here.
-      deliverable = JSON.stringify(await getLiveSignalsV1({
+    case "get_live_signals": {
+      const livePayload = await getLiveSignalsV1({
         settlementRail: "croo-cap",
         tool: "signals-live",
-      }));
+      });
+      deliverable = JSON.stringify(livePayload);
+      deliverReq = {
+        deliverableType: DeliverableType.Schema,
+        deliverableSchema: SIGNALS_LIVE_SCHEMA_URL,
+        deliverableText: deliverable,
+      };
       break;
+    }
     default:
       throw new Error(`Unsupported CAP reputation tool: ${toolName}`);
   }
 
-  await client.deliverOrder(orderId, {
-    deliverableType: DeliverableType.Text,
-    deliverableText: deliverable,
-  });
+  await client.deliverOrder(orderId, deliverReq);
 
   const pricing = pricingForToolName(toolName);
   if (pricing) {

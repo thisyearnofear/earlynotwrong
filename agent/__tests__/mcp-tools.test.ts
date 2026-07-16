@@ -313,7 +313,10 @@ describe("x402 middleware — request gating", () => {
       convictionSignals: state.convictionSignals,
     };
     state.cycle = 7;
-    state.lastRunAt = 1_700_000_000_000;
+    const now = 1_700_000_000_000;
+    vi.setSystemTime(now);
+    state.lastRunAt = now - 60_000;
+    state.nextRunAt = now + 14_400_000 - 60_000;
     state.marketRegime = {
       score: 72,
       label: "Extreme fear — contrarian entry window",
@@ -362,9 +365,9 @@ describe("x402 middleware — request gating", () => {
       expect(res.status).toBe(200);
       expect(res.headers.get("x-payment-response")).toBeTruthy();
       const body = await res.json() as Awaited<ReturnType<typeof getLiveSignalsV1>>;
-      expect(body.schema).toBe("signals-live/v1");
+      expect(body.schema).toBe("signals-live/v1.1");
       expect(body.freshness.cycle).toBe(7);
-      expect(body.freshness.lastRunAt).toBe(1_700_000_000_000);
+      expect(body.freshness.lastRunAt).toBe(now - 60_000);
       expect(body.regime?.score).toBe(72);
       expect(body.regime?.fearGreedIndex).toBe(18);
       expect(body.signals).toHaveLength(1);
@@ -373,7 +376,11 @@ describe("x402 middleware — request gating", () => {
       expect(body.signals[0].rationale).toContain("drawdown");
       expect(body.meta.settlementRail).toBe("mcp-x402");
       expect(body.meta.tool).toBe("get_live_signals");
+      expect(body.meta.schemaUrl).toContain("signals-live-v1.1.schema.json");
+      expect(body.provenance.reputation).toBeDefined();
+      expect(body.guidance.recommendedAction).toBe("evaluate");
     } finally {
+      vi.useRealTimers();
       globalThis.fetch = originalFetch;
       state.cycle = saved.cycle;
       state.lastRunAt = saved.lastRunAt;
@@ -408,7 +415,7 @@ describe("getLiveSignalsV1", () => {
         settlementRail: "croo-cap",
         tool: "signals-live",
       });
-      expect(result.schema).toBe("signals-live/v1");
+      expect(result.schema).toBe("signals-live/v1.1");
       expect(result.freshness.cycle).toBe(0);
       expect(result.freshness.lastRunAt).toBeNull();
       expect(result.freshness.stale).toBe(false);
@@ -417,15 +424,18 @@ describe("getLiveSignalsV1", () => {
       expect(result.macroPause).toBeNull();
       expect(result.meta.settlementRail).toBe("croo-cap");
       expect(result.meta.tool).toBe("signals-live");
+      expect(result.meta.schemaUrl).toContain("signals-live-v1.1.schema.json");
       expect(result.agent.name).toBe("Early, Not Wrong");
       expect(result.agent.subjectHash).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(result.provenance.reputation.totalAnchors).toBeGreaterThanOrEqual(0);
+      expect(result.guidance.recommendedAction).toBe("wait");
     } finally {
       Object.assign(state, saved);
     }
   });
 
   it("marks freshness stale when lastRunAt exceeds 1.5× cycle interval", async () => {
-    const { wrapLiveSignalsV1, getLiveSignals } = await import("../src/mcp/tools.js");
+    const { wrapLiveSignalsV1, getLiveSignals, buildBuyerGuidance } = await import("../src/mcp/tools.js");
     const { state } = await import("../lib/agent-state.js");
     const intervalMs = 14_400_000;
     const now = 1_700_000_000_000;
@@ -438,19 +448,60 @@ describe("getLiveSignalsV1", () => {
     state.cycle = 10;
     state.lastRunAt = now - intervalMs * 2;
     state.nextRunAt = state.lastRunAt + intervalMs;
+    const mockExtras = {
+      provenance: {
+        latestThesisHash: null,
+        anchoredAt: null,
+        anchorMode: null,
+        behavioral: null,
+        reputation: {
+          totalAnchors: 0,
+          meanConvictionScore: 0,
+          dualChain: false,
+          latestArchetype: null,
+        },
+        explorerUrls: {
+          casper: null,
+          mantle: "https://example.com",
+          dashboard: "https://earlynotwrong.vercel.app/agent",
+          mcp: "http://localhost/mcp",
+        },
+        trackRecord: { totalTrades: 0, entries: 0, exits: 0, activePositions: 0 },
+      },
+      guidance: buildBuyerGuidance(null, [], true),
+    };
     try {
       const core = await getLiveSignals();
       const wrapped = wrapLiveSignalsV1(
         core,
         { settlementRail: "mcp-x402", tool: "get_live_signals" },
+        mockExtras,
         now,
       );
       expect(wrapped.freshness.stale).toBe(true);
       expect(wrapped.freshness.staleReason).toContain("Last cycle completed");
+      expect(wrapped.guidance.recommendedAction).toBe("wait");
     } finally {
       vi.useRealTimers();
       Object.assign(state, saved);
     }
+  });
+
+  it("buildBuyerGuidance returns skip_entries when macro gate blocks entries", async () => {
+    const { buildBuyerGuidance } = await import("../src/mcp/tools.js");
+    const guidance = buildBuyerGuidance(
+      {
+        clear: false,
+        skipEntries: true,
+        sizeMultiplier: 0,
+        hoursUntilNext: 2,
+        reason: "CPI in 2h",
+      },
+      [{ symbol: "FET", score: 80, breakdown: {} as never, rationale: "test" }],
+      false,
+    );
+    expect(guidance.recommendedAction).toBe("skip_entries");
+    expect(guidance.topCandidate).toBe("FET");
   });
 });
 
