@@ -5,12 +5,13 @@
 **Agent Store**: https://agent.croo.network
 **Status endpoint**: `GET http://144.202.117.160:31777/cap/status`
 
-**Deployment status**:
-- CAP client code is implemented and merged (`agent/src/cap/`).
-- CROO test/whitelist wallet generated: `0x5d3d23679DFb6b01107b50A840b3c2EbB45AeE2C`.
-- Wallet private key stored in `agent/.env` locally and on the production VPS (`nuncio-vultr`).
-- `CROO_SDK_KEY` is set; the agent is connected — `[cap] Connected to CROO CAP`, confirmed live at `GET /cap/status`.
-- **Store listing:** pending re-submission. Paste-ready copy in [`docs/croo-store-listing.md`](croo-store-listing.md). Delivery schema: **signals-live/v1.1** (signals + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
+**Deployment status** (last verified 2026-07-17):
+
+- CAP client live in `agent/src/cap/` — WebSocket connected on VPS (`GET /cap/status` → `"connected": true`).
+- **CROO Agent Store:** [Early, Not Wrong](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — `signals-live` at $0.05 USDC, SLA &lt; 5 min.
+- **First verified Store purchase:** order `d3e51b1f-df3d-4ccb-8441-21c1117a569c` (2026-07-17) — pay tx `0xae73bab6…`, delivery `signals-live/v1.1` with `guidance: evaluate`.
+- Delivery schema: **signals-live/v1.1** (signals + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
+- Paste-ready listing copy: [`docs/croo-store-listing.md`](croo-store-listing.md).
 
 ---
 
@@ -102,7 +103,14 @@ Methods actually called by our adapter:
 ## Setup
 
 1. **Create the agent on the CROO Agent Store** at https://agent.croo.network.
-2. **Create the one Store-listed service** (`signals-live` at $0.05). The `serviceId` in the Store must exactly match the key in `agent/src/cap/pricing.ts`. The other four serviceIds stay MCP-only by design (see "Why only one service is Store-listed" above) — don't register them on the Store.
+2. **Create the one Store-listed service** (`signals-live` at $0.05). The human-readable slug must match the key in `agent/src/cap/pricing.ts`. CROO also assigns an **internal service UUID** — copy it from the Store service page and set on the VPS:
+
+```bash
+# Required for Store purchases — negotiations arrive with UUID, not the slug
+echo "CROO_SIGNALS_LIVE_SERVICE_UUID=3da733af-bc0f-492e-9117-d47b055e4fe1" >> agent/.env
+```
+
+See `agent/.env.example` for `CROO_SERVICE_UUID_MAP` if you list multiple services later. The other four serviceIds stay MCP-only by design — don't register them on the Store.
 3. **Copy the SDK key** into the agent environment:
 
 ```bash
@@ -123,7 +131,7 @@ echo "CROO_API_URL=https://api.croo.network" >> agent/.env
 echo "CROO_WS_URL=wss://api.croo.network/ws" >> agent/.env
 ```
 
-5. **Start the agent**:
+6. **Start the agent**:
 
 ```bash
 npm run --prefix agent dev
@@ -174,9 +182,44 @@ await client.negotiateOrder({
 });
 ```
 
-`signals-live` is the Store-listed service and needs no `subjectHash` — it returns the agent's own current-cycle data. The MCP-only services (e.g. `reputation-agent`) follow the same `negotiateOrder` shape but with a `subjectHash` in `requirements`, for a requester who already knows to ask for them directly.
+`signals-live` needs no `subjectHash` — send `{}` as requirements (Store UI, SDK, or reference requester). The agent returns its own current-cycle data regardless of requirements content.
 
-The `requirements` field must be a JSON object containing `subjectHash`. It is read from the negotiation before the agent accepts the order. (`signals-live` is the exception — it returns the agent's own current-cycle data and needs no `subjectHash`.)
+For MCP-only reputation services, requirements must include `subjectHash`:
+
+```json
+{ "subjectHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a" }
+```
+
+---
+
+## Store UI vs deliverable (common confusion)
+
+The CROO Store order form may show a **Requirements** placeholder describing the **output** shape (`cycle`, `signals`, `regime`, …). That is the deliverable schema, not buyer input.
+
+| Field | Buyer sends | Agent returns |
+|-------|-------------|---------------|
+| **Requirements** | `{}` | — |
+| **Deliverable** | — | `signals-live/v1.1` JSON (see schema URL on listing) |
+
+If orders show *"Waiting for provider to accept"* then flip to rejected, check VPS logs for `[cap] Rejecting negotiation … unknown service` — you likely need `CROO_SIGNALS_LIVE_SERVICE_UUID` (see Setup step 2).
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `unknown service` in VPS logs; UUID in log line | Store sends service UUID, not slug | Set `CROO_SIGNALS_LIVE_SERVICE_UUID` on VPS; redeploy (`535f60bf`+) |
+| Store stuck on "Waiting to accept" | Same as above — auto-rejected in ~2s | Retry after UUID env + `pm2 reload --update-env` |
+| `SERVICE_NOT_FOUND` from SDK | Service not registered or wrong slug | Register `signals-live` on Store; negotiate with slug `signals-live` |
+| Duplicate WebSocket errors | Same SDK key as provider + requester | Use a separate **requester** key for `examples/croo-requester` |
+| Requirements validation errors | Pasted deliverable JSON as input | Use `{}` only |
+
+**Monitor CAP on VPS:**
+
+```bash
+ssh nuncio-vultr "pm2 logs earlynotwrong --lines 50 --nostream | grep '\[cap\]'"
+```
 
 ---
 
@@ -186,16 +229,20 @@ The `requirements` field must be a JSON object containing `subjectHash`. It is r
 Requester                          ENW Agent
     │                                  │
     ├─ negotiateOrder() ─────────────►│
-    │   serviceId + requirements       │
-    │◄─ accepted, order created ──────┤
-    ├─ payOrder()                      │
+    │   serviceId: "signals-live"      │
+    │   requirements: "{}"             │
+    │                                  │◄── EventType.NegotiationCreated
+    │                                  │    getNegotiation() → resolve UUID → signals-live
+    │                                  │    acceptNegotiation()
+    │◄─ order created ─────────────────┤
+    ├─ payOrder() (USDC on Base)       │
     │                                  │◄── EventType.OrderPaid
-    │                                  │    getNegotiation() → get subjectHash
-    │                                  │    run get_agent_reputation(subjectHash)
-    │                                  │    deliverOrder(orderId, JSON result)
+    │                                  │    getLiveSignalsV1() → signals-live/v1.1
+    │                                  │    deliverOrder(Schema + JSON)
     │◄─ EventType.OrderCompleted ──────┤
     ├─ getDelivery()                   │
-    │◄─ JSON reputation report         │
+    │◄─ JSON: signals + guidance +     │
+    │         provenance               │
 ```
 
 Payment stats are recorded in the shared `agent/src/payment-stats.ts` module and surfaced at `GET /reputation/stats` alongside x402 stats.
@@ -206,7 +253,7 @@ Payment stats are recorded in the shared `agent/src/payment-stats.ts` module and
 
 | File | Purpose |
 |---|---|
-| `agent/src/cap/pricing.ts` | Service catalog: serviceId ↔ reputation tool + USDC price |
+| `agent/src/cap/pricing.ts` | Service catalog + UUID→slug resolution (`resolveCapServiceId`) |
 | `agent/src/cap/handler.ts` | Fulfill one paid order by calling the matching reputation tool |
 | `agent/src/cap/client.ts` | WebSocket client lifecycle, negotiation/order handlers |
 | `agent/src/payment-stats.ts` | Shared payment counters for x402 and CAP |

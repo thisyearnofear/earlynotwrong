@@ -12,6 +12,7 @@ import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { CasperWalletConnect } from "@/components/casper-wallet-connect";
 import { CasperWalletProvider } from "@/components/casper-wallet-provider";
 import { RecentAnchors } from "@/components/recent-anchors";
+import { ProofLadder, CROO_STORE_LISTING_URL } from "@/components/proof-ladder";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -1545,6 +1546,7 @@ function Dashboard({
               agents — skip / wait / evaluate guidance included.
             </p>
           </div>
+          <ProofLadder variant="full" />
           <BuyerPreviewCard />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ReputationApiCard />
@@ -2033,7 +2035,7 @@ function formatUsdc(baseUnits: string | undefined, decimals = 6): string {
   return fracStr ? `$${whole}.${fracStr} USDC` : `$${whole} USDC`;
 }
 
-const CROO_STORE_URL = "https://agent.croo.network";
+const CROO_STORE_URL = CROO_STORE_LISTING_URL;
 const SIGNALS_SCHEMA_URL = "https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json";
 const SIGNALS_EXAMPLE_URL = "https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json";
 const CROO_REQUESTER_REPO =

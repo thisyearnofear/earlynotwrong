@@ -1,21 +1,14 @@
 "use client";
 
 /**
- * Multi-Chain Anchor Panel.
+ * On-chain proof panel (Act 3).
  *
- * Shows the agent's cross-chain anchoring status across Casper, Mantle, and
- * Aleo. Each chain gets equal visual weight — a 3-column status panel showing
- * the latest anchor for each, plus a rolling history list below.
- *
- * This is "Act 3" of the dashboard narrative — proof that the agent anchors
- * every conviction record on-chain across three chains, not just Casper.
- *
- * Data sources:
- *   - /conviction (anchorResults — latest cycle's per-adapter results)
- *   - /casper/anchors (rolling anchor history)
+ * Shows **agent auto-anchor** status for Casper + Mantle with honest skip reasons.
+ * Aleo is human-wallet path via /analyzer — not part of the agent's cycle loop.
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -26,9 +19,8 @@ import {
   XCircle,
   MinusCircle,
   Link2,
+  ArrowRight,
 } from "lucide-react";
-
-// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface AnchorResult {
   adapter: string;
@@ -46,42 +38,32 @@ interface AnchorHistoryEntry {
   explorerUrl?: string;
   timestamp: number;
   cycle: number;
+  error?: string;
 }
 
 interface ConvictionData {
   anchorResults?: AnchorResult[];
 }
 
-// ─── Chain metadata ─────────────────────────────────────────────────────────
-
-const CHAINS = [
-  {
-    id: "casper",
-    label: "Casper",
-    role: "Public conviction registry",
-    color: "text-signal",
-    border: "border-signal/30",
-    bg: "bg-signal/5",
-  },
+/** Chains the autonomous agent anchors each cycle. */
+const AGENT_CHAINS = [
   {
     id: "mantle",
     label: "Mantle",
-    role: "EVM verification",
+    role: "EVM mirror · ERC-8004 registry",
     color: "text-blue-400",
     border: "border-blue-400/30",
     bg: "bg-blue-400/5",
   },
   {
-    id: "aleo",
-    label: "Aleo",
-    role: "Privacy-preserving thesis proof",
-    color: "text-purple-400",
-    border: "border-purple-400/30",
-    bg: "bg-purple-400/5",
+    id: "casper",
+    label: "Casper",
+    role: "Public registry · MCP host chain",
+    color: "text-signal",
+    border: "border-signal/30",
+    bg: "bg-signal/5",
   },
 ] as const;
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function timeAgo(epochMs: number): string {
   const diff = Date.now() - epochMs;
@@ -90,25 +72,26 @@ function timeAgo(epochMs: number): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function chainMeta(adapter: string) {
-  return CHAINS.find((c) => c.id === adapter.toLowerCase()) ?? {
-    id: adapter,
-    label: adapter,
-    role: "",
-    color: "text-foreground-muted",
-    border: "border-border/40",
-    bg: "bg-surface/30",
-  };
+  return (
+    AGENT_CHAINS.find((c) => c.id === adapter.toLowerCase()) ?? {
+      id: adapter,
+      label: adapter,
+      role: "",
+      color: "text-foreground-muted",
+      border: "border-border/40",
+      bg: "bg-surface/30",
+    }
+  );
 }
 
 function statusIcon(status: string) {
   if (status === "success") return <CheckCircle2 className="w-3.5 h-3.5 text-patience shrink-0" />;
   if (status === "failed") return <XCircle className="w-3.5 h-3.5 text-impatience shrink-0" />;
-  return <MinusCircle className="w-3.5 h-3.5 text-foreground-dim shrink-0" />;
+  return <MinusCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />;
 }
 
 function statusLabel(status: string): string {
@@ -117,7 +100,12 @@ function statusLabel(status: string): string {
   return "Skipped";
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────
+function formatSkipReason(error?: string): string | undefined {
+  if (!error) return undefined;
+  if (/balance too low/i.test(error)) return "Operator CSPR below minimum — fund testnet faucet";
+  if (/identical to the last/i.test(error)) return "Thesis unchanged since last anchor";
+  return error;
+}
 
 export function RecentAnchors() {
   const [conviction, setConviction] = useState<ConvictionData | null>(null);
@@ -134,8 +122,7 @@ export function RecentAnchors() {
         ]);
 
         if (!cancelled && convRes.ok) {
-          const data = (await convRes.json()) as ConvictionData;
-          setConviction(data);
+          setConviction((await convRes.json()) as ConvictionData);
         }
         if (!cancelled && histRes.ok) {
           const data = (await histRes.json()) as { anchors: AnchorHistoryEntry[] };
@@ -149,13 +136,15 @@ export function RecentAnchors() {
     };
     fetchAll();
     const id = setInterval(fetchAll, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
-  // Latest result per chain (from this cycle's anchorResults)
-  const latestByChain = CHAINS.map((chain) => {
+  const latestByChain = AGENT_CHAINS.map((chain) => {
     const result = conviction?.anchorResults?.find(
-      (r) => r.adapter.toLowerCase() === chain.id
+      (r) => r.adapter.toLowerCase() === chain.id,
     );
     return { ...chain, result };
   });
@@ -167,15 +156,14 @@ export function RecentAnchors() {
       <CardHeader className="pb-2">
         <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
           <Anchor className="w-3.5 h-3.5 text-signal" />
-          On-Chain Anchor History
-          <span className="ml-auto text-[10px] text-foreground-dim">
-            {successCount > 0 ? `${successCount} anchored` : ""}
+          On-Chain Proof
+          <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case">
+            Agent auto-anchor · each cycle
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* ── 3-column chain status panel ── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {latestByChain.map((chain) => (
             <div
               key={chain.id}
@@ -187,16 +175,12 @@ export function RecentAnchors() {
                   {chain.label}
                 </span>
                 {chain.result && (
-                  <span className="ml-auto">
-                    {statusIcon(chain.result.status)}
-                  </span>
+                  <span className="ml-auto">{statusIcon(chain.result.status)}</span>
                 )}
               </div>
-              <p className="text-[9px] font-mono text-foreground-dim leading-tight">
-                {chain.role}
-              </p>
+              <p className="text-[9px] font-mono text-foreground-dim leading-tight">{chain.role}</p>
               {chain.result ? (
-                <div className="space-y-1 pt-1 border-t border-border/20">
+                <div className="space-y-1.5 pt-1 border-t border-border/20">
                   <div className="flex items-center gap-1.5 text-[10px] font-mono">
                     <span className={chain.color}>{statusLabel(chain.result.status)}</span>
                     {chain.result.explorerUrl && (
@@ -206,37 +190,52 @@ export function RecentAnchors() {
                         rel="noopener noreferrer"
                         className="ml-auto text-signal hover:underline inline-flex items-center gap-0.5"
                       >
-                        tx
+                        explorer
                         <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     )}
                   </div>
-                  {chain.result.txHash && (
+                  {(chain.result.status === "skipped" || chain.result.status === "failed") &&
+                    chain.result.error && (
+                      <p className="text-[9px] font-mono text-amber-400/90 leading-relaxed">
+                        {formatSkipReason(chain.result.error)}
+                      </p>
+                    )}
+                  {chain.result.txHash && chain.result.status === "success" && (
                     <p className="text-[9px] font-mono text-foreground-dim break-all">
-                      {chain.result.txHash.slice(0, 24)}…
+                      {chain.result.txHash.slice(0, 28)}…
                     </p>
                   )}
                 </div>
               ) : (
                 <p className="text-[10px] font-mono text-foreground-dim pt-1 border-t border-border/20">
-                  {loading ? "Loading…" : "No anchor this cycle"}
+                  {loading ? "Loading…" : "No result this cycle yet"}
                 </p>
               )}
             </div>
           ))}
         </div>
 
-        {/* ── Chain legend ── */}
-        <div className="flex items-center gap-3 flex-wrap text-[9px] font-mono text-foreground-dim">
-          <span className="uppercase tracking-wider">Why three chains:</span>
-          <span className="text-signal">Casper = public registry</span>
-          <span className="text-foreground-dim">·</span>
-          <span className="text-blue-400">Mantle = EVM mirror</span>
-          <span className="text-foreground-dim">·</span>
-          <span className="text-purple-400">Aleo = privacy proof</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-lg border border-border/40 bg-surface/20 px-3 py-2 text-[10px] font-mono">
+          <span className="text-purple-400 font-semibold uppercase tracking-wider shrink-0">Aleo</span>
+          <span className="text-foreground-dim leading-relaxed">
+            Privacy proof for <strong className="font-normal text-foreground-muted">your wallet</strong> — not
+            the autonomous agent loop.
+          </span>
+          <Link
+            href="/analyzer"
+            className="inline-flex items-center gap-1 text-purple-400 hover:underline shrink-0 sm:ml-auto"
+          >
+            Wallet analyzer
+            <ArrowRight className="w-3 h-3" />
+          </Link>
         </div>
 
-        {/* ── Rolling history list ── */}
+        <p className="text-[9px] font-mono text-foreground-dim leading-relaxed">
+          Proof in paid deliveries bundles anchor history + explorer URLs under{" "}
+          <span className="text-foreground-muted">provenance</span> — hire section below.
+        </p>
+
         {loading ? (
           <div className="flex items-center gap-2 text-[11px] font-mono text-foreground-muted py-2">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-signal" />
@@ -245,19 +244,17 @@ export function RecentAnchors() {
         ) : history.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
             <Anchor className="w-6 h-6 text-foreground-dim mb-2 opacity-40" />
-            <p className="text-[11px] font-mono text-foreground-muted">
-              No anchors recorded yet
-            </p>
-            <p className="text-[10px] font-mono text-foreground-dim mt-1 max-w-xs">
-              The agent anchors conviction records to Casper, Mantle, and Aleo at the end of each ~4h cycle. History will appear here after the next cycle completes.
+            <p className="text-[11px] font-mono text-foreground-muted">No anchor history yet</p>
+            <p className="text-[10px] font-mono text-foreground-dim mt-1 max-w-sm">
+              History appears after the agent completes its anchor step (~4h cycles).
             </p>
           </div>
         ) : (
           <div className="space-y-1 max-h-48 overflow-y-auto">
             <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider px-1 pb-1">
-              Recent history
+              Recent history · {successCount} successful
             </p>
-            {history.slice(0, 15).map((anchor, i) => {
+            {history.slice(0, 12).map((anchor, i) => {
               const meta = chainMeta(anchor.adapter);
               return (
                 <motion.div
@@ -271,19 +268,14 @@ export function RecentAnchors() {
                   <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${meta.color}`}>
                     {meta.label}
                   </span>
-                  <span className="text-[10px] font-mono text-foreground-dim">
-                    cycle {anchor.cycle}
-                  </span>
-                  <span className="text-[10px] font-mono text-foreground-dim ml-auto">
-                    {timeAgo(anchor.timestamp)}
-                  </span>
+                  <span className="text-[10px] font-mono text-foreground-dim">cycle {anchor.cycle}</span>
+                  <span className="text-[10px] font-mono text-foreground-dim ml-auto">{timeAgo(anchor.timestamp)}</span>
                   {anchor.explorerUrl && (
                     <a
                       href={anchor.explorerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-signal hover:underline shrink-0"
-                      title="View on explorer"
                     >
                       <ExternalLink className="w-3 h-3" />
                     </a>

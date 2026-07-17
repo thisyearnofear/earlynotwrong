@@ -19,7 +19,17 @@ npm install
 npm run dry-run
 ```
 
-## Live purchase
+## Store UI purchase
+
+From the [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205):
+
+1. **Hire** → select **signals-live**
+2. **Requirements:** `{}` (empty JSON object)
+3. Pay ~$0.06 from CROO wallet (USDC on Base)
+
+The Requirements placeholder may describe the deliverable (`cycle`, `signals`, …) — that is **output**, not input. Do not paste a fake signal payload.
+
+## Live purchase (SDK)
 
 ```bash
 export CROO_SDK_KEY=croo_sk_your_requester_key

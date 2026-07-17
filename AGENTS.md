@@ -18,10 +18,13 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-07-14. Live commit on `nuncio-vultr`: `a92c0c7e`.
+> Last updated: 2026-07-17. Live commit on `nuncio-vultr`: `535f60bf`.
 
 ### Recently shipped
 
+- **CROO Store live + first purchase** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). CAP UUID→slug mapping via `CROO_SIGNALS_LIVE_SERVICE_UUID` (Store negotiations use internal UUIDs, not the `signals-live` slug). Verified delivery: `signals-live/v1.1` with `guidance` + `provenance`. See `docs/CROO_INTEGRATION.md` troubleshooting.
+- **signals-live/v1.1** — provenance + buyer guidance on MCP and CAP; static schema at `/schemas/signals-live-v1.1.schema.json`.
+- **Allocator UX pass** — landing intent CTAs, `/agent#hire`, demo walkthrough mode (`?demo=1`).
 - **Casper anchoring guardrails** — balance gate + thesis-hash deduplication so anchors stop failing when operator CSPR is low and stop paying gas for unchanged theses.
 - **TWAK harvest hardening** — harvest retries now mirror the exit fallback ladder (default → 10% → 20% → 49% slippage → USDC hop → size probe). Persistently unharvestable positions are marked **stuck** and blocklisted.
 - **Stuck positions excluded from cap** — `maxOpenPositions` now counts only active positions, so dead/honeypot tokens stop silently consuming slots.
@@ -153,7 +156,7 @@ src/lib/market.ts
 - **TWAK reliability**: The agent resolves the `twak` binary from common install paths (`~/.local/bin`, `~/.twak/bin`, `/usr/local/bin`) in addition to `PATH`. If TWAK is missing, misconfigured, or the wallet is locked, startup diagnostics print the exact failure and a remediation hint. The cycle still runs: portfolio falls back to the on-chain reader, and trades are skipped rather than crashing the loop.
 - **Agent-to-agent (A2A)**:
   - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 5 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`.
-  - CROO CAP client connects to the CROO network via WebSocket and advertises 4 reputation services (`reputation-latest`, `reputation-history`, `reputation-cross-chain`, `reputation-agent`) settled in USDC on Base.
+  - CROO CAP client connects to the CROO network via WebSocket and fulfills five CAP serviceIds (`signals-live` Store-listed; four reputation services MCP-only). Store orders require `CROO_SIGNALS_LIVE_SERVICE_UUID` on the VPS — see `docs/CROO_INTEGRATION.md`.
 
 ### Important Conventions
 

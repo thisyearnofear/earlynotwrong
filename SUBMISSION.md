@@ -31,6 +31,7 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 - **Casper contract package** — https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa
 - **MCP endpoint** — `POST http://144.202.117.160:31777/mcp`
 - **Agent API** — `GET http://144.202.117.160:31777/status`
+- **CROO Agent Store** — https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 (`signals-live`, $0.05 USDC)
 - **GitHub** — https://github.com/thisyearnofear/earlynotwrong
 
 ---

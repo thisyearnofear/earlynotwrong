@@ -259,8 +259,8 @@ MCP's paid `get_live_signals` (0.5 CSPR on Casper).
 
 ## Demo Setup
 
-1. **CROO Agent Store** open: https://agent.croo.network — search **Early, Not Wrong**
-2. **Dashboard Act 4** open: https://earlynotwrong.vercel.app/agent#act-4 — scroll to **CROO · CAP** card
+1. **CROO Agent Store** open: [Early, Not Wrong listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205)
+2. **Dashboard hire section** open: https://earlynotwrong.vercel.app/agent#hire — **CROO · CAP** card + buyer preview
 3. **CAP status** (optional terminal check):
 
 ```bash
@@ -281,10 +281,10 @@ Expect `"connected": true` and five advertised services (one Store-listed).
 
 ### 2. CROO Agent Store (45 seconds)
 
-On https://agent.croo.network, find **Early, Not Wrong**. Point out:
+On the [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205), point out:
 
 - **Service:** `signals-live` — $0.05 USDC
-- **Description:** live conviction signals for the current trading cycle
+- **Requirements when hiring:** `{}` only — the form placeholder that mentions `cycle` / `signals` is the *output* schema, not buyer input
 - **No subjectHash required** — cold buyers can hire without knowing ENW internals
 
 > "We only list one service on the Store on purpose. Everything else either needs
@@ -294,7 +294,7 @@ On https://agent.croo.network, find **Early, Not Wrong**. Point out:
 
 ### 3. Dashboard — CAP Panel (45 seconds)
 
-On `/agent#act-4`, below **MCP · x402**, show the **CROO · CAP** card:
+On `/agent#hire`, show the **What buyers get** preview and **CROO · CAP** card:
 
 - **Connected** indicator (green = WebSocket live on VPS)
 - Orders fulfilled / USDC earned counters
@@ -307,7 +307,9 @@ On `/agent#act-4`, below **MCP · x402**, show the **CROO · CAP** card:
 
 ### 4. Live CAP Purchase (60 seconds)
 
-If you have a CROO SDK key, run the requester flow (also on the dashboard):
+**Option A — Store UI (verified 2026-07-17):** Hire from the listing, Requirements = `{}`, pay from CROO balance. Narrate: negotiate → accept (VPS logs `[cap] Order created`) → pay → delivery with `guidance.recommendedAction`.
+
+**Option B — SDK requester** (separate requester key; see dashboard snippet):
 
 ```typescript
 import { AgentClient, EventType } from "@croo-network/sdk";

@@ -65,7 +65,8 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 
 | Link | URL |
 |------|-----|
-| Dashboard | https://earlynotwrong.vercel.app/agent |
+| Dashboard | https://earlynotwrong.vercel.app/agent#hire |
+| Store listing | https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 |
 | Live status | http://144.202.117.160:31777/status |
 | CAP status | http://144.202.117.160:31777/cap/status |
 | MCP (Casper x402) | http://144.202.117.160:31777/mcp |
@@ -89,13 +90,20 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 
 ## Demo checklist (for reviewers)
 
-- [ ] Agent registered on CROO Store with service above
-- [ ] CAP WebSocket connected (`GET /cap/status` → `connected: true`)
-- [ ] Reference requester completes negotiate → pay → deliver
-- [ ] Delivery validates against JSON Schema
-- [ ] `guidance.recommendedAction` present and sensible
-- [ ] `provenance.explorerUrls` links resolve
+- [x] Agent registered on CROO Store with service above
+- [x] CAP WebSocket connected (`GET /cap/status` → `connected: true`)
+- [x] Store purchase completed (order `d3e51b1f-…`, 2026-07-17)
+- [x] Delivery validates as `signals-live/v1.1` with `guidance.recommendedAction`
+- [ ] Reference requester completes negotiate → pay → deliver (optional; Store UI path verified)
+- [ ] `provenance.explorerUrls` links resolve (Casper may skip when operator CSPR low)
 - [ ] 2-minute screen recording of purchase flow uploaded to buidl page
+
+### Buying via Store UI
+
+1. Open the [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) → **Hire** → select **signals-live**
+2. **Requirements:** `{}` (empty JSON — ignore the placeholder that lists `cycle`, `signals`, etc.; that describes the *deliverable*, not your input)
+3. Pay ~$0.06 total ($0.05 + gas) from CROO wallet balance on Base
+4. Delivery arrives as JSON with `guidance` + `provenance` within SLA (&lt; 5 min)
 
 ---
 

@@ -32,6 +32,7 @@ import {
   INTENT_PATHS,
   DEMO_WALKTHROUGH_HREF,
 } from "@/lib/product-copy";
+import { ProofLadder } from "@/components/proof-ladder";
 
 // ─── Agent status (for the live indicator) ──────────────────────────────────
 
@@ -69,6 +70,11 @@ interface ConvictionResponse {
   signals: ConvictionSignal[];
   heldPositions: HeldPosition[];
   positionVerdicts: PositionVerdict[];
+  anchorResults?: {
+    adapter: string;
+    status: "success" | "skipped" | "failed";
+    error?: string;
+  }[];
 }
 
 function timeAgo(epochMs: number | null): string {
@@ -173,7 +179,20 @@ export default function Home() {
     })
     .find((x) => x.isProven);
 
-  const isLive = agentStatus?.status === "running";
+  const isLive = agentStatus?.status === "running" || agentStatus?.status === "idle";
+
+  const mantleAnchor = convictionData?.anchorResults?.find((r) => r.adapter === "mantle");
+  const casperAnchor = convictionData?.anchorResults?.find((r) => r.adapter === "casper");
+  const anchorSummary =
+    mantleAnchor?.status === "success"
+      ? casperAnchor?.status === "success"
+        ? "Mantle + Casper"
+        : casperAnchor?.status === "skipped"
+          ? "Mantle ✓ · Casper skipped"
+          : "Mantle ✓"
+      : casperAnchor?.status === "success"
+        ? "Casper ✓"
+        : "Next cycle";
 
   return (
     <div
@@ -269,54 +288,20 @@ export default function Home() {
             </Link>
           </motion.div>
 
-          {/* Live indicator + chain strip */}
+          {/* Live indicator + proof ladder */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.45, duration: 0.4 }}
-            className="flex items-center gap-3 flex-wrap justify-center text-[10px] font-mono pt-2"
+            className="pt-2 space-y-3 w-full max-w-3xl"
           >
-            {isLive ? (
-              <span className="inline-flex items-center gap-1.5 text-patience">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-patience opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-patience" />
-                </span>
-                <span className="uppercase tracking-wider">Agent live</span>
-                {agentStatus?.lastRunAt && (
-                  <span className="text-foreground-dim">
-                    · cycle {agentStatus.cycle} · {timeAgo(agentStatus.lastRunAt)}
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span className="text-foreground-dim uppercase tracking-wider">
-                {agentStatus?.status ?? "connecting…"}
-              </span>
+            {isLive && agentStatus?.lastRunAt && (
+              <p className="text-center text-[10px] font-mono text-patience uppercase tracking-wider">
+                Agent live · cycle {agentStatus.cycle} · {timeAgo(agentStatus.lastRunAt)}
+              </p>
             )}
-
-            <span className="text-foreground-dim">·</span>
-
-            <span className="uppercase tracking-wider text-foreground-dim">Anchored on:</span>
-            <span className="px-2 py-0.5 rounded-full border border-signal/30 bg-signal/10 text-signal">
-              Casper
-            </span>
-            <span className="px-2 py-0.5 rounded-full border border-border/40 bg-surface/30 text-foreground-muted">
-              Mantle
-            </span>
-            <span className="px-2 py-0.5 rounded-full border border-border/40 bg-surface/30 text-foreground-muted">
-              Aleo
-            </span>
+            <ProofLadder variant="compact" />
           </motion.div>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5, duration: 0.4 }}
-            className="text-[10px] font-mono text-foreground-dim max-w-md leading-relaxed"
-            title="Each chain plays a distinct role in the conviction stack"
-          >
-            Casper = public registry · Mantle = EVM mirror · Aleo = privacy proof
-          </motion.p>
         </motion.section>
 
         {/* ── The 4 Acts — how it works ────────────────────────────────────── */}
@@ -374,8 +359,8 @@ export default function Home() {
                   {act.title === "Anchor" && (
                     <div className="mt-auto pt-2 border-t border-border/30 flex items-center gap-2 text-[10px] font-mono">
                       <Link2 className="w-2.5 h-2.5 text-signal" />
-                      <span className="text-foreground-muted">3 chains</span>
-                      <span className="text-signal ml-auto">live</span>
+                      <span className="text-foreground-muted">Proof</span>
+                      <span className="text-signal ml-auto">{anchorSummary}</span>
                     </div>
                   )}
                   {act.title === "Verify" && (
