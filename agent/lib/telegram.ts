@@ -11,6 +11,7 @@
 
 import type { SwapResult } from "./twak-executor.js";
 import { getSubscriberChatIds } from "./telegram-subscribers.js";
+import { crooStoreUrl, dashboardHireUrl } from "./marketing-urls.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
@@ -362,8 +363,8 @@ export async function sendExitAlert(params: {
   await broadcastMessage(lines.join("\n"));
 }
 
-const CROO_STORE_URL =
-  "https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205";
+const CROO_STORE_URL = crooStoreUrl("telegram", "guidance-broadcast");
+const DASHBOARD_HIRE_URL = dashboardHireUrl("telegram");
 
 const GUIDANCE_ACTION_LABELS: Record<string, string> = {
   evaluate: "✅ Evaluate",
@@ -410,7 +411,7 @@ export async function sendGuidanceBroadcast(params: {
 
   lines.push("");
   lines.push(
-    `<a href="${CROO_STORE_URL}">Hire on CROO</a> · <a href="https://earlynotwrong.vercel.app/agent#hire">Dashboard</a>`,
+    `<a href="${CROO_STORE_URL}">Hire on CROO</a> · <a href="${DASHBOARD_HIRE_URL}">Dashboard</a>`,
   );
 
   await broadcastMessage(lines.join("\n"));

@@ -20,7 +20,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CROO_STORE_LISTING_URL } from "@/lib/croo-store";
+import { CROO_STORE_LISTING_URL, crooStoreUrl } from "@/lib/croo-store";
 
 export { CROO_STORE_LISTING_URL };
 
@@ -206,7 +206,7 @@ export function ProofLadder({
             const StatusIcon = iconForTone(tone);
             const href =
               step.id === "hire"
-                ? CROO_STORE_LISTING_URL
+                ? crooStoreUrl("proof-ladder")
                 : step.id === "proof"
                   ? "/agent#proof"
                   : step.id === "query"
@@ -283,7 +283,7 @@ export function ProofLadder({
               <p className="text-[10px] font-mono text-foreground-muted leading-relaxed">{detail}</p>
               {step.id === "hire" && data?.capConnected && (
                 <a
-                  href={CROO_STORE_LISTING_URL}
+                  href={crooStoreUrl("proof-ladder")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-[10px] font-mono text-[#65b3ae] hover:underline"

@@ -23,6 +23,7 @@ import { CasperAnchorAdapter } from "../../lib/anchors/casper.js";
 import { AGENT_CONFIG, AGENT_MODE } from "../../lib/config.js";
 import { getBnbUsd, state as liveAgentState } from "../../lib/agent-state.js";
 import type { ConvictionSignal, MarketRegime, SignalWeights } from "../../lib/conviction-signal.js";
+import { crooStoreUrl, dashboardHireUrl } from "../../lib/marketing-urls.js";
 
 // Two adapter instances are sufficient — they're stateless wrappers; the
 // CasperAnchorAdapter caches reads internally. We don't reach into the
@@ -642,9 +643,9 @@ export function buildSignalsTeaser(full: SignalsLiveV1_1): SignalsLiveTeaser {
     unlock: {
       message:
         "Full ranked signals, factor breakdowns, and on-chain provenance links — hire signals-live on CROO or MCP.",
-      crooStoreUrl: CROO_STORE_LISTING_URL,
+      crooStoreUrl: crooStoreUrl("mcp-teaser"),
       priceUsdc: "0.05",
-      dashboardUrl: "https://earlynotwrong.vercel.app/agent#hire",
+      dashboardUrl: dashboardHireUrl("mcp-teaser"),
     },
     meta: { schemaUrl: full.meta.schemaUrl },
   };

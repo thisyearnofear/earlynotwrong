@@ -26,7 +26,9 @@ import {
   Zap,
   Brain,
   Link2,
+  ExternalLink,
 } from "lucide-react";
+import { crooStoreUrl } from "@/lib/croo-store";
 import {
   NORTH_STAR,
   INTENT_PATHS,
@@ -379,6 +381,15 @@ export default function Home() {
                         Hire signals-live
                         <ArrowRight className="w-2.5 h-2.5" />
                       </Link>
+                      <a
+                        href={crooStoreUrl("landing", "verify-act")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] font-mono text-[#65b3ae] hover:underline"
+                      >
+                        CROO Store · $0.05
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
                       <Link
                         href="/analyzer"
                         className="inline-flex items-center gap-1 text-[10px] font-mono text-foreground-muted hover:text-signal hover:underline"

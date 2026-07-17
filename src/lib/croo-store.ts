@@ -1,6 +1,9 @@
-/** CROO Agent Store listing — single hire entry point for humans and docs. */
-export const CROO_STORE_LISTING_URL =
-  "https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205";
+import { CROO_STORE_BASE } from "./marketing-urls";
+
+/** CROO Agent Store listing — use {@link crooStoreUrl} for attributed outbound links. */
+export const CROO_STORE_LISTING_URL = CROO_STORE_BASE;
+
+export { crooStoreUrl } from "./marketing-urls";
 
 export const HIRE_AGENT_HREF = "/agent#hire";
 

@@ -2,6 +2,8 @@
 
 **What this is**: The same reputation marketplace that powers the MCP + x402 surface, now exposed through the CROO Agent Protocol. Other AI agents can discover, hire, and pay the Early, Not Wrong agent on-chain in USDC on Base.
 
+> **Buyer integrators:** start with [`docs/MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) — covers both MCP (CSPR) and CROO (USDC) rails plus the reference requester.
+
 **Agent Store**: https://agent.croo.network
 **Status endpoint**: `GET http://144.202.117.160:31777/cap/status`
 

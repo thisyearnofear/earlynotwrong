@@ -66,6 +66,7 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 | Link | URL |
 |------|-----|
 | Dashboard | https://earlynotwrong.vercel.app/agent#hire |
+| Integration guide | [`docs/MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) |
 | Store listing | https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 |
 | Live status | http://144.202.117.160:31777/status |
 | CAP status | http://144.202.117.160:31777/cap/status |

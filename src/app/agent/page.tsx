@@ -12,7 +12,15 @@ import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { CasperWalletConnect } from "@/components/casper-wallet-connect";
 import { CasperWalletProvider } from "@/components/casper-wallet-provider";
 import { RecentAnchors } from "@/components/recent-anchors";
-import { ProofLadder, CROO_STORE_LISTING_URL } from "@/components/proof-ladder";
+import { ProofLadder } from "@/components/proof-ladder";
+import { IntegrationHub } from "@/components/integration-hub";
+import {
+  crooStoreUrl,
+  DOCS_MCP_INTEGRATION,
+  SIGNALS_EXAMPLE_URL,
+  SIGNALS_SCHEMA_URL,
+  CROO_REQUESTER_PATH,
+} from "@/lib/marketing-urls";
 import { SignalsUnlockPanel } from "@/components/signals-unlock-panel";
 import type { SignalsLiveTeaser } from "@/lib/signals-teaser-types";
 import {
@@ -1557,12 +1565,15 @@ function Dashboard({
               Hire this agent
             </p>
             <p className="text-sm text-foreground-muted mt-1 leading-relaxed">
-              Same <span className="font-mono text-foreground">signals-live/v1.1</span>{" "}
-              payload on MCP (Casper x402) and CROO CAP (USDC on Base). Built for allocator
-              agents — skip / wait / evaluate guidance included.
+              Hire an autonomous contrarian agent that scores BSC tokens every 4 hours and
+              anchors every thesis on Casper + Mantle. Same{" "}
+              <span className="font-mono text-foreground">signals-live/v1.1</span> on MCP
+              (Casper x402) and CROO CAP (USDC on Base) — skip / wait / evaluate guidance
+              included.
             </p>
           </div>
           <ProofLadder variant="full" />
+          <IntegrationHub />
           <BuyerPreviewCard />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ReputationApiCard />
@@ -2051,11 +2062,8 @@ function formatUsdc(baseUnits: string | undefined, decimals = 6): string {
   return fracStr ? `$${whole}.${fracStr} USDC` : `$${whole} USDC`;
 }
 
-const CROO_STORE_URL = CROO_STORE_LISTING_URL;
-const SIGNALS_SCHEMA_URL = "https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json";
-const SIGNALS_EXAMPLE_URL = "https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json";
-const CROO_REQUESTER_REPO =
-  "https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester";
+const CROO_STORE_URL = crooStoreUrl("dashboard", "cap-card");
+const CROO_REQUESTER_REPO = CROO_REQUESTER_PATH;
 
 interface SignalsLivePreview {
   schema: string;
@@ -2348,7 +2356,15 @@ function ReputationApiCard() {
           <span className="font-mono text-foreground">Model Context Protocol</span>{" "}
           with per-call <span className="font-mono text-foreground">x402</span>{" "}
           micropayments on Casper — same{" "}
-          <span className="font-mono text-foreground">signals-live/v1.1</span> payload as CROO.
+          <span className="font-mono text-foreground">signals-live/v1.1</span> payload as CROO.{" "}
+          <a
+            href={DOCS_MCP_INTEGRATION}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-signal hover:underline"
+          >
+            Integration guide
+          </a>
         </p>
 
         <div className="rounded-lg border border-signal/30 bg-signal/5 p-3 mb-4">

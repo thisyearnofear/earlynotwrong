@@ -10,7 +10,7 @@
 - JSON Schema: [`signals-live-v1.1.schema.json`](./signals-live-v1.1.schema.json)
 - Example: [`../samples/signals-live-v1.1.example.json`](../samples/signals-live-v1.1.example.json)
 - Store listing copy: [`../croo-store-listing.md`](../croo-store-listing.md)
-- Reference requester: [`../../examples/croo-requester/`](../../examples/croo-requester/)
+- Reference requester: [`../../examples/croo-requester/`](../../examples/croo-requester/) · buyer guide: [`../../docs/MCP_INTEGRATION.md`](../../docs/MCP_INTEGRATION.md)
 
 ---
 

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { DOCS_MCP_INTEGRATION } from "@/lib/marketing-urls";
 import { ExternalLink, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  CROO_STORE_LISTING_URL,
+  crooStoreUrl,
   HIRE_AGENT_HREF,
   SIGNALS_LIVE_PRICE_USDC,
 } from "@/lib/croo-store";
@@ -39,7 +40,7 @@ export function HireSignalsCta({
   headline,
 }: HireSignalsCtaProps) {
   const action = teaser?.guidance.recommendedAction;
-  const storeUrl = teaser?.unlock.crooStoreUrl ?? CROO_STORE_LISTING_URL;
+  const storeUrl = teaser?.unlock.crooStoreUrl ?? crooStoreUrl("hire-cta");
 
   return (
     <div
@@ -111,6 +112,16 @@ export function HireSignalsCta({
           >
             MCP + integration docs
           </Link>
+        )}
+        {!compact && (
+          <a
+            href={DOCS_MCP_INTEGRATION}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] px-3 py-2 rounded-lg border border-border/50 text-foreground-muted hover:text-signal hover:border-signal/30 transition-colors"
+          >
+            Full guide (GitHub)
+          </a>
         )}
       </div>
 

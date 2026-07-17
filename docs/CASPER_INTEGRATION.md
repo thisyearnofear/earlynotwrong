@@ -3,6 +3,9 @@
 **What this is**: Casper-hosted agent reputation registry, queryable by other AI agents via Model Context Protocol, paid per call via x402 CEP-18 micropayments.
 
 **Live dashboard**: https://earlynotwrong.vercel.app/agent (the "Agent Reputation API" panel)
+
+> **Buyer integrators:** [`docs/MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) covers MCP + CROO hire paths, curl examples, and the reference requester.
+
 **Demo**: [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 live; recorded before the current pricing — it shows `get_agent_reputation` as paid, which is now free)
 
 ---
