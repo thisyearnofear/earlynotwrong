@@ -17,7 +17,6 @@ import {
 } from "../mcp/tools.js";
 import { recordCall } from "../payment-stats.js";
 import { pricingForToolName, toolNameForService } from "./pricing.js";
-import { CROO_STORE_DELIVERABLE_SCHEMA } from "./signals-schema.js";
 
 export interface CapOrderPayload {
   orderId: string;
@@ -86,9 +85,11 @@ export async function fulfillCapOrder(
         tool: "signals-live",
       });
       deliverable = JSON.stringify(livePayload);
+      // Store listing registers the schema; omit deliverableSchema here — CROO
+      // validates deliverableText against the listing. Passing a URL or inline
+      // JSON Schema document causes INVALID_DELIVERABLE (parsed as instance data).
       deliverReq = {
         deliverableType: DeliverableType.Schema,
-        deliverableSchema: CROO_STORE_DELIVERABLE_SCHEMA,
         deliverableText: deliverable,
       };
       break;
