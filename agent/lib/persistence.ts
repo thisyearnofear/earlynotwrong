@@ -41,7 +41,7 @@ export interface PersistentState {
 // =============================================================================
 
 /** Get the data directory, creating it if needed. */
-function getDataDir(): string {
+export function getDataDir(): string {
   // Use AGENT_DATA_DIR env var, or default to <cwd>/data for predictability
   // across dev (tsx) and production (compiled JS).
   const dir = process.env.AGENT_DATA_DIR || join(process.cwd(), "data");

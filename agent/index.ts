@@ -54,6 +54,7 @@ import { guardrails } from "./lib/risk-guardrails.js";
 import { analyzeAgentBehavior } from "./lib/self-analysis.js";
 import { setAgentState, startServer } from "./src/server.js";
 import { startCapClient, stopCapClient, getCapStatus } from "./src/cap/client.js";
+import { loadPaymentStats } from "./src/payment-stats.js";
 import {
   sendCycleSummary,
   sendStartup,
@@ -494,6 +495,7 @@ async function main(): Promise<void> {
   console.log(`Bankroll: reserve=$${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd}, target=$${AGENT_CONFIG.trading.bankroll.targetBnbUsd}, max-trade-fraction=${AGENT_CONFIG.trading.bankroll.maxTradeFractionOfBnb * 100}%, entry-skip-below=$${AGENT_CONFIG.trading.bankroll.entrySkipBelowBnbUsd}`);
 
   const server = startServer(31777);
+  loadPaymentStats();
   await startCapClient();
   const capStatus = getCapStatus();
   console.log(`  CROO CAP:    ${capStatus.connected ? "✓" : "○"} (${capStatus.services.length} services)`);
