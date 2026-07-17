@@ -199,7 +199,9 @@ The CROO Store order form may show a **Requirements** placeholder describing the
 | Field | Buyer sends | Agent returns |
 |-------|-------------|---------------|
 | **Requirements** | `{}` | — |
-| **Deliverable** | — | `signals-live/v1.1` JSON (see schema URL on listing) |
+| **Deliverable** | — | Full `signals-live/v1.1` JSON (see [sample](https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json)) |
+
+**Store listing editor:** Leave **Deliverable → Schema** empty (no field rows). Use **Deliverable → Text** for a human-readable teaser only. Adding object/array rows in the Schema builder causes CROO to reject delivery with `INVALID_DELIVERABLE`.
 
 If orders show *"Waiting for provider to accept"* then flip to rejected, check VPS logs for `[cap] Rejecting negotiation … unknown service` — you likely need `CROO_SIGNALS_LIVE_SERVICE_UUID` (see Setup step 2).
 
@@ -214,6 +216,8 @@ If orders show *"Waiting for provider to accept"* then flip to rejected, check V
 | `SERVICE_NOT_FOUND` from SDK | Service not registered or wrong slug | Register `signals-live` on Store; negotiate with slug `signals-live` |
 | Duplicate WebSocket errors | Same SDK key as provider + requester | Use a separate **requester** key for `examples/croo-requester` |
 | Requirements validation errors | Pasted deliverable JSON as input | Use `{}` only |
+| `INVALID_DELIVERABLE` / order expires unpaid-out | Deliverable Schema field builder populated on Store | Clear all rows under **Deliverable → Schema**; keep Text teaser only |
+| `invalid character 'h'` on deliver | `deliverableSchema` sent as URL string (legacy) | Agent now sends Text + full JSON only (`a6e922ca`+) |
 
 **Monitor CAP on VPS:**
 
@@ -238,7 +242,7 @@ Requester                          ENW Agent
     ├─ payOrder() (USDC on Base)       │
     │                                  │◄── EventType.OrderPaid
     │                                  │    getLiveSignalsV1() → signals-live/v1.1
-    │                                  │    deliverOrder(Schema + JSON)
+    │                                  │    deliverOrder(Text + signals-live/v1.1 JSON)
     │◄─ EventType.OrderCompleted ──────┤
     ├─ getDelivery()                   │
     │◄─ JSON: signals + guidance +     │

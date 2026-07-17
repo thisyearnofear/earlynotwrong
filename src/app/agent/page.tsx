@@ -2581,8 +2581,8 @@ function CrooCapCard() {
             CROO Agent Store
           </a>
           . USDC on Base via CAP — identical{" "}
-          <span className="font-mono text-foreground">signals-live/v1.1</span> delivery with Schema
-          validation.
+          <span className="font-mono text-foreground">signals-live/v1.1</span> JSON on every
+          paid order.
         </p>
 
         {/* Store-listed premium SKU */}

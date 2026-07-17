@@ -51,4 +51,4 @@ npx ajv validate \
 ## Implementation
 
 - Assembly: `agent/src/mcp/tools.ts` → `getLiveSignalsV1()`, `buildBuyerGuidance()`, `buildProvenance()`
-- CAP delivery: `DeliverableType.Schema` + `SIGNALS_LIVE_SCHEMA_URL` in `agent/src/cap/handler.ts`
+- CAP delivery: `DeliverableType.Text` with full `signals-live/v1.1` JSON in `agent/src/cap/handler.ts` (Store Deliverable Schema must stay empty — see `docs/croo-store-listing.md`)

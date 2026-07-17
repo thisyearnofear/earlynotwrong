@@ -85,10 +85,9 @@ export async function fulfillCapOrder(
         tool: "signals-live",
       });
       deliverable = JSON.stringify(livePayload);
-      // Schema-typed Store listings validate deliverableText against the field
-      // builder schema (strict types). Full v1.1 includes extra top-level keys
-      // (schema, agent, meta, …) which fails that check. Text delivery carries
-      // the complete signals-live/v1.1 JSON; the Store schema documents shape.
+      // Store Deliverable Schema field-builder rows cause INVALID_DELIVERABLE.
+      // Text delivery carries the complete signals-live/v1.1 JSON; integrators
+      // validate against the public JSON Schema URL, not the Store listing.
       deliverReq = {
         deliverableType: DeliverableType.Text,
         deliverableText: deliverable,

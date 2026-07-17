@@ -22,7 +22,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ### Recently shipped
 
-- **CROO Store live + first purchase** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). CAP UUID→slug mapping via `CROO_SIGNALS_LIVE_SERVICE_UUID` (Store negotiations use internal UUIDs, not the `signals-live` slug). Verified delivery: `signals-live/v1.1` with `guidance` + `provenance`. See `docs/CROO_INTEGRATION.md` troubleshooting.
+- **CROO Store live** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). **Store Deliverable Schema must stay empty** (field builder rows break CAP delivery). Verified orders include `0990e061-…` (2026-07-17). See `docs/croo-store-listing.md` and `docs/CROO_INTEGRATION.md`.
 - **signals-live/v1.1** — provenance + buyer guidance on MCP and CAP; static schema at `/schemas/signals-live-v1.1.schema.json`.
 - **Allocator UX pass** — landing intent CTAs, `/agent#hire`, demo walkthrough mode (`?demo=1`).
 - **Casper anchoring guardrails** — balance gate + thesis-hash deduplication so anchors stop failing when operator CSPR is low and stop paying gas for unchanged theses.

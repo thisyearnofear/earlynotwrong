@@ -19,7 +19,7 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 | x402 paid paywall via cspr.cloud facilitator | Live |
 | Next.js web app — landing page, dashboard, wallet analyzer | Live |
 | Cross-chain anchoring — Casper + Mantle + Aleo | Live |
-| CROO Agent Store — `signals-live` ($0.05 USDC on Base) | Live + verified purchase |
+| CROO Agent Store — `signals-live` ($0.05 USDC on Base) | Live + 3 verified purchases |
 | Test suite (Vitest) | 12 files, ~2,820 lines |
 
 ---
@@ -109,7 +109,7 @@ The same live conviction SKU is also hireable on the **[CROO Agent Store](https:
 | **MCP + x402** | Direct HTTP / AI clients | CSPR (Casper testnet, CEP-18) | `get_live_signals` · 0.5 CSPR |
 | **CROO CAP** | Agent Store | USDC (Base) | `signals-live` · $0.05 |
 
-Casper remains the **MCP host chain** and public registry; CROO is the **USDC commerce layer** for allocator agents that discover services on the Store. One conviction engine, two payment rails, one schema: [`signals-live-v1.1.schema.json`](https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json). Verified Store purchase: order `d3e51b1f-df3d-4ccb-8441-21c1117a569c` (2026-07-17). See [`docs/CROO_INTEGRATION.md`](docs/CROO_INTEGRATION.md).
+Casper remains the **MCP host chain** and public registry; CROO is the **USDC commerce layer** for allocator agents that discover services on the Store. One conviction engine, two payment rails, one schema: [`signals-live-v1.1.schema.json`](https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json). Verified Store purchases (2026-07-17): `d3e51b1f-…`, `ad8b40fc-…`, `0990e061-…` (3 completed after clearing empty Deliverable Schema). See [`docs/CROO_INTEGRATION.md`](docs/CROO_INTEGRATION.md).
 
 ### 5. Next.js Web App — 3-Page Architecture
 

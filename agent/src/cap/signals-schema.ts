@@ -1,15 +1,16 @@
 /**
- * Deliverable schema registered on the CROO Store listing (field builder).
- * Must match the four rows: guidance, signals, freshness, provenance.
+ * Public signals-live/v1.1 JSON Schema helpers (docs/MCP tests).
  *
- * CAP deliverOrder expects deliverableSchema as JSON text of this object —
- * not a URL and not the full signals-live-v1.1 JSON Schema file.
+ * Do NOT use CROO_STORE_DELIVERABLE_SCHEMA in the Store listing or CAP delivery.
+ * CROO validates paid delivery against Store Schema field-builder rows and rejects
+ * the real v1.1 payload. Listing: Deliverable Schema empty, Text teaser only.
  */
 
 import { SIGNALS_LIVE_SCHEMA_URL } from "../mcp/tools.js";
 
 export { SIGNALS_LIVE_SCHEMA_URL };
 
+/** @deprecated Do not register on CROO Store — causes INVALID_DELIVERABLE. Tests only. */
 export const CROO_STORE_DELIVERABLE_SCHEMA = JSON.stringify({
   type: "object",
   properties: {
@@ -43,11 +44,9 @@ export const CROO_STORE_DELIVERABLE_SCHEMA = JSON.stringify({
 export async function getCapDeliverableSchemaJson(): Promise<string> {
   const { readFileSync, existsSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const path = join(process.cwd(), "../public/schemas/signals-live-v1.1.schema.json");
-  if (existsSync(path)) {
-    return readFileSync(path, "utf-8");
+  const schemaPath = join(import.meta.dirname, "../../../public/schemas/signals-live-v1.1.schema.json");
+  if (!existsSync(schemaPath)) {
+    throw new Error(`Missing schema file: ${schemaPath}`);
   }
-  const res = await fetch(SIGNALS_LIVE_SCHEMA_URL);
-  if (!res.ok) throw new Error(`Schema fetch failed: ${res.status}`);
-  return JSON.stringify(await res.json());
+  return readFileSync(schemaPath, "utf8");
 }

@@ -54,7 +54,7 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 ### Buyer agent playbook
 
 ```
-1. Parse JSON from CAP delivery (DeliverableType.Schema)
+1. Parse JSON from CAP delivery (DeliverableType.Text)
 2. If freshness.stale → wait (guidance.recommendedAction = "wait")
 3. If guidance.recommendedAction = "skip_entries" → do not open new positions
 4. If "evaluate" → inspect signals[0..N], apply your sizing × guidance.sizeMultiplier
@@ -80,9 +80,14 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 |-------|-------|
 | **serviceId** | `signals-live` (exact match required) |
 | **Price** | $0.05 USDC |
-| **Deliverable type** | Schema |
-| **Schema URL** | `https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json` |
-| **Requirements** | `{}` (empty JSON — no subjectHash needed) |
+| **Requirements (Text)** | `Send {} only` |
+| **Requirements (Schema)** | Leave empty — no field rows (buyer sends `{}`) |
+| **Deliverable (Text)** | Abbreviated example JSON + link to [full sample](https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json) |
+| **Deliverable (Schema)** | **Leave empty — no field rows** |
+
+> **Important:** Do **not** add `guidance` / `signals` / `freshness` / `provenance` rows in the Store **Deliverable → Schema** field builder. CROO validates paid delivery against that schema and rejects the full `signals-live/v1.1` payload (`INVALID_DELIVERABLE`). Orders failed this way until Schema was cleared (verified recovery: order `0990e061-…`, 2026-07-17).
+
+The agent delivers the complete **`signals-live/v1.1`** JSON via CAP (`DeliverableType.Text`). Integrator JSON Schema: `https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json`
 
 > **Store UUID:** CROO assigns an internal service UUID (e.g. `3da733af-bc0f-492e-9117-d47b055e4fe1`). Set `CROO_SIGNALS_LIVE_SERVICE_UUID` in `agent/.env` on the VPS so the CAP client accepts Store orders (see `agent/.env.example`).
 
@@ -92,9 +97,8 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 
 - [x] Agent registered on CROO Store with service above
 - [x] CAP WebSocket connected (`GET /cap/status` → `connected: true`)
-- [x] Store purchase completed (order `d3e51b1f-…`, 2026-07-17)
-- [x] Delivery validates as `signals-live/v1.1` with `guidance.recommendedAction`
-- [ ] Reference requester completes negotiate → pay → deliver (optional; Store UI path verified)
+- [x] Store purchase completed (orders `d3e51b1f-…`, `ad8b40fc-…`, `0990e061-…` — 2026-07-17)
+- [x] Store UI path verified after deliverable Schema field builder cleared
 - [ ] `provenance.explorerUrls` links resolve (Casper may skip when operator CSPR low)
 - [ ] 2-minute screen recording of purchase flow uploaded to buidl page
 
@@ -109,4 +113,4 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 
 ## Re-submission note
 
-Previous feedback: offering not strong enough for cold Store buyers. **v1.1** addresses this by bundling trust (`provenance`) and an explicit action contract (`guidance`) into the paid SKU, plus Schema-typed CAP delivery and a reference requester agent.
+Previous feedback: offering not strong enough for cold Store buyers. **v1.1** addresses this by bundling trust (`provenance`) and an explicit action contract (`guidance`) into the paid SKU, plus Text CAP delivery and a reference requester agent.
