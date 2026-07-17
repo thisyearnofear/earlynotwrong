@@ -114,7 +114,7 @@ Paid `get_live_signals` returns HTTP 402 first — see [CASPER_INTEGRATION.md](h
 
 **Same payload on CROO:** [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) · $0.05 USDC · easier if you already use the CROO wallet.
 
-Full buyer guide: [MCP_INTEGRATION.md](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md)
+Full buyer guide: [MCP_INTEGRATION.md](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md) · Strategy: [POSITIONING.md](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/POSITIONING.md)
 
 ---
 
