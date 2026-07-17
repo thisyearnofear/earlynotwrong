@@ -8,6 +8,12 @@ export const CROO_STORE_BASE =
 
 export const DASHBOARD_HIRE_BASE = "https://earlynotwrong.vercel.app/agent";
 
+export const DOCS_MCP_INTEGRATION =
+  "https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md";
+
+export const CROO_REQUESTER_PATH =
+  "https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester";
+
 export type UtmSource =
   | "dashboard"
   | "landing"
@@ -50,4 +56,13 @@ export function dashboardHireUrl(source: UtmSource): string {
   parsed.searchParams.set("utm_medium", source === "telegram" ? "telegram" : "web");
   parsed.searchParams.set("utm_campaign", "signals-live");
   return parsed.toString();
+}
+
+export function integrationGuideUrl(source: UtmSource, content?: string): string {
+  return withUtm(DOCS_MCP_INTEGRATION, {
+    source,
+    medium: source === "telegram" ? "telegram" : "web",
+    campaign: "signals-live",
+    content,
+  });
 }

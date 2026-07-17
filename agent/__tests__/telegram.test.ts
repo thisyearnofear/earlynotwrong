@@ -361,6 +361,8 @@ describe("Telegram module", () => {
     expect(payloads[0].text).toContain("Evaluate");
     expect(payloads[0].text).toContain("XRP");
     expect(payloads[0].text).toContain("Hire on CROO");
+    expect(payloads[0].text).toContain("Integrate");
+    expect(payloads[0].text).toContain("signals-live");
     expect(payloads[1].chat_id).toBe("999888");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crooStoreUrl, dashboardHireUrl, withUtm } from "../lib/marketing-urls.js";
+import { crooStoreUrl, dashboardHireUrl, integrationGuideUrl, withUtm } from "../lib/marketing-urls.js";
 
 describe("marketing-urls", () => {
   it("adds UTM params to CROO Store URL", () => {
@@ -15,6 +15,13 @@ describe("marketing-urls", () => {
     const url = dashboardHireUrl("telegram");
     expect(url).toMatch(/#hire$/);
     expect(url).toContain("utm_source=telegram");
+  });
+
+  it("tags integration guide URL for telegram", () => {
+    const url = integrationGuideUrl("telegram", "guidance-broadcast");
+    expect(url).toContain("MCP_INTEGRATION.md");
+    expect(url).toContain("utm_source=telegram");
+    expect(url).toContain("utm_content=guidance-broadcast");
   });
 
   it("withUtm leaves unknown hash intact", () => {

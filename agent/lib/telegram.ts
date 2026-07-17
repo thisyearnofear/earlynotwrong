@@ -11,7 +11,7 @@
 
 import type { SwapResult } from "./twak-executor.js";
 import { getSubscriberChatIds } from "./telegram-subscribers.js";
-import { crooStoreUrl, dashboardHireUrl } from "./marketing-urls.js";
+import { crooStoreUrl, dashboardHireUrl, integrationGuideUrl } from "./marketing-urls.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
@@ -365,6 +365,7 @@ export async function sendExitAlert(params: {
 
 const CROO_STORE_URL = crooStoreUrl("telegram", "guidance-broadcast");
 const DASHBOARD_HIRE_URL = dashboardHireUrl("telegram");
+const INTEGRATION_GUIDE_URL = integrationGuideUrl("telegram", "guidance-broadcast");
 
 const GUIDANCE_ACTION_LABELS: Record<string, string> = {
   evaluate: "✅ Evaluate",
@@ -405,13 +406,17 @@ export async function sendGuidanceBroadcast(params: {
 
   if (params.signalCount > 1) {
     lines.push(
-      `<i>${params.signalCount} ranked signals — full list via hire ($0.05 USDC)</i>`,
+      `<i>${params.signalCount} ranked signals this cycle — full list + provenance via hire</i>`,
     );
   }
 
+  lines.push(
+    `<i>Allocator agents: <a href="${CROO_STORE_URL}">signals-live</a> on CROO ($0.05 USDC) · Requirements: <code>{}</code></i>`,
+  );
+
   lines.push("");
   lines.push(
-    `<a href="${CROO_STORE_URL}">Hire on CROO</a> · <a href="${DASHBOARD_HIRE_URL}">Dashboard</a>`,
+    `<a href="${CROO_STORE_URL}">Hire on CROO</a> · <a href="${DASHBOARD_HIRE_URL}">Dashboard</a> · <a href="${INTEGRATION_GUIDE_URL}">Integrate</a>`,
   );
 
   await broadcastMessage(lines.join("\n"));
