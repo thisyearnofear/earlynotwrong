@@ -9,6 +9,7 @@ import { TierGate } from "@/components/reputation/tier-gate";
 import { AlphaTraderCard } from "@/components/alpha/alpha-trader-card";
 import { TokenHeatmap } from "@/components/alpha/token-heatmap";
 import { WalletDiscoveryBridge } from "@/components/wallet-discovery-bridge";
+import { DiscoveryGateActions } from "@/components/wallet/discovery-gate-actions";
 import { useAlphaData } from "@/hooks/use-alpha-data";
 import { useAppStore } from "@/lib/store";
 import { ALPHA_GATE_SCORE } from "@/lib/alpha/constants";
@@ -92,7 +93,10 @@ export default function DiscoveryPage() {
               requiredScore={ALPHA_GATE_SCORE}
               currentScore={data.gate?.score ?? null}
               feature="Conviction Discovery"
-              description="Ethos-gated view of analyzed wallets and token heatmaps. Scan a wallet on the analyzer to build your score — live agent signals stay on MCP and CROO."
+              description="Ethos-gated view of analyzed wallets and token heatmaps. Connect Base (EVM), analyze your wallet to build Ethos — live agent signals stay on MCP and CROO."
+              actions={
+                <DiscoveryGateActions currentScore={data.gate?.score ?? null} />
+              }
               preview={
                 <div className="p-4 rounded-lg bg-surface border border-border text-sm text-foreground-muted leading-relaxed">
                   Unlock aggregated conviction discovery after analyzing a wallet.

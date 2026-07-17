@@ -18,7 +18,7 @@ import { APP_CONFIG } from "@/lib/config";
 
 export function AleoConvictionCard() {
   const { isMinting, lastTxId, mintConvictionRecord, purchasePremium, claimPatienceRebate, isAleoConnected } = useAleoConviction();
-  const { convictionMetrics, isAleoPremium, setWalletModalOpen } = useAppStore();
+  const { convictionMetrics, isAleoPremium, openConnections } = useAppStore();
   const [isSuccess, setIsSuccess] = useState(false);
   const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
   const [rebateTxId, setRebateTxId] = useState<string | null>(null);
@@ -121,7 +121,7 @@ export function AleoConvictionCard() {
             <Button
               className="w-full bg-signal hover:bg-signal/80 text-black font-bold tracking-tight h-10"
               disabled={isMinting}
-              onClick={isAleoConnected ? handleMint : () => setWalletModalOpen(true)}
+              onClick={isAleoConnected ? handleMint : () => openConnections("aleo")}
             >
               {isMinting ? (
                 <>

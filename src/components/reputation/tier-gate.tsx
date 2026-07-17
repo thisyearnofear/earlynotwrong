@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Lock, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getEthosTier, getTierInfo, type EthosTier } from "@/lib/ethos-gates";
@@ -20,6 +21,8 @@ interface TierGateProps {
   preview?: React.ReactNode;
   /** Compact variant for inline/panel use */
   compact?: boolean;
+  /** Optional actions below the score readout (e.g. Connect Base CTA) */
+  actions?: React.ReactNode;
 }
 
 export function TierGate({
@@ -30,6 +33,7 @@ export function TierGate({
   children,
   preview,
   compact = false,
+  actions,
 }: TierGateProps) {
   const score = currentScore ?? 0;
   const allowed = score >= requiredScore;
@@ -124,16 +128,19 @@ export function TierGate({
           )}
         </div>
 
-        <a
-          href="/"
+        {actions}
+
+        <Link
+          href="/analyzer"
           className={cn(
             "mt-2 inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-xs font-mono font-semibold text-foreground hover:bg-surface transition-colors",
             compact && "py-1.5",
+            actions && "mt-0",
           )}
         >
           Analyze a wallet to build reputation
           <ArrowRight className="w-3 h-3" />
-        </a>
+        </Link>
       </motion.div>
     </div>
   );

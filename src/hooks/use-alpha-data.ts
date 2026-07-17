@@ -67,11 +67,15 @@ export function useAlphaData({
         const status = err?.status;
         if (status === 403) {
           const body = await err.body.catch(() => null);
+          const score = typeof body?.currentScore === "number" ? body.currentScore : 0;
           setState({
             traders: [],
             tokens: [],
             isLoading: false,
             isGated: true,
+            gate: body?.tier
+              ? { score, tier: body.tier as EthosTier }
+              : { score, tier: "visitor" },
             error: body?.error ?? "Conviction Discovery requires Ethos ≥ 1000",
           });
         } else {

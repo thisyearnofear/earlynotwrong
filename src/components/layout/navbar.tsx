@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { WalletConnect } from "@/components/wallet/wallet-connect";
-import { CasperWalletNavButton } from "@/components/casper-wallet-nav-button";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Activity, Menu, X, type LucideIcon } from "lucide-react";
@@ -118,10 +117,6 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  // The /agent page has its own Casper Wallet connect panel; hide the
-  // Solana/EVM/Aleo WalletConnect button there to avoid confusing visitors
-  // with two unrelated wallet systems.
-  const isAgentPage = pathname === "/agent";
 
   const currentScore = mounted ? (isShowcaseMode ? 9999 : (ethosScore?.score || 0)) : 0;
   const tier = getEthosTier(currentScore);
@@ -213,11 +208,7 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Chain status + feature toggles consolidated:
-                · Per-chain connection lights live on the WalletConnect button (●●●).
-                · Demo / Mantle modes live in <NavSettingsMenu/>.
-                The standalone Aleo pill + inline Demo/Mantle switches were
-                removed to declutter the nav. */}
+            {/* Chain status lights live on the Connections button (●●●●). */}
 
             {/* Ethos Status Badge - Desktop */}
             {(currentScore > 0 || isShowcaseMode) && (
@@ -337,12 +328,7 @@ export function Navbar() {
 
             <NavSettingsMenu className="hidden md:inline-flex" />
 
-            {/* On /agent: Casper Wallet button. Elsewhere: Solana/EVM/Aleo. */}
-            {isAgentPage ? (
-              <CasperWalletNavButton className="h-10 px-3 hidden sm:flex" />
-            ) : (
-              <WalletConnect className="h-10 px-3 hidden sm:flex" />
-            )}
+            <WalletConnect className="h-10 px-3 hidden sm:flex" />
 
             {/* Mobile Menu Button */}
             <Button
@@ -434,13 +420,8 @@ export function Navbar() {
                 </button>
               </div>
 
-              {/* Mobile Wallet Connect — Casper on /agent, Solana/EVM elsewhere */}
               <div className="px-4 py-3 sm:hidden">
-                {isAgentPage ? (
-                  <CasperWalletNavButton className="w-full h-12 justify-center" />
-                ) : (
-                  <WalletConnect className="w-full h-12 justify-center" />
-                )}
+                <WalletConnect className="w-full h-12 justify-center" />
               </div>
 
             </div>

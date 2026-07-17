@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useEffect, createContext, useContext, useState, useCallback } from 'react';
+import React, { Suspense, useMemo, useEffect, createContext, useContext, useState, useCallback } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { base } from 'wagmi/chains';
@@ -17,6 +17,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { MotionConfig } from "framer-motion";
 import { miniApp, type MiniAppState } from "@/lib/farcaster-miniapp";
 import { APP_CONFIG } from "@/lib/config";
+import { CasperWalletProvider } from "@/components/casper-wallet-provider";
+import { ConnectionsUrlHandler } from "@/components/wallet/connections-url-handler";
 
 // Default styles for Solana wallet adapter
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -128,9 +130,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
               >
                 <TooltipProvider>
                   <MotionConfig reducedMotion="user">
-                    <MiniAppProvider>
-                      {children}
-                    </MiniAppProvider>
+                    <CasperWalletProvider>
+                      <MiniAppProvider>
+                        <Suspense fallback={null}>
+                          <ConnectionsUrlHandler />
+                        </Suspense>
+                        {children}
+                      </MiniAppProvider>
+                    </CasperWalletProvider>
                   </MotionConfig>
                 </TooltipProvider>
               </AleoWalletProvider>

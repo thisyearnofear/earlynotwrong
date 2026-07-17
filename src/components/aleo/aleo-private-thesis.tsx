@@ -18,7 +18,7 @@ import { getAIThesisSuggestion } from "@/lib/strategist";
 
 export function AleoPrivateThesis() {
   const { commitPrivateThesis, isMinting, lastTxId, isAleoConnected } = useAleoConviction();
-  const { setWalletModalOpen, convictionMetrics } = useAppStore();
+  const { openConnections, convictionMetrics } = useAppStore();
   const [thesis, setThesis] = useState("");
   const [intent, setIntent] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
@@ -152,7 +152,7 @@ export function AleoPrivateThesis() {
               type={isAleoConnected ? "submit" : "button"}
               className="w-full bg-signal hover:bg-signal/80 text-black font-bold h-10"
               disabled={isMinting || (isAleoConnected && (!thesis || !targetPrice))}
-              onClick={isAleoConnected ? undefined : () => setWalletModalOpen(true)}
+              onClick={isAleoConnected ? undefined : () => openConnections("aleo")}
             >
               {isMinting ? (
                 <>

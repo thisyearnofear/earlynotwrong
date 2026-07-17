@@ -5,8 +5,8 @@
  *
  * Renders the full Casper Wallet interaction surface: balance, anchor-to-Casper
  * form (primary), and sign-proof (secondary). Uses the shared
- * CasperWalletProvider context for connection state — the navbar button handles
- * connect/disconnect; this card shows the details once connected.
+ * CasperWalletProvider context for connection state — the Connections panel
+ * in the navbar handles connect/disconnect; this card shows anchor details once
  *
  * The anchor form can be pre-filled from the agent's live conviction data —
  * the same signals the agent uses to trade — so a judge can anchor the exact

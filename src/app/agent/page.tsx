@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { CasperWalletConnect } from "@/components/casper-wallet-connect";
-import { CasperWalletProvider } from "@/components/casper-wallet-provider";
 import { RecentAnchors } from "@/components/recent-anchors";
 import { ProofLadder } from "@/components/proof-ladder";
 import { IntegrationHub } from "@/components/integration-hub";
@@ -1581,7 +1580,7 @@ function Dashboard({
           </div>
         </div>
 
-        <details className="rounded-xl border border-border/40 bg-surface/20">
+        <details id="personal-anchor" className="rounded-xl border border-border/40 bg-surface/20">
           <summary className="px-4 py-3 text-xs font-mono text-foreground-muted cursor-pointer select-none list-none hover:text-signal transition-colors">
             Personal anchor (optional) — sign your own conviction on Casper
           </summary>
@@ -2762,7 +2761,6 @@ function AgentDashboardContent() {
   }, [showDashboard]);
 
   return (
-    <CasperWalletProvider>
     <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
       <TunnelBackground />
       <Navbar />
@@ -2887,7 +2885,6 @@ function AgentDashboardContent() {
         </div>
       </main>
     </div>
-    </CasperWalletProvider>
   );
 }
 

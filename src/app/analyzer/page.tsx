@@ -4,6 +4,8 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { useConviction } from "@/hooks/use-conviction";
+import { CasperConnectInline } from "@/components/wallet/casper-connect-inline";
+import { OpenConnectionsButton } from "@/components/wallet/open-connections-button";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { SHOWCASE_WALLETS } from "@/lib/showcase-data";
@@ -899,12 +901,13 @@ export default function AnalyzerPage() {
                         className="space-y-4"
                       >
                         <p className="text-[11px] font-mono text-foreground-muted leading-relaxed max-w-2xl">
-                          Anchor this analysis on-chain. Casper anchoring uses the{" "}
-                          <Link href="/agent" className="text-signal hover:underline">
-                            agent dashboard
-                          </Link>{" "}
-                          wallet panel; Mantle and Aleo cards below mirror the same
-                          conviction record.
+                          Anchor this analysis on-chain. Mantle and Aleo cards below
+                          mirror the same conviction record; Casper uses a personal
+                          testnet anchor via{" "}
+                          <OpenConnectionsButton focus="casper" variant="link">
+                            Connections
+                          </OpenConnectionsButton>
+                          .
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {mantle.isMantleMode && (
@@ -917,6 +920,7 @@ export default function AnalyzerPage() {
                             />
                           )}
                           <AleoConvictionCard />
+                          <CasperConnectInline />
                           {!mantle.isMantleMode && (
                             <div className="rounded-lg border border-dashed border-border/50 bg-surface/20 p-4 flex flex-col justify-center gap-2">
                               <p className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim">

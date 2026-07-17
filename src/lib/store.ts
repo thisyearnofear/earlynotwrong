@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { EthosScore, EthosProfile, FarcasterIdentity, UnifiedTrustScore } from "./ethos";
 import { ConvictionMetrics } from "./market";
 import { PositionAnalysis, TransactionResult } from "./api-client";
+import type { ConnectionChain } from "./connections";
 
 interface AnalysisParams {
   timeHorizon: 30 | 90 | 180 | 365;
@@ -127,9 +128,12 @@ interface AppState {
   isShowcaseMode: boolean;
   isAleoPremium: boolean;
   isWalletModalOpen: boolean;
+  walletModalFocus: ConnectionChain | null;
   toggleShowcaseMode: (enabled?: boolean) => void;
   setAleoPremium: (enabled: boolean) => void;
   setWalletModalOpen: (open: boolean) => void;
+  openConnections: (focus?: ConnectionChain) => void;
+  setWalletModalFocus: (focus: ConnectionChain | null) => void;
   theme: "light" | "dark";
   setTheme: (theme: "light" | "dark") => void;
   reset: () => void;
@@ -351,12 +355,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   isShowcaseMode: false,
   isAleoPremium: false,
   isWalletModalOpen: false,
+  walletModalFocus: null,
   toggleShowcaseMode: (enabled) =>
     set((state) => ({
       isShowcaseMode: enabled ?? !state.isShowcaseMode,
     })),
   setAleoPremium: (enabled) => set({ isAleoPremium: enabled }),
-  setWalletModalOpen: (open) => set({ isWalletModalOpen: open }),
+  setWalletModalOpen: (open) =>
+    set({
+      isWalletModalOpen: open,
+      ...(open ? {} : { walletModalFocus: null }),
+    }),
+  openConnections: (focus) =>
+    set({
+      isWalletModalOpen: true,
+      walletModalFocus: focus ?? null,
+    }),
+  setWalletModalFocus: (focus) => set({ walletModalFocus: focus }),
   theme: "dark",
   setTheme: (theme) => {
     if (typeof window !== "undefined") {
@@ -401,6 +416,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       isShowcaseMode: false,
       isAleoPremium: false,
       isWalletModalOpen: false,
+      walletModalFocus: null,
       comparisonWallets: [],
     }),
 
