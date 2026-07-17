@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Flame, Users, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TokenHeatmapEntry } from "@/lib/db/postgres";
@@ -24,8 +25,19 @@ const intensityToColor = (intensity: number) => {
 export function TokenHeatmap({ tokens }: TokenHeatmapProps) {
   if (tokens.length === 0) {
     return (
-      <div className="text-center py-12 text-foreground-muted text-sm font-mono">
-        No token conviction data yet. Scan a wallet to populate the heatmap.
+      <div className="text-center py-12 space-y-3">
+        <p className="text-foreground-muted text-sm font-mono">
+          No token conviction data in this filter yet.
+        </p>
+        <p className="text-[11px] font-mono text-foreground-dim max-w-sm mx-auto">
+          Heatmap fills from analyzed wallet ledgers — not live agent signals.
+        </p>
+        <Link
+          href="/analyzer"
+          className="inline-flex text-xs font-mono text-signal hover:underline"
+        >
+          Scan a wallet →
+        </Link>
       </div>
     );
   }

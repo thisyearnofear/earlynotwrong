@@ -170,7 +170,7 @@ export function Navbar() {
                 href="/alpha"
                 className="px-2 py-2.5 text-xs font-mono text-foreground-dim hover:text-foreground-muted transition-colors min-h-[44px]"
               >
-                Alpha
+                Discovery
               </Link>
             </div>
           </div>
@@ -371,7 +371,7 @@ export function Navbar() {
                 className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-mono text-foreground-dim hover:text-foreground-muted hover:bg-surface/30 transition-colors min-h-[44px]"
               >
                 <Zap className="w-4 h-4" />
-                Alpha Discovery
+                Discovery
               </Link>
 
               {/* Mobile Demo Toggle */}

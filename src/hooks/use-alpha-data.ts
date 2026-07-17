@@ -72,7 +72,7 @@ export function useAlphaData({
             tokens: [],
             isLoading: false,
             isGated: true,
-            error: body?.error ?? "Alpha Discovery requires Ethos ≥ 1000",
+            error: body?.error ?? "Conviction Discovery requires Ethos ≥ 1000",
           });
         } else {
           setState({
@@ -80,7 +80,7 @@ export function useAlphaData({
             tokens: [],
             isLoading: false,
             isGated: false,
-            error: "Failed to load Alpha Discovery data",
+            error: "Failed to load conviction discovery data",
           });
         }
       });

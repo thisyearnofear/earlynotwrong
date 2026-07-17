@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAccount } from "wagmi";
 import { Navbar } from "@/components/layout/navbar";
 import { TierGate } from "@/components/reputation/tier-gate";
 import { AlphaTraderCard } from "@/components/alpha/alpha-trader-card";
 import { TokenHeatmap } from "@/components/alpha/token-heatmap";
+import { WalletDiscoveryBridge } from "@/components/wallet-discovery-bridge";
 import { useAlphaData } from "@/hooks/use-alpha-data";
 import { useAppStore } from "@/lib/store";
 import { ALPHA_GATE_SCORE } from "@/lib/alpha/constants";
@@ -17,6 +19,7 @@ import {
   Users,
   Loader2,
   Database,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,8 +46,8 @@ export default function AlphaPage() {
   const displayTokens = data.tokens;
 
   const tabs: { key: AlphaTab; label: string; icon: typeof Zap }[] = [
-    { key: "traders", label: "High-Conviction Traders", icon: TrendingUp },
-    { key: "tokens", label: "Token Conviction Heatmap", icon: Flame },
+    { key: "traders", label: "Conviction leaders", icon: TrendingUp },
+    { key: "tokens", label: "Token heatmap", icon: Flame },
   ];
 
   const chainFilters: { key: ChainFilter; label: string }[] = [
@@ -67,17 +70,20 @@ export default function AlphaPage() {
         >
           <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-signal mb-2">
             <Zap className="w-3 h-3" />
-            Alpha Discovery
+            Conviction discovery
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-            Reputation-Weighted Alpha
+            Analyzed wallet patterns
           </h1>
-          <p className="mt-2 text-sm text-foreground-muted max-w-2xl">
-            High-conviction wallets and the tokens they hold — ranked by
-            conviction score weighted by Ethos credibility. Sybil-resistant
-            signal, not speculation.
+          <p className="mt-2 text-sm text-foreground-muted max-w-2xl leading-relaxed">
+            High-conviction wallets and the tokens they hold — aggregated from
+            behavioral scans, ranked with Ethos credibility weighting. For{" "}
+            <span className="text-foreground">live</span> cycle signals, macro
+            gates, and on-chain proof, hire the autonomous agent.
           </p>
         </motion.div>
+
+        <WalletDiscoveryBridge variant="alpha" className="mb-8" />
 
         {/* Gate check */}
         {data.isGated && !isShowcaseMode && (
@@ -85,12 +91,12 @@ export default function AlphaPage() {
             <TierGate
               requiredScore={ALPHA_GATE_SCORE}
               currentScore={data.gate?.score ?? null}
-              feature="Alpha Discovery"
-              description="Reputation-weighted trader list and token heatmap. Analyze a wallet to build your Ethos score and unlock this feature."
+              feature="Conviction Discovery"
+              description="Ethos-gated view of analyzed wallets and token heatmaps. Scan a wallet on the analyzer to build your score — live agent signals stay on MCP and CROO."
               preview={
-                <div className="p-4 rounded-lg bg-surface border border-border text-sm text-foreground-muted">
-                  Analyze a wallet to build your Ethos score and unlock
-                  reputation-weighted alpha. No fabricated preview data.
+                <div className="p-4 rounded-lg bg-surface border border-border text-sm text-foreground-muted leading-relaxed">
+                  Unlock aggregated conviction discovery after analyzing a wallet.
+                  No fabricated preview — scan first, then return here.
                 </div>
               }
             />
@@ -192,13 +198,20 @@ export default function AlphaPage() {
 
                 {/* List */}
                 <div className="space-y-2">
-                  {displayTraders.map((trader, i) => (
-                    <AlphaTraderCard
-                      key={`${trader.address}-${trader.chain}`}
-                      trader={trader}
-                      rank={i + 1}
+                  {displayTraders.length === 0 ? (
+                    <EmptyDiscovery
+                      message="No conviction leaders in this filter yet."
+                      hint="Run an analyzer scan to seed the discovery dataset."
                     />
-                  ))}
+                  ) : (
+                    displayTraders.map((trader, i) => (
+                      <AlphaTraderCard
+                        key={`${trader.address}-${trader.chain}`}
+                        trader={trader}
+                        rank={i + 1}
+                      />
+                    ))
+                  )}
                 </div>
               </motion.div>
             ) : (
@@ -246,6 +259,30 @@ export default function AlphaPage() {
 
       </div>
     </main>
+  );
+}
+
+function EmptyDiscovery({
+  message,
+  hint,
+}: {
+  message: string;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-surface/20 px-6 py-12 text-center space-y-3">
+      <p className="text-sm font-semibold text-foreground">{message}</p>
+      <p className="text-[11px] font-mono text-foreground-muted max-w-md mx-auto">
+        {hint}
+      </p>
+      <Link
+        href="/analyzer"
+        className="inline-flex items-center gap-2 mt-2 px-4 py-2 rounded-full bg-signal text-background text-xs font-mono font-semibold hover:bg-signal/90 transition-colors"
+      >
+        <Search className="w-3.5 h-3.5" />
+        Open analyzer
+      </Link>
+    </div>
   );
 }
 

@@ -477,7 +477,7 @@ const PERKS_BY_TIER: Record<EthosTier, TierPerk[]> = {
     {
       key: "leaderboard",
       label: "Public Leaderboard",
-      description: "See top conviction wallets across Solana and Base",
+      description: "Community wallet scans ranked by behavioral conviction",
       icon: "chart",
     },
   ],
@@ -504,8 +504,8 @@ const PERKS_BY_TIER: Record<EthosTier, TierPerk[]> = {
   whale: [
     {
       key: "alpha-discovery",
-      label: "Alpha Discovery",
-      description: "High-conviction trader list and token conviction heatmap",
+      label: "Conviction Discovery",
+      description: "Ethos-weighted trader list and token heatmap from analyzed wallets",
       icon: "zap",
     },
     {

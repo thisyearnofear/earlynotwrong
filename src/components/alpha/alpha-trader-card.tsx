@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { ArrowUp, ArrowDown, Minus, ExternalLink, Copy, Check } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -111,6 +112,13 @@ export function AlphaTraderCard({ trader, rank }: AlphaTraderCardProps) {
           >
             <ExternalLink className="w-3 h-3" />
           </a>
+          <span className="text-foreground-dim">·</span>
+          <Link
+            href={`/analyzer?wallet=${encodeURIComponent(trader.address)}`}
+            className="text-xs font-mono text-signal hover:underline"
+          >
+            Analyze
+          </Link>
         </div>
       </div>
 

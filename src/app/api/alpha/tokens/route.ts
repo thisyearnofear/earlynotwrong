@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const chain =
     chainParam === "solana" || chainParam === "base" ? chainParam : undefined;
 
-  const gate = await requireEthosScore(address, ALPHA_GATE_SCORE, "Alpha Discovery");
+  const gate = await requireEthosScore(address, ALPHA_GATE_SCORE, "Conviction Discovery");
   if ("error" in gate) return gate.error;
 
   try {

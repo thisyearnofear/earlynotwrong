@@ -52,10 +52,10 @@ export function LeaderboardTable({ initialEntries }: LeaderboardTableProps) {
           </p>
         </div>
         <Link
-          href="/"
+          href="/analyzer"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-signal text-background text-sm font-semibold hover:bg-signal/90 transition-colors"
         >
-          Analyze a Wallet →
+          Analyze a wallet →
         </Link>
       </div>
     );
@@ -103,7 +103,7 @@ export function LeaderboardTable({ initialEntries }: LeaderboardTableProps) {
             transition={{ duration: 0.2, delay: i * 0.03 }}
           >
             <Link
-              href={`/?wallet=${entry.address}`}
+              href={`/analyzer?wallet=${encodeURIComponent(entry.address)}`}
               className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-border/50 hover:bg-surface/30 transition-colors group items-center"
             >
               {/* Rank */}

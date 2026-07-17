@@ -587,7 +587,7 @@ export default function Home() {
                 Leaderboard
               </Link>
               <Link href="/alpha" className="text-foreground-dim hover:text-foreground-muted transition-colors">
-                Alpha
+                Discovery
               </Link>
             </div>
           </div>
