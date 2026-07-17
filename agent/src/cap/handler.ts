@@ -17,7 +17,7 @@ import {
 } from "../mcp/tools.js";
 import { recordCall } from "../payment-stats.js";
 import { pricingForToolName, toolNameForService } from "./pricing.js";
-import { getCapDeliverableSchemaJson } from "./signals-schema.js";
+import { CROO_STORE_DELIVERABLE_SCHEMA } from "./signals-schema.js";
 
 export interface CapOrderPayload {
   orderId: string;
@@ -88,7 +88,7 @@ export async function fulfillCapOrder(
       deliverable = JSON.stringify(livePayload);
       deliverReq = {
         deliverableType: DeliverableType.Schema,
-        deliverableSchema: await getCapDeliverableSchemaJson(),
+        deliverableSchema: CROO_STORE_DELIVERABLE_SCHEMA,
         deliverableText: deliverable,
       };
       break;

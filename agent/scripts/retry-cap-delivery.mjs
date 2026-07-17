@@ -7,7 +7,7 @@
  */
 
 import { AgentClient } from "@croo-network/sdk";
-import { AGENT_CONFIG } from "../lib/config.js";
+import { AGENT_CONFIG } from "../dist/lib/config.js";
 import { fulfillCapOrder } from "../dist/src/cap/handler.js";
 
 const orderId = process.argv[2];

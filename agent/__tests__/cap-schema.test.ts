@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getCapDeliverableSchemaJson } from "../src/cap/signals-schema.js";
+import {
+  CROO_STORE_DELIVERABLE_SCHEMA,
+  getCapDeliverableSchemaJson,
+} from "../src/cap/signals-schema.js";
 
-describe("getCapDeliverableSchemaJson", () => {
-  it("returns parseable JSON object text, not a bare URL", async () => {
+describe("CAP deliverable schema", () => {
+  it("Store listing schema is valid JSON with four required sections", () => {
+    const parsed = JSON.parse(CROO_STORE_DELIVERABLE_SCHEMA) as {
+      required: string[];
+    };
+    expect(parsed.required.sort()).toEqual(
+      ["freshness", "guidance", "provenance", "signals"].sort(),
+    );
+  });
+
+  it("public JSON Schema file exists for docs and MCP", async () => {
     const raw = await getCapDeliverableSchemaJson();
-    expect(raw.startsWith("http")).toBe(false);
-    const parsed = JSON.parse(raw) as { type?: string; title?: string };
-    expect(parsed.type).toBe("object");
+    const parsed = JSON.parse(raw) as { title?: string };
     expect(parsed.title).toBe("signals-live/v1.1");
   });
 

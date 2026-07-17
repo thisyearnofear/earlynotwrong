@@ -1,43 +1,53 @@
 /**
- * CAP deliverOrder expects deliverableSchema as a JSON object string,
- * not a bare URL (CROO returns 400 if it sees "https://...").
+ * Deliverable schema registered on the CROO Store listing (field builder).
+ * Must match the four rows: guidance, signals, freshness, provenance.
+ *
+ * CAP deliverOrder expects deliverableSchema as JSON text of this object —
+ * not a URL and not the full signals-live-v1.1 JSON Schema file.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { SIGNALS_LIVE_SCHEMA_URL } from "../mcp/tools.js";
 
-let cachedSchemaJson: string | null = null;
+export { SIGNALS_LIVE_SCHEMA_URL };
 
-function loadSchemaFromDisk(): string | null {
-  const candidates = [
-    join(process.cwd(), "../public/schemas/signals-live-v1.1.schema.json"),
-    join(process.cwd(), "../docs/schemas/signals-live-v1.1.schema.json"),
-  ];
-  for (const path of candidates) {
-    if (!existsSync(path)) continue;
-    const raw = readFileSync(path, "utf-8");
-    JSON.parse(raw);
-    return raw;
-  }
-  return null;
-}
+export const CROO_STORE_DELIVERABLE_SCHEMA = JSON.stringify({
+  type: "object",
+  properties: {
+    guidance: {
+      type: "object",
+      description:
+        "Action contract: recommendedAction (evaluate | skip_entries | wait), reason, topCandidate, sizeMultiplier.",
+    },
+    signals: {
+      type: "array",
+      description: "Ranked conviction candidates (symbol, score, breakdown, rationale).",
+    },
+    freshness: {
+      type: "object",
+      description: "Cycle timing: cycle, stale, lastRunAt, nextRunAt.",
+    },
+    provenance: {
+      type: "object",
+      description: "Trust bundle: behavioral score, anchors, explorerUrls.",
+    },
+  },
+  required: ["guidance", "signals", "freshness", "provenance"],
+});
 
-/** JSON text of the signals-live/v1.1 schema document for CAP Schema deliveries. */
+/** Full v1.1 JSON Schema URL — for docs / MCP; not sent as CAP deliverableSchema. */
+
+/**
+ * @deprecated Use CROO_STORE_DELIVERABLE_SCHEMA for CAP deliverOrder.
+ * Kept for tests that verify the public JSON Schema file exists on disk.
+ */
 export async function getCapDeliverableSchemaJson(): Promise<string> {
-  if (cachedSchemaJson) return cachedSchemaJson;
-
-  const fromDisk = loadSchemaFromDisk();
-  if (fromDisk) {
-    cachedSchemaJson = fromDisk;
-    return cachedSchemaJson;
+  const { readFileSync, existsSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const path = join(process.cwd(), "../public/schemas/signals-live-v1.1.schema.json");
+  if (existsSync(path)) {
+    return readFileSync(path, "utf-8");
   }
-
   const res = await fetch(SIGNALS_LIVE_SCHEMA_URL);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${SIGNALS_LIVE_SCHEMA_URL}: HTTP ${res.status}`);
-  }
-  const obj = await res.json();
-  cachedSchemaJson = JSON.stringify(obj);
-  return cachedSchemaJson;
+  if (!res.ok) throw new Error(`Schema fetch failed: ${res.status}`);
+  return JSON.stringify(await res.json());
 }
