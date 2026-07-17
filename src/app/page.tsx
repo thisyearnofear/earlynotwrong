@@ -586,7 +586,7 @@ export default function Home() {
               <Link href="/leaderboard" className="text-foreground-dim hover:text-foreground-muted transition-colors">
                 Leaderboard
               </Link>
-              <Link href="/alpha" className="text-foreground-dim hover:text-foreground-muted transition-colors">
+              <Link href="/discovery" className="text-foreground-dim hover:text-foreground-muted transition-colors">
                 Discovery
               </Link>
             </div>

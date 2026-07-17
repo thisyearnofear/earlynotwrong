@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 type AlphaTab = "traders" | "tokens";
 type ChainFilter = "all" | "solana" | "base";
 
-export default function AlphaPage() {
+export default function DiscoveryPage() {
   const { address: evmAddress } = useAccount();
   const { isShowcaseMode } = useAppStore();
   const [tab, setTab] = useState<AlphaTab>("traders");

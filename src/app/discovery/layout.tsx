@@ -8,9 +8,10 @@ export const metadata: Metadata = {
     title: "Conviction Discovery | Early, Not Wrong",
     description:
       "Reputation-weighted wallet discovery from behavioral conviction scans.",
+    url: "https://earlynotwrong.vercel.app/discovery",
   },
 };
 
-export default function AlphaLayout({ children }: { children: React.ReactNode }) {
+export default function DiscoveryLayout({ children }: { children: React.ReactNode }) {
   return children;
 }

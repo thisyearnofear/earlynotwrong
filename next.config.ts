@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
    * server-only and access it via the `/api/privacy/balance` route.
    */
   serverExternalPackages: ["privacycash"],
+  async redirects() {
+    return [{ source: "/alpha", destination: "/discovery", permanent: true }];
+  },
 };
 
 export default nextConfig;

@@ -6,7 +6,7 @@ import { WalletConnect } from "@/components/wallet/wallet-connect";
 import { CasperWalletNavButton } from "@/components/casper-wallet-nav-button";
 import { useAppStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Activity, Menu, X } from "lucide-react";
+import { Sun, Moon, Search, Shield, ShieldCheck, Users, Zap, Crown, TrendingUp, Activity, Menu, X, type LucideIcon } from "lucide-react";
 import { NavSettingsMenu } from "@/components/layout/nav-settings-menu";
 import {
   Dialog,
@@ -48,6 +48,59 @@ const TierIcon = ({
       return <Shield className={iconClass} />;
   }
 };
+
+const PRIMARY_NAV: {
+  href: string;
+  label: string;
+  mobileLabel?: string;
+  icon: LucideIcon;
+  match: (pathname: string) => boolean;
+}[] = [
+  {
+    href: "/analyzer",
+    label: "Analyzer",
+    mobileLabel: "Wallet Analyzer",
+    icon: Search,
+    match: (p) => p === "/analyzer" || p.startsWith("/analyzer/"),
+  },
+  {
+    href: "/agent",
+    label: "Agent",
+    mobileLabel: "Agent Dashboard",
+    icon: Activity,
+    match: (p) => p === "/agent" || p.startsWith("/agent/"),
+  },
+  {
+    href: "/leaderboard",
+    label: "Leaderboard",
+    icon: TrendingUp,
+    match: (p) => p === "/leaderboard" || p.startsWith("/leaderboard/"),
+  },
+  {
+    href: "/discovery",
+    label: "Discovery",
+    icon: Zap,
+    match: (p) => p === "/discovery" || p.startsWith("/discovery/"),
+  },
+];
+
+function navLinkClass(active: boolean, desktop = true) {
+  return cn(
+    "font-mono transition-colors flex items-center gap-2",
+    desktop
+      ? "px-3 py-2.5 text-xs min-h-[44px]"
+      : "px-4 py-3 rounded-lg text-sm min-h-[48px] w-full",
+    desktop && !active && "hover:text-signal",
+    !desktop && "hover:bg-surface/50",
+    active
+      ? desktop
+        ? "text-signal"
+        : "text-signal bg-surface/40"
+      : desktop
+        ? "text-foreground-muted"
+        : "text-foreground-muted hover:text-signal",
+  );
+}
 
 export function Navbar() {
   const { theme, setTheme, ethosScore, isShowcaseMode, toggleShowcaseMode, mantle } = useAppStore();
@@ -142,36 +195,20 @@ export function Navbar() {
             </div>
 
             <div className="hidden lg:flex items-center gap-1">
-              <Link
-                href="/analyzer"
-                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
-              >
-                <Search className="w-3.5 h-3.5" />
-                Analyzer
-              </Link>
-              <Link
-                href="/agent"
-                className="px-3 py-2.5 text-xs font-mono text-foreground-muted hover:text-signal transition-colors flex items-center gap-2 min-h-[44px]"
-              >
-                <Activity className="w-3.5 h-3.5" />
-                Agent
-              </Link>
-              <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
-              <span className="px-2 text-[10px] font-mono uppercase tracking-widest text-foreground-dim">
-                More
-              </span>
-              <Link
-                href="/leaderboard"
-                className="px-2 py-2.5 text-xs font-mono text-foreground-dim hover:text-foreground-muted transition-colors min-h-[44px]"
-              >
-                Leaderboard
-              </Link>
-              <Link
-                href="/alpha"
-                className="px-2 py-2.5 text-xs font-mono text-foreground-dim hover:text-foreground-muted transition-colors min-h-[44px]"
-              >
-                Discovery
-              </Link>
+              {PRIMARY_NAV.map(({ href, label, icon: Icon, match }) => {
+                const active = match(pathname);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-current={active ? "page" : undefined}
+                    className={navLinkClass(active, true)}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </Link>
+                );
+              })}
             </div>
           </div>
 
@@ -337,42 +374,21 @@ export function Navbar() {
             className="fixed top-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-b border-border lg:hidden"
           >
             <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
-              <Link
-                href="/analyzer"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-signal hover:bg-surface/50 transition-colors min-h-[48px]"
-              >
-                <Search className="w-5 h-5" />
-                Wallet Analyzer
-              </Link>
-              <Link
-                href="/agent"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-mono text-foreground-muted hover:text-signal hover:bg-surface/50 transition-colors min-h-[48px]"
-              >
-                <Activity className="w-5 h-5" />
-                Agent Dashboard
-              </Link>
-
-              <p className="px-4 pt-2 text-[10px] font-mono uppercase tracking-widest text-foreground-dim">
-                More
-              </p>
-              <Link
-                href="/leaderboard"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-mono text-foreground-dim hover:text-foreground-muted hover:bg-surface/30 transition-colors min-h-[44px]"
-              >
-                <TrendingUp className="w-4 h-4" />
-                Leaderboard
-              </Link>
-              <Link
-                href="/alpha"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-mono text-foreground-dim hover:text-foreground-muted hover:bg-surface/30 transition-colors min-h-[44px]"
-              >
-                <Zap className="w-4 h-4" />
-                Discovery
-              </Link>
+              {PRIMARY_NAV.map(({ href, label, mobileLabel, icon: Icon, match }) => {
+                const active = match(pathname);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    className={navLinkClass(active, false)}
+                  >
+                    <Icon className="w-5 h-5" />
+                    {mobileLabel ?? label}
+                  </Link>
+                );
+              })}
 
               {/* Mobile Demo Toggle */}
               <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-surface/30 min-h-[48px]">
