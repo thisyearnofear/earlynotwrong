@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
@@ -32,7 +33,14 @@ import {
   Network,
   Send,
   Copy,
+  Search,
+  ShoppingBag,
 } from "lucide-react";
+import {
+  NORTH_STAR,
+  NORTH_STAR_SHORT,
+  DEMO_WALKTHROUGH_HREF,
+} from "@/lib/product-copy";
 
 // ─── Types ───
 
@@ -573,16 +581,53 @@ function ActStickyNav() {
   );
 }
 
+function IntentQuickNav() {
+  const items = [
+    { href: "#signals", icon: Signal, label: "Live signals", sub: "Conviction + positions" },
+    { href: "#proof", icon: Network, label: "On-chain proof", sub: "Anchor history" },
+    { href: "#hire", icon: ShoppingBag, label: "Hire / query", sub: "MCP + CROO · v1.1" },
+  ] as const;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      {items.map((item) => (
+        <a
+          key={item.href}
+          href={item.href}
+          className="group flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-surface/30 hover:border-signal/30 transition-colors"
+        >
+          <item.icon className="w-4 h-4 text-signal shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-foreground">{item.label}</p>
+            <p className="text-[10px] font-mono text-foreground-dim mt-0.5">{item.sub}</p>
+          </div>
+          <ChevronRight className="w-3.5 h-3.5 text-foreground-dim ml-auto shrink-0 group-hover:text-signal group-hover:translate-x-0.5 transition-all" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function DemoActBanner({ act, title }: { act: number; title: string }) {
+  return (
+    <p className="text-[10px] font-mono uppercase tracking-widest text-signal/80 mb-2">
+      Act {act} · {title}
+    </p>
+  );
+}
+
 // ─── Dashboard ───
 
 function Dashboard({
   status,
   trades,
   conviction,
+  demoMode,
 }: {
   status: AgentStatus;
   trades: TradesResponse | null;
   conviction: ConvictionData | null;
+  demoMode: boolean;
 }) {
   return (
     <motion.div
@@ -591,87 +636,102 @@ function Dashboard({
       transition={{ duration: 0.4 }}
       className="space-y-6"
     >
-      <ActStickyNav />
+      {demoMode && <ActStickyNav />}
 
-      {/* Row 0: Orientation — what cold visitors see first.
-          The 4-act narrative: the agent is live → it scores conviction →
-          it anchors on-chain → you can anchor your own. */}
+      {/* Orientation — simple by default; full 4-act pipeline in demo walkthrough */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0, duration: 0.4 }}
         className="border-l-2 border-signal/40 pl-4 py-1"
       >
-        <p className="text-sm text-foreground">
-          A conviction-weighted autonomous trading agent on BSC Mainnet.
-          Every cycle is signed and anchored to{" "}
-          <span className="text-signal">Casper Testnet + Mantle Sepolia</span>.
+        <p className="text-sm text-foreground leading-relaxed">
+          {demoMode ? (
+            <>
+              Demo walkthrough — four acts from live scoring to verifiable hire.
+              Same agent, same API; this mode is for judges and integrators
+              tracing the full narrative.
+            </>
+          ) : (
+            NORTH_STAR
+          )}
         </p>
-        <p className="text-[10px] font-mono text-foreground-dim mt-1">
-          Live from{" "}
-          <span className="text-foreground-muted">the agent&apos;s public API</span> ·{" "}
-          ~4h cycles: data → score → manage → execute → anchor → narrate
-        </p>
-        <p className="text-xs text-foreground-muted mt-1.5 leading-relaxed">
-          Scroll to see the agent&apos;s conviction signals, held positions,
-          on-chain anchor history, and connect your Casper Wallet to anchor
-          your own conviction record. The same{" "}
-          <span className="font-mono text-foreground">conviction-core</span>{" "}
-          framework that scores the agent&apos;s trades also powers the{" "}
-          <Link href="/analyzer" className="text-signal hover:underline">wallet analyzer</Link>.
+        <p className="text-[10px] font-mono text-foreground-dim mt-1.5">
+          {NORTH_STAR_SHORT} · cycle #{status.cycle} · BSC mainnet
         </p>
 
-        {/* Per-cycle pipeline — maps to Acts 1–3 (Act 4 Verify is user-initiated) */}
-        {status && (
-          <div className="mt-3 space-y-1">
-            <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">
-              Per-cycle pipeline · Acts 1–3 below · Act 4 is your wallet
+        {!demoMode && (
+          <div className="mt-4">
+            <IntentQuickNav />
+          </div>
+        )}
+
+        {demoMode && (
+          <>
+            <p className="text-xs text-foreground-muted mt-2 leading-relaxed">
+              Every cycle: data → score → manage → execute → anchor → narrate.
+              Anchored to{" "}
+              <span className="text-signal">Casper Testnet + Mantle Sepolia</span>.
+              The{" "}
+              <Link href="/analyzer" className="text-signal hover:underline">
+                wallet analyzer
+              </Link>{" "}
+              uses the same <span className="font-mono">conviction-core</span>{" "}
+              framework.
             </p>
-            <div className="flex items-center gap-1 flex-wrap text-[9px] font-mono">
-              <span className="text-foreground-dim uppercase tracking-wider mr-1">
-                Cycle {status.cycle}:
-              </span>
-              {[
-                { act: 1, title: "Score", steps: ["data", "score"] as const },
-                { act: 2, title: "Trade", steps: ["manage", "execute"] as const },
-                { act: 3, title: "Anchor", steps: ["anchor"] as const },
-              ].map((group, gi) => (
-                <span key={group.act} className="flex items-center gap-0.5">
-                  {gi > 0 && (
-                    <span className="text-foreground-dim mx-1">·</span>
-                  )}
-                  <span
-                    className="text-signal/80 uppercase tracking-wider"
-                    title={`Act ${group.act}: ${group.title}`}
-                  >
-                    A{group.act}
+
+            {status && (
+              <div className="mt-3 space-y-1">
+                <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">
+                  Per-cycle pipeline · Acts 1–3 below · Act 4 is hire + personal anchor
+                </p>
+                <div className="flex items-center gap-1 flex-wrap text-[9px] font-mono">
+                  <span className="text-foreground-dim uppercase tracking-wider mr-1">
+                    Cycle {status.cycle}:
                   </span>
-                  {group.steps.map((step, si) => (
-                    <span key={step} className="flex items-center gap-0.5">
-                      {si > 0 && (
-                        <span className="text-foreground-dim mx-0.5">→</span>
+                  {[
+                    { act: 1, title: "Score", steps: ["data", "score"] as const },
+                    { act: 2, title: "Trade", steps: ["manage", "execute"] as const },
+                    { act: 3, title: "Anchor", steps: ["anchor"] as const },
+                  ].map((group, gi) => (
+                    <span key={group.act} className="flex items-center gap-0.5">
+                      {gi > 0 && (
+                        <span className="text-foreground-dim mx-1">·</span>
                       )}
-                      <span className="text-patience">✓</span>
-                      <span className="text-foreground-muted">{step}</span>
+                      <span
+                        className="text-signal/80 uppercase tracking-wider"
+                        title={`Act ${group.act}: ${group.title}`}
+                      >
+                        A{group.act}
+                      </span>
+                      {group.steps.map((step, si) => (
+                        <span key={step} className="flex items-center gap-0.5">
+                          {si > 0 && (
+                            <span className="text-foreground-dim mx-0.5">→</span>
+                          )}
+                          <span className="text-patience">✓</span>
+                          <span className="text-foreground-muted">{step}</span>
+                        </span>
+                      ))}
                     </span>
                   ))}
-                </span>
-              ))}
-              <span className="text-foreground-dim mx-1">·</span>
-              <span className="text-patience">✓</span>
-              <span className="text-foreground-muted">narrate</span>
-              <span className="text-foreground-dim ml-2">
-                · next in{" "}
-                {status.nextRunAt
-                  ? Math.max(
-                      0,
-                      Math.round((status.nextRunAt - Date.now()) / 60_000),
-                    )
-                  : "—"}
-                m
-              </span>
-            </div>
-          </div>
+                  <span className="text-foreground-dim mx-1">·</span>
+                  <span className="text-patience">✓</span>
+                  <span className="text-foreground-muted">narrate</span>
+                  <span className="text-foreground-dim ml-2">
+                    · next in{" "}
+                    {status.nextRunAt
+                      ? Math.max(
+                          0,
+                          Math.round((status.nextRunAt - Date.now()) / 60_000),
+                        )
+                      : "—"}
+                    m
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </motion.div>
 
@@ -721,8 +781,9 @@ function Dashboard({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05, duration: 0.4 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
+        {demoMode && <DemoActBanner act={1} title="Live" />}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -966,6 +1027,7 @@ function Dashboard({
             </CardContent>
           </Card>
         </motion.div>
+        </div>
       </motion.div>
 
       {/* Row 2 — Act 1 Score + Act 2 Trade: conviction signals + held positions */}
@@ -974,8 +1036,9 @@ function Dashboard({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.14, duration: 0.4 }}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
       >
+        {demoMode && <DemoActBanner act={2} title="Score & trade" />}
+        <div id="signals" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-28">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1445,6 +1508,7 @@ function Dashboard({
           </CardContent>
         </Card>
         </motion.div>
+        </div>
       </motion.div>
 
       {/* Row 3 — Act 3: On-chain anchor history (Casper · Mantle · Aleo) */}
@@ -1454,34 +1518,48 @@ function Dashboard({
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.22, duration: 0.4 }}
       >
-        <RecentAnchors />
+        {demoMode && <DemoActBanner act={3} title="Anchor" />}
+        <div id="proof">
+          <RecentAnchors />
+        </div>
       </motion.div>
 
-      {/* Row 3b — Act 4: Anchor your own + agent reputation API */}
+      {/* Row 4 — Hire marketplace first; personal Casper anchor last */}
       <motion.div
         id="act-4"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.26, duration: 0.4 }}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
+        className="space-y-4"
       >
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.28, duration: 0.35 }}
-          className="lg:col-span-1"
-        >
-          <CasperWalletConnect />
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.30, duration: 0.35 }}
-          className="lg:col-span-2 space-y-4"
-        >
-          <ReputationApiCard />
-          <CrooCapCard />
-        </motion.div>
+        {demoMode && <DemoActBanner act={4} title="Verify & hire" />}
+
+        <div id="hire" className="space-y-4 scroll-mt-28">
+          <div className="border-l-2 border-[#65b3ae]/50 pl-4">
+            <p className="text-xs font-mono uppercase tracking-wider text-[#65b3ae]">
+              Hire this agent
+            </p>
+            <p className="text-sm text-foreground-muted mt-1 leading-relaxed">
+              Same <span className="font-mono text-foreground">signals-live/v1.1</span>{" "}
+              payload on MCP (Casper x402) and CROO CAP (USDC on Base). Built for allocator
+              agents — skip / wait / evaluate guidance included.
+            </p>
+          </div>
+          <BuyerPreviewCard />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ReputationApiCard />
+            <CrooCapCard />
+          </div>
+        </div>
+
+        <details className="rounded-xl border border-border/40 bg-surface/20">
+          <summary className="px-4 py-3 text-xs font-mono text-foreground-muted cursor-pointer select-none list-none hover:text-signal transition-colors">
+            Personal anchor (optional) — sign your own conviction on Casper
+          </summary>
+          <div className="px-4 pb-4 pt-1 max-w-md">
+            <CasperWalletConnect />
+          </div>
+        </details>
       </motion.div>
 
       {/* ── Narrative complete — appendix below ── */}
@@ -1956,6 +2034,206 @@ function formatUsdc(baseUnits: string | undefined, decimals = 6): string {
 }
 
 const CROO_STORE_URL = "https://agent.croo.network";
+const SIGNALS_SCHEMA_URL = "https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json";
+const SIGNALS_EXAMPLE_URL = "https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json";
+const CROO_REQUESTER_REPO =
+  "https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester";
+
+interface SignalsLivePreview {
+  schema: string;
+  freshness: {
+    cycle: number;
+    stale: boolean;
+    staleReason: string | null;
+  };
+  guidance: {
+    recommendedAction: "skip_entries" | "evaluate" | "wait";
+    reason: string;
+    topCandidate: string | null;
+    sizeMultiplier: number;
+  };
+  provenance: {
+    behavioral: {
+      score: number;
+      archetype: string;
+    } | null;
+    reputation: {
+      totalAnchors: number;
+      dualChain: boolean;
+    };
+  };
+  signals: { symbol: string; score: number }[];
+  meta: { schemaUrl: string };
+}
+
+const GUIDANCE_LABELS: Record<SignalsLivePreview["guidance"]["recommendedAction"], string> = {
+  evaluate: "Evaluate",
+  skip_entries: "Skip entries",
+  wait: "Wait",
+};
+
+const CROO_CAP_REQUESTER_SNIPPET = `# Reference requester — examples/croo-requester/
+export CROO_SDK_KEY=croo_sk_your_requester_key   # not the provider key
+
+cd examples/croo-requester
+npm install
+npm run dry-run    # validate sample + print guidance
+npm start          # live negotiate → pay → deliver`;
+
+function BuyerPreviewCard() {
+  const [preview, setPreview] = useState<SignalsLivePreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/agent/proxy?endpoint=signals/preview");
+        if (!res.ok) throw new Error(`signals/preview returned ${res.status}`);
+        const data = (await res.json()) as SignalsLivePreview;
+        if (!stale) setPreview(data);
+      } catch (e) {
+        if (!stale) setError(e instanceof Error ? e.message : "failed to load");
+      }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      stale = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const action = preview?.guidance.recommendedAction;
+  const actionClass =
+    action === "evaluate"
+      ? "border-patience/40 bg-patience/10 text-patience"
+      : action === "skip_entries"
+        ? "border-impatience/40 bg-impatience/10 text-impatience"
+        : "border-border/50 bg-surface/40 text-foreground-muted";
+
+  return (
+    <Card className="bg-surface/30 border-border/50 border-signal/25">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2 flex-wrap">
+          <Sparkles className="w-3.5 h-3.5 text-signal" />
+          What buyers get
+          <span className="ml-auto text-[10px] font-mono text-foreground-dim normal-case">
+            signals-live/v1.1 · same on MCP + CROO
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-[11px] text-foreground-muted leading-relaxed">
+          Paid delivery bundles live conviction signals with on-chain provenance and an explicit{" "}
+          <span className="font-mono text-foreground">guidance</span> action contract — built for
+          allocator agents hiring on the Store, not human traders reading charts.
+        </p>
+
+        {preview ? (
+          <div className="rounded-lg border border-signal/30 bg-signal/5 p-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {action && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border",
+                    actionClass,
+                  )}
+                >
+                  {GUIDANCE_LABELS[action]}
+                  {preview.guidance.topCandidate && action === "evaluate" && (
+                    <span className="normal-case">· {preview.guidance.topCandidate}</span>
+                  )}
+                </span>
+              )}
+              <span className="text-[10px] font-mono text-foreground-dim">
+                cycle {preview.freshness.cycle}
+                {preview.freshness.stale ? " · stale" : " · fresh"}
+              </span>
+              {preview.provenance.reputation.dualChain && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-signal/30 text-signal">
+                  dual-chain
+                </span>
+              )}
+            </div>
+
+            <p className="text-[11px] font-mono text-foreground leading-relaxed">
+              {preview.guidance.reason}
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
+              <div className="rounded bg-black/30 px-2 py-1.5">
+                <p className="text-foreground-dim uppercase tracking-wider">Signals</p>
+                <p className="text-foreground tabular-nums">{preview.signals.length}</p>
+              </div>
+              <div className="rounded bg-black/30 px-2 py-1.5">
+                <p className="text-foreground-dim uppercase tracking-wider">Behavior</p>
+                <p className="text-foreground tabular-nums">
+                  {preview.provenance.behavioral?.score ?? "—"}
+                </p>
+              </div>
+              <div className="rounded bg-black/30 px-2 py-1.5">
+                <p className="text-foreground-dim uppercase tracking-wider">Anchors</p>
+                <p className="text-foreground tabular-nums">
+                  {preview.provenance.reputation.totalAnchors}
+                </p>
+              </div>
+              <div className="rounded bg-black/30 px-2 py-1.5">
+                <p className="text-foreground-dim uppercase tracking-wider">Size ×</p>
+                <p className="text-foreground tabular-nums">
+                  {preview.guidance.sizeMultiplier}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : error ? (
+          <p className="text-[10px] text-impatience font-mono">preview: {error}</p>
+        ) : (
+          <Skeleton className="h-24 w-full rounded-lg" />
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={preview?.meta.schemaUrl ?? SIGNALS_SCHEMA_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded border border-border/50 hover:border-signal/40 text-foreground-muted hover:text-signal transition-colors"
+          >
+            JSON Schema
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href={SIGNALS_EXAMPLE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded border border-border/50 hover:border-signal/40 text-foreground-muted hover:text-signal transition-colors"
+          >
+            Example response
+            <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href={CROO_REQUESTER_REPO}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded border border-[#65b3ae]/40 hover:bg-[#65b3ae]/10 text-[#65b3ae] transition-colors"
+          >
+            Reference requester
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        <details className="rounded-lg border border-border/40 bg-surface/20">
+          <summary className="px-3 py-2 text-[10px] font-mono text-foreground-muted cursor-pointer select-none list-none">
+            Sample delivery JSON
+          </summary>
+          <pre className="px-3 pb-3 text-[9px] text-foreground-dim overflow-x-auto font-mono leading-relaxed max-h-48">
+            {preview ? JSON.stringify(preview, null, 2) : "Loading…"}
+          </pre>
+        </details>
+      </CardContent>
+    </Card>
+  );
+}
 
 const MCP_CONFIG_SNIPPET = `{
   "mcpServers": {
@@ -1976,31 +2254,6 @@ const MCP_CURL_PAID = `curl -sS -i -X POST ${MCP_ENDPOINT} \\
   -H 'content-type: application/json' \\
   -H 'accept: application/json, text/event-stream' \\
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_live_signals","arguments":{}}}'`;
-
-const CROO_CAP_REQUESTER_SNIPPET = `import { AgentClient, EventType } from "@croo-network/sdk";
-
-const client = new AgentClient(
-  { baseURL: "https://api.croo.network", wsURL: "wss://api.croo.network/ws" },
-  process.env.CROO_SDK_KEY!,
-);
-
-const stream = await client.connectWebSocket();
-
-stream.on(EventType.OrderCreated, async (e) => {
-  await client.payOrder(e.order_id!);
-});
-
-stream.on(EventType.OrderCompleted, async (e) => {
-  const delivery = await client.getDelivery(e.order_id!);
-  console.log(JSON.parse(delivery.deliverableText));
-  stream.close();
-});
-
-// Store-listed service — no subjectHash required
-await client.negotiateOrder({
-  serviceId: "signals-live",
-  requirements: JSON.stringify({}),
-});`;
 
 function ReputationApiCard() {
   const [stats, setStats] = useState<ReputationStats | null>(null);
@@ -2082,8 +2335,20 @@ function ReputationApiCard() {
           Query over{" "}
           <span className="font-mono text-foreground">Model Context Protocol</span>{" "}
           with per-call <span className="font-mono text-foreground">x402</span>{" "}
-          micropayments on Casper — the rail for agents that speak HTTP + MCP natively.
+          micropayments on Casper — same{" "}
+          <span className="font-mono text-foreground">signals-live/v1.1</span> payload as CROO.
         </p>
+
+        <div className="rounded-lg border border-signal/30 bg-signal/5 p-3 mb-4">
+          <p className="text-[11px] font-mono text-foreground font-semibold">
+            get_live_signals
+            <span className="ml-2 text-signal">0.5 CSPR</span>
+          </p>
+          <p className="text-[10px] font-mono text-foreground-muted mt-0.5 leading-relaxed">
+            signals-live/v1.1 — ranked candidates, macro gate, provenance bundle, and buyer{" "}
+            <code className="text-foreground">guidance</code> action contract
+          </p>
+        </div>
 
         {/* Tools table */}
         <div className="rounded-lg border border-border/40 overflow-hidden">
@@ -2167,9 +2432,10 @@ function ReputationApiCard() {
               {MCP_CURL_PAID}
             </pre>
             <p className="text-[10px] font-mono text-foreground-dim leading-relaxed">
-              Returns HTTP 402 + Casper x402 PaymentRequirements (0.5 CSPR). Re-POST
-              with a signed <code className="text-foreground-muted">X-PAYMENT</code>{" "}
-              header to settle via cspr.cloud facilitator.
+              Returns HTTP 402 + Casper x402 PaymentRequirements (0.5 CSPR). Response is{" "}
+              <span className="font-mono text-foreground">signals-live/v1.1</span> — see the
+              preview card above. Re-POST with a signed{" "}
+              <code className="text-foreground-muted">X-PAYMENT</code> header to settle.
             </p>
           </div>
         </div>
@@ -2302,8 +2568,9 @@ function CrooCapCard() {
           >
             CROO Agent Store
           </a>
-          . Negotiation, payment, and delivery run over the CROO Agent Protocol — same
-          conviction data as MCP, settled in USDC on Base.
+          . USDC on Base via CAP — identical{" "}
+          <span className="font-mono text-foreground">signals-live/v1.1</span> delivery with Schema
+          validation.
         </p>
 
         {/* Store-listed premium SKU */}
@@ -2313,9 +2580,10 @@ function CrooCapCard() {
               <p className="text-[11px] font-mono text-foreground font-semibold">
                 signals-live
                 <span className="ml-2 text-[#65b3ae]">$0.05 USDC</span>
+                <span className="ml-2 text-[10px] text-foreground-dim">v1.1</span>
               </p>
-              <p className="text-[10px] font-mono text-foreground-muted mt-0.5">
-                Live conviction signals for the current cycle — no subjectHash required
+              <p className="text-[10px] font-mono text-foreground-muted mt-0.5 leading-relaxed">
+                Signals + on-chain proof + buyer guidance — no subjectHash required
               </p>
             </div>
             <a
@@ -2364,11 +2632,12 @@ function CrooCapCard() {
             {CROO_CAP_REQUESTER_SNIPPET}
           </pre>
           <p className="text-[10px] font-mono text-foreground-dim leading-relaxed">
-            Requires a CROO SDK key from{" "}
-            <a href={CROO_STORE_URL} className="text-[#65b3ae] hover:underline" target="_blank" rel="noopener noreferrer">
-              agent.croo.network
+            Use a <strong className="font-normal text-foreground">requester</strong> SDK key (not
+            the provider key on this VPS). See{" "}
+            <a href={CROO_REQUESTER_REPO} className="text-[#65b3ae] hover:underline" target="_blank" rel="noopener noreferrer">
+              examples/croo-requester
             </a>
-            . Four additional reputation services are negotiable directly (MCP-only on the Store).
+            {" "}for dry-run and live purchase.
           </p>
         </div>
 
@@ -2382,7 +2651,11 @@ function CrooCapCard() {
 
 // ─── Main Page ───
 
-export default function AgentDashboard() {
+function AgentDashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const demoMode = searchParams.get("demo") === "1";
+
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [trades, setTrades] = useState<TradesResponse | null>(null);
   const [conviction, setConviction] = useState<ConvictionData | null>(null);
@@ -2443,6 +2716,18 @@ export default function AgentDashboard() {
 
   const showDashboard = !loading && !error && status;
 
+  useEffect(() => {
+    if (!showDashboard || typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (!hash) return;
+    const target = document.querySelector(hash);
+    if (target) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [showDashboard]);
+
   return (
     <CasperWalletProvider>
     <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
@@ -2464,11 +2749,28 @@ export default function AgentDashboard() {
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
                 Early, Not Wrong
               </h1>
-              <p className="mt-1 text-sm text-foreground-muted">
-                Contrarian entries · held through drawdown · capped only when the thesis breaks
+              <p className="mt-1 text-sm text-foreground-muted max-w-xl">
+                {demoMode
+                  ? "Four-act demo walkthrough for judges and integrators"
+                  : "Live conviction · on-chain proof · hire via MCP or CROO"}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant={demoMode ? "default" : "outline"}
+                size="sm"
+                className="rounded-full text-[10px] font-mono uppercase tracking-wider"
+                onClick={() => router.push(demoMode ? "/agent" : DEMO_WALKTHROUGH_HREF)}
+              >
+                {demoMode ? "Simple view" : "Demo walkthrough"}
+              </Button>
+              <Link
+                href="/analyzer"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-[10px] font-mono text-foreground-muted hover:text-signal hover:border-signal/30 transition-colors"
+              >
+                <Search className="w-3 h-3" />
+                Audit wallet
+              </Link>
               {status && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-xs font-mono">
                   <span className="text-foreground-muted uppercase tracking-wider">Cycle</span>
@@ -2539,7 +2841,12 @@ export default function AgentDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
               >
-                <Dashboard status={status} trades={trades} conviction={conviction} />
+                <Dashboard
+                  status={status}
+                  trades={trades}
+                  conviction={conviction}
+                  demoMode={demoMode}
+                />
               </motion.div>
             )}
           </AnimatePresence>
@@ -2547,5 +2854,19 @@ export default function AgentDashboard() {
       </main>
     </div>
     </CasperWalletProvider>
+  );
+}
+
+export default function AgentDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-sm font-mono text-foreground-muted">
+          Loading dashboard…
+        </div>
+      }
+    >
+      <AgentDashboardContent />
+    </Suspense>
   );
 }

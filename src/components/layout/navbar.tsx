@@ -157,6 +157,9 @@ export function Navbar() {
                 Agent
               </Link>
               <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
+              <span className="px-2 text-[10px] font-mono uppercase tracking-widest text-foreground-dim">
+                More
+              </span>
               <Link
                 href="/leaderboard"
                 className="px-2 py-2.5 text-xs font-mono text-foreground-dim hover:text-foreground-muted transition-colors min-h-[44px]"

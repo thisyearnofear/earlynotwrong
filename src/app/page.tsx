@@ -20,7 +20,6 @@ import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { cn } from "@/lib/utils";
 import {
   Activity,
-  TrendingUp,
   Anchor,
   ShieldCheck,
   ArrowRight,
@@ -28,6 +27,11 @@ import {
   Brain,
   Link2,
 } from "lucide-react";
+import {
+  NORTH_STAR,
+  INTENT_PATHS,
+  DEMO_WALKTHROUGH_HREF,
+} from "@/lib/product-copy";
 
 // ─── Agent status (for the live indicator) ──────────────────────────────────
 
@@ -86,28 +90,32 @@ const ACTS = [
     icon: Brain,
     title: "Score",
     label: "Act 1",
-    description: "A 6-factor contrarian conviction engine scores every token. Fear & greed, holder growth, RSI timing, quality, regime — not momentum, conviction.",
+    description:
+      "Know when fear is entry fuel—not when to chase green candles. Contrarian scoring across regime, holders, and quality.",
     color: "text-signal",
   },
   {
     icon: Activity,
     title: "Trade",
     label: "Act 2",
-    description: "The agent enters on fear, holds through drawdown, and lets winners run. Asymmetric by design: losses capped at −1x, wins uncapped.",
+    description:
+      "Hold through drawdown when the thesis still holds. Losses capped; winners run—behavior you can audit, not just P&L.",
     color: "text-patience",
   },
   {
     icon: Anchor,
     title: "Anchor",
     label: "Act 3",
-    description: "Every decision is hashed and written on-chain. Casper, Mantle, Aleo — three chains, one conviction record, verifiable by anyone.",
+    description:
+      "Publish an immutable thesis hash every cycle. Proof other agents (and humans) can verify without trusting screenshots.",
     color: "text-signal",
   },
   {
     icon: ShieldCheck,
     title: "Verify",
     label: "Act 4",
-    description: "Connect your Casper Wallet and anchor your own conviction record. Or audit any wallet's behavioral score with the analyzer.",
+    description:
+      "Hire the live signal feed—or anchor your own wallet's conviction. MCP + x402 and CROO CAP, same v1.1 payload.",
     color: "text-patience",
   },
 ] as const;
@@ -206,33 +214,58 @@ export default function Home() {
             layout
             className="text-base md:text-lg text-foreground-muted max-w-2xl leading-relaxed"
           >
-            An AI trading agent that scores its own conviction, manages
-            positions through drawdown, and anchors every decision on-chain.
-            Conviction is tested not when you&apos;re wrong — it&apos;s tested
-            when you&apos;re{" "}
-            <span className="text-foreground font-semibold">early</span>.
+            {NORTH_STAR}
           </motion.p>
 
-          {/* Primary CTA */}
+          <motion.p
+            layout
+            className="text-sm text-foreground-dim max-w-xl leading-relaxed"
+          >
+            Being early feels like being wrong—until on-chain behavior proves you held
+            conviction.
+          </motion.p>
+
+          {/* Three intent doors */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.5 }}
-            className="flex flex-col sm:flex-row items-center gap-3 pt-2"
+            transition={{ delay: 0.25, duration: 0.5 }}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl pt-2"
+          >
+            {INTENT_PATHS.map((path) => (
+              <Link
+                key={path.id}
+                href={path.href}
+                className={cn(
+                  "group flex flex-col gap-2 p-4 rounded-xl border text-left transition-all",
+                  path.primary
+                    ? "border-signal/40 bg-signal/10 hover:border-signal/60"
+                    : "border-border/50 bg-surface/30 hover:border-signal/30",
+                )}
+              >
+                <span className="text-sm font-semibold text-foreground">{path.title}</span>
+                <span className="text-[11px] font-mono text-foreground-muted leading-relaxed">
+                  {path.pain}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-signal mt-auto">
+                  {path.cta}
+                  <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </Link>
+            ))}
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35, duration: 0.4 }}
+            className="flex flex-wrap items-center justify-center gap-3 text-[10px] font-mono"
           >
             <Link
-              href="/agent"
-              className="group inline-flex items-center gap-2 px-6 py-3 rounded-full bg-foreground text-background text-sm font-semibold hover:bg-signal hover:text-black transition-all"
+              href={DEMO_WALKTHROUGH_HREF}
+              className="text-foreground-dim hover:text-signal transition-colors underline-offset-2 hover:underline"
             >
-              Enter the Dashboard
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </Link>
-            <Link
-              href="/analyzer"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-border bg-surface/50 text-sm font-mono text-foreground-muted hover:text-foreground hover:border-signal/40 transition-all"
-            >
-              <TrendingUp className="w-4 h-4" />
-              Wallet Analyzer
+              Demo walkthrough (4 acts for judges)
             </Link>
           </motion.div>
 
@@ -346,12 +379,19 @@ export default function Home() {
                     </div>
                   )}
                   {act.title === "Verify" && (
-                    <div className="mt-auto pt-2 border-t border-border/30">
+                    <div className="mt-auto pt-2 border-t border-border/30 flex flex-col gap-1">
                       <Link
-                        href="/agent"
+                        href="/agent#hire"
                         className="inline-flex items-center gap-1 text-[10px] font-mono text-signal hover:underline"
                       >
-                        Connect Casper Wallet
+                        Hire signals-live
+                        <ArrowRight className="w-2.5 h-2.5" />
+                      </Link>
+                      <Link
+                        href="/analyzer"
+                        className="inline-flex items-center gap-1 text-[10px] font-mono text-foreground-muted hover:text-signal hover:underline"
+                      >
+                        Audit a wallet
                         <ArrowRight className="w-2.5 h-2.5" />
                       </Link>
                     </div>
@@ -517,7 +557,16 @@ export default function Home() {
         <section className="relative z-10 mt-auto pt-8 border-t border-border/30">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-mono text-foreground-dim">
             <span className="uppercase tracking-wider text-center sm:text-left">
-              Autonomous conviction, anchored on-chain
+              Autonomous conviction, anchored on-chain · hire via{" "}
+              <a
+                href="https://agent.croo.network"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-signal transition-colors"
+              >
+                CROO
+              </a>
+              {" "}(USDC) or MCP (Casper x402)
             </span>
             <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-end">
               <Link href="/agent" className="hover:text-signal transition-colors">
@@ -526,10 +575,14 @@ export default function Home() {
               <Link href="/analyzer" className="hover:text-signal transition-colors">
                 Analyzer
               </Link>
-              <Link href="/leaderboard" className="hover:text-signal transition-colors">
+              <Link href="/agent#hire" className="hover:text-signal transition-colors">
+                Hire
+              </Link>
+              <span className="text-foreground-dim/60">·</span>
+              <Link href="/leaderboard" className="text-foreground-dim hover:text-foreground-muted transition-colors">
                 Leaderboard
               </Link>
-              <Link href="/alpha" className="hover:text-signal transition-colors">
+              <Link href="/alpha" className="text-foreground-dim hover:text-foreground-muted transition-colors">
                 Alpha
               </Link>
             </div>

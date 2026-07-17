@@ -34,6 +34,7 @@ import type { LedgerEntry } from "conviction-core";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware } from "./mcp/x402.js";
 import { PRICING as MCP_PRICING } from "./mcp/pricing.js";
+import { getLiveSignalsV1 } from "./mcp/tools.js";
 import { paymentStats, serializeByTool } from "./payment-stats.js";
 import { CAP_PRICING } from "./cap/pricing.js";
 import { getCapStatus } from "./cap/client.js";
@@ -230,6 +231,21 @@ app.get("/cap/status", (c) =>
     ),
   }),
 );
+
+// ===========================================================================
+// GET /signals/preview — operator dashboard preview of paid delivery shape
+// ===========================================================================
+//
+// Same JSON as a paid signals-live / get_live_signals call (v1.1 envelope).
+// Exposed for the web dashboard and Store reviewers — not a separate product SKU.
+
+app.get("/signals/preview", async (c) => {
+  const preview = await getLiveSignalsV1({
+    settlementRail: "croo-cap",
+    tool: "signals-live",
+  });
+  return c.json({ ...preview, preview: true });
+});
 
 // ===========================================================================
 // GET /reputation/stats — live A2A payment counters for the dashboard

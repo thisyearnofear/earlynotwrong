@@ -9,6 +9,7 @@ const VALID_GET_ENDPOINTS = [
   "conviction",
   "reputation/stats",
   "cap/status",
+  "signals/preview",
   "casper/balance",
   "casper/anchors",
 ] as const;
