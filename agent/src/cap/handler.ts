@@ -14,10 +14,10 @@ import {
   crossChainLookup,
   getAgentReputation,
   getLiveSignalsV1,
-  SIGNALS_LIVE_SCHEMA_URL,
 } from "../mcp/tools.js";
 import { recordCall } from "../payment-stats.js";
 import { pricingForToolName, toolNameForService } from "./pricing.js";
+import { getCapDeliverableSchemaJson } from "./signals-schema.js";
 
 export interface CapOrderPayload {
   orderId: string;
@@ -88,7 +88,7 @@ export async function fulfillCapOrder(
       deliverable = JSON.stringify(livePayload);
       deliverReq = {
         deliverableType: DeliverableType.Schema,
-        deliverableSchema: SIGNALS_LIVE_SCHEMA_URL,
+        deliverableSchema: await getCapDeliverableSchemaJson(),
         deliverableText: deliverable,
       };
       break;
