@@ -579,9 +579,80 @@ describe("getLiveSignals", () => {
       Object.assign(state, saved);
     }
   });
-});
 
-// ─── AnchorAdapter — read methods produce AnchoredRecord shape ───────────────
+  it("buildSignalsTeaser redacts paid payload fields from full v1.1", async () => {
+    const { getLiveSignalsV1, buildSignalsTeaser } = await import("../src/mcp/tools.js");
+    const { state } = await import("../lib/agent-state.js");
+    const saved = {
+      cycle: state.cycle,
+      lastRunAt: state.lastRunAt,
+      nextRunAt: state.nextRunAt,
+      marketRegime: state.marketRegime,
+      convictionSignals: state.convictionSignals,
+      macroPause: state.macroPause,
+    };
+    state.cycle = 3;
+    state.lastRunAt = Date.now() - 60_000;
+    state.nextRunAt = state.lastRunAt + 14_400_000;
+    state.convictionSignals = [
+      {
+        symbol: "FET",
+        score: 76,
+        breakdown: {
+          contrarian: 20,
+          rsi: 5,
+          quality: 10,
+          regime: 15,
+          holders: 8,
+          volatilityPenalty: 0,
+          news: 0,
+        },
+        weights: {} as never,
+        rationale: "test",
+        holderCount: 1000,
+        holderGrowthPercent: 1,
+        newsSentiment: null,
+      },
+      {
+        symbol: "XRP",
+        score: 43,
+        breakdown: {
+          contrarian: 10,
+          rsi: 3,
+          quality: 8,
+          regime: 12,
+          holders: 5,
+          volatilityPenalty: 2,
+          news: 0,
+        },
+        weights: {} as never,
+        rationale: "test2",
+        holderCount: 500,
+        holderGrowthPercent: null,
+        newsSentiment: null,
+      },
+    ] as typeof state.convictionSignals;
+    try {
+      const full = await getLiveSignalsV1({
+        settlementRail: "croo-cap",
+        tool: "signals-live",
+      });
+      expect(full.signals.length).toBeGreaterThanOrEqual(2);
+
+      const teaser = buildSignalsTeaser(full);
+      expect(teaser.teaser).toBe(true);
+      expect(teaser.preview).toBe(true);
+      expect(teaser.signalCount).toBe(full.signals.length);
+      expect(teaser.topSignal?.symbol).toBe(full.signals[0].symbol);
+      expect(teaser.guidance.recommendedAction).toBe(full.guidance.recommendedAction);
+      expect(teaser.unlock.crooStoreUrl).toContain("agent.croo.network");
+      expect("signals" in teaser).toBe(false);
+      expect("explorerUrls" in (teaser as Record<string, unknown>).provenance ?? {}).toBe(false);
+    } finally {
+      Object.assign(state, saved);
+    }
+  });
+});
 
 describe("AnchoredRecord shape", () => {
   it("Casper records carry adapter='casper'", () => {

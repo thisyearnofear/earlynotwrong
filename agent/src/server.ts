@@ -34,7 +34,6 @@ import type { LedgerEntry } from "conviction-core";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware } from "./mcp/x402.js";
 import { PRICING as MCP_PRICING } from "./mcp/pricing.js";
-import { getLiveSignalsV1 } from "./mcp/tools.js";
 import { paymentStats, serializeByTool } from "./payment-stats.js";
 import { CAP_PRICING } from "./cap/pricing.js";
 import { getCapStatus } from "./cap/client.js";
@@ -233,18 +232,21 @@ app.get("/cap/status", (c) =>
 );
 
 // ===========================================================================
-// GET /signals/preview — operator dashboard preview of paid delivery shape
+// GET /signals/teaser — public guidance preview (no full paid payload)
+// GET /signals/preview — alias for teaser (backward compat for dashboard proxy)
 // ===========================================================================
 //
-// Same JSON as a paid signals-live / get_live_signals call (v1.1 envelope).
-// Exposed for the web dashboard and Store reviewers — not a separate product SKU.
+// Paid buyers receive the full signals-live/v1.1 envelope via CROO CAP or MCP
+// x402. The web app only gets guidance + top symbol here.
+
+app.get("/signals/teaser", async (c) => {
+  const { getLiveSignalsTeaser } = await import("./mcp/tools.js");
+  return c.json(await getLiveSignalsTeaser());
+});
 
 app.get("/signals/preview", async (c) => {
-  const preview = await getLiveSignalsV1({
-    settlementRail: "croo-cap",
-    tool: "signals-live",
-  });
-  return c.json({ ...preview, preview: true });
+  const { getLiveSignalsTeaser } = await import("./mcp/tools.js");
+  return c.json(await getLiveSignalsTeaser());
 });
 
 // ===========================================================================

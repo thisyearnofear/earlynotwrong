@@ -59,7 +59,9 @@ import {
   sendCycleSummary,
   sendStartup,
   sendErrorAlert,
+  sendGuidanceBroadcast,
 } from "./lib/telegram.js";
+import { getLiveSignalsTeaser } from "./src/mcp/tools.js";
 import {
   startSubscriberPolling,
   stopSubscriberPolling,
@@ -289,6 +291,17 @@ async function runCycle(): Promise<void> {
       usedSodex: state.executedTrades.some(t => t.txHash?.startsWith("0xSODEX_")),
       walletAddress: process.env.AGENT_WALLET_KEY || process.env.AGENT_WALLET_ADDRESS || undefined,
     }).catch(() => {});
+
+    getLiveSignalsTeaser()
+      .then((teaser) =>
+        sendGuidanceBroadcast({
+          cycle: state.cycle,
+          guidance: teaser.guidance,
+          stale: teaser.freshness.stale,
+          signalCount: teaser.signalCount,
+        }),
+      )
+      .catch(() => {});
   } catch (error) {
     state.status = "error";
     const summary = summarizeError(error);

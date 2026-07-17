@@ -13,6 +13,13 @@ import { CasperWalletConnect } from "@/components/casper-wallet-connect";
 import { CasperWalletProvider } from "@/components/casper-wallet-provider";
 import { RecentAnchors } from "@/components/recent-anchors";
 import { ProofLadder, CROO_STORE_LISTING_URL } from "@/components/proof-ladder";
+import { SignalsUnlockPanel } from "@/components/signals-unlock-panel";
+import type { SignalsLiveTeaser } from "@/lib/signals-teaser-types";
+import {
+  GUIDANCE_LABELS,
+  type BuyerRecommendedAction,
+} from "@/lib/signals-teaser-types";
+import { guidanceActionClass } from "@/components/hire-signals-cta";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -623,11 +630,13 @@ function Dashboard({
   status,
   trades,
   conviction,
+  signalsTeaser,
   demoMode,
 }: {
   status: AgentStatus;
   trades: TradesResponse | null;
   conviction: ConvictionData | null;
+  signalsTeaser: SignalsLiveTeaser | null;
   demoMode: boolean;
 }) {
   return (
@@ -1225,7 +1234,7 @@ function Dashboard({
                     </div>
                   );
                 })()}
-                {conviction.signals.slice(0, 6).map((s, i) => (
+                {conviction.signals.slice(0, 1).map((s, i) => (
                   <motion.div
                     key={s.symbol}
                     initial={{ opacity: 0, x: -10 }}
@@ -1285,6 +1294,13 @@ function Dashboard({
                     </div>
                   </motion.div>
                 ))}
+                {conviction.signals.length > 1 && (
+                  <SignalsUnlockPanel
+                    hiddenCount={conviction.signals.length - 1}
+                    teaser={signalsTeaser}
+                    className="mt-2"
+                  />
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
@@ -2043,17 +2059,20 @@ const CROO_REQUESTER_REPO =
 
 interface SignalsLivePreview {
   schema: string;
+  teaser: true;
   freshness: {
     cycle: number;
     stale: boolean;
     staleReason: string | null;
   };
   guidance: {
-    recommendedAction: "skip_entries" | "evaluate" | "wait";
+    recommendedAction: BuyerRecommendedAction;
     reason: string;
     topCandidate: string | null;
     sizeMultiplier: number;
   };
+  signalCount: number;
+  topSignal: { symbol: string; score: number } | null;
   provenance: {
     behavioral: {
       score: number;
@@ -2064,15 +2083,16 @@ interface SignalsLivePreview {
       dualChain: boolean;
     };
   };
-  signals: { symbol: string; score: number }[];
+  unlock: {
+    message: string;
+    crooStoreUrl: string;
+    priceUsdc: string;
+    dashboardUrl: string;
+  };
   meta: { schemaUrl: string };
 }
 
-const GUIDANCE_LABELS: Record<SignalsLivePreview["guidance"]["recommendedAction"], string> = {
-  evaluate: "Evaluate",
-  skip_entries: "Skip entries",
-  wait: "Wait",
-};
+const GUIDANCE_LABELS_LOCAL: Record<BuyerRecommendedAction, string> = GUIDANCE_LABELS;
 
 const CROO_CAP_REQUESTER_SNIPPET = `# Reference requester — examples/croo-requester/
 export CROO_SDK_KEY=croo_sk_your_requester_key   # not the provider key
@@ -2090,8 +2110,8 @@ function BuyerPreviewCard() {
     let stale = false;
     async function load() {
       try {
-        const res = await fetch("/api/agent/proxy?endpoint=signals/preview");
-        if (!res.ok) throw new Error(`signals/preview returned ${res.status}`);
+        const res = await fetch("/api/agent/proxy?endpoint=signals/teaser");
+        if (!res.ok) throw new Error(`signals/teaser returned ${res.status}`);
         const data = (await res.json()) as SignalsLivePreview;
         if (!stale) setPreview(data);
       } catch (e) {
@@ -2107,12 +2127,7 @@ function BuyerPreviewCard() {
   }, []);
 
   const action = preview?.guidance.recommendedAction;
-  const actionClass =
-    action === "evaluate"
-      ? "border-patience/40 bg-patience/10 text-patience"
-      : action === "skip_entries"
-        ? "border-impatience/40 bg-impatience/10 text-impatience"
-        : "border-border/50 bg-surface/40 text-foreground-muted";
+  const actionClass = action ? guidanceActionClass(action) : "";
 
   return (
     <Card className="bg-surface/30 border-border/50 border-signal/25">
@@ -2127,9 +2142,9 @@ function BuyerPreviewCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[11px] text-foreground-muted leading-relaxed">
-          Paid delivery bundles live conviction signals with on-chain provenance and an explicit{" "}
-          <span className="font-mono text-foreground">guidance</span> action contract — built for
-          allocator agents hiring on the Store, not human traders reading charts.
+          Public teaser — guidance + top symbol only. Paid{" "}
+          <span className="font-mono text-foreground">signals-live/v1.1</span> adds full
+          rankings, factor breakdowns, and on-chain provenance links.
         </p>
 
         {preview ? (
@@ -2142,7 +2157,7 @@ function BuyerPreviewCard() {
                     actionClass,
                   )}
                 >
-                  {GUIDANCE_LABELS[action]}
+                  {GUIDANCE_LABELS_LOCAL[action]}
                   {preview.guidance.topCandidate && action === "evaluate" && (
                     <span className="normal-case">· {preview.guidance.topCandidate}</span>
                   )}
@@ -2165,8 +2180,8 @@ function BuyerPreviewCard() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
               <div className="rounded bg-black/30 px-2 py-1.5">
-                <p className="text-foreground-dim uppercase tracking-wider">Signals</p>
-                <p className="text-foreground tabular-nums">{preview.signals.length}</p>
+                <p className="text-foreground-dim uppercase tracking-wider">Ranked</p>
+                <p className="text-foreground tabular-nums">{preview.signalCount}</p>
               </div>
               <div className="rounded bg-black/30 px-2 py-1.5">
                 <p className="text-foreground-dim uppercase tracking-wider">Behavior</p>
@@ -2214,24 +2229,19 @@ function BuyerPreviewCard() {
             <ExternalLink className="w-3 h-3" />
           </a>
           <a
-            href={CROO_REQUESTER_REPO}
+            href={preview?.unlock.crooStoreUrl ?? CROO_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-1 rounded border border-[#65b3ae]/40 hover:bg-[#65b3ae]/10 text-[#65b3ae] transition-colors"
           >
-            Reference requester
+            Hire on CROO · ${preview?.unlock.priceUsdc ?? "0.05"}
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
 
-        <details className="rounded-lg border border-border/40 bg-surface/20">
-          <summary className="px-3 py-2 text-[10px] font-mono text-foreground-muted cursor-pointer select-none list-none">
-            Sample delivery JSON
-          </summary>
-          <pre className="px-3 pb-3 text-[9px] text-foreground-dim overflow-x-auto font-mono leading-relaxed max-h-48">
-            {preview ? JSON.stringify(preview, null, 2) : "Loading…"}
-          </pre>
-        </details>
+        <p className="text-[10px] font-mono text-foreground-dim leading-relaxed">
+          {preview?.unlock.message}
+        </p>
       </CardContent>
     </Card>
   );
@@ -2661,6 +2671,7 @@ function AgentDashboardContent() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [trades, setTrades] = useState<TradesResponse | null>(null);
   const [conviction, setConviction] = useState<ConvictionData | null>(null);
+  const [signalsTeaser, setSignalsTeaser] = useState<SignalsLiveTeaser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
@@ -2669,10 +2680,11 @@ function AgentDashboardContent() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [statusRes, tradesRes, convictionRes] = await Promise.all([
+      const [statusRes, tradesRes, convictionRes, teaserRes] = await Promise.all([
         fetch("/api/agent/proxy?endpoint=status"),
         fetch("/api/agent/proxy?endpoint=trades"),
         fetch("/api/agent/proxy?endpoint=conviction"),
+        fetch("/api/agent/proxy?endpoint=signals/teaser"),
       ]);
 
       if (!statusRes.ok) {
@@ -2685,6 +2697,9 @@ function AgentDashboardContent() {
       setStatus(await statusRes.json());
       setTrades(await tradesRes.json());
       setConviction(await convictionRes.json());
+      if (teaserRes.ok) {
+        setSignalsTeaser((await teaserRes.json()) as SignalsLiveTeaser);
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect to agent");
@@ -2847,6 +2862,7 @@ function AgentDashboardContent() {
                   status={status}
                   trades={trades}
                   conviction={conviction}
+                  signalsTeaser={signalsTeaser}
                   demoMode={demoMode}
                 />
               </motion.div>

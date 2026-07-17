@@ -33,6 +33,8 @@ import {
   DEMO_WALKTHROUGH_HREF,
 } from "@/lib/product-copy";
 import { ProofLadder } from "@/components/proof-ladder";
+import { HireSignalsCta } from "@/components/hire-signals-cta";
+import type { SignalsLiveTeaser } from "@/lib/signals-teaser-types";
 
 // ─── Agent status (for the live indicator) ──────────────────────────────────
 
@@ -130,6 +132,7 @@ export default function Home() {
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [signals, setSignals] = useState<ConvictionSignal[]>([]);
   const [convictionData, setConvictionData] = useState<ConvictionResponse | null>(null);
+  const [signalsTeaser, setSignalsTeaser] = useState<SignalsLiveTeaser | null>(null);
 
   // Fetch agent live status + conviction data (signals + held positions + verdicts)
   useEffect(() => {
@@ -137,9 +140,10 @@ export default function Home() {
 
     const fetchAll = async () => {
       try {
-        const [statusRes, convRes] = await Promise.all([
+        const [statusRes, convRes, teaserRes] = await Promise.all([
           fetch("/api/agent/proxy?endpoint=status"),
           fetch("/api/agent/proxy?endpoint=conviction"),
+          fetch("/api/agent/proxy?endpoint=signals/teaser"),
         ]);
 
         if (!cancelled && statusRes.ok) {
@@ -149,7 +153,10 @@ export default function Home() {
         if (!cancelled && convRes.ok) {
           const data = (await convRes.json()) as ConvictionResponse;
           setConvictionData(data);
-          if (data.signals?.length) setSignals(data.signals.slice(0, 4));
+          if (data.signals?.length) setSignals(data.signals.slice(0, 1));
+        }
+        if (!cancelled && teaserRes.ok) {
+          setSignalsTeaser((await teaserRes.json()) as SignalsLiveTeaser);
         }
       } catch {
         /* best-effort — landing still works without live data */
@@ -506,17 +513,17 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {signals.map((s, i) => (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {signals.map((s) => (
                   <motion.div
                     key={s.symbol}
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.7 + i * 0.05 }}
+                    transition={{ delay: 0.7 }}
                     className="flex flex-col gap-1 p-3 rounded-lg bg-surface/40 border border-border/30"
                   >
                     <span className="text-[10px] font-mono text-foreground-dim uppercase tracking-wider">
-                      {s.symbol}
+                      Top candidate · {s.symbol}
                     </span>
                     <span className="text-2xl font-bold font-mono text-signal tabular-nums">
                       {s.score}
@@ -526,12 +533,13 @@ export default function Home() {
                     </span>
                   </motion.div>
                 ))}
+                <HireSignalsCta teaser={signalsTeaser} compact />
               </div>
               <Link
-                href="/agent"
+                href="/agent#signals"
                 className="mt-4 inline-flex items-center gap-1 text-[11px] font-mono text-signal hover:underline"
               >
-                See all signals on the dashboard
+                Watch the agent on the dashboard
                 <ArrowRight className="w-3 h-3" />
               </Link>
             </div>

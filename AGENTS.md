@@ -167,6 +167,7 @@ src/lib/market.ts
 - Tests live in `agent/__tests__/` — Vitest framework (249 tests across 17 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
+- `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.1` is paid via CROO or MCP.
 - `agent/data/holders.json` is a runtime cache — also gitignored.
 - `agent/docs/api/` is TypeDoc output — gitignored, regenerate via `npm run docs`.
 

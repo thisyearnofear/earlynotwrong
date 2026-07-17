@@ -333,4 +333,34 @@ describe("Telegram module", () => {
       })
     ).resolves.toBeUndefined();
   });
+
+  it("broadcasts public-safe guidance to operator and subscribers", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockGetSubscriberChatIds.mockReturnValue(["999888"]);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    const { sendGuidanceBroadcast } = await import("../lib/telegram.js");
+    await sendGuidanceBroadcast({
+      cycle: 42,
+      guidance: {
+        recommendedAction: "evaluate",
+        reason: "Top candidate XRP — apply your sizing rules",
+        topCandidate: "XRP",
+        sizeMultiplier: 1,
+      },
+      stale: false,
+      signalCount: 5,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const payloads = mockFetch.mock.calls.map(
+      (c) => JSON.parse((c[1] as RequestInit).body as string) as { text: string; chat_id: string },
+    );
+    expect(payloads[0].text).toContain("Cycle #42 guidance");
+    expect(payloads[0].text).toContain("Evaluate");
+    expect(payloads[0].text).toContain("XRP");
+    expect(payloads[0].text).toContain("Hire on CROO");
+    expect(payloads[1].chat_id).toBe("999888");
+  });
 });

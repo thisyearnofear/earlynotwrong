@@ -582,3 +582,79 @@ export async function getLiveSignalsV1(
   const guidance = buildBuyerGuidance(core.macroPause, core.signals, freshness.stale);
   return wrapLiveSignalsV1(core, options, { provenance, guidance });
 }
+
+export const CROO_STORE_LISTING_URL =
+  "https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205";
+
+/** Public web teaser — guidance + top symbol only; full payload is paid (CROO / MCP). */
+export interface SignalsLiveTeaser {
+  schema: typeof SIGNALS_LIVE_SCHEMA;
+  teaser: true;
+  preview: true;
+  generatedAt: string;
+  freshness: SignalsLiveV1_1["freshness"];
+  guidance: BuyerGuidance;
+  regime: { score: number; label: string } | null;
+  signalCount: number;
+  topSignal: { symbol: string; score: number } | null;
+  provenance: {
+    behavioral: { score: number; archetype: string } | null;
+    reputation: { totalAnchors: number; dualChain: boolean };
+  };
+  macroPause: { skipEntries: boolean; clear: boolean } | null;
+  unlock: {
+    message: string;
+    crooStoreUrl: string;
+    priceUsdc: string;
+    dashboardUrl: string;
+  };
+  meta: { schemaUrl: typeof SIGNALS_LIVE_SCHEMA_URL };
+}
+
+export function buildSignalsTeaser(full: SignalsLiveV1_1): SignalsLiveTeaser {
+  return {
+    schema: full.schema,
+    teaser: true,
+    preview: true,
+    generatedAt: full.generatedAt,
+    freshness: full.freshness,
+    guidance: full.guidance,
+    regime: full.regime ? { score: full.regime.score, label: full.regime.label } : null,
+    signalCount: full.signals.length,
+    topSignal: full.signals[0]
+      ? { symbol: full.signals[0].symbol, score: full.signals[0].score }
+      : null,
+    provenance: {
+      behavioral: full.provenance.behavioral
+        ? {
+            score: full.provenance.behavioral.score,
+            archetype: full.provenance.behavioral.archetype,
+          }
+        : null,
+      reputation: {
+        totalAnchors: full.provenance.reputation.totalAnchors,
+        dualChain: full.provenance.reputation.dualChain,
+      },
+    },
+    macroPause: full.macroPause
+      ? { skipEntries: full.macroPause.skipEntries, clear: full.macroPause.clear }
+      : null,
+    unlock: {
+      message:
+        "Full ranked signals, factor breakdowns, and on-chain provenance links — hire signals-live on CROO or MCP.",
+      crooStoreUrl: CROO_STORE_LISTING_URL,
+      priceUsdc: "0.05",
+      dashboardUrl: "https://earlynotwrong.vercel.app/agent#hire",
+    },
+    meta: { schemaUrl: full.meta.schemaUrl },
+  };
+}
+
+/** Dashboard / landing teaser — same guidance contract, no paid signal payload. */
+export async function getLiveSignalsTeaser(): Promise<SignalsLiveTeaser> {
+  const full = await getLiveSignalsV1({
+    settlementRail: "croo-cap",
+    tool: "signals-live",
+  });
+  return buildSignalsTeaser(full);
+}

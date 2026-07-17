@@ -20,9 +20,9 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CROO_STORE_LISTING_URL } from "@/lib/croo-store";
 
-export const CROO_STORE_LISTING_URL =
-  "https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205";
+export { CROO_STORE_LISTING_URL };
 
 interface AnchorResult {
   adapter: string;
@@ -98,7 +98,7 @@ export function ProofLadder({
           fetch("/api/agent/proxy?endpoint=conviction"),
           fetch("/api/agent/proxy?endpoint=cap/status"),
           fetch("/api/agent/proxy?endpoint=reputation/stats"),
-          fetch("/api/agent/proxy?endpoint=signals/preview"),
+          fetch("/api/agent/proxy?endpoint=signals/teaser"),
         ]);
 
         const status = statusRes.ok ? await statusRes.json() : null;

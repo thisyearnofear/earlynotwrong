@@ -10,6 +10,7 @@ const VALID_GET_ENDPOINTS = [
   "reputation/stats",
   "cap/status",
   "signals/preview",
+  "signals/teaser",
   "casper/balance",
   "casper/anchors",
 ] as const;

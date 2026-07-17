@@ -57,6 +57,7 @@ import { PrivateBalanceCard } from "@/components/privacy/private-balance-card";
 import { AnimatedScore } from "@/components/ui/animated-score";
 import { EthosReputationSkeleton } from "@/components/ui/ethos-skeleton";
 import Link from "next/link";
+import { LiveAgentHireBridge } from "@/components/live-agent-hire-bridge";
 
 export default function AnalyzerPage() {
   const {
@@ -678,6 +679,11 @@ export default function AnalyzerPage() {
                     </div>
                   )}
                 </motion.div>
+
+                <LiveAgentHireBridge
+                  walletScore={convictionMetrics?.score}
+                  walletArchetype={convictionMetrics?.archetype}
+                />
 
                 {/* Score Card */}
                 <motion.div

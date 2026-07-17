@@ -362,6 +362,60 @@ export async function sendExitAlert(params: {
   await broadcastMessage(lines.join("\n"));
 }
 
+const CROO_STORE_URL =
+  "https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205";
+
+const GUIDANCE_ACTION_LABELS: Record<string, string> = {
+  evaluate: "✅ Evaluate",
+  skip_entries: "⛔ Skip entries",
+  wait: "⏳ Wait",
+};
+
+/**
+ * Public-safe cycle guidance for /start subscribers + operator channel.
+ * Full ranked signals remain behind CROO / MCP hire.
+ */
+export async function sendGuidanceBroadcast(params: {
+  cycle: number;
+  guidance: {
+    recommendedAction: string;
+    reason: string;
+    topCandidate: string | null;
+    sizeMultiplier: number;
+  };
+  stale: boolean;
+  signalCount: number;
+}): Promise<void> {
+  if (!hasToken()) return;
+
+  const actionLabel =
+    GUIDANCE_ACTION_LABELS[params.guidance.recommendedAction] ??
+    params.guidance.recommendedAction;
+
+  const lines: string[] = [
+    `🎯 <b>Cycle #${params.cycle} guidance</b>${params.stale ? " · <i>stale</i>" : ""}`,
+    `<code>${actionLabel}</code>${
+      params.guidance.topCandidate
+        ? ` · ${escapeHtml(params.guidance.topCandidate)}`
+        : ""
+    }`,
+    `<i>${escapeHtml(params.guidance.reason)}</i>`,
+  ];
+
+  if (params.signalCount > 1) {
+    lines.push(
+      `<i>${params.signalCount} ranked signals — full list via hire ($0.05 USDC)</i>`,
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    `<a href="${CROO_STORE_URL}">Hire on CROO</a> · <a href="https://earlynotwrong.vercel.app/agent#hire">Dashboard</a>`,
+  );
+
+  await broadcastMessage(lines.join("\n"));
+}
+
 /**
  * Send a guardrail-block alert. Fired when one or more proposals are rejected
  * so judges can see the risk system catching trades before execution.
