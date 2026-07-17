@@ -76,10 +76,45 @@ export const CAP_SERVICE_IDS: readonly string[] = Object.values(CAP_PRICING).map
   (entry) => entry.serviceId,
 );
 
+/**
+ * CROO Store negotiations often use the Store service UUID in `serviceId`, not
+ * the human slug (`signals-live`). Map UUID → slug via env:
+ *
+ *   CROO_SERVICE_UUID_MAP='{"3da733af-...":"signals-live"}'
+ * or
+ *   CROO_SIGNALS_LIVE_SERVICE_UUID=3da733af-...
+ */
+export function resolveCapServiceId(rawId: string): CapServiceName | null {
+  if (rawId in CAP_PRICING) {
+    return rawId as CapServiceName;
+  }
+
+  const signalsUuid = process.env.CROO_SIGNALS_LIVE_SERVICE_UUID?.trim();
+  if (signalsUuid && rawId === signalsUuid) {
+    return "signals-live";
+  }
+
+  const mapJson = process.env.CROO_SERVICE_UUID_MAP?.trim();
+  if (mapJson) {
+    try {
+      const map = JSON.parse(mapJson) as Record<string, string>;
+      const slug = map[rawId];
+      if (slug && slug in CAP_PRICING) {
+        return slug as CapServiceName;
+      }
+    } catch {
+      // ignore malformed map
+    }
+  }
+
+  return null;
+}
+
 /** Map a CAP serviceId to the internal reputation tool name. */
 export function toolNameForService(serviceId: string): string | null {
-  const entry = Object.values(CAP_PRICING).find((e) => e.serviceId === serviceId);
-  return entry?.toolName ?? null;
+  const resolved = resolveCapServiceId(serviceId);
+  if (!resolved) return null;
+  return CAP_PRICING[resolved].toolName;
 }
 
 /** Map an internal tool name back to its CAP service entry. */

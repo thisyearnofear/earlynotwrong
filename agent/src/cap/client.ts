@@ -13,7 +13,7 @@
 import { AgentClient, Config, EventType, type Logger } from "@croo-network/sdk";
 import { AGENT_CONFIG } from "../../lib/config.js";
 import { fulfillCapOrder } from "./handler.js";
-import { CAP_SERVICE_IDS } from "./pricing.js";
+import { CAP_SERVICE_IDS, resolveCapServiceId } from "./pricing.js";
 
 let client: AgentClient | null = null;
 let stream: Awaited<ReturnType<AgentClient["connectWebSocket"]>> | null = null;
@@ -82,23 +82,36 @@ export async function startCapClient(): Promise<void> {
   stream.on(EventType.NegotiationCreated, async (event) => {
     try {
       const negotiationId = event.negotiation_id as string;
-      const serviceId = event.service_id as string | undefined;
-      console.log(`[cap] Negotiation created: ${negotiationId} service=${serviceId}`);
+      console.log(`[cap] Negotiation created: ${negotiationId}`);
 
-      if (!serviceId || !CAP_SERVICE_IDS.includes(serviceId)) {
-        console.log(`[cap] Rejecting negotiation ${negotiationId}: unknown service ${serviceId}`);
+      let negotiation;
+      try {
+        negotiation = await client!.getNegotiation(negotiationId);
+      } catch (err) {
+        console.error(
+          `[cap] Failed to load negotiation ${negotiationId}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        await client!.rejectNegotiation(negotiationId, "negotiation lookup failed");
+        return;
+      }
+
+      const resolvedServiceId = resolveCapServiceId(negotiation.serviceId);
+      console.log(
+        `[cap] Negotiation ${negotiationId} service=${negotiation.serviceId}` +
+          (resolvedServiceId ? ` → ${resolvedServiceId}` : ""),
+      );
+
+      if (!resolvedServiceId || !CAP_SERVICE_IDS.includes(resolvedServiceId)) {
+        console.log(
+          `[cap] Rejecting negotiation ${negotiationId}: unknown service ${negotiation.serviceId}`,
+        );
         await client!.rejectNegotiation(negotiationId, "unknown service");
         return;
       }
 
-      // Cache requirements before accepting so they survive to OrderPaid.
-      try {
-        const negotiation = await client!.getNegotiation(negotiationId);
-        if (negotiation.requirements) {
-          negotiationRequirements.set(negotiationId, negotiation.requirements);
-        }
-      } catch {
-        // Continue without requirements; fulfillment will use safe defaults.
+      if (negotiation.requirements) {
+        negotiationRequirements.set(negotiationId, negotiation.requirements);
       }
 
       const result = await client!.acceptNegotiation(negotiationId);
@@ -114,14 +127,15 @@ export async function startCapClient(): Promise<void> {
       if (!client) return;
 
       const order = await client.getOrder(orderId);
-      console.log(`[cap] Order paid: ${orderId} service=${order.serviceId}`);
+      const resolvedServiceId = resolveCapServiceId(order.serviceId) ?? order.serviceId;
+      console.log(`[cap] Order paid: ${orderId} service=${order.serviceId} → ${resolvedServiceId}`);
 
       const requirements = negotiationRequirements.get(order.negotiationId);
       negotiationRequirements.delete(order.negotiationId);
 
       await fulfillCapOrder(client, {
         orderId,
-        serviceId: order.serviceId,
+        serviceId: resolvedServiceId,
         requirements,
       });
       console.log(`[cap] Delivered order: ${orderId}`);

@@ -11,6 +11,7 @@ import {
   CAP_PRICING,
   CAP_SERVICE_IDS,
   pricingForToolName,
+  resolveCapServiceId,
   toolNameForService,
   type CapServiceName,
 } from "../src/cap/pricing.js";
@@ -73,5 +74,14 @@ describe("CAP pricing config", () => {
       expect(entry.amountUsdcBaseUnits).toMatch(/^\d+$/);
       expect(BigInt(entry.amountUsdcBaseUnits)).toBeGreaterThanOrEqual(0n);
     }
+  });
+
+  it("resolves CROO Store service UUIDs to signals-live slug", () => {
+    const uuid = "3da733af-bc0f-492e-9117-d47b055e4fe1";
+    process.env.CROO_SIGNALS_LIVE_SERVICE_UUID = uuid;
+    expect(resolveCapServiceId("signals-live")).toBe("signals-live");
+    expect(resolveCapServiceId(uuid)).toBe("signals-live");
+    expect(resolveCapServiceId("unknown-uuid")).toBeNull();
+    delete process.env.CROO_SIGNALS_LIVE_SERVICE_UUID;
   });
 });

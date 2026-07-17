@@ -83,6 +83,8 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 | **Schema URL** | `https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json` |
 | **Requirements** | `{}` (empty JSON — no subjectHash needed) |
 
+> **Store UUID:** CROO assigns an internal service UUID (e.g. `3da733af-bc0f-492e-9117-d47b055e4fe1`). Set `CROO_SIGNALS_LIVE_SERVICE_UUID` in `agent/.env` on the VPS so the CAP client accepts Store orders (see `agent/.env.example`).
+
 ---
 
 ## Demo checklist (for reviewers)
