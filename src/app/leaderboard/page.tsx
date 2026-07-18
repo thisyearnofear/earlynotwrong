@@ -3,20 +3,10 @@ import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 import { WalletDiscoveryBridge } from "@/components/wallet-discovery-bridge";
-import { APP_CONFIG } from "@/lib/config";
+import { buildPageMetadata } from "@/lib/site-metadata";
 import { getLeaderboard } from "@/lib/db/postgres";
 
-export const metadata: Metadata = {
-  title: "Leaderboard | Early, Not Wrong",
-  description:
-    "Wallets analyzed on Early, Not Wrong, ranked by behavioral conviction score — patience tax, upside capture, and archetype.",
-  openGraph: {
-    title: "Conviction Leaderboard | Early, Not Wrong",
-    description:
-      "Community wallet scans ranked by behavioral conviction — compare to the live autonomous agent.",
-    url: `${APP_CONFIG.baseUrl}/leaderboard`,
-  },
-};
+export const metadata: Metadata = buildPageMetadata("leaderboard");
 
 export default async function LeaderboardPage() {
   let entries: Awaited<ReturnType<typeof getLeaderboard>> = [];

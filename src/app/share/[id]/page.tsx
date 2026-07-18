@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { APP_CONFIG } from "@/lib/config";
+import { OG_IMAGE_SIZE } from "@/lib/site-metadata";
 
 interface SharePageProps {
   params: Promise<{ id: string }>;
@@ -39,8 +40,8 @@ export async function generateMetadata({
       images: [
         {
           url: ogImageUrl,
-          width: 1200,
-          height: 630,
+          width: OG_IMAGE_SIZE.width,
+          height: OG_IMAGE_SIZE.height,
           alt: `Conviction Score: ${data.score}`,
         },
       ],

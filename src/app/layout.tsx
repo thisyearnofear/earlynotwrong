@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { ThemeManager } from "@/components/layout/theme-manager";
 import { Toast } from "@/components/ui/toast";
+import { buildRootMetadata, getSiteUrl, SITE } from "@/lib/site-metadata";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,12 +16,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://earlynotwrong.vercel.app";
-const APP_URL = rawAppUrl.startsWith("http") ? rawAppUrl.replace(/\/$/, "") : `https://${rawAppUrl.replace(/\/$/, "")}`;
+const APP_URL = getSiteUrl();
+const rootMetadata = buildRootMetadata(APP_URL);
 
 export const metadata: Metadata = {
-  title: "Early, Not Wrong",
-  description: "An agentic on-chain behavioral analysis app",
+  ...rootMetadata,
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -34,31 +34,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon.ico",
   },
   manifest: "/manifest.json",
-  openGraph: {
-    title: "Early, Not Wrong",
-    description: "On-chain behavioral analysis to prove conviction",
-    url: APP_URL,
-    siteName: "Early, Not Wrong",
-    images: [
-      {
-        url: `${APP_URL}/api/og`,
-        width: 1200,
-        height: 630,
-        alt: "Early, Not Wrong - On-chain Conviction Analysis",
-      },
-    ],
-    locale: "en_US",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Early, Not Wrong",
-    description: "On-chain behavioral analysis to prove conviction",
-    images: [`${APP_URL}/api/og`],
-    creator: "@earlynotwrong",
-  },
   other: {
-    // Farcaster Mini App embed meta tag
     "fc:miniapp": JSON.stringify({
       version: "1",
       imageUrl: `${APP_URL}/embed-image.png`,
@@ -66,7 +42,7 @@ export const metadata: Metadata = {
         title: "Analyze Conviction",
         action: {
           type: "launch_frame",
-          name: "Early, Not Wrong",
+          name: SITE.name,
           url: APP_URL,
           splashImageUrl: `${APP_URL}/splash-200.png`,
           splashBackgroundColor: "#050505",
@@ -82,11 +58,6 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-/**
- * Applies the persisted (or OS-preferred) theme class before first paint so
- * the page never flashes the wrong palette. Mirrors the resolution logic in
- * ThemeManager, which takes over after hydration.
- */
 const themeInitScript = `(function(){try{var t=localStorage.getItem("enw_theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";}if(t==="dark"){document.documentElement.classList.add("dark");}}catch(e){document.documentElement.classList.add("dark");}})();`;
 
 export default function RootLayout({

@@ -1,7 +1,7 @@
 {
   "name": "Early, Not Wrong",
   "short_name": "ENW",
-  "description": "On-chain behavioral analysis to prove conviction",
+  "description": "Autonomous conviction agent with on-chain proof and behavioral wallet analysis.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#050505",

@@ -4,13 +4,13 @@
     "name": "Early, Not Wrong",
     "iconUrl": "https://earlynotwrong.vercel.app/icon-1024.png",
     "homeUrl": "https://earlynotwrong.vercel.app",
-    "imageUrl": "https://earlynotwrong.vercel.app/api/og",
+    "imageUrl": "https://earlynotwrong.vercel.app/api/og?variant=brand",
     "buttonTitle": "Analyze Conviction",
     "splashImageUrl": "https://earlynotwrong.vercel.app/splash-200.png",
     "splashBackgroundColor": "#050505",
     "webhookUrl": "https://earlynotwrong.vercel.app/api/farcaster/webhook",
-    "subtitle": "On-chain conviction analysis",
-    "description": "Analyze trading behavior to distinguish bad timing from bad thesis. Get your conviction score.",
+    "subtitle": "Conviction infrastructure",
+    "description": "Autonomous conviction agent with on-chain proof, behavioral wallet analysis, and hireable live signals.",
     "primaryCategory": "finance",
     "tags": [
       "trading",
@@ -19,11 +19,11 @@
       "onchain",
       "conviction"
     ],
-    "heroImageUrl": "https://earlynotwrong.vercel.app/api/og",
-    "tagline": "Early, not wrong.",
+    "heroImageUrl": "https://earlynotwrong.vercel.app/api/og?variant=brand",
+    "tagline": "Early feels wrong. Until it doesn't.",
     "ogTitle": "Early, Not Wrong",
-    "ogDescription": "On-chain behavioral analysis to prove conviction",
-    "ogImageUrl": "https://earlynotwrong.vercel.app/api/og"
+    "ogDescription": "Autonomous conviction agent with on-chain proof and behavioral wallet analysis.",
+    "ogImageUrl": "https://earlynotwrong.vercel.app/api/og?variant=brand"
   },
   "accountAssociation": {
     "header": "eyJmaWQiOjUyNTQsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHg4QjAzQTJDMzY1YzI2MUFlQmU2ODQyMjREQkI2Qzk1OTJhQkNkRkIyIn0",

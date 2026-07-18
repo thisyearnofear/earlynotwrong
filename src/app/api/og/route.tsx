@@ -1,273 +1,381 @@
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
+import { SITE } from "@/lib/site-metadata";
+import { ARCHETYPE_COLORS, loadOgFonts, OG } from "./og-theme";
 
 export const runtime = "edge";
 
-const ARCHETYPE_COLORS: Record<string, { bg: string; accent: string }> = {
-  "Iron Pillar": { bg: "#0a1628", accent: "#22d3ee" },
-  "Profit Phantom": { bg: "#1a0a28", accent: "#a855f7" },
-  "Exit Voyager": { bg: "#281a0a", accent: "#f59e0b" },
-  "Diamond Hand": { bg: "#0a281a", accent: "#34d399" },
-};
-
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-
-  const score = searchParams.get("score") || "0";
-  const archetype = searchParams.get("archetype") || "Diamond Hand";
-  // Real cohort rank only — when absent we omit the chip rather than fake one.
-  const percentile = searchParams.get("percentile");
-  const patienceTax = searchParams.get("patienceTax") || "0";
-  const upsideCapture = searchParams.get("upsideCapture") || "0";
-  const chain = searchParams.get("chain") || "solana";
-
-  const colors = ARCHETYPE_COLORS[archetype] || ARCHETYPE_COLORS["Diamond Hand"];
-
-  return new ImageResponse(
-    (
+function BrandOgCard() {
+  return (
+    <div
+      style={{
+        height: "100%",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        backgroundColor: OG.background,
+        fontFamily: "Geist Mono",
+        position: "relative",
+        overflow: "hidden",
+        padding: "56px 64px",
+      }}
+    >
+      {/* Grid */}
       <div
         style={{
-          height: "100%",
-          width: "100%",
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `linear-gradient(${OG.signalGlow} 1px, transparent 1px), linear-gradient(90deg, ${OG.signalGlow} 1px, transparent 1px)`,
+          backgroundSize: "48px 48px",
+        }}
+      />
+      {/* Radial glow */}
+      <div
+        style={{
+          position: "absolute",
+          top: "20%",
+          left: "55%",
+          transform: "translate(-50%, -50%)",
+          width: "720px",
+          height: "720px",
+          background: `radial-gradient(circle, ${OG.signalGlow} 0%, transparent 68%)`,
+          borderRadius: "50%",
+        }}
+      />
+      {/* Top rule */}
+      <div
+        style={{
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: colors.bg,
-          fontFamily: "monospace",
+          gap: "10px",
           position: "relative",
-          overflow: "hidden",
+          zIndex: 2,
         }}
       >
-        {/* Grid Background */}
         <div
           style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundImage: `linear-gradient(${colors.accent}15 1px, transparent 1px), linear-gradient(90deg, ${colors.accent}15 1px, transparent 1px)`,
-            backgroundSize: "40px 40px",
-          }}
-        />
-
-        {/* Radial Glow */}
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: "600px",
-            height: "600px",
-            background: `radial-gradient(circle, ${colors.accent}20 0%, transparent 70%)`,
+            width: "8px",
+            height: "8px",
             borderRadius: "50%",
+            backgroundColor: OG.signal,
+            boxShadow: `0 0 16px ${OG.signal}`,
           }}
         />
-
-        {/* Content Container */}
-        <div
+        <span
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "60px",
-            position: "relative",
-            zIndex: 10,
+            fontSize: "13px",
+            color: OG.muted,
+            letterSpacing: "4px",
+            textTransform: "uppercase",
           }}
         >
-          {/* Header */}
-          <div
+          {SITE.category}
+        </span>
+      </div>
+
+      {/* Wordmark + tagline */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "20px",
+          position: "relative",
+          zIndex: 2,
+          flex: 1,
+          justifyContent: "center",
+          paddingTop: "12px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+          <span
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "20px",
+              fontSize: "72px",
+              fontWeight: 700,
+              color: OG.foreground,
+              letterSpacing: "-2px",
+              lineHeight: 1,
             }}
           >
+            EARLY
+          </span>
+          <span style={{ fontSize: "72px", color: OG.dim, lineHeight: 1 }}>,</span>
+          <span
+            style={{
+              fontSize: "72px",
+              fontWeight: 700,
+              color: OG.muted,
+              letterSpacing: "-2px",
+              lineHeight: 1,
+            }}
+          >
+            NOT WRONG
+          </span>
+        </div>
+        <p
+          style={{
+            fontSize: "22px",
+            color: OG.muted,
+            margin: 0,
+            maxWidth: "780px",
+            lineHeight: 1.45,
+          }}
+        >
+          {SITE.description}
+        </p>
+        <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
+          {["Analyzer", "Agent", "On-chain proof"].map((label) => (
             <div
+              key={label}
               style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                backgroundColor: colors.accent,
-                boxShadow: `0 0 20px ${colors.accent}`,
-              }}
-            />
-            <span
-              style={{
-                fontSize: "14px",
-                color: "#a1a1aa",
-                letterSpacing: "3px",
+                display: "flex",
+                padding: "8px 16px",
+                borderRadius: "9999px",
+                border: `1px solid ${OG.border}`,
+                backgroundColor: OG.surface,
+                fontSize: "13px",
+                color: OG.muted,
+                letterSpacing: "1px",
                 textTransform: "uppercase",
               }}
             >
-              Conviction Analysis • {chain.toUpperCase()}
-            </span>
-          </div>
-
-          {/* Score */}
-          <div
-            style={{
-              fontSize: "180px",
-              fontWeight: "bold",
-              color: "#ededed",
-              lineHeight: 1,
-              textShadow: `0 0 60px ${colors.accent}40`,
-              marginBottom: "10px",
-            }}
-          >
-            {score}
-          </div>
-
-          {/* Archetype Badge */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "12px 24px",
-              backgroundColor: `${colors.accent}20`,
-              borderRadius: "9999px",
-              border: `1px solid ${colors.accent}40`,
-              marginBottom: "40px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "24px",
-                fontWeight: "600",
-                color: colors.accent,
-                letterSpacing: "1px",
-              }}
-            >
-              {archetype}
-            </span>
-            {percentile ? (
-              <span
-                style={{
-                  fontSize: "16px",
-                  color: "#a1a1aa",
-                }}
-              >
-                Top {percentile}%
-              </span>
-            ) : null}
-          </div>
-
-          {/* Metrics Row */}
-          <div
-            style={{
-              display: "flex",
-              gap: "60px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "14px",
-                  color: "#71717a",
-                  letterSpacing: "2px",
-                  textTransform: "uppercase",
-                  marginBottom: "8px",
-                }}
-              >
-                Patience Tax
-              </span>
-              <span
-                style={{
-                  fontSize: "32px",
-                  fontWeight: "600",
-                  color: "#fbbf24",
-                }}
-              >
-                ${parseInt(patienceTax).toLocaleString()}
-              </span>
+              {label}
             </div>
-
-            <div
-              style={{
-                width: "1px",
-                backgroundColor: "#27272a",
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "14px",
-                  color: "#71717a",
-                  letterSpacing: "2px",
-                  textTransform: "uppercase",
-                  marginBottom: "8px",
-                }}
-              >
-                Upside Capture
-              </span>
-              <span
-                style={{
-                  fontSize: "32px",
-                  fontWeight: "600",
-                  color: "#34d399",
-                }}
-              >
-                {upsideCapture}%
-              </span>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: "30px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "18px",
-                fontWeight: "bold",
-                color: "#ededed",
-                letterSpacing: "1px",
-              }}
-            >
-              EARLY
-            </span>
-            <span style={{ fontSize: "18px", color: "#52525b" }}>,</span>
-            <span
-              style={{
-                fontSize: "18px",
-                fontWeight: "bold",
-                color: "#71717a",
-                letterSpacing: "1px",
-              }}
-            >
-              NOT WRONG
-            </span>
-          </div>
+          ))}
         </div>
       </div>
-    ),
-    {
-      width: 1200,
-      height: 800,
-    }
+
+      {/* Footer */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          position: "relative",
+          zIndex: 2,
+          borderTop: `1px solid ${OG.border}`,
+          paddingTop: "24px",
+        }}
+      >
+        <span style={{ fontSize: "16px", color: OG.dim, letterSpacing: "2px" }}>
+          {SITE.tagline}
+        </span>
+        <span style={{ fontSize: "14px", color: OG.signal, letterSpacing: "2px" }}>
+          earlynotwrong.com
+        </span>
+      </div>
+    </div>
   );
+}
+
+function ShareOgCard({
+  score,
+  archetype,
+  percentile,
+  patienceTax,
+  upsideCapture,
+  chain,
+}: {
+  score: string;
+  archetype: string;
+  percentile: string | null;
+  patienceTax: string;
+  upsideCapture: string;
+  chain: string;
+}) {
+  const colors = ARCHETYPE_COLORS[archetype] || ARCHETYPE_COLORS["Diamond Hand"];
+
+  return (
+    <div
+      style={{
+        height: "100%",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colors.bg,
+        fontFamily: "Geist Mono",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `linear-gradient(${colors.accent}18 1px, transparent 1px), linear-gradient(90deg, ${colors.accent}18 1px, transparent 1px)`,
+          backgroundSize: "40px 40px",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: "45%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "560px",
+          height: "560px",
+          background: `radial-gradient(circle, ${colors.accent}22 0%, transparent 70%)`,
+          borderRadius: "50%",
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "48px 56px",
+          position: "relative",
+          zIndex: 10,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+          <div
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              backgroundColor: colors.accent,
+              boxShadow: `0 0 16px ${colors.accent}`,
+            }}
+          />
+          <span
+            style={{
+              fontSize: "13px",
+              color: OG.muted,
+              letterSpacing: "3px",
+              textTransform: "uppercase",
+            }}
+          >
+            Conviction analysis · {chain.toUpperCase()}
+          </span>
+        </div>
+
+        <div
+          style={{
+            fontSize: "140px",
+            fontWeight: 700,
+            color: OG.foreground,
+            lineHeight: 1,
+            textShadow: `0 0 48px ${colors.accent}35`,
+            marginBottom: "8px",
+          }}
+        >
+          {score}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            padding: "10px 22px",
+            backgroundColor: `${colors.accent}18`,
+            borderRadius: "9999px",
+            border: `1px solid ${colors.accent}40`,
+            marginBottom: "32px",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "22px",
+              fontWeight: 700,
+              color: colors.accent,
+              letterSpacing: "1px",
+            }}
+          >
+            {archetype}
+          </span>
+          {percentile ? (
+            <span style={{ fontSize: "15px", color: OG.muted }}>Top {percentile}%</span>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", gap: "48px" }}>
+          <Metric label="Patience tax" value={`$${parseInt(patienceTax, 10).toLocaleString()}`} color={OG.impatience} />
+          <div style={{ width: "1px", backgroundColor: OG.border }} />
+          <Metric label="Upside capture" value={`${upsideCapture}%`} color={OG.patience} />
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: "28px",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+        }}
+      >
+        <span style={{ fontSize: "16px", fontWeight: 700, color: OG.foreground }}>EARLY</span>
+        <span style={{ fontSize: "16px", color: OG.dim }}>,</span>
+        <span style={{ fontSize: "16px", fontWeight: 700, color: OG.muted }}>NOT WRONG</span>
+      </div>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <span
+        style={{
+          fontSize: "12px",
+          color: OG.dim,
+          letterSpacing: "2px",
+          textTransform: "uppercase",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ fontSize: "28px", fontWeight: 700, color }}>{value}</span>
+    </div>
+  );
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const variant = searchParams.get("variant");
+  const scoreParam = searchParams.get("score");
+
+  const isShare = variant === "share" || (scoreParam != null && variant !== "brand");
+
+  const fonts = await loadOgFonts();
+
+  if (isShare) {
+    return new ImageResponse(
+      (
+        <ShareOgCard
+          score={scoreParam || "0"}
+          archetype={searchParams.get("archetype") || "Diamond Hand"}
+          percentile={searchParams.get("percentile")}
+          patienceTax={searchParams.get("patienceTax") || "0"}
+          upsideCapture={searchParams.get("upsideCapture") || "0"}
+          chain={searchParams.get("chain") || "base"}
+        />
+      ),
+      {
+        width: OG.width,
+        height: OG.height,
+        fonts,
+      },
+    );
+  }
+
+  return new ImageResponse(<BrandOgCard />, {
+    width: OG.width,
+    height: OG.height,
+    fonts,
+  });
 }

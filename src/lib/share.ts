@@ -51,6 +51,7 @@ export function generateShareId(): string {
 }
 
 import { APP_CONFIG } from "./config";
+import { ogShareImageUrl } from "./site-metadata";
 
 export function getShareUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUrl): string {
   const encoded = btoa(JSON.stringify(data));
@@ -58,18 +59,18 @@ export function getShareUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUr
 }
 
 export function getOgImageUrl(data: ShareData, baseUrl: string = APP_CONFIG.baseUrl): string {
-  const params = new URLSearchParams({
+  const params: Record<string, string> = {
     score: String(data.score),
     archetype: data.archetype,
     patienceTax: String(data.patienceTax),
     upsideCapture: String(data.upsideCapture),
     chain: data.chain,
-  });
+  };
   if (data.percentile != null) {
-    params.set("percentile", String(data.percentile));
+    params.percentile = String(data.percentile);
   }
 
-  return `${baseUrl}/api/og?${params.toString()}`;
+  return ogShareImageUrl(params, baseUrl);
 }
 
 /** "Top X% of analyzed wallets" line, or empty when no real cohort rank exists. */
