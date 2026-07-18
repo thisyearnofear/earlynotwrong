@@ -35,6 +35,12 @@ import {
   fetchNewsSentimentSignal,
 } from "./sosovalue-signals.js";
 import type { MacroPauseSignal } from "./sosovalue-signals.js";
+import {
+  recordExecutionEntry,
+  recordExecutionExit,
+  recordExecutionSkip,
+  setRankedCandidates,
+} from "./cycle-execution.js";
 
 // =============================================================================
 // Trade statistics helpers
@@ -42,6 +48,10 @@ import type { MacroPauseSignal } from "./sosovalue-signals.js";
 
 function recordEntryStats(): void {
   state.tradeStats.entriesCount += 1;
+}
+
+function topRankedSymbol(): string {
+  return state.cycleExecutionDraft.rankedCandidates[0]?.symbol ?? "—";
 }
 
 function recordExitStats(pnlUsd: number): void {
@@ -287,6 +297,8 @@ export async function analyzeConviction(): Promise<{
   state.regimeScore = regime.score;
   state.sentimentLabel = regime.label;
 
+  setRankedCandidates(convictionSignals);
+
   return { regime, convictionSignals };
 }
 
@@ -516,6 +528,12 @@ async function closePosition(
       txHash: `0xSIM_EXIT_${timestamp.toString(16)}`,
       timestamp,
     });
+    recordExecutionExit({
+      symbol: pos.symbol,
+      action: verdict.action,
+      amountUsd: proceedsUsd,
+      success: true,
+    });
     const simPnlUsd = proceedsUsd - costBasisSoldUsd;
     state.totalTrades += 1;
     state.totalVolumeUsd += proceedsUsd;
@@ -651,6 +669,13 @@ function finalizeExit(
     amountUsd: sellUsd,
     timestamp: result.timestamp,
     txHash: result.txHash,
+  });
+
+  recordExecutionExit({
+    symbol: pos.symbol,
+    action: verdict.action,
+    amountUsd: sellUsd,
+    success: true,
   });
 
   // Surface this exit to Telegram so judges see live risk decisions, not
@@ -798,6 +823,12 @@ export async function harvestForBnb(): Promise<void> {
       timestamp: primary.timestamp,
       txHash: primary.txHash,
     });
+    recordExecutionExit({
+      symbol: target.symbol,
+      action: "HARVEST",
+      amountUsd: harvestAmountUsd,
+      success: true,
+    });
     console.log(`  ✓ Harvested ${target.symbol} → BNB (tx: ${primary.txHash?.slice(0, 10)}...)`);
     state.portfolio = await twakExecutor.getPortfolio();
     return;
@@ -844,6 +875,12 @@ export async function harvestForBnb(): Promise<void> {
           amountUsd: targetValueUsd,
           timestamp: toUsdc.timestamp,
           txHash: toUsdc.txHash,
+        });
+        recordExecutionExit({
+          symbol: target.symbol,
+          action: "HARVEST",
+          amountUsd: targetValueUsd,
+          success: true,
         });
         console.log(`  ✓ Harvested via USDC hop (${toUsdc.txHash?.slice(0, 10)} → ${usdcToBnb.txHash?.slice(0, 10)})`);
         state.portfolio = await twakExecutor.getPortfolio();
@@ -948,6 +985,7 @@ export async function createTradeProposals(): Promise<Array<{
   // Skip new entries this cycle; exits are unaffected.
   if (!portfolio) {
     console.log("  Portfolio data unavailable — skipping all new entries this cycle (fail closed).");
+    recordExecutionSkip(topRankedSymbol(), "Portfolio data unavailable — fail closed", "proposal");
     return [];
   }
   const portfolioValue = portfolio.totalValueUsd;
@@ -956,6 +994,11 @@ export async function createTradeProposals(): Promise<Array<{
   if (openPositions >= AGENT_CONFIG.trading.maxOpenPositions) {
     console.log(
       `  Position cap reached (${openPositions}/${AGENT_CONFIG.trading.maxOpenPositions}). Skipping new entries — harvest first.`,
+    );
+    recordExecutionSkip(
+      topRankedSymbol(),
+      `Position cap reached (${openPositions}/${AGENT_CONFIG.trading.maxOpenPositions})`,
+      "capacity",
     );
     return [];
   }
@@ -995,6 +1038,11 @@ export async function createTradeProposals(): Promise<Array<{
 
   if (scoredTokens.length === 0) {
     console.log("  No tokens meet the minimum conviction threshold. Skipping trading this cycle.");
+    recordExecutionSkip(
+      topRankedSymbol(),
+      `No tokens meet minimum conviction (${AGENT_CONFIG.trading.minConvictionScore})`,
+      "proposal",
+    );
     return [];
   }
 
@@ -1066,6 +1114,11 @@ export async function createTradeProposals(): Promise<Array<{
 
   if (liquidTokens.length === 0) {
     console.log("  No tradeable tokens with sufficient liquidity. Skipping trading this cycle.");
+    recordExecutionSkip(
+      topRankedSymbol(),
+      "No tradeable tokens passed liquidity, sellability, and probe gates",
+      "proposal",
+    );
     return [];
   }
 
@@ -1077,6 +1130,7 @@ export async function createTradeProposals(): Promise<Array<{
   const bankroll = computeBankrollCap(bnbUsd);
   if (!bankroll.canTrade) {
     console.log(`  [bankroll] ${bankroll.reason}`);
+    recordExecutionSkip(topRankedSymbol(), bankroll.reason ?? "Bankroll gate blocked entries", "bankroll");
     return [];
   }
 
@@ -1125,6 +1179,9 @@ export async function checkTradeGuardrails(
       tokenSymbol: p.tokenSymbol,
       reason: "Portfolio data unavailable — guardrails fail closed",
     }));
+    for (const r of rejected) {
+      recordExecutionSkip(r.tokenSymbol, r.reason, "guardrail");
+    }
     if (rejected.length > 0) {
       sendGuardrailBlocked({ cycle: state.cycle, rejected, blockedAll: true }).catch(() => {});
     }
@@ -1138,6 +1195,9 @@ export async function checkTradeGuardrails(
   if (!guardrailStatus.allOk) {
     console.log("  GUARDRAILS BLOCKED: One or more limits exceeded.");
     const rejected = proposals.map(p => ({ tokenSymbol: p.tokenSymbol, reason: "Guardrails blocked trading this cycle" }));
+    for (const r of rejected) {
+      recordExecutionSkip(r.tokenSymbol, r.reason, "guardrail");
+    }
     sendGuardrailBlocked({ cycle: state.cycle, rejected, blockedAll: true }).catch(() => {});
     return { passed: [], rejected };
   }
@@ -1166,6 +1226,7 @@ export async function checkTradeGuardrails(
       passed.push(proposal);
     } else {
       rejected.push({ tokenSymbol: proposal.tokenSymbol, reason: result.message });
+      recordExecutionSkip(proposal.tokenSymbol, result.message, "guardrail");
     }
 
     state.guardrailResults.push(result);
@@ -1220,6 +1281,9 @@ export async function executeTrades(
   }
   if (macroPause.skipEntries) {
     console.log(`  ⏸ Skipping all entries this cycle (macro pause)`);
+    for (const p of proposals) {
+      recordExecutionSkip(p.tokenSymbol, macroPause.reason, "macro");
+    }
     return [];
   }
   if (macroPause.sizeMultiplier < 1) {
@@ -1247,6 +1311,9 @@ export async function executeTrades(
 
   if (!bankroll.canTrade) {
     console.log(`  ⚠ ${bankroll.reason}`);
+    for (const p of proposals) {
+      recordExecutionSkip(p.tokenSymbol, bankroll.reason ?? "Bankroll gate blocked entries", "bankroll");
+    }
     return [];
   }
 
@@ -1255,6 +1322,13 @@ export async function executeTrades(
 
   if (affordableTrades === 0) {
     console.log(`  ⚠ BNB too low ($${liveBnbUsd.toFixed(2)}) — need $${tradeCostUsd.toFixed(2)} per trade. Skipping all trades.`);
+    for (const p of proposals) {
+      recordExecutionSkip(
+        p.tokenSymbol,
+        `BNB too low ($${liveBnbUsd.toFixed(2)}) for $${tradeCostUsd.toFixed(2)} trade + gas`,
+        "bankroll",
+      );
+    }
     return [];
   }
 
@@ -1266,6 +1340,13 @@ export async function executeTrades(
   const reserveAfterFirst = liveBnbUsd - tradeCostUsd;
   if (reserveAfterFirst < AGENT_CONFIG.trading.bankroll.minBnbReserveUsd) {
     console.log(`  ⚠ First trade would leave BNB at $${reserveAfterFirst.toFixed(2)} (below $${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd} reserve). Skipping.`);
+    for (const p of proposals) {
+      recordExecutionSkip(
+        p.tokenSymbol,
+        `Trade would breach BNB reserve ($${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd})`,
+        "bankroll",
+      );
+    }
     return [];
   }
 
@@ -1281,6 +1362,11 @@ export async function executeTrades(
     const entryPriceUsd = priceMap.get(proposal.tokenSymbol.toUpperCase()) ?? 0;
     if (entryPriceUsd <= 0) {
       console.log(`  ○ Skipping ${proposal.tokenSymbol} — no entry price in this cycle's market data; buy would create an untracked holding`);
+      recordExecutionSkip(
+        proposal.tokenSymbol,
+        "No entry price in market data — would create untracked holding",
+        "execution",
+      );
       continue;
     }
 
@@ -1352,6 +1438,13 @@ export async function executeTrades(
 
     if (result.success) {
       console.log(`    ✓ Trade executed${result.txHash ? ` — ${result.txHash.slice(0, 18)}...` : ""}`);
+      recordExecutionEntry({
+        symbol: proposal.tokenSymbol,
+        amountUsd: proposal.amountInUsd,
+        convictionScore: proposal.convictionScore,
+        success: true,
+        txHash: result.txHash,
+      });
       state.totalTrades += 1;
       state.totalVolumeUsd += proposal.amountInUsd;
       recordEntryStats();
@@ -1391,6 +1484,12 @@ export async function executeTrades(
       }).catch(() => {});
     } else {
       console.log(`    ✗ Trade failed: ${result.error}`);
+      recordExecutionEntry({
+        symbol: proposal.tokenSymbol,
+        amountUsd: proposal.amountInUsd,
+        convictionScore: proposal.convictionScore,
+        success: false,
+      });
       guardrails.recordTrade(proposal.amountInUsd, false);
     }
 

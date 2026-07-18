@@ -24,6 +24,8 @@ import type {
 import type { AnchorResult } from "./anchors/index.js";
 import type { MarketNarrative } from "./market-narrative.js";
 import type { MacroPauseSignal } from "./sosovalue-signals.js";
+import type { CycleExecutionSnapshot } from "./cycle-execution.js";
+import { emptyCycleExecution } from "./cycle-execution.js";
 import { AGENT_CONFIG } from "./config.js";
 
 // =============================================================================
@@ -174,6 +176,10 @@ export const state = {
   behavioralMetrics: null as BehavioralMetrics | null,
   /** Canonical ledger of all agent entries and exits for self-analysis. */
   ledger: [] as LedgerEntry[],
+  /** In-progress execution ledger for the current cycle (signals-live/v1.2). */
+  cycleExecutionDraft: emptyCycleExecution(0),
+  /** Finalized execution snapshot from the last completed cycle step. */
+  lastCycleExecution: null as CycleExecutionSnapshot | null,
 };
 
 // =============================================================================

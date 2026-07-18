@@ -14,6 +14,9 @@ import {
 } from "conviction-core";
 import { state } from "./agent-state.js";
 
+/** Minimum closed positions before behavioral metrics are meaningful. */
+export const MIN_CLOSED_POSITIONS_FOR_BEHAVIORAL = 1;
+
 /** Build a LedgerPosition[] from the agent's canonical ledger. */
 export function buildAgentLedger(): LedgerPosition[] {
   return groupEntriesIntoPositions(state.ledger);
@@ -86,7 +89,7 @@ export function recordAgentExit(params: {
 export function analyzeAgentBehavior(): BehavioralMetrics | null {
   const positions = buildAgentLedger();
   const closedPositions = positions.filter((p) => p.exits.length > 0);
-  if (closedPositions.length === 0) {
+  if (closedPositions.length < MIN_CLOSED_POSITIONS_FOR_BEHAVIORAL) {
     return null;
   }
 

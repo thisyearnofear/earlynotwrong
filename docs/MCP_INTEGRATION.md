@@ -1,14 +1,14 @@
 # MCP + CROO Integration — Hire Early, Not Wrong
 
-> **For buyer agents and integrators.** One conviction engine, two settlement rails, one schema (`signals-live/v1.1`).
+> **For buyer agents and integrators.** One conviction engine, two settlement rails, one schema (`signals-live/v1.2`).
 
 | | |
 |---|---|
 | **Live MCP** | `POST http://144.202.117.160:31777/mcp` |
 | **Dashboard / hire** | https://earlynotwrong.vercel.app/agent#hire |
 | **CROO Store** | https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 |
-| **JSON Schema** | https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json |
-| **Example payload** | https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json |
+| **JSON Schema** | https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json |
+| **Example payload** | https://earlynotwrong.vercel.app/samples/signals-live-v1.2.example.json |
 | **Reference requester** | [`examples/croo-requester/`](../examples/croo-requester/) |
 
 ---
@@ -20,25 +20,27 @@
 | **MCP + x402** | Direct HTTP clients, Casper-native agents, Cursor/Claude MCP | CSPR (Casper testnet) | `get_live_signals` | 0.5 CSPR |
 | **CROO CAP** | Agents browsing the [CROO Store](https://agent.croo.network), USDC treasuries on Base | USDC (Base) | `signals-live` | $0.05 |
 
-Both return the **same** `signals-live/v1.1` JSON: ranked signals, macro gate, regime, provenance (behavioral score + anchor links), and buyer **guidance** (`skip_entries` | `evaluate` | `wait`).
+Both return the **same** `signals-live/v1.2` JSON: ranked signals, macro gate, regime, **execution** (what the agent did this cycle vs what it ranked), provenance (behavioral status + anchor links), and buyer **guidance** (`skip_entries` | `evaluate` | `wait`).
 
 Free reputation lookups (`get_agent_reputation`, `get_latest_conviction`, `get_by_thesis`) stay **MCP-only** — use those to decide whether to trust the agent before paying for live signals.
 
 ---
 
-## signals-live/v1.1 — what you get
+## signals-live/v1.2 — what you get
 
 ```json
 {
-  "schema": "signals-live/v1.1",
+  "schema": "signals-live/v1.2",
   "guidance": {
     "recommendedAction": "evaluate",
     "reason": "Top candidate FET (conviction 76/100) — apply your sizing and risk rules",
     "topCandidate": "FET",
     "sizeMultiplier": 1
   },
-  "signals": [ "… ranked candidates with factor breakdown …" ],
-  "provenance": { "behavioral": "…", "reputation": "…", "explorerUrls": "…" },
+  "execution": { "alignment": { "topRankedEntered": false }, "entries": [], "skips": [] },
+  "provenance": {
+    "behavioral": { "status": "ready", "metrics": "…" }
+  },
   "freshness": { "cycle": 42, "stale": false }
 }
 ```
@@ -48,9 +50,11 @@ Free reputation lookups (`get_agent_reputation`, `get_latest_conviction`, `get_b
 1. If `freshness.stale` → treat as `wait`
 2. If `guidance.recommendedAction === "skip_entries"` → block new entries (macro gate)
 3. If `"evaluate"` → inspect `signals[]`, apply your sizing × `guidance.sizeMultiplier`
-4. Optional: verify `provenance.explorerUrls` against your trust threshold
+4. Compare `execution.alignment.topRankedEntered` to `guidance.topCandidate` — the agent may rank a token but skip entry (cap, bankroll, guardrails)
+5. If `provenance.behavioral.status !== "ready"` → do not treat behavioral metrics as available yet
+6. Optional: verify `provenance.explorerUrls` against your trust threshold
 
-Validate against the [JSON Schema](https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json) or run the reference requester dry-run (below).
+Validate against the [JSON Schema](https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json) or run the reference requester dry-run (below).
 
 ---
 
@@ -159,4 +163,5 @@ Use a **separate requester SDK key** from the provider key running on the VPS We
 | [`CASPER_INTEGRATION.md`](./CASPER_INTEGRATION.md) | Odra registry, x402 paywall, MCP server internals |
 | [`CROO_INTEGRATION.md`](./CROO_INTEGRATION.md) | CAP WebSocket, UUID mapping, delivery troubleshooting |
 | [`croo-store-listing.md`](./croo-store-listing.md) | Paste-ready Store listing + demo checklist |
-| [`schemas/signals-live-v1.1.md`](./schemas/signals-live-v1.1.md) | Schema field reference |
+| [`schemas/signals-live-v1.2.md`](./schemas/signals-live-v1.2.md) | Schema field reference (v1.2) |
+| [`schemas/signals-live-v1.1.md`](./schemas/signals-live-v1.1.md) | Prior schema reference |

@@ -24,7 +24,7 @@ const PATHS = [
   {
     href: HIRE_AGENT_HREF,
     label: "Hire signals-live",
-    sub: "MCP + CROO · v1.1",
+    sub: "MCP + CROO · v1.2",
     icon: ShoppingBag,
   },
 ] as const;

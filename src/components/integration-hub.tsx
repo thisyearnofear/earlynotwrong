@@ -37,7 +37,8 @@ export function IntegrationHub({ className }: IntegrationHubProps) {
         </p>
         <p className="text-xs text-foreground-muted mt-1 leading-relaxed">
           Autonomous contrarian conviction on BSC — ranked entry candidates, macro gates,
-          on-chain proof, and skip / wait / evaluate guidance. One schema on two rails.
+          per-cycle execution alignment, on-chain proof, and skip / wait / evaluate guidance.
+          One schema on two rails.
         </p>
       </div>
 
@@ -50,7 +51,7 @@ export function IntegrationHub({ className }: IntegrationHubProps) {
           <p className="text-[10px] font-mono text-foreground-muted leading-relaxed">
             Direct HTTP for AI clients. Free trust queries;{" "}
             <span className="text-foreground">get_live_signals</span> at 0.5 CSPR returns
-            signals-live/v1.1.
+            signals-live/v1.2.
           </p>
           <p className="text-[10px] font-mono text-foreground-dim break-all">
             {MCP_ENDPOINT}

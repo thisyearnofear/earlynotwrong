@@ -1,9 +1,9 @@
 /**
- * Public signals-live/v1.1 JSON Schema helpers (docs/MCP tests).
+ * Public signals-live/v1.2 JSON Schema helpers (docs/MCP tests).
  *
  * Do NOT use CROO_STORE_DELIVERABLE_SCHEMA in the Store listing or CAP delivery.
  * CROO validates paid delivery against Store Schema field-builder rows and rejects
- * the real v1.1 payload. Listing: Deliverable Schema empty, Text teaser only.
+ * the real v1.2 payload. Listing: Deliverable Schema empty, Text teaser only.
  */
 
 import { SIGNALS_LIVE_SCHEMA_URL } from "../mcp/tools.js";
@@ -35,7 +35,7 @@ export const CROO_STORE_DELIVERABLE_SCHEMA = JSON.stringify({
   required: ["guidance", "signals", "freshness", "provenance"],
 });
 
-/** Full v1.1 JSON Schema URL — for docs / MCP; not sent as CAP deliverableSchema. */
+/** Full v1.2 JSON Schema URL — for docs / MCP; not sent as CAP deliverableSchema. */
 
 /**
  * @deprecated Use CROO_STORE_DELIVERABLE_SCHEMA for CAP deliverOrder.
@@ -44,7 +44,7 @@ export const CROO_STORE_DELIVERABLE_SCHEMA = JSON.stringify({
 export async function getCapDeliverableSchemaJson(): Promise<string> {
   const { readFileSync, existsSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const schemaPath = join(import.meta.dirname, "../../../public/schemas/signals-live-v1.1.schema.json");
+  const schemaPath = join(import.meta.dirname, "../../../public/schemas/signals-live-v1.2.schema.json");
   if (!existsSync(schemaPath)) {
     throw new Error(`Missing schema file: ${schemaPath}`);
   }

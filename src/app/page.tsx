@@ -125,7 +125,7 @@ const ACTS = [
     title: "Verify",
     label: "Act 4",
     description:
-      "Hire the live signal feed—or anchor your own wallet's conviction. MCP + x402 and CROO CAP, same v1.1 payload.",
+      "Hire the live signal feed—or anchor your own wallet's conviction. MCP + x402 and CROO CAP, same v1.2 payload with execution alignment.",
     color: "text-patience",
   },
 ] as const;

@@ -22,6 +22,9 @@ import { MantleAnchorAdapter } from "../../lib/anchors/mantle.js";
 import { CasperAnchorAdapter } from "../../lib/anchors/casper.js";
 import { AGENT_CONFIG, AGENT_MODE } from "../../lib/config.js";
 import { getBnbUsd, state as liveAgentState } from "../../lib/agent-state.js";
+import { getCycleExecutionForSignals } from "../../lib/cycle-execution.js";
+import type { CycleExecutionSnapshot } from "../../lib/cycle-execution.js";
+import { MIN_CLOSED_POSITIONS_FOR_BEHAVIORAL } from "../../lib/self-analysis.js";
 import type { ConvictionSignal, MarketRegime, SignalWeights } from "../../lib/conviction-signal.js";
 import { crooStoreUrl, dashboardHireUrl } from "../../lib/marketing-urls.js";
 
@@ -287,13 +290,27 @@ export type SettlementRail = "mcp-x402" | "croo-cap";
 export type LiveSignalsTool = "get_live_signals" | "signals-live";
 
 /** Current delivery schema version and public JSON Schema URL (CAP Schema deliverables). */
-export const SIGNALS_LIVE_SCHEMA = "signals-live/v1.1" as const;
+export const SIGNALS_LIVE_SCHEMA = "signals-live/v1.2" as const;
 export const SIGNALS_LIVE_SCHEMA_URL =
-  "https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json";
+  "https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json";
 
 export interface GetLiveSignalsV1Options {
   settlementRail: SettlementRail;
   tool: LiveSignalsTool;
+}
+
+export type BehavioralProvenanceStatus = "ready" | "insufficient_history" | "no_ledger";
+
+export interface BehavioralProvenance {
+  status: BehavioralProvenanceStatus;
+  minClosedPositions: number;
+  metrics: {
+    score: number;
+    archetype: string;
+    winRate: number;
+    totalPositions: number;
+    upsideCapture: number;
+  } | null;
 }
 
 export interface SignalsProvenance {
@@ -304,13 +321,7 @@ export interface SignalsProvenance {
   /** How the latest thesis was published. */
   anchorMode: "on-chain" | "reverted" | "off-chain" | "simulator" | "cached" | null;
   /** In-process behavioral score from the agent's own trade ledger. */
-  behavioral: {
-    score: number;
-    archetype: string;
-    winRate: number;
-    totalPositions: number;
-    upsideCapture: number;
-  } | null;
+  behavioral: BehavioralProvenance;
   /** Cross-chain anchor summary for this agent's subject hash. */
   reputation: {
     totalAnchors: number;
@@ -347,10 +358,13 @@ export interface BuyerGuidance {
   sizeMultiplier: number;
 }
 
-/** @deprecated Alias — use {@link SignalsLiveV1_1}. */
-export type SignalsLiveV1 = SignalsLiveV1_1;
+/** @deprecated Alias — use {@link SignalsLiveV1_2}. */
+export type SignalsLiveV1 = SignalsLiveV1_2;
 
-export interface SignalsLiveV1_1 {
+/** @deprecated Alias — use {@link SignalsLiveV1_2}. */
+export type SignalsLiveV1_1 = SignalsLiveV1_2;
+
+export interface SignalsLiveV1_2 {
   schema: typeof SIGNALS_LIVE_SCHEMA;
   generatedAt: string;
   agent: {
@@ -369,6 +383,8 @@ export interface SignalsLiveV1_1 {
   regime: MarketRegime | null;
   signals: LiveSignalEntry[];
   macroPause: GetLiveSignalsResult["macroPause"];
+  /** What the agent ranked vs entered/exited/skipped this cycle. */
+  execution: CycleExecutionSnapshot;
   /** Trust bundle — on-chain proof + behavioral score + track record. */
   provenance: SignalsProvenance;
   /** Action contract for cold Store buyers / allocator agents. */
@@ -397,7 +413,7 @@ function resolveCycleIntervalMs(): number {
   return baseIntervalMs;
 }
 
-function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1_1["freshness"] {
+function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1_2["freshness"] {
   const { cycle, lastRunAt, nextRunAt } = liveAgentState;
   let stale = false;
   let staleReason: string | null = null;
@@ -413,11 +429,32 @@ function buildFreshness(now: number, cycleIntervalMs: number): SignalsLiveV1_1["
   return { cycle, lastRunAt, nextRunAt, cycleIntervalMs, stale, staleReason };
 }
 
+function buildBehavioralProvenance(): BehavioralProvenance {
+  const bm = liveAgentState.behavioralMetrics;
+  if (bm) {
+    return {
+      status: "ready",
+      minClosedPositions: MIN_CLOSED_POSITIONS_FOR_BEHAVIORAL,
+      metrics: {
+        score: bm.score,
+        archetype: bm.archetype,
+        winRate: Math.round(bm.winRate * 10) / 10,
+        totalPositions: bm.totalPositions,
+        upsideCapture: Math.round(bm.upsideCapture * 10) / 10,
+      },
+    };
+  }
+  return {
+    status: liveAgentState.ledger.length === 0 ? "no_ledger" : "insufficient_history",
+    minClosedPositions: MIN_CLOSED_POSITIONS_FOR_BEHAVIORAL,
+    metrics: null,
+  };
+}
+
 function buildProvenance(
   subjectHash: Bytes32Hex,
   reputation: GetAgentReputationResult,
 ): SignalsProvenance {
-  const bm = liveAgentState.behavioralMetrics;
   const anchoring = liveAgentState.anchoring;
   const thesisHash =
     (liveAgentState.lastAnchoredThesisHash ??
@@ -432,15 +469,7 @@ function buildProvenance(
     latestThesisHash: thesisHash,
     anchoredAt: reputation.latestAnchor?.timestamp ?? liveAgentState.lastRunAt,
     anchorMode: anchoring?.mode ?? null,
-    behavioral: bm
-      ? {
-          score: bm.score,
-          archetype: bm.archetype,
-          winRate: Math.round(bm.winRate * 10) / 10,
-          totalPositions: bm.totalPositions,
-          upsideCapture: Math.round(bm.upsideCapture * 10) / 10,
-        }
-      : null,
+    behavioral: buildBehavioralProvenance(),
     reputation: {
       totalAnchors: reputation.totalAnchors,
       meanConvictionScore: reputation.meanConvictionScore,
@@ -506,13 +535,17 @@ export function buildBuyerGuidance(
   };
 }
 
-/** Wrap a v0 core payload in the versioned signals-live/v1.1 envelope. */
+/** Wrap a v0 core payload in the versioned signals-live/v1.2 envelope. */
 export function wrapLiveSignalsV1(
   core: GetLiveSignalsResult,
   options: GetLiveSignalsV1Options,
-  extras: { provenance: SignalsProvenance; guidance: BuyerGuidance },
+  extras: {
+    provenance: SignalsProvenance;
+    guidance: BuyerGuidance;
+    execution: CycleExecutionSnapshot;
+  },
   now = Date.now(),
-): SignalsLiveV1_1 {
+): SignalsLiveV1_2 {
   const cycleIntervalMs = resolveCycleIntervalMs();
   const freshness = buildFreshness(now, cycleIntervalMs);
   return {
@@ -527,6 +560,7 @@ export function wrapLiveSignalsV1(
     regime: core.regime,
     signals: core.signals,
     macroPause: core.macroPause,
+    execution: extras.execution,
     provenance: extras.provenance,
     guidance: extras.guidance,
     meta: {
@@ -573,7 +607,7 @@ export async function getLiveSignals(): Promise<GetLiveSignalsResult> {
 /** Premium delivery shape for MCP x402 and CROO CAP signals-live. */
 export async function getLiveSignalsV1(
   options: GetLiveSignalsV1Options,
-): Promise<SignalsLiveV1_1> {
+): Promise<SignalsLiveV1_2> {
   const core = await getLiveSignals();
   const subjectHash = computeSubjectHash("bsc", AGENT_CONFIG.competition.identityRegistry);
   const reputation = await getAgentReputation({ subjectHash });
@@ -581,7 +615,8 @@ export async function getLiveSignalsV1(
   const freshness = buildFreshness(Date.now(), cycleIntervalMs);
   const provenance = buildProvenance(subjectHash, reputation);
   const guidance = buildBuyerGuidance(core.macroPause, core.signals, freshness.stale);
-  return wrapLiveSignalsV1(core, options, { provenance, guidance });
+  const execution = getCycleExecutionForSignals();
+  return wrapLiveSignalsV1(core, options, { provenance, guidance, execution });
 }
 
 export const CROO_STORE_LISTING_URL =
@@ -593,7 +628,7 @@ export interface SignalsLiveTeaser {
   teaser: true;
   preview: true;
   generatedAt: string;
-  freshness: SignalsLiveV1_1["freshness"];
+  freshness: SignalsLiveV1_2["freshness"];
   guidance: BuyerGuidance;
   regime: { score: number; label: string } | null;
   signalCount: number;
@@ -612,7 +647,7 @@ export interface SignalsLiveTeaser {
   meta: { schemaUrl: typeof SIGNALS_LIVE_SCHEMA_URL };
 }
 
-export function buildSignalsTeaser(full: SignalsLiveV1_1): SignalsLiveTeaser {
+export function buildSignalsTeaser(full: SignalsLiveV1_2): SignalsLiveTeaser {
   return {
     schema: full.schema,
     teaser: true,
@@ -626,12 +661,13 @@ export function buildSignalsTeaser(full: SignalsLiveV1_1): SignalsLiveTeaser {
       ? { symbol: full.signals[0].symbol, score: full.signals[0].score }
       : null,
     provenance: {
-      behavioral: full.provenance.behavioral
-        ? {
-            score: full.provenance.behavioral.score,
-            archetype: full.provenance.behavioral.archetype,
-          }
-        : null,
+      behavioral:
+        full.provenance.behavioral.status === "ready" && full.provenance.behavioral.metrics
+          ? {
+              score: full.provenance.behavioral.metrics.score,
+              archetype: full.provenance.behavioral.metrics.archetype,
+            }
+          : null,
       reputation: {
         totalAnchors: full.provenance.reputation.totalAnchors,
         dualChain: full.provenance.reputation.dualChain,

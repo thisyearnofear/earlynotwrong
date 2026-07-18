@@ -14,8 +14,8 @@ import { fulfillCapOrder } from "../dist/src/cap/handler.js";
 const mockClient = {
   async deliverOrder(orderId, req) {
     const payload = JSON.parse(req.deliverableText);
-    if (payload.schema !== "signals-live/v1.1") {
-      throw new Error(`expected signals-live/v1.1, got ${payload.schema}`);
+    if (payload.schema !== "signals-live/v1.2") {
+      throw new Error(`expected signals-live/v1.2, got ${payload.schema}`);
     }
     if (payload.meta?.settlementRail !== "croo-cap") {
       throw new Error(`expected croo-cap rail, got ${payload.meta?.settlementRail}`);

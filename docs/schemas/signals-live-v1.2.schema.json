@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json",
+  "title": "signals-live/v1.2",
+  "description": "Live conviction signals + provenance + per-cycle execution alignment for the agent's current trading cycle. Returned by MCP get_live_signals (x402 on Casper) and CROO CAP service signals-live (USDC on Base). CAP deliveries use DeliverableType.Text with this schema for integrators.",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "agent",
+    "freshness",
+    "regime",
+    "signals",
+    "macroPause",
+    "execution",
+    "provenance",
+    "guidance",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "signals-live/v1.2"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "agent": {
+      "type": "object",
+      "required": ["name", "subjectHash", "mode"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "const": "Early, Not Wrong" },
+        "subjectHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+        "mode": { "type": "string", "enum": ["live", "simulator"] }
+      }
+    },
+    "freshness": { "$ref": "#/$defs/freshness" },
+    "regime": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/marketRegime" }]
+    },
+    "signals": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/liveSignal" }
+    },
+    "macroPause": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/macroPause" }]
+    },
+    "execution": { "$ref": "#/$defs/execution" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "guidance": { "$ref": "#/$defs/guidance" },
+    "meta": {
+      "type": "object",
+      "required": ["topN", "settlementRail", "tool", "schemaUrl"],
+      "additionalProperties": false,
+      "properties": {
+        "topN": { "type": "integer", "const": 5 },
+        "settlementRail": { "type": "string", "enum": ["mcp-x402", "croo-cap"] },
+        "tool": { "type": "string", "enum": ["get_live_signals", "signals-live"] },
+        "schemaUrl": {
+          "type": "string",
+          "format": "uri",
+          "const": "https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "freshness": {
+      "type": "object",
+      "required": ["cycle", "lastRunAt", "nextRunAt", "cycleIntervalMs", "stale", "staleReason"],
+      "additionalProperties": false,
+      "properties": {
+        "cycle": { "type": "integer", "minimum": 0 },
+        "lastRunAt": { "type": ["integer", "null"] },
+        "nextRunAt": { "type": ["integer", "null"] },
+        "cycleIntervalMs": { "type": "integer", "minimum": 60000 },
+        "stale": { "type": "boolean" },
+        "staleReason": { "type": ["string", "null"] }
+      }
+    },
+    "marketRegime": {
+      "type": "object",
+      "required": ["score", "label", "fearGreedIndex", "fearLevel", "ssiConfirmation"],
+      "additionalProperties": false,
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "label": { "type": "string" },
+        "fearGreedIndex": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "fearLevel": {
+          "type": "string",
+          "enum": ["extreme-fear", "fear", "neutral", "greed", "extreme-greed", "unknown"]
+        },
+        "ssiConfirmation": { "type": ["number", "null"], "minimum": -1, "maximum": 1 }
+      }
+    },
+    "signalBreakdown": {
+      "type": "object",
+      "required": ["contrarian", "rsi", "quality", "regime", "holders", "volatilityPenalty", "news"],
+      "additionalProperties": false,
+      "properties": {
+        "contrarian": { "type": "number" },
+        "rsi": { "type": "number" },
+        "quality": { "type": "number" },
+        "regime": { "type": "number" },
+        "holders": { "type": "number" },
+        "volatilityPenalty": { "type": "number" },
+        "news": { "type": "number" }
+      }
+    },
+    "signalWeights": {
+      "type": "object",
+      "required": ["contrarian", "rsi", "quality", "regime", "holders", "volatilityPenaltyMax", "newsMax"],
+      "additionalProperties": false,
+      "properties": {
+        "contrarian": { "type": "integer" },
+        "rsi": { "type": "integer" },
+        "quality": { "type": "integer" },
+        "regime": { "type": "integer" },
+        "holders": { "type": "integer" },
+        "volatilityPenaltyMax": { "type": "integer" },
+        "newsMax": { "type": "integer" }
+      }
+    },
+    "liveSignal": {
+      "type": "object",
+      "required": ["symbol", "score", "breakdown", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "breakdown": { "$ref": "#/$defs/signalBreakdown" },
+        "weights": { "$ref": "#/$defs/signalWeights" },
+        "holderCount": { "type": ["integer", "null"], "minimum": 0 },
+        "holderGrowthPercent": { "type": ["number", "null"] },
+        "newsSentiment": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "macroPause": {
+      "type": "object",
+      "required": ["clear", "skipEntries", "sizeMultiplier", "hoursUntilNext", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "clear": { "type": "boolean" },
+        "skipEntries": { "type": "boolean" },
+        "sizeMultiplier": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hoursUntilNext": { "type": ["number", "null"], "minimum": 0 },
+        "reason": { "type": "string" }
+      }
+    },
+    "executionSkipStage": {
+      "type": "string",
+      "enum": ["proposal", "guardrail", "macro", "bankroll", "execution", "capacity"]
+    },
+    "executionEntry": {
+      "type": "object",
+      "required": ["symbol", "amountUsd", "convictionScore", "success", "txHash"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "amountUsd": { "type": "number", "minimum": 0 },
+        "convictionScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "success": { "type": "boolean" },
+        "txHash": { "type": ["string", "null"] }
+      }
+    },
+    "executionExit": {
+      "type": "object",
+      "required": ["symbol", "action", "amountUsd", "success"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "action": { "type": "string", "minLength": 1 },
+        "amountUsd": { "type": "number", "minimum": 0 },
+        "success": { "type": "boolean" }
+      }
+    },
+    "executionSkip": {
+      "type": "object",
+      "required": ["symbol", "reason", "stage"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "reason": { "type": "string", "minLength": 1 },
+        "stage": { "$ref": "#/$defs/executionSkipStage" }
+      }
+    },
+    "executionRankedCandidate": {
+      "type": "object",
+      "required": ["rank", "symbol", "score"],
+      "additionalProperties": false,
+      "properties": {
+        "rank": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "symbol": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "executionAlignment": {
+      "type": "object",
+      "required": ["topRankedSymbol", "topRankedEntered", "enteredSymbols"],
+      "additionalProperties": false,
+      "properties": {
+        "topRankedSymbol": { "type": ["string", "null"], "maxLength": 16 },
+        "topRankedEntered": { "type": "boolean" },
+        "enteredSymbols": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 16 }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["cycle", "rankedCandidates", "entries", "exits", "skips", "alignment"],
+      "additionalProperties": false,
+      "properties": {
+        "cycle": { "type": "integer", "minimum": 0 },
+        "rankedCandidates": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/executionRankedCandidate" }
+        },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/executionEntry" }
+        },
+        "exits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/executionExit" }
+        },
+        "skips": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/executionSkip" }
+        },
+        "alignment": { "$ref": "#/$defs/executionAlignment" }
+      }
+    },
+    "behavioralMetrics": {
+      "type": "object",
+      "required": ["score", "archetype", "winRate", "totalPositions", "upsideCapture"],
+      "additionalProperties": false,
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "archetype": { "type": "string" },
+        "winRate": { "type": "number" },
+        "totalPositions": { "type": "integer", "minimum": 0 },
+        "upsideCapture": { "type": "number" }
+      }
+    },
+    "behavioralProvenance": {
+      "type": "object",
+      "required": ["status", "minClosedPositions", "metrics"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ready", "insufficient_history", "no_ledger"]
+        },
+        "minClosedPositions": { "type": "integer", "minimum": 1 },
+        "metrics": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/behavioralMetrics" }]
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["latestThesisHash", "anchoredAt", "anchorMode", "behavioral", "reputation", "explorerUrls", "trackRecord"],
+      "additionalProperties": false,
+      "properties": {
+        "latestThesisHash": { "type": ["string", "null"], "pattern": "^0x[0-9a-fA-F]{64}$" },
+        "anchoredAt": { "type": ["integer", "null"] },
+        "anchorMode": {
+          "type": ["string", "null"],
+          "enum": ["on-chain", "reverted", "off-chain", "simulator", "cached", null]
+        },
+        "behavioral": { "$ref": "#/$defs/behavioralProvenance" },
+        "reputation": {
+          "type": "object",
+          "required": ["totalAnchors", "meanConvictionScore", "dualChain", "latestArchetype"],
+          "additionalProperties": false,
+          "properties": {
+            "totalAnchors": { "type": "integer", "minimum": 0 },
+            "meanConvictionScore": { "type": "number" },
+            "dualChain": { "type": "boolean" },
+            "latestArchetype": { "type": ["string", "null"] }
+          }
+        },
+        "explorerUrls": {
+          "type": "object",
+          "required": ["casper", "mantle", "dashboard", "mcp"],
+          "additionalProperties": false,
+          "properties": {
+            "casper": { "type": ["string", "null"], "format": "uri" },
+            "mantle": { "type": ["string", "null"], "format": "uri" },
+            "dashboard": { "type": "string", "format": "uri" },
+            "mcp": { "type": "string", "format": "uri" }
+          }
+        },
+        "trackRecord": {
+          "type": "object",
+          "required": ["totalTrades", "entries", "exits", "activePositions"],
+          "additionalProperties": false,
+          "properties": {
+            "totalTrades": { "type": "integer", "minimum": 0 },
+            "entries": { "type": "integer", "minimum": 0 },
+            "exits": { "type": "integer", "minimum": 0 },
+            "activePositions": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "guidance": {
+      "type": "object",
+      "required": ["recommendedAction", "reason", "topCandidate", "sizeMultiplier"],
+      "additionalProperties": false,
+      "properties": {
+        "recommendedAction": {
+          "type": "string",
+          "enum": ["skip_entries", "evaluate", "wait"],
+          "description": "Action contract for hiring allocator agents."
+        },
+        "reason": { "type": "string" },
+        "topCandidate": { "type": ["string", "null"] },
+        "sizeMultiplier": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

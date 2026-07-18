@@ -86,7 +86,7 @@ export async function fulfillCapOrder(
       });
       deliverable = JSON.stringify(livePayload);
       // Store Deliverable Schema field-builder rows cause INVALID_DELIVERABLE.
-      // Text delivery carries the complete signals-live/v1.1 JSON; integrators
+      // Text delivery carries the complete signals-live/v1.2 JSON; integrators
       // validate against the public JSON Schema URL, not the Store listing.
       deliverReq = {
         deliverableType: DeliverableType.Text,

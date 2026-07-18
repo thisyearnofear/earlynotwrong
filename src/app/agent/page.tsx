@@ -600,7 +600,7 @@ function IntentQuickNav() {
   const items = [
     { href: "#signals", icon: Signal, label: "Live signals", sub: "Conviction + positions" },
     { href: "#proof", icon: Network, label: "On-chain proof", sub: "Anchor history" },
-    { href: "#hire", icon: ShoppingBag, label: "Hire / query", sub: "MCP + CROO · v1.1" },
+    { href: "#hire", icon: ShoppingBag, label: "Hire / query", sub: "MCP + CROO · v1.2" },
   ] as const;
 
   return (
@@ -1566,9 +1566,9 @@ function Dashboard({
             <p className="text-sm text-foreground-muted mt-1 leading-relaxed">
               Hire an autonomous contrarian agent that scores BSC tokens every 4 hours and
               anchors every thesis on Casper + Mantle. Same{" "}
-              <span className="font-mono text-foreground">signals-live/v1.1</span> on MCP
-              (Casper x402) and CROO CAP (USDC on Base) — skip / wait / evaluate guidance
-              included.
+              <span className="font-mono text-foreground">signals-live/v1.2</span> on MCP
+              (Casper x402) and CROO CAP (USDC on Base) — guidance plus per-cycle
+              execution alignment.
             </p>
           </div>
           <ProofLadder variant="full" />
@@ -2143,15 +2143,16 @@ function BuyerPreviewCard() {
           <Sparkles className="w-3.5 h-3.5 text-signal" />
           What buyers get
           <span className="ml-auto text-[10px] font-mono text-foreground-dim normal-case">
-            signals-live/v1.1 · same on MCP + CROO
+            signals-live/v1.2 · same on MCP + CROO
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[11px] text-foreground-muted leading-relaxed">
           Public teaser — guidance + top symbol only. Paid{" "}
-          <span className="font-mono text-foreground">signals-live/v1.1</span> adds full
-          rankings, factor breakdowns, and on-chain provenance links.
+          <span className="font-mono text-foreground">signals-live/v1.2</span> adds full
+          rankings, factor breakdowns, execution ledger (entries / skips / alignment), and
+          on-chain provenance with explicit behavioral status.
         </p>
 
         {preview ? (
@@ -2355,7 +2356,7 @@ function ReputationApiCard() {
           <span className="font-mono text-foreground">Model Context Protocol</span>{" "}
           with per-call <span className="font-mono text-foreground">x402</span>{" "}
           micropayments on Casper — same{" "}
-          <span className="font-mono text-foreground">signals-live/v1.1</span> payload as CROO.{" "}
+          <span className="font-mono text-foreground">signals-live/v1.2</span> payload as CROO.{" "}
           <a
             href={DOCS_MCP_INTEGRATION}
             target="_blank"
@@ -2372,8 +2373,9 @@ function ReputationApiCard() {
             <span className="ml-2 text-signal">0.5 CSPR</span>
           </p>
           <p className="text-[10px] font-mono text-foreground-muted mt-0.5 leading-relaxed">
-            signals-live/v1.1 — ranked candidates, macro gate, provenance bundle, and buyer{" "}
-            <code className="text-foreground">guidance</code> action contract
+            signals-live/v1.2 — ranked candidates, macro gate, execution alignment,
+            provenance bundle, and buyer <code className="text-foreground">guidance</code>{" "}
+            action contract
           </p>
         </div>
 
@@ -2460,7 +2462,7 @@ function ReputationApiCard() {
             </pre>
             <p className="text-[10px] font-mono text-foreground-dim leading-relaxed">
               Returns HTTP 402 + Casper x402 PaymentRequirements (0.5 CSPR). Response is{" "}
-              <span className="font-mono text-foreground">signals-live/v1.1</span> — see the
+              <span className="font-mono text-foreground">signals-live/v1.2</span> — see the
               preview card above. Re-POST with a signed{" "}
               <code className="text-foreground-muted">X-PAYMENT</code> header to settle.
             </p>
@@ -2596,7 +2598,7 @@ function CrooCapCard() {
             CROO Agent Store
           </a>
           . USDC on Base via CAP — identical{" "}
-          <span className="font-mono text-foreground">signals-live/v1.1</span> JSON on every
+          <span className="font-mono text-foreground">signals-live/v1.2</span> JSON on every
           paid order.
         </p>
 
@@ -2607,10 +2609,11 @@ function CrooCapCard() {
               <p className="text-[11px] font-mono text-foreground font-semibold">
                 signals-live
                 <span className="ml-2 text-[#65b3ae]">$0.05 USDC</span>
-                <span className="ml-2 text-[10px] text-foreground-dim">v1.1</span>
+                <span className="ml-2 text-[10px] text-foreground-dim">v1.2</span>
               </p>
               <p className="text-[10px] font-mono text-foreground-muted mt-0.5 leading-relaxed">
-                Signals + on-chain proof + buyer guidance — no subjectHash required
+                Ranked signals + execution alignment + provenance — Requirements{" "}
+                <code className="text-foreground">{`{}`}</code> only
               </p>
             </div>
             <a

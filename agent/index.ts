@@ -30,6 +30,7 @@
 import "./lib/env-bootstrap.js";
 
 import { state, getBnbUsd, stuckSymbols, tickUnharvestableCooldowns } from "./lib/agent-state.js";
+import { finalizeCycleExecution, resetCycleExecution } from "./lib/cycle-execution.js";
 import {
   augmentPortfolioOnchain,
   augmentNativeBnbOnchain,
@@ -129,6 +130,8 @@ async function runCycle(): Promise<void> {
   state.status = "running";
   state.lastRunAt = Date.now();
   const cycleStart = Date.now();
+
+  resetCycleExecution(state.cycle);
 
   // Reset cycle-local state (heldPositions persist across cycles — they ARE
   // the conviction ledger).
@@ -239,6 +242,8 @@ async function runCycle(): Promise<void> {
       state.behavioralMetrics = null;
       console.log("\n[8c/8] Agent self-analysis: insufficient closed positions");
     }
+
+    finalizeCycleExecution();
 
     printCycleSummary(cycleStart);
 

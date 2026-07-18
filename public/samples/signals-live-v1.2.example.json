@@ -1,0 +1,133 @@
+{
+  "schema": "signals-live/v1.2",
+  "generatedAt": "2026-07-18T08:00:00.000Z",
+  "agent": {
+    "name": "Early, Not Wrong",
+    "subjectHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a",
+    "mode": "live"
+  },
+  "freshness": {
+    "cycle": 128,
+    "lastRunAt": 1721296920000,
+    "nextRunAt": 1721311320000,
+    "cycleIntervalMs": 14400000,
+    "stale": false,
+    "staleReason": null
+  },
+  "regime": {
+    "score": 85,
+    "label": "DEEP FEAR — PRIME CONTRARIAN",
+    "fearGreedIndex": 20,
+    "fearLevel": "extreme-fear",
+    "ssiConfirmation": 0.35
+  },
+  "signals": [
+    {
+      "symbol": "FET",
+      "score": 76,
+      "breakdown": {
+        "contrarian": 22,
+        "rsi": 8,
+        "quality": 14,
+        "regime": 18,
+        "holders": 7,
+        "volatilityPenalty": 3,
+        "news": 2
+      },
+      "weights": {
+        "contrarian": 30,
+        "rsi": 10,
+        "quality": 20,
+        "regime": 20,
+        "holders": 10,
+        "volatilityPenaltyMax": 15,
+        "newsMax": 10
+      },
+      "holderCount": 584021,
+      "holderGrowthPercent": 0.042,
+      "newsSentiment": 0.12,
+      "rationale": "down 18% 7d · extreme fear · holder base expanding · deep liquidity"
+    }
+  ],
+  "macroPause": {
+    "clear": true,
+    "skipEntries": false,
+    "sizeMultiplier": 1,
+    "hoursUntilNext": null,
+    "reason": "No high-impact macro events within 12h"
+  },
+  "execution": {
+    "cycle": 128,
+    "rankedCandidates": [
+      { "rank": 1, "symbol": "FET", "score": 76 },
+      { "rank": 2, "symbol": "CAKE", "score": 71 }
+    ],
+    "entries": [],
+    "exits": [
+      {
+        "symbol": "NEX",
+        "action": "EXIT_TRAIL",
+        "amountUsd": 42.5,
+        "success": true
+      }
+    ],
+    "skips": [
+      {
+        "symbol": "FET",
+        "reason": "Position cap reached (8/8)",
+        "stage": "capacity"
+      }
+    ],
+    "alignment": {
+      "topRankedSymbol": "FET",
+      "topRankedEntered": false,
+      "enteredSymbols": []
+    }
+  },
+  "provenance": {
+    "latestThesisHash": "0x4a937673ea542abdf587e6b509793b2173980228cc65180a2f32c24fd3ac459a",
+    "anchoredAt": 1721296920000,
+    "anchorMode": "on-chain",
+    "behavioral": {
+      "status": "ready",
+      "minClosedPositions": 1,
+      "metrics": {
+        "score": 68,
+        "archetype": "Patient Contrarian",
+        "winRate": 42.5,
+        "totalPositions": 12,
+        "upsideCapture": 61.2
+      }
+    },
+    "reputation": {
+      "totalAnchors": 48,
+      "meanConvictionScore": 72.4,
+      "dualChain": true,
+      "latestArchetype": "DEEP FEAR — PRIME CONTRARIAN"
+    },
+    "explorerUrls": {
+      "casper": "https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa",
+      "mantle": "https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C",
+      "dashboard": "https://earlynotwrong.vercel.app/agent",
+      "mcp": "http://144.202.117.160:31777/mcp"
+    },
+    "trackRecord": {
+      "totalTrades": 24,
+      "entries": 14,
+      "exits": 10,
+      "activePositions": 5
+    }
+  },
+  "guidance": {
+    "recommendedAction": "evaluate",
+    "reason": "Top candidate FET (conviction 76/100) — apply your sizing and risk rules",
+    "topCandidate": "FET",
+    "sizeMultiplier": 1
+  },
+  "meta": {
+    "topN": 5,
+    "settlementRail": "croo-cap",
+    "tool": "signals-live",
+    "schemaUrl": "https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json"
+  }
+}

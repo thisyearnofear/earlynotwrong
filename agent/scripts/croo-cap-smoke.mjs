@@ -26,8 +26,8 @@ function fail(msg) {
 }
 
 function assertV1(payload) {
-  if (payload?.schema !== "signals-live/v1.1") {
-    fail(`expected schema signals-live/v1.1, got ${payload?.schema ?? "undefined"}`);
+  if (payload?.schema !== "signals-live/v1.2") {
+    fail(`expected schema signals-live/v1.2, got ${payload?.schema ?? "undefined"}`);
   }
   if (!payload.guidance?.recommendedAction) {
     fail("missing guidance.recommendedAction");

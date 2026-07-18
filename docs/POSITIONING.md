@@ -1,7 +1,7 @@
 # Positioning & Strategy — Early, Not Wrong
 
 > Single source of truth for ICP, differentiation, distribution loop, and copy.  
-> Last updated: 2026-07-17.
+> Last updated: 2026-07-18.
 
 ---
 
@@ -194,10 +194,70 @@ Longer Telegram/Casper variants: [`community-share.md`](./community-share.md).
 
 ---
 
+## Creative monopoly (Thiel frame)
+
+> **Category we own:** conviction infrastructure — a verifiable pre-trade filter backed by an autonomous agent with skin in the game.  
+> **Not:** wallet tracker, alpha channel, generic MCP bot, or “ChatGPT with a connect button.”
+
+### The disappearance test
+
+**“If we disappeared tomorrow, who would scramble and why?”**
+
+| Who | Scramble? | Why (when true) |
+|-----|-----------|-----------------|
+| Random retail / ChatGPT user | No | Analyzer and prose are commodity |
+| Allocator agent wired to `signals-live/v1.1` + `guidance` | **Yes** | Pipeline break + lost provenance URLs in audit trail |
+| CROO builder using us as reference CAP listing | **Maybe** | Loses a working schema + requester example, not necessarily irreplaceable |
+| Us (operator) | Yes | Live book + compounding anchor history |
+
+**Honest today:** dependency is still thin — mostly us, not the market. Monopoly is **direction**, not **fact** yet.
+
+**30-day proof of monopoly seed:** ≥1 **external** integrator hires twice *or* documents a pre-trade step that reads `guidance.recommendedAction` from our delivery.
+
+### The combination (why it’s not commodity)
+
+ChatGPT can describe patience tax. It cannot run this closed loop:
+
+```
+Behavioral conviction (how you trade, not PnL)
+  → Same framework for humans (analyzer) + agent (conviction-core self-analysis)
+  → Autonomous BSC book (skin in the game, guardrails, execution probes)
+  → Opinionated 4h cycle (6-factor + macro gate — not “top gainers”)
+  → Machine action contract (guidance: skip | wait | evaluate)
+  → Cross-chain receipt (thesis hash on Casper + Mantle)
+  → Programmatic hire (CROO USDC · same JSON · provenance block)
+```
+
+**Defensible wedge:** *Conviction you can verify before you pay — and an action contract after you pay.*
+
+**Moat over time (not copyable in a weekend):** compounding anchor history, paid-query stats, buyer pipelines on `guidance`, live book ↔ signal alignment.
+
+### What we refuse (protects the monopoly)
+
+| Refuse | Reason |
+|--------|--------|
+| “Best BSC bot” / guaranteed returns | Commodity hype; wrong trust model |
+| Chain expansion before one integrator loop works | Dilutes “reference listing” story |
+| Second Store SKU / retail alpha marketing | Splits focus before repeat hires |
+| Leading with analyzer in buyer outreach | Humans don’t create programmatic dependency |
+| Pitching raw MCP/server endpoints in community posts | Attracts tourists, not integrators |
+| Features that don’t serve **behavior + proof + guidance** | SOUL violation; erodes category |
+
+### One internal sentence (do not shorten)
+
+**We’re building the only pre-trade filter where the seller is an autonomous agent that measures conviction behaviorally, trades with its own capital, and delivers a machine-actionable decision with a cross-chain receipt — so allocator agents don’t have to trust prose.**
+
+### Surgical outbound (next action)
+
+Target **five integrator personas** (not broadcast). Paste-ready DMs, ask sequence, and success criteria: [`OUTBOUND_INTEGRATORS.md`](./OUTBOUND_INTEGRATORS.md).
+
+---
+
 ## Related docs
 
 | Doc | Purpose |
 |-----|---------|
+| [`OUTBOUND_INTEGRATORS.md`](./OUTBOUND_INTEGRATORS.md) | Surgical 1:1 outreach — 5 personas, DMs, tracker |
 | [`MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) | Buyer technical guide |
 | [`community-share.md`](./community-share.md) | Paste-ready channel copy |
 | [`croo-store-listing.md`](./croo-store-listing.md) | Store operator paste |

@@ -34,7 +34,7 @@ export function SignalsUnlockPanel({
         <p className="text-xs font-mono text-foreground-muted max-w-xs">
           {hiddenCount} more ranked signal{hiddenCount === 1 ? "" : "s"} + full
           breakdowns in paid{" "}
-          <span className="text-foreground">signals-live/v1.1</span>
+          <span className="text-foreground">signals-live/v1.2</span>
         </p>
       </div>
       <div className="p-6 opacity-30 pointer-events-none select-none">
