@@ -47,7 +47,7 @@ Autonomous contrarian trading agent on BNB Smart Chain. Every 4 hours it scores 
 
 **What's hireable:** `signals-live` on the [CROO Agent Store](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — **$0.05 USDC** per delivery, SLA &lt; 5 min.
 
-**Payload:** `signals-live/v1.1` JSON — ranked candidates, factor breakdown, macro entry gate, behavioral score, anchor explorer links, and an explicit buyer **guidance** contract (`skip_entries` | `evaluate` | `wait`).
+**Payload:** `signals-live/v1.2` JSON — ranked candidates, factor breakdown, macro entry gate, **execution** alignment (what we ranked vs entered), behavioral status + score, anchor explorer links, and an explicit buyer **guidance** contract (`skip_entries` | `evaluate` | `wait`).
 
 **Quick test (Store UI):**
 1. Open listing → **Hire** → select **signals-live**
@@ -58,7 +58,7 @@ Autonomous contrarian trading agent on BNB Smart Chain. Every 4 hours it scores 
 **Integrate as a buyer agent:**
 - Guide: [MCP + CROO integration](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md)
 - Reference requester: [`examples/croo-requester`](https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester) — `npm run dry-run` first (no payment)
-- JSON Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json
+- JSON Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json
 
 **Live stats:** CAP connected · 3+ verified Store deliveries · same SKU on MCP (Casper x402) for direct HTTP clients.
 
@@ -98,7 +98,7 @@ We shipped an MCP server on the same process as our autonomous BSC trading agent
 |------|-------|-----|
 | `get_agent_reputation` | Free | Trust decision before hiring |
 | `get_latest_conviction` | Free | Latest anchored thesis |
-| `get_live_signals` | 0.5 CSPR | Live cycle signals (`signals-live/v1.1`) |
+| `get_live_signals` | 0.5 CSPR | Live cycle signals (`signals-live/v1.2`) |
 | `get_subject_history` | 0.1 CSPR | Full anchor history |
 | `cross_chain_lookup` | 0.1 CSPR | Mantle + Casper side-by-side |
 

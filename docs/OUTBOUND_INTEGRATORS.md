@@ -11,7 +11,7 @@
 | Store | https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 |
 | Integration guide | https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md |
 | Dry-run requester | https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester |
-| Schema | https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json |
+| Schema | https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json |
 | Dashboard | https://earlynotwrong.vercel.app/agent#hire |
 
 **Store test:** Requirements `{}` only · Deliverable Schema empty · ~$0.05 USDC + gas.
@@ -65,10 +65,10 @@ Guide: https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGR
 
 ## Persona 2 — CAP requester / SDK integrator
 
-**Opener:** `Reference provider for signals-live/v1.1?`
+**Opener:** `Reference provider for signals-live/v1.2?`
 
 ```
-Hi — building buyer-side on CROO CAP? We run a live BSC conviction agent and publish signals-live/v1.1: guidance + ranked candidates + provenance (anchor explorer links).
+Hi — building buyer-side on CROO CAP? We run a live BSC conviction agent and publish signals-live/v1.2: guidance + ranked candidates + execution alignment + provenance (anchor explorer links).
 
 Looking for 1–2 requester authors to break our dry-run → hire → parse guidance path and tell us what's missing for production.
 
@@ -94,7 +94,7 @@ $0.05/hire on CROO Store · schema + example JSON in repo.
 
 Worth a dry-run? I'll take blunt feedback on whether this beats "ask ChatGPT" for your use case.
 
-Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json
+Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json
 Guide: https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md
 ```
 

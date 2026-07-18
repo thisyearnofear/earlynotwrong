@@ -18,12 +18,12 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-07-17. Live commit on `nuncio-vultr`: `535f60bf`.
+> Last updated: 2026-07-18. Live commit on `nuncio-vultr`: `1b35cc26`.
 
 ### Recently shipped
 
+- **signals-live/v1.2** — per-cycle `execution` block (entries/exits/skips + `alignment.topRankedEntered`), explicit `provenance.behavioral.status`, AJV schema validation in CI. Schema: `/schemas/signals-live-v1.2.schema.json`. Deployed to VPS + dashboard copy.
 - **CROO Store live** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). **Store Deliverable Schema must stay empty** (field builder rows break CAP delivery). Verified orders include `0990e061-…` (2026-07-17). See `docs/croo-store-listing.md` and `docs/CROO_INTEGRATION.md`.
-- **signals-live/v1.1** — provenance + buyer guidance on MCP and CAP; static schema at `/schemas/signals-live-v1.1.schema.json`.
 - **Allocator UX pass** — landing intent CTAs, `/agent#hire`, demo walkthrough mode (`?demo=1`).
 - **Casper anchoring guardrails** — balance gate + thesis-hash deduplication so anchors stop failing when operator CSPR is low and stop paying gas for unchanged theses.
 - **TWAK harvest hardening** — harvest retries now mirror the exit fallback ladder (default → 10% → 20% → 49% slippage → USDC hop → size probe). Persistently unharvestable positions are marked **stuck** and blocklisted.
@@ -167,7 +167,7 @@ src/lib/market.ts
 - Tests live in `agent/__tests__/` — Vitest framework (249 tests across 17 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
-- `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.1` is paid via CROO or MCP.
+- `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.
 - `agent/data/holders.json` is a runtime cache — also gitignored.
 - `agent/docs/api/` is TypeDoc output — gitignored, regenerate via `npm run docs`.
 

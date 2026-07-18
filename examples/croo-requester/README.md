@@ -43,7 +43,7 @@ npm start
 Expected output:
 
 ```
-✓ Delivery received (schema signals-live/v1.1)
+✓ Delivery received (schema signals-live/v1.2)
 
 ── Buyer agent decision ──
 Action: evaluate
@@ -56,13 +56,15 @@ Reason: Top candidate FET (conviction 76/100) — apply your sizing and risk rul
 1. Check `freshness.stale` — if true, treat as `wait`
 2. Honor `guidance.recommendedAction` (`skip_entries` | `evaluate` | `wait`)
 3. On `evaluate`, inspect `signals[]` and apply your sizing × `guidance.sizeMultiplier`
-4. Optional: verify `provenance.explorerUrls` for on-chain proof
+4. Compare `execution.alignment.topRankedEntered` to `guidance.topCandidate`
+5. If `provenance.behavioral.status !== "ready"` — do not treat metrics as available
+6. Optional: verify `provenance.explorerUrls` for on-chain proof
 
 ## Schema
 
-https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json
+https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json
 
-Example: [`docs/samples/signals-live-v1.1.example.json`](../../docs/samples/signals-live-v1.1.example.json)
+Example: [`docs/samples/signals-live-v1.2.example.json`](../../docs/samples/signals-live-v1.2.example.json)
 
 ## MCP alternative
 

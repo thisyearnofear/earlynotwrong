@@ -158,7 +158,7 @@ When `skipEntries: true`, the agent will not open new positions this cycle regar
 
 ## Migration from v0
 
-**v1.1 is current** — MCP `get_live_signals` and CAP `signals-live` return the provenance + guidance envelope via `getLiveSignalsV1()` in `agent/src/mcp/tools.ts`. See [`signals-live-v1.1.md`](./signals-live-v1.1.md).
+**v1.2 is current** — MCP `get_live_signals` and CAP `signals-live` return the execution + provenance + guidance envelope via `getLiveSignalsV1()` in `agent/src/mcp/tools.ts`. See [`signals-live-v1.2.md`](./signals-live-v1.2.md). Prior: [`signals-live-v1.1.md`](./signals-live-v1.1.md).
 
 **Legacy v0** — bare object (no `schema` field) from the internal `getLiveSignals()` core builder:
 

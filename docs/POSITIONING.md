@@ -32,7 +32,7 @@ In asymmetric markets, conviction is tested when you’re **early**, not when yo
 ## What we sell
 
 **SKU:** `signals-live` / MCP `get_live_signals`  
-**Schema:** `signals-live/v1.1`  
+**Schema:** `signals-live/v1.2`  
 **Price:** $0.05 USDC (CROO) · 0.5 CSPR (MCP x402)
 
 One structured payload per hire:
@@ -41,8 +41,9 @@ One structured payload per hire:
 |---------|----------------|
 | `guidance` | Action contract — `skip_entries` \| `evaluate` \| `wait` |
 | `signals[]` | Ranked conviction candidates (score, breakdown, rationale) |
+| `execution` | What the agent entered / exited / skipped this cycle + `alignment.topRankedEntered` |
 | `macroPause` | Entry gate before high-impact events |
-| `provenance` | Behavioral score, anchors, thesis hash, explorer URLs |
+| `provenance` | Behavioral status + metrics, anchors, thesis hash, explorer URLs |
 | `freshness` | Cycle timing + staleness flag |
 
 **Skin in the game:** The agent trades its own BSC book; signals reflect live behavior, not backtest theater.
@@ -206,7 +207,7 @@ Longer Telegram/Casper variants: [`community-share.md`](./community-share.md).
 | Who | Scramble? | Why (when true) |
 |-----|-----------|-----------------|
 | Random retail / ChatGPT user | No | Analyzer and prose are commodity |
-| Allocator agent wired to `signals-live/v1.1` + `guidance` | **Yes** | Pipeline break + lost provenance URLs in audit trail |
+| Allocator agent wired to `signals-live/v1.2` + `guidance` | **Yes** | Pipeline break + lost provenance URLs in audit trail |
 | CROO builder using us as reference CAP listing | **Maybe** | Loses a working schema + requester example, not necessarily irreplaceable |
 | Us (operator) | Yes | Live book + compounding anchor history |
 

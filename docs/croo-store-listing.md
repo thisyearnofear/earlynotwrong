@@ -22,14 +22,15 @@ Hire an autonomous contrarian trading agent that scores BSC tokens every 4 hours
 
 ### What you get (`signals-live` — $0.05 USDC)
 
-One structured JSON payload (`signals-live/v1.1`) per purchase:
+One structured JSON payload (`signals-live/v1.2`) per purchase:
 
 | Section | Purpose |
 |---------|---------|
 | `signals[]` | Top 5 conviction candidates this cycle (score, factor breakdown, rationale) |
+| `execution` | Entries / exits / skips this cycle + `alignment.topRankedEntered` |
 | `regime` | Contrarian market backdrop (FGI, fear level, SSI confirmation) |
 | `macroPause` | Entry gate — skip or size down before high-impact macro events |
-| `provenance` | Behavioral score, anchor history, thesis hash, explorer URLs |
+| `provenance` | Behavioral status + metrics, anchor history, thesis hash, explorer URLs |
 | `guidance` | **Action contract** — `skip_entries` \| `evaluate` \| `wait` |
 | `freshness` | Cycle timing + staleness flag |
 
@@ -47,8 +48,8 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 
 ### Schema & validation
 
-- JSON Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json
-- Example response: [`docs/samples/signals-live-v1.1.example.json`](../samples/signals-live-v1.1.example.json)
+- JSON Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json
+- Example response: [`docs/samples/signals-live-v1.2.example.json`](../samples/signals-live-v1.2.example.json)
 - Reference requester: [`examples/croo-requester/`](../examples/croo-requester/)
 
 ### Buyer agent playbook
@@ -58,7 +59,10 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 2. If freshness.stale → wait (guidance.recommendedAction = "wait")
 3. If guidance.recommendedAction = "skip_entries" → do not open new positions
 4. If "evaluate" → inspect signals[0..N], apply your sizing × guidance.sizeMultiplier
-5. Verify provenance.explorerUrls if trust threshold requires on-chain proof
+5. Compare execution.alignment.topRankedEntered to guidance.topCandidate
+   (agent may rank a token but skip entry — cap, bankroll, guardrails)
+6. If provenance.behavioral.status !== "ready" → metrics not available yet
+7. Verify provenance.explorerUrls if trust threshold requires on-chain proof
 ```
 
 ### Operational links
@@ -83,12 +87,12 @@ One structured JSON payload (`signals-live/v1.1`) per purchase:
 | **Price** | $0.05 USDC |
 | **Requirements (Text)** | `Send {} only` |
 | **Requirements (Schema)** | Leave empty — no field rows (buyer sends `{}`) |
-| **Deliverable (Text)** | Abbreviated example JSON + link to [full sample](https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json) |
+| **Deliverable (Text)** | Abbreviated example JSON + link to [full sample](https://earlynotwrong.vercel.app/samples/signals-live-v1.2.example.json) |
 | **Deliverable (Schema)** | **Leave empty — no field rows** |
 
-> **Important:** Do **not** add `guidance` / `signals` / `freshness` / `provenance` rows in the Store **Deliverable → Schema** field builder. CROO validates paid delivery against that schema and rejects the full `signals-live/v1.1` payload (`INVALID_DELIVERABLE`). Orders failed this way until Schema was cleared (verified recovery: order `0990e061-…`, 2026-07-17).
+> **Important:** Do **not** add `guidance` / `signals` / `freshness` / `provenance` / `execution` rows in the Store **Deliverable → Schema** field builder. CROO validates paid delivery against that schema and rejects the full `signals-live/v1.2` payload (`INVALID_DELIVERABLE`). Orders failed this way until Schema was cleared (verified recovery: order `0990e061-…`, 2026-07-17).
 
-The agent delivers the complete **`signals-live/v1.1`** JSON via CAP (`DeliverableType.Text`). Integrator JSON Schema: `https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json`
+The agent delivers the complete **`signals-live/v1.2`** JSON via CAP (`DeliverableType.Text`). Integrator JSON Schema: `https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json`
 
 > **Store UUID:** CROO assigns an internal service UUID (e.g. `3da733af-bc0f-492e-9117-d47b055e4fe1`). Set `CROO_SIGNALS_LIVE_SERVICE_UUID` in `agent/.env` on the VPS so the CAP client accepts Store orders (see `agent/.env.example`).
 
@@ -114,4 +118,4 @@ The agent delivers the complete **`signals-live/v1.1`** JSON via CAP (`Deliverab
 
 ## Re-submission note
 
-Previous feedback: offering not strong enough for cold Store buyers. **v1.1** addresses this by bundling trust (`provenance`) and an explicit action contract (`guidance`) into the paid SKU, plus Text CAP delivery and a reference requester agent.
+Previous feedback: offering not strong enough for cold Store buyers. **v1.1** bundled trust (`provenance`) and an explicit action contract (`guidance`). **v1.2** adds per-cycle **execution** alignment (what the agent ranked vs entered/skipped) and explicit `behavioral.status` when metrics aren't ready yet.

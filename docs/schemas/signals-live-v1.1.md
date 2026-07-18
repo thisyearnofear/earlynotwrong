@@ -1,6 +1,8 @@
-# signals-live/v1.1 — Response Schema
+# signals-live/v1.1 — Response Schema (superseded)
 
-> Store-ready contract: **signals + provenance + buyer guidance** in one paid payload.
+> **Superseded by [`signals-live/v1.2`](./signals-live-v1.2.md).** Kept for historical reference and early Store purchase receipts.
+
+> Store-ready contract at the time: **signals + provenance + buyer guidance** in one paid payload.
 
 | Rail | Tool / serviceId | Price |
 |------|------------------|-------|
@@ -51,4 +53,4 @@ npx ajv validate \
 ## Implementation
 
 - Assembly: `agent/src/mcp/tools.ts` → `getLiveSignalsV1()`, `buildBuyerGuidance()`, `buildProvenance()`
-- CAP delivery: `DeliverableType.Text` with full `signals-live/v1.1` JSON in `agent/src/cap/handler.ts` (Store Deliverable Schema must stay empty — see `docs/croo-store-listing.md`)
+- CAP delivery (historical): `DeliverableType.Text` with full `signals-live/v1.1` JSON. **Live delivery is now v1.2** — see [`signals-live-v1.2.md`](./signals-live-v1.2.md). Store Deliverable Schema must stay empty — see `docs/croo-store-listing.md`.

@@ -12,7 +12,7 @@
 - CAP client live in `agent/src/cap/` — WebSocket connected on VPS (`GET /cap/status` → `"connected": true`).
 - **CROO Agent Store:** [Early, Not Wrong](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — `signals-live` at $0.05 USDC, SLA &lt; 5 min.
 - **First verified Store purchase:** order `d3e51b1f-df3d-4ccb-8441-21c1117a569c` (2026-07-17) — pay tx `0xae73bab6…`, delivery `signals-live/v1.1` with `guidance: evaluate`.
-- Delivery schema: **signals-live/v1.1** (signals + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
+- **Current delivery schema:** **signals-live/v1.2** (signals + execution alignment + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
 - Paste-ready listing copy: [`docs/croo-store-listing.md`](croo-store-listing.md).
 
 ---
@@ -201,7 +201,7 @@ The CROO Store order form may show a **Requirements** placeholder describing the
 | Field | Buyer sends | Agent returns |
 |-------|-------------|---------------|
 | **Requirements** | `{}` | — |
-| **Deliverable** | — | Full `signals-live/v1.1` JSON (see [sample](https://earlynotwrong.vercel.app/samples/signals-live-v1.1.example.json)) |
+| **Deliverable** | — | Full `signals-live/v1.2` JSON (see [sample](https://earlynotwrong.vercel.app/samples/signals-live-v1.2.example.json)) |
 
 **Store listing editor:** Leave **Deliverable → Schema** empty (no field rows). Use **Deliverable → Text** for a human-readable teaser only. Adding object/array rows in the Schema builder causes CROO to reject delivery with `INVALID_DELIVERABLE`.
 
@@ -243,8 +243,8 @@ Requester                          ENW Agent
     │◄─ order created ─────────────────┤
     ├─ payOrder() (USDC on Base)       │
     │                                  │◄── EventType.OrderPaid
-    │                                  │    getLiveSignalsV1() → signals-live/v1.1
-    │                                  │    deliverOrder(Text + signals-live/v1.1 JSON)
+    │                                  │    getLiveSignalsV1() → signals-live/v1.2
+    │                                  │    deliverOrder(Text + signals-live/v1.2 JSON)
     │◄─ EventType.OrderCompleted ──────┤
     ├─ getDelivery()                   │
     │◄─ JSON: signals + guidance +     │

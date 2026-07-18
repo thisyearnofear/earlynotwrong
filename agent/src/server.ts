@@ -236,7 +236,7 @@ app.get("/cap/status", (c) =>
 // GET /signals/preview — alias for teaser (backward compat for dashboard proxy)
 // ===========================================================================
 //
-// Paid buyers receive the full signals-live/v1.1 envelope via CROO CAP or MCP
+// Paid buyers receive the full signals-live/v1.2 envelope via CROO CAP or MCP
 // x402. The web app only gets guidance + top symbol here.
 
 app.get("/signals/teaser", async (c) => {

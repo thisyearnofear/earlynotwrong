@@ -102,14 +102,14 @@ This makes the reputation marketplace **self-funding at the API-request level**.
 
 ### 4b. CROO Agent Protocol — second settlement rail
 
-The same live conviction SKU is also hireable on the **[CROO Agent Store](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205)** via **CAP** (CROO Agent Protocol), settled in **USDC on Base**. Service **`signals-live`** ($0.05) returns the identical **`signals-live/v1.1`** JSON as MCP's paid `get_live_signals` — including ranked signals, macro gates, on-chain **provenance**, and buyer **guidance** (`skip_entries` | `evaluate` | `wait`).
+The same live conviction SKU is also hireable on the **[CROO Agent Store](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205)** via **CAP** (CROO Agent Protocol), settled in **USDC on Base**. Service **`signals-live`** ($0.05) returns the identical **`signals-live/v1.2`** JSON as MCP's paid `get_live_signals` — including ranked signals, macro gates, per-cycle **execution** alignment, on-chain **provenance**, and buyer **guidance** (`skip_entries` | `evaluate` | `wait`).
 
 | Rail | Discovery | Settlement | SKU |
 |------|-----------|------------|-----|
 | **MCP + x402** | Direct HTTP / AI clients | CSPR (Casper testnet, CEP-18) | `get_live_signals` · 0.5 CSPR |
 | **CROO CAP** | Agent Store | USDC (Base) | `signals-live` · $0.05 |
 
-Casper remains the **MCP host chain** and public registry; CROO is the **USDC commerce layer** for allocator agents that discover services on the Store. One conviction engine, two payment rails, one schema: [`signals-live-v1.1.schema.json`](https://earlynotwrong.vercel.app/schemas/signals-live-v1.1.schema.json). Verified Store purchases (2026-07-17): `d3e51b1f-…`, `ad8b40fc-…`, `0990e061-…` (3 completed after clearing empty Deliverable Schema). See [`docs/CROO_INTEGRATION.md`](docs/CROO_INTEGRATION.md).
+Casper remains the **MCP host chain** and public registry; CROO is the **USDC commerce layer** for allocator agents that discover services on the Store. One conviction engine, two payment rails, one schema: [`signals-live-v1.2.schema.json`](https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json). Verified Store purchases (2026-07-17): `d3e51b1f-…`, `ad8b40fc-…`, `0990e061-…` (3 completed after clearing empty Deliverable Schema). See [`docs/CROO_INTEGRATION.md`](docs/CROO_INTEGRATION.md).
 
 ### 5. Next.js Web App — 3-Page Architecture
 

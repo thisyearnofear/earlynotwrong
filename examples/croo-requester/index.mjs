@@ -21,18 +21,26 @@ import { AgentClient } from "@croo-network/sdk";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVICE_ID = "signals-live";
-const EXPECTED_SCHEMA = "signals-live/v1.1";
+const EXPECTED_SCHEMA = "signals-live/v1.2";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 function actOnGuidance(payload) {
-  const { guidance, signals, provenance } = payload;
+  const { guidance, signals, provenance, execution } = payload;
   console.log("\n── Buyer agent decision ──");
   console.log(`Action: ${guidance.recommendedAction}`);
   console.log(`Reason: ${guidance.reason}`);
   console.log(`Size multiplier: ${guidance.sizeMultiplier}`);
+
+  if (execution?.alignment) {
+    console.log(
+      `Execution alignment: topRanked=${execution.alignment.topRankedSymbol ?? "—"} ` +
+        `entered=${execution.alignment.topRankedEntered} ` +
+        `(entries=${execution.entries?.length ?? 0}, skips=${execution.skips?.length ?? 0})`,
+    );
+  }
 
   switch (guidance.recommendedAction) {
     case "wait":
@@ -47,9 +55,13 @@ function actOnGuidance(payload) {
       if (signals[0]) {
         console.log(`  Top score: ${signals[0].score}/100 — ${signals[0].rationale}`);
       }
-      if (provenance.behavioral) {
+      if (provenance.behavioral?.status === "ready" && provenance.behavioral.metrics) {
+        const m = provenance.behavioral.metrics;
+        console.log(`  Agent behavioral score: ${m.score} (${m.archetype})`);
+      } else {
         console.log(
-          `  Agent behavioral score: ${provenance.behavioral.score} (${provenance.behavioral.archetype})`,
+          `  Agent behavioral: ${provenance.behavioral?.status ?? "unknown"} ` +
+            `(metrics not ready)`,
         );
       }
       console.log("→ Apply your own sizing/risk rules before executing.");
@@ -67,10 +79,16 @@ function validatePayload(payload) {
   if (!payload.provenance?.reputation) {
     throw new Error("Missing provenance.reputation");
   }
+  if (!payload.provenance?.behavioral?.status) {
+    throw new Error("Missing provenance.behavioral.status");
+  }
+  if (!payload.execution?.alignment) {
+    throw new Error("Missing execution.alignment");
+  }
 }
 
 async function dryRun() {
-  const samplePath = resolve(__dirname, "../../docs/samples/signals-live-v1.1.example.json");
+  const samplePath = resolve(__dirname, "../../docs/samples/signals-live-v1.2.example.json");
   const payload = JSON.parse(readFileSync(samplePath, "utf-8"));
   validatePayload(payload);
   console.log("✓ Sample validates structurally");

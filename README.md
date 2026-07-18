@@ -165,7 +165,7 @@ incoming reputation orders. Payment settles on-chain in USDC on Base.
 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) | ERC-8004 ConvictionRegistry on Mantle Sepolia |
 | [`POSITIONING.md`](./docs/POSITIONING.md) | ICP, differentiation, creative monopoly frame, messaging do/don't |
 | [`OUTBOUND_INTEGRATORS.md`](./docs/OUTBOUND_INTEGRATORS.md) | Surgical outreach to 5 integrator personas — DMs, ask, success metrics |
-| [`docs/MCP_INTEGRATION.md`](./docs/MCP_INTEGRATION.md) | **Start here for buyers** — MCP + CROO rails, signals-live/v1.1, curl + requester |
+| [`docs/MCP_INTEGRATION.md`](./docs/MCP_INTEGRATION.md) | **Start here for buyers** — MCP + CROO rails, signals-live/v1.2, curl + requester |
 | [`docs/community-share.md`](./docs/community-share.md) | Paste-ready Telegram/Discord announcements for CROO + Casper channels |
 | [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) | Casper Odra registry + MCP server + x402 reputation paywall |
 | [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md) | CROO Agent Protocol integration — CAP services, USDC settlement, SDK methods |
