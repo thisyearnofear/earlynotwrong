@@ -21,6 +21,7 @@ import {
   crossChainLookup,
   getAgentReputation,
   getByThesis,
+  getJuryDeliberation,
   getLatestConviction,
   getLiveSignalsV1,
   getSubjectHistory,
@@ -115,6 +116,19 @@ export function buildMcpServer(): McpServer {
     },
     async (args) => {
       const result = await getAgentReputation({ subjectHash: args.subjectHash });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "get_jury_deliberation",
+    {
+      description:
+        "Get the LLM conviction jury's latest deliberation — the 7th scoring factor. Returns the LLM provider/model, market assessment, per-token verdicts (adjustments, reasoning, agreement levels, key risks), and the Casper ecosystem cross-chain context fed to the jury. FREE — this is metadata about the scoring process, not the tradeable signals themselves.",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await getJuryDeliberation();
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );

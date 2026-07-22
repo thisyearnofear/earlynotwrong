@@ -695,3 +695,83 @@ export async function getLiveSignalsTeaser(): Promise<SignalsLiveTeaser> {
   });
   return buildSignalsTeaser(full);
 }
+
+// ─── Tool: get_jury_deliberation ────────────────────────────────────────────
+//
+// Exposes the LLM conviction jury's latest deliberation — the 7th scoring
+// factor. Returns the provider, model, market assessment, per-token verdicts
+// (adjustments, reasoning, agreement, key risks), and the Casper ecosystem
+// cross-chain context that was fed to the jury. FREE — the jury deliberation
+// is metadata about the scoring process, not the tradeable signals themselves.
+
+export interface GetJuryDeliberationResult {
+  /** Cycle number that produced this deliberation. */
+  cycle: number;
+  /** When the jury deliberated (ISO timestamp). */
+  deliberatedAt: string | null;
+  /** LLM provider used: openrouter, openai, anthropic, or template. */
+  provider: string | null;
+  /** Model identifier (e.g. "openrouter/auto"). */
+  model: string | null;
+  /** The jury's overall market assessment. */
+  marketAssessment: string | null;
+  /** Per-token verdicts with adjustments and reasoning. */
+  verdicts: Array<{
+    symbol: string;
+    adjustment: number;
+    adjustedScore: number;
+    reasoning: string;
+    agreement: string;
+    keyRisk: string;
+  }>;
+  /** Casper ecosystem cross-chain context fed to the jury. */
+  casperEcosystemContext: {
+    dexMcpReachable: boolean;
+    chainMcpReachable: boolean;
+    csprPriceUsd: number | null;
+    csprUsdcLiquidityUsd: number | null;
+    topDexTokens: string[];
+    networkStatus: {
+      eraId: number | null;
+      activeValidators: number | null;
+      totalStakeCspr: number | null;
+    } | null;
+  } | null;
+}
+
+export async function getJuryDeliberation(): Promise<GetJuryDeliberationResult> {
+  const del = liveAgentState.llmDeliberation;
+  const ctx = liveAgentState.casperEcosystemContext;
+
+  return {
+    cycle: liveAgentState.cycle,
+    deliberatedAt: del?.deliberatedAt ?? null,
+    provider: del?.provider ?? null,
+    model: del?.model ?? null,
+    marketAssessment: del?.marketAssessment ?? null,
+    verdicts: del?.verdicts.map((v) => ({
+      symbol: v.symbol,
+      adjustment: v.adjustment,
+      adjustedScore: v.adjustedScore,
+      reasoning: v.reasoning,
+      agreement: v.agreement,
+      keyRisk: v.keyRisk,
+    })) ?? [],
+    casperEcosystemContext: ctx
+      ? {
+          dexMcpReachable: ctx.dexMcpReachable,
+          chainMcpReachable: ctx.chainMcpReachable,
+          csprPriceUsd: ctx.csprPriceUsd,
+          csprUsdcLiquidityUsd: ctx.csprUsdcLiquidityUsd,
+          topDexTokens: ctx.topDexTokens.map((t) => t.symbol),
+          networkStatus: ctx.networkStatus
+            ? {
+                eraId: ctx.networkStatus.eraId,
+                activeValidators: ctx.networkStatus.activeValidators,
+                totalStakeCspr: ctx.networkStatus.totalStakeCspr,
+              }
+            : null,
+        }
+      : null,
+  };
+}

@@ -1,10 +1,12 @@
 /**
  * Per-tool pricing config for the MCP server.
  *
- * Free tier: get_latest_conviction, get_by_thesis, get_agent_reputation.
+ * Free tier: get_latest_conviction, get_by_thesis, get_agent_reputation, get_jury_deliberation.
  *   The trust-decision surface. get_agent_reputation is deliberately free:
  *   it's the one-shot query a first-time evaluator runs to decide whether to
  *   trust this agent at all — paywalling it gates adoption of everything else.
+ *   get_jury_deliberation is free because it's metadata about the scoring
+ *   process (AI reasoning), not the tradeable signals themselves.
  *
  * Paid tier (x402): get_subject_history, cross_chain_lookup, get_live_signals.
  *   Recurring-value data. History walks and cross-chain reconciliation are
@@ -21,6 +23,7 @@ export type ToolName =
   | "get_subject_history"
   | "cross_chain_lookup"
   | "get_agent_reputation"
+  | "get_jury_deliberation"
   | "get_live_signals";
 
 interface PricingEntry {
@@ -56,6 +59,12 @@ export const PRICING: Record<ToolName, PricingEntry> = {
     amountBaseUnits: "0",
     description:
       "Free — aggregate reputation report (counts, mean score, dual-chain status); the trust-decision query",
+  },
+  get_jury_deliberation: {
+    paid: false,
+    amountBaseUnits: "0",
+    description:
+      "Free — LLM jury deliberation (provider, verdicts, reasoning, Casper ecosystem context)",
   },
   get_live_signals: {
     paid: true,
