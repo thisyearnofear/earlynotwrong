@@ -278,8 +278,10 @@ function describePortfolio(context: NarrativeContext): string {
 /**
  * Generate a richer narrative using an LLM.
  *
- * Only used when an LLM API key is available (OPENAI_API_KEY or
- * ANTHROPIC_API_KEY). Falls back to template mode otherwise.
+ * Only used when an LLM API key is available (OPENROUTER_API_KEY,
+ * OPENAI_API_KEY, or ANTHROPIC_API_KEY). Falls back to template mode otherwise.
+ *
+ * Provider priority: OpenRouter > OpenAI > Anthropic > template.
  *
  * The prompt is constructed from the same data as the template mode,
  * plus raw news text and macro event details for richer synthesis.
@@ -287,10 +289,11 @@ function describePortfolio(context: NarrativeContext): string {
 export async function generateLLMNarrative(
   context: NarrativeContext,
 ): Promise<MarketNarrative | null> {
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-  if (!openaiKey && !anthropicKey) return null;
+  if (!openrouterKey && !openaiKey && !anthropicKey) return null;
 
   const [news, macroEvents] = await Promise.all([
     fetchNewsHeadlines(),
@@ -300,6 +303,9 @@ export async function generateLLMNarrative(
   const prompt = buildLLMPrompt(context, news, macroEvents);
 
   try {
+    if (openrouterKey) {
+      return await callOpenRouter(prompt, news, macroEvents);
+    }
     if (openaiKey) {
       return await callOpenAI(prompt, news, macroEvents);
     }
@@ -335,6 +341,50 @@ function buildLLMPrompt(
     "",
     "Write a natural, insight-driven narrative that explains what's happening in markets right now.",
   ].join("\n");
+}
+
+/**
+ * Call OpenRouter's OpenAI-compatible API for narrative generation.
+ * OpenRouter is the preferred provider — routes to any model via a single key.
+ */
+async function callOpenRouter(
+  prompt: string,
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
+): Promise<MarketNarrative> {
+  const model = process.env.OPENROUTER_NARRATIVE_MODEL || "openrouter/auto";
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://earlynotwrong.vercel.app",
+      "X-Title": "Early Not Wrong - Market Narrative",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300,
+      temperature: 0.7,
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+
+  if (!response.ok) throw new Error(`OpenRouter API error: ${response.status}`);
+
+  const json = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content?.trim() ?? "";
+
+  return {
+    summary: content,
+    headline: news[0]?.title ?? null,
+    newsCount: news.length,
+    macroEventCount: macroEvents.length,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 /**

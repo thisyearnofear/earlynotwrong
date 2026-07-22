@@ -13,7 +13,7 @@
  * provably anchored on-chain alongside the score.
  *
  * Three modes:
- *   1. LLM mode (OpenAI or Anthropic) — real reasoning, real adjustment
+ *   1. LLM mode (OpenRouter, OpenAI, or Anthropic) — real reasoning, real adjustment
  *   2. Template mode — deterministic fallback when no API key is set
  *   3. Disabled — returns null, scoring proceeds without the 7th factor
  *
@@ -28,7 +28,7 @@ import type { TokenQuote } from "./data-providers.js";
 // Types
 // =============================================================================
 
-export type JuryProvider = "openai" | "anthropic" | "template";
+export type JuryProvider = "openrouter" | "openai" | "anthropic" | "template";
 
 export type JuryAgreement =
   | "strong-agree"
@@ -99,10 +99,14 @@ export async function deliberateConviction(
   // removing API keys (e.g. to isolate a 6-factor-only run).
   if (process.env.LLM_JURY_DISABLED === "1") return null;
 
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
   try {
+    if (openrouterKey) {
+      return await deliberateWithOpenRouter(candidates, regime, newsHeadlines);
+    }
     if (openaiKey) {
       return await deliberateWithOpenAI(candidates, regime, newsHeadlines);
     }
@@ -164,6 +168,58 @@ export interface JurySignalFields {
   juryAgreement?: JuryAgreement;
   /** The key risk the jury identified. */
   juryKeyRisk?: string;
+}
+
+// =============================================================================
+// LLM Deliberation — OpenRouter (preferred provider)
+// =============================================================================
+//
+// OpenRouter uses the OpenAI-compatible chat completions API, so this is
+// a drop-in with a different base URL and the OpenRouter API key. The
+// default model is openrouter/auto — OpenRouter routes to the best
+// available free model, maximizing reliability across provider outages.
+//
+// Provider priority: OpenRouter > OpenAI > Anthropic > template
+
+const OPENROUTER_DEFAULT_MODEL = "openrouter/auto";
+
+async function deliberateWithOpenRouter(
+  candidates: JuryTokenContext[],
+  regime: MarketRegime,
+  newsHeadlines: string[],
+): Promise<JuryDeliberation> {
+  const prompt = buildJuryPrompt(candidates, regime, newsHeadlines);
+  const model = process.env.OPENROUTER_JURY_MODEL || OPENROUTER_DEFAULT_MODEL;
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      // Optional headers for OpenRouter rankings
+      "HTTP-Referer": "https://earlynotwrong.vercel.app",
+      "X-Title": "Early Not Wrong - Conviction Jury",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: JURY_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 1200,
+      temperature: 0.4,
+      response_format: { type: "json_object" },
+    }),
+    signal: AbortSignal.timeout(45000), // free tier can be slower
+  });
+
+  if (!response.ok) throw new Error(`OpenRouter API error: ${response.status}`);
+
+  const json = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content?.trim() ?? "";
+  return parseJuryResponse(content, candidates, regime, "openrouter", model);
 }
 
 // =============================================================================

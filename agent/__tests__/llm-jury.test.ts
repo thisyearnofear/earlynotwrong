@@ -83,6 +83,7 @@ describe("LLM Conviction Jury", () => {
 
   beforeEach(() => {
     // Clear LLM keys by default — tests template mode unless explicitly set.
+    delete process.env.OPENROUTER_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.LLM_JURY_DISABLED;
@@ -328,6 +329,95 @@ describe("LLM Conviction Jury", () => {
   });
 
   // ── LLM mode (mocked fetch) ──────────────────────────────────────────────
+
+  describe("LLM mode (mocked OpenRouter)", () => {
+    it("calls OpenRouter and parses the response", async () => {
+      process.env.OPENROUTER_API_KEY = "test-key";
+
+      const mockResponse = {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                marketAssessment: "Fear dominates. Contrarian entries favored.",
+                verdicts: [
+                  {
+                    symbol: "TWT",
+                    adjustment: 8,
+                    reasoning: "Healthy dip with strong holder growth.",
+                    agreement: "strong-agree",
+                    keyRisk: "If FGI drops below 15, the dip could deepen.",
+                  },
+                ],
+              }),
+            },
+          }],
+        }),
+      };
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse as any);
+
+      const candidates = [makeContext()];
+      const result = await deliberateConviction(candidates, makeRegime(), []);
+
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe("openrouter");
+      expect(result!.model).toBe("openrouter/auto");
+      expect(result!.verdicts[0].adjustment).toBe(8);
+      expect(result!.verdicts[0].adjustedScore).toBe(73); // 65 + 8
+
+      fetchSpy.mockRestore();
+    });
+
+    it("prefers OpenRouter over OpenAI when both keys are set", async () => {
+      process.env.OPENROUTER_API_KEY = "or-key";
+      process.env.OPENAI_API_KEY = "oai-key";
+
+      const mockResponse = {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({
+            marketAssessment: "test",
+            verdicts: [{ symbol: "TWT", adjustment: 3, reasoning: "ok", agreement: "agree", keyRisk: "none" }],
+          })}}],
+        }),
+      };
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse as any);
+
+      const result = await deliberateConviction([makeContext()], makeRegime(), []);
+
+      expect(result!.provider).toBe("openrouter");
+      // Verify it called OpenRouter's URL, not OpenAI's
+      const callUrl = (fetchSpy.mock.calls[0][0] as string);
+      expect(callUrl).toContain("openrouter.ai");
+
+      fetchSpy.mockRestore();
+    });
+
+    it("respects OPENROUTER_JURY_MODEL override", async () => {
+      process.env.OPENROUTER_API_KEY = "test-key";
+      process.env.OPENROUTER_JURY_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+
+      const mockResponse = {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({
+            marketAssessment: "test",
+            verdicts: [{ symbol: "TWT", adjustment: 5, reasoning: "ok", agreement: "agree", keyRisk: "none" }],
+          })}}],
+        }),
+      };
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse as any);
+
+      const result = await deliberateConviction([makeContext()], makeRegime(), []);
+      expect(result!.model).toBe("meta-llama/llama-3.3-70b-instruct:free");
+
+      vi.restoreAllMocks();
+    });
+  });
 
   describe("LLM mode (mocked OpenAI)", () => {
     it("calls OpenAI and parses the response", async () => {
