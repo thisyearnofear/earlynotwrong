@@ -6,25 +6,26 @@
  * active participation in the Casper agent economy, not just using Casper
  * as a notary.
  *
- * Two MCP servers are consumed:
+ * Two data sources:
  *
  * 1. CSPR.trade MCP (https://mcp.cspr.trade/mcp) — Casper's native DEX.
  *    Provides token prices, pair liquidity, swap quotes, and trade analysis.
+ *    Uses the MCP Streamable HTTP transport with session management:
+ *    initialize → notifications/initialized → tools/call.
  *    The agent uses this to:
  *    - Fetch Casper DEX token prices for cross-chain comparison
  *    - Check CSPR/USDC pair liquidity as a Casper ecosystem health signal
- *    - Get OHLCV price history for Casper-native tokens
  *
- * 2. Casper Blockchain MCP (https://mcp.cspr-ai.xyz/mcp) — network status.
- *    Provides era info, validator count, total stake, supply data.
- *    The agent uses this to:
- *    - Monitor Casper network health (era progress, validator participation)
- *    - Track CSPR circulating supply as a macro signal
+ * 2. Casper Blockchain RPC (https://node.testnet.cspr.cloud/rpc) — network
+ *    status via direct JSON-RPC. The cspr-ai.xyz MCP server was unavailable
+ *    at build time, so we fall back to the same RPC endpoint the agent uses
+ *    for anchoring. Returns era, validator count, total stake, block height.
  *
- * All calls use standard MCP JSON-RPC protocol over HTTP. The module
- * degrades gracefully — if either MCP server is unreachable, the cycle
+ * All calls degrade gracefully — if either source is unreachable, the cycle
  * continues with empty Casper context.
  */
+
+import { AGENT_CONFIG } from "./config.js";
 
 // =============================================================================
 // Types
@@ -59,7 +60,7 @@ export interface CasperDexQuote {
   route: string[];
 }
 
-/** Casper network status from the blockchain MCP. */
+/** Casper network status from the blockchain RPC. */
 export interface CasperNetworkStatus {
   eraId: number;
   activeValidators: number;
@@ -72,7 +73,7 @@ export interface CasperNetworkStatus {
 export interface CasperEcosystemContext {
   /** Whether the CSPR.trade MCP was reachable this cycle. */
   dexMcpReachable: boolean;
-  /** Whether the Casper blockchain MCP was reachable. */
+  /** Whether the Casper blockchain RPC was reachable. */
   chainMcpReachable: boolean;
   /** CSPR token price in USD (from DEX). */
   csprPriceUsd: number | null;
@@ -87,31 +88,97 @@ export interface CasperEcosystemContext {
 }
 
 // =============================================================================
-// MCP Protocol Client
+// MCP Protocol Client — Session-aware (CSPR.trade)
 // =============================================================================
 
 const CSPR_TRADE_MCP_URL = process.env.CSPR_TRADE_MCP_URL || "https://mcp.cspr.trade/mcp";
-const CASPER_CHAIN_MCP_URL = process.env.CASPER_CHAIN_MCP_URL || "https://mcp.cspr-ai.xyz/mcp";
 
 /** Request timeout for MCP calls — generous since these are remote servers. */
 const MCP_TIMEOUT_MS = 15000;
 
 /**
- * Call a tool on an MCP server via JSON-RPC over HTTP.
- *
- * Uses the Streamable HTTP transport: a single POST with the JSON-RPC
- * request, accepting application/json or text/event-stream.
+ * MCP session — initialized once, reused for all tool calls within a cycle.
+ * The CSPR.trade MCP server uses stateful Streamable HTTP transport: it
+ * requires an initialize handshake and returns a session ID that must be
+ * included in all subsequent requests.
  */
-async function callMcpTool(
-  serverUrl: string,
-  toolName: string,
-  args: Record<string, unknown> = {},
-): Promise<unknown> {
-  const response = await fetch(serverUrl, {
+interface McpSession {
+  sessionId: string;
+  serverUrl: string;
+}
+
+/**
+ * Initialize an MCP session with the server.
+ * Sends the initialize handshake and the notifications/initialized notification.
+ * Returns the session ID to use for subsequent tool calls.
+ */
+async function initMcpSession(serverUrl: string): Promise<McpSession> {
+  // Step 1: Send initialize request
+  const initResponse = await fetch(serverUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "early-not-wrong-agent", version: "0.1.0" },
+      },
+    }),
+    signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
+  });
+
+  if (!initResponse.ok) {
+    throw new Error(`MCP initialize failed: ${initResponse.status}`);
+  }
+
+  // Extract session ID from response headers
+  const sessionId = initResponse.headers.get("mcp-session-id");
+  if (!sessionId) {
+    throw new Error("MCP server did not return a session ID");
+  }
+
+  // Consume the init response body (SSE or JSON)
+  await initResponse.text();
+
+  // Step 2: Send notifications/initialized (required by MCP protocol)
+  await fetch(serverUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+      "Mcp-Session-Id": sessionId,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    }),
+    signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
+  });
+
+  return { sessionId, serverUrl };
+}
+
+/**
+ * Call a tool on an MCP server using an established session.
+ * The session ID is sent in the Mcp-Session-Id header.
+ */
+async function callMcpToolWithSession(
+  session: McpSession,
+  toolName: string,
+  args: Record<string, unknown> = {},
+): Promise<unknown> {
+  const response = await fetch(session.serverUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+      "Mcp-Session-Id": session.sessionId,
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
@@ -174,23 +241,25 @@ function extractMcpResult(json: any): unknown {
 // =============================================================================
 
 /**
- * Fetch the list of tradable tokens from CSPR.trade.
- * Returns tokens with their addresses, decimals, and optional USD prices.
+ * Fetch the list of tradable tokens from CSPR.trade via MCP.
+ * Initializes a session, calls get_tokens, and returns parsed tokens.
+ * CSPR.trade returns tokens with: id, symbol, name, decimals, packageHash, fiatPrice.
  */
 export async function fetchCasperDexTokens(): Promise<CasperDexToken[]> {
   try {
-    const result = await callMcpTool(CSPR_TRADE_MCP_URL, "get_tokens", {
-      include_pricing: true,
-    });
+    const session = await initMcpSession(CSPR_TRADE_MCP_URL);
+    const result = await callMcpToolWithSession(session, "get_tokens", {});
 
-    if (!Array.isArray(result)) return [];
+    // CSPR.trade wraps the token list in { data: [...] }
+    const tokens = Array.isArray(result) ? result : (result as any)?.data;
+    if (!Array.isArray(tokens)) return [];
 
-    return result.map((t: any) => ({
-      symbol: t.symbol ?? t.ticker ?? "",
-      address: t.address ?? t.contract_hash ?? "",
+    return tokens.map((t: any) => ({
+      symbol: t.symbol ?? "",
+      address: t.packageHash ?? t.id ?? "",
       decimals: t.decimals ?? 9,
-      priceUsd: typeof t.price_usd === "number" ? t.price_usd : undefined,
-      priceCspr: typeof t.price_cspr === "number" ? t.price_cspr : undefined,
+      priceUsd: typeof t.fiatPrice === "number" ? t.fiatPrice : undefined,
+      priceCspr: typeof t.priceCspr === "number" ? t.priceCspr : undefined,
     })).filter((t: CasperDexToken) => t.symbol && t.address);
   } catch {
     return [];
@@ -198,31 +267,32 @@ export async function fetchCasperDexTokens(): Promise<CasperDexToken[]> {
 }
 
 /**
- * Fetch trading pairs from CSPR.trade, sorted by liquidity.
+ * Fetch trading pairs from CSPR.trade via MCP.
  * Used to gauge Casper DEX ecosystem health.
+ * CSPR.trade wraps the pair list in { data: [...] }.
  */
 export async function fetchCasperDexPairs(limit = 10): Promise<CasperDexPair[]> {
   try {
-    const result = await callMcpTool(CSPR_TRADE_MCP_URL, "get_pairs", {
-      sort: "liquidity",
-      limit,
-    });
+    const session = await initMcpSession(CSPR_TRADE_MCP_URL);
+    const result = await callMcpToolWithSession(session, "get_pairs", {});
 
-    if (!Array.isArray(result)) return [];
+    // CSPR.trade wraps the pair list in { data: [...] }
+    const pairs = Array.isArray(result) ? result : (result as any)?.data;
+    if (!Array.isArray(pairs)) return [];
 
-    return result.map((p: any) => ({
-      pairAddress: p.pair_address ?? p.address ?? "",
+    return pairs.map((p: any) => ({
+      pairAddress: p.contractPackageHash ?? "",
       token0: {
-        symbol: p.token0?.symbol ?? p.token0_symbol ?? "",
-        address: p.token0?.address ?? p.token0_address ?? "",
+        symbol: p.token0?.symbol ?? "",
+        address: p.token0?.packageHash ?? "",
       },
       token1: {
-        symbol: p.token1?.symbol ?? p.token1_symbol ?? "",
-        address: p.token1?.address ?? p.token1_address ?? "",
+        symbol: p.token1?.symbol ?? "",
+        address: p.token1?.packageHash ?? "",
       },
       reserve0: p.reserve0 ?? "0",
       reserve1: p.reserve1 ?? "0",
-      reserveUsd: typeof p.reserve_usd === "number" ? p.reserve_usd : undefined,
+      reserveUsd: typeof p.reserveUsd === "number" ? p.reserveUsd : undefined,
     }));
   } catch {
     return [];
@@ -237,23 +307,24 @@ export async function fetchCsprUsdcQuote(): Promise<{ priceUsd: number; liquidit
   try {
     // First get pairs to find the CSPR/USDC pair
     const pairs = await fetchCasperDexPairs(20);
-    const csprUsdc = pairs.find(
+
+    // Look for any pair containing CSPR or WCSPR
+    const csprPair = pairs.find(
       (p) =>
-        (p.token0.symbol.toUpperCase() === "CSPR" && p.token1.symbol.toUpperCase() === "USDC") ||
-        (p.token1.symbol.toUpperCase() === "CSPR" && p.token0.symbol.toUpperCase() === "USDC"),
+        (p.token0.symbol.toUpperCase().includes("CSPR") && p.token1.symbol.toUpperCase().includes("USDC")) ||
+        (p.token1.symbol.toUpperCase().includes("CSPR") && p.token0.symbol.toUpperCase().includes("USDC")),
     );
 
-    if (csprUsdc?.reserveUsd) {
-      // Derive CSPR price from pair reserves
-      const isCsprToken0 = csprUsdc.token0.symbol.toUpperCase() === "CSPR";
-      const csprReserve = isCsprToken0 ? csprUsdc.reserve0 : csprUsdc.reserve1;
-      const usdcReserve = isCsprToken0 ? csprUsdc.reserve1 : csprUsdc.reserve0;
+    if (csprPair) {
+      const isCsprToken0 = csprPair.token0.symbol.toUpperCase().includes("CSPR");
+      const csprReserve = isCsprToken0 ? csprPair.reserve0 : csprPair.reserve1;
+      const usdcReserve = isCsprToken0 ? csprPair.reserve1 : csprPair.reserve0;
       const csprAmount = parseFloat(csprReserve) / 1e9; // CSPR has 9 decimals
       const usdcAmount = parseFloat(usdcReserve) / 1e6; // USDC has 6 decimals
-      if (csprAmount > 0) {
+      if (csprAmount > 0 && usdcAmount > 0) {
         return {
           priceUsd: usdcAmount / csprAmount,
-          liquidityUsd: csprUsdc.reserveUsd,
+          liquidityUsd: csprPair.reserveUsd ?? usdcAmount * 2,
         };
       }
     }
@@ -262,7 +333,7 @@ export async function fetchCsprUsdcQuote(): Promise<{ priceUsd: number; liquidit
     const tokens = await fetchCasperDexTokens();
     const cspr = tokens.find((t) => t.symbol.toUpperCase() === "CSPR");
     if (cspr?.priceUsd) {
-      return { priceUsd: cspr.priceUsd, liquidityUsd: csprUsdc?.reserveUsd ?? 0 };
+      return { priceUsd: cspr.priceUsd, liquidityUsd: 0 };
     }
 
     return null;
@@ -272,26 +343,82 @@ export async function fetchCsprUsdcQuote(): Promise<{ priceUsd: number; liquidit
 }
 
 // =============================================================================
-// Casper Blockchain MCP — Network Status
+// Casper Blockchain RPC — Network Status (direct JSON-RPC fallback)
 // =============================================================================
 
+const CASPER_RPC_URL = process.env.CASPER_RPC_URL || AGENT_CONFIG.casper.testnet.rpcUrl;
+
 /**
- * Fetch Casper network status from the blockchain MCP.
- * Returns era, validator count, total stake, and supply data.
+ * Call a Casper JSON-RPC method.
+ * Uses the same auth token as the anchoring adapter (CSPR_CLOUD_TOKEN).
+ * Token is read at call time (not module init) to ensure env-bootstrap has run.
+ */
+async function casperRpc(method: string, params: unknown = null): Promise<any> {
+  const token = process.env.CSPR_CLOUD_TOKEN || "";
+  const response = await fetch(CASPER_RPC_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: token } : {}),
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Casper RPC returned ${response.status}`);
+  }
+
+  const json: any = await response.json();
+  if (json.error) {
+    throw new Error(`Casper RPC error: ${json.error.message}`);
+  }
+  return json.result;
+}
+
+/**
+ * Fetch Casper network status via direct JSON-RPC.
+ * Gets the latest block for era/height, and era info for validator count/stake.
+ *
+ * This is a fallback for the cspr-ai.xyz MCP server which was unavailable
+ * at build time. It uses the same RPC endpoint and auth token the agent
+ * already uses for anchoring.
  */
 export async function fetchCasperNetworkStatus(): Promise<CasperNetworkStatus | null> {
   try {
-    const result = await callMcpTool(CASPER_CHAIN_MCP_URL, "casper_get_network_status", {});
+    // Get latest block for era_id and height
+    const blockResult = await casperRpc("chain_get_block", null);
+    const block = blockResult?.block?.Version2 ?? blockResult?.block ?? blockResult?.block_with_signatures?.block?.Version2;
+    const header = block?.header;
+    if (!header) return null;
 
-    if (!result || typeof result !== "object") return null;
-    const r = result as any;
+    const eraId = header.era_id ?? 0;
+    const blockHeight = header.height ?? 0;
+
+    // Get era info for validator count and total stake
+    let activeValidators = 0;
+    let totalStakeMotes = 0;
+
+    try {
+      const eraResult = await casperRpc("chain_get_era_info_by_switch_block", null);
+      const eraInfo = eraResult?.era_summary?.stored_value?.EraInfo;
+      const allocs = eraInfo?.seigniorage_allocations ?? [];
+      const validatorAllocs = allocs.filter((a: any) => "Validator" in a);
+      activeValidators = validatorAllocs.length;
+      totalStakeMotes = validatorAllocs.reduce(
+        (sum: number, a: any) => sum + parseInt(a.Validator?.amount ?? "0", 10),
+        0,
+      );
+    } catch {
+      // Era info is best-effort — block data alone is still useful
+    }
 
     return {
-      eraId: r.era_id ?? r.eraId ?? 0,
-      activeValidators: r.active_validators ?? r.activeValidators ?? 0,
-      totalStakeCspr: r.total_stake ?? r.totalStake ?? 0,
-      circulatingSupplyCspr: r.circulating_supply ?? r.circulatingSupply ?? 0,
-      blockHeight: r.block_height ?? r.blockHeight ?? 0,
+      eraId,
+      activeValidators,
+      totalStakeCspr: Math.round(totalStakeMotes / 1e9), // motes → CSPR
+      circulatingSupplyCspr: 0, // Not available via RPC without a separate query
+      blockHeight,
     };
   } catch {
     return null;
@@ -305,10 +432,10 @@ export async function fetchCasperNetworkStatus(): Promise<CasperNetworkStatus | 
 /**
  * Fetch the full Casper ecosystem context for the current cycle.
  *
- * Calls both MCP servers in parallel and aggregates the results into a
- * single CasperEcosystemContext. Degrades gracefully — if either server
- * is unreachable, the corresponding fields are null/empty and the
- * reachable flag is set to false.
+ * Calls CSPR.trade MCP (DEX data) and Casper RPC (network status) in
+ * parallel and aggregates the results into a single CasperEcosystemContext.
+ * Degrades gracefully — if either source is unreachable, the corresponding
+ * fields are null/empty and the reachable flag is set to false.
  *
  * This context is:
  * 1. Stored in agent state for the dashboard
@@ -352,12 +479,12 @@ export function summarizeCasperContextForJury(ctx: CasperEcosystemContext): stri
   if (ctx.csprPriceUsd !== null) {
     lines.push(`CSPR price: $${ctx.csprPriceUsd.toFixed(4)}`);
   }
-  if (ctx.csprUsdcLiquidityUsd !== null) {
+  if (ctx.csprUsdcLiquidityUsd !== null && ctx.csprUsdcLiquidityUsd > 0) {
     lines.push(`CSPR/USDC liquidity: $${(ctx.csprUsdcLiquidityUsd / 1000).toFixed(1)}K`);
   }
   if (ctx.networkStatus) {
     const ns = ctx.networkStatus;
-    lines.push(`Casper network: era ${ns.eraId}, ${ns.activeValidators} validators, ${ns.totalStakeCspr.toLocaleString()} CSPR staked`);
+    lines.push(`Casper network: era ${ns.eraId}, ${ns.activeValidators} validators, ${ns.totalStakeCspr.toLocaleString()} CSPR staked, block ${ns.blockHeight}`);
   }
   if (ctx.topDexTokens.length > 0) {
     const tokenList = ctx.topDexTokens
@@ -368,8 +495,8 @@ export function summarizeCasperContextForJury(ctx: CasperEcosystemContext): stri
   }
 
   if (lines.length === 0) {
-    return "Casper ecosystem MCP servers unreachable — no cross-chain context available.";
+    return "Casper ecosystem data sources unreachable — no cross-chain context available.";
   }
 
-  return `Cross-chain context (Casper ecosystem via MCP): ${lines.join(" · ")}`;
+  return `Cross-chain context (Casper ecosystem): ${lines.join(" · ")}`;
 }
