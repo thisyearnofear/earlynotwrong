@@ -18,10 +18,13 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-07-18. Live commit on `nuncio-vultr`: `1b35cc26`.
+> Last updated: 2026-07-22. Live commit on `nuncio-vultr`: `86f33210`.
 
 ### Recently shipped
 
+- **LLM conviction jury (7th factor)** — `agent/lib/llm-jury.ts`. After the 6-factor deterministic scoring, an LLM reviews top candidates and adjusts conviction scores ±15. Reasoning digest included in the thesis hash anchored on Casper. Provider priority: OpenRouter (`openrouter/auto`) > OpenAI > Anthropic > template (no key). Live on VPS with OpenRouter — jury delivered real verdicts on first deployed cycle (DAI -4, USDC -4, XRP -8). 21 jury tests + 14 Casper MCP client tests.
+- **Casper ecosystem MCP consumer** — `agent/lib/casper-mcp-client.ts`. Agent consumes CSPR.trade MCP (DEX prices/liquidity) and Casper blockchain MCP (era/validators/stake) as cross-chain context for the LLM jury. Agent is now a bidirectional MCP participant (exposes 6 tools + consumes 2 ecosystem servers). Note: both public MCP endpoints were unreachable at deploy time; code degrades gracefully.
+- **OpenRouter integration** — OpenRouter wired as primary LLM provider for both jury and market narrative. Default model `openrouter/auto` routes to best available free model. `OPENROUTER_API_KEY` set on VPS.
 - **signals-live/v1.2** — per-cycle `execution` block (entries/exits/skips + `alignment.topRankedEntered`), explicit `provenance.behavioral.status`, AJV schema validation in CI. Schema: `/schemas/signals-live-v1.2.schema.json`. Deployed to VPS + dashboard copy.
 - **CROO Store live** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). **Store Deliverable Schema must stay empty** (field builder rows break CAP delivery). Verified orders include `0990e061-…` (2026-07-17). See `docs/croo-store-listing.md` and `docs/CROO_INTEGRATION.md`.
 - **Allocator UX pass** — landing intent CTAs, `/agent#hire`, demo walkthrough mode (`?demo=1`).
@@ -40,6 +43,8 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 - TWAK/LiquidMesh sometimes routes through pools where the wallet only has allowance on a different spender (e.g., 1inch `0x0000001fF...` vs LiquidMesh router `0x3d90...`). The entry probe now detects this before a full entry.
 - SoSoValue API is occasionally rate-limiting the agent (HTTP 429). The agent suspends SoSoValue for 15 min and falls back to CMC/fallback data.
+- Casper ecosystem MCP endpoints (`mcp.cspr.trade`, `mcp.cspr-ai.xyz`) were unreachable at deploy time. The `casper-mcp-client.ts` module degrades gracefully — jury proceeds without cross-chain context. If endpoints come back online, no code change needed; context will flow automatically.
+- Casper operator CSPR balance is 0 — anchoring to Casper is skipped. Mantle anchoring continues to work.
 
 ---
 
@@ -163,7 +168,7 @@ src/lib/market.ts
 - **Portfolio parser**: Reads `$USD` column from TWAK's column-aligned output. Covered by regression test in `__tests__/twak-executor.test.ts`.
 - **TWAK reliability**: The agent resolves the `twak` binary from common install paths (`~/.local/bin`, `~/.twak/bin`, `/usr/local/bin`) in addition to `PATH`. If TWAK is missing, misconfigured, or the wallet is locked, startup diagnostics print the exact failure and a remediation hint. The cycle still runs: portfolio falls back to the on-chain reader, and trades are skipped rather than crashing the loop.
 - **Agent-to-agent (A2A)**:
-  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 5 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`.
+  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 6 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`, `getJuryDeliberation`. The agent also **consumes** 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain context for the LLM jury — bidirectional MCP participant.
   - CROO CAP client connects to the CROO network via WebSocket and fulfills five CAP serviceIds (`signals-live` Store-listed; four reputation services MCP-only). Store orders require `CROO_SIGNALS_LIVE_SERVICE_UUID` on the VPS — see `docs/CROO_INTEGRATION.md`.
 
 ### Important Conventions
@@ -172,7 +177,7 @@ src/lib/market.ts
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (289+ tests across 22+ files).
+- Tests live in `agent/__tests__/` — Vitest framework (306 tests across 23 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
 - `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.

@@ -14,7 +14,7 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 | Component | Status |
 |---|---|
 | Autonomous AI agent with 7-factor conviction engine (6 deterministic + LLM jury) | Live |
-| LLM conviction jury — OpenAI/Anthropic integration with on-chain reasoning digest | Live |
+| LLM conviction jury — OpenRouter (openrouter/auto) with on-chain reasoning digest | Live on VPS |
 | Casper ecosystem MCP consumer — CSPR.trade + blockchain MCP as cross-chain signal input | Live |
 | Odra `ConvictionRegistry` on Casper Testnet | Deployed |
 | MCP server (6 tools) — exposes conviction data to other agents | Live |
@@ -22,7 +22,7 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 | Next.js web app — landing page, dashboard, wallet analyzer | Live |
 | Cross-chain anchoring — Casper + Mantle + Aleo | Live |
 | CROO Agent Store — `signals-live` ($0.05 USDC on Base) | Live + 3 verified purchases |
-| Test suite (Vitest) | 22 files, 289 tests |
+| Test suite (Vitest) | 23 files, 306 tests |
 
 ---
 
@@ -120,14 +120,14 @@ Casper remains the **MCP host chain** and public registry; CROO is the **USDC co
 **How it works:**
 
 1. After the 6-factor deterministic scoring completes, the top candidates are packaged with their price data, breakdown, regime context, and news headlines.
-2. The jury sends a structured prompt to an LLM (OpenAI GPT-4o-mini or Anthropic Claude Haiku, auto-detected from env vars) asking for per-token adjustments, reasoning traces, agreement levels, and key risks.
+2. The jury sends a structured prompt to an LLM (OpenRouter `openrouter/auto` preferred, OpenAI/Anthropic fallback, template mode if no key) asking for per-token adjustments, reasoning traces, agreement levels, and key risks.
 3. The LLM returns JSON verdicts. Adjustments are clamped to ±15 and applied to the conviction score — **the AI actually moves the score**, it's not just decoration.
 4. A deliberation digest (deterministic hash of provider, model, and per-token adjustments) is included in the thesis hash anchored on Casper — **proving the AI participated in the decision, not just the commentary**.
 5. When no API key is configured, a template mode generates zero-adjustment verdicts with rule-based reasoning, so the system degrades gracefully.
 
 **Why this matters for the buildathon:**
 
-This is **meaningful AI integration** — the LLM's judgment directly influences trading decisions, and its reasoning is provably anchored on-chain. The jury can see cross-chain context (Casper DEX prices, network status) alongside BSC signals, giving it a multi-chain perspective.
+This is **meaningful AI integration** — the LLM's judgment directly influences trading decisions, and its reasoning is provably anchored on-chain. The jury uses OpenRouter (`openrouter/auto`) as its primary provider, routing to the best available free model for maximum reliability. The jury can see cross-chain context (Casper DEX prices, network status) alongside BSC signals, giving it a multi-chain perspective. **Live on VPS** — first deployed cycle delivered real verdicts (DAI -4, USDC -4, XRP -8 with "strong-disagree" on XRP due to SEC litigation risk).
 
 ### 4d. Casper Ecosystem MCP Consumer — the agent as MCP client
 
@@ -145,7 +145,7 @@ The Casper ecosystem context is:
 2. Stored in agent state and surfaced on the dashboard
 3. Included in the cycle summary logs
 
-This makes the agent a **bidirectional participant in the Casper agent economy** — it both provides conviction data via its own MCP server and consumes Casper-native data from the ecosystem's MCP servers.
+This makes the agent a **bidirectional participant in the Casper agent economy** — it both provides conviction data via its own MCP server and consumes Casper-native data from the ecosystem's MCP servers. The consumer module degrades gracefully: if either MCP endpoint is unreachable, the jury proceeds without cross-chain context (no crash, no stall). Both endpoints were temporarily unavailable at deploy time; the code will pick up data automatically when they return.
 
 ### 5. Next.js Web App — 3-Page Architecture
 
