@@ -25,6 +25,8 @@ import type { AnchorResult } from "./anchors/index.js";
 import type { MarketNarrative } from "./market-narrative.js";
 import type { MacroPauseSignal } from "./sosovalue-signals.js";
 import type { CycleExecutionSnapshot } from "./cycle-execution.js";
+import type { JuryDeliberation } from "./llm-jury.js";
+import type { CasperEcosystemContext } from "./casper-mcp-client.js";
 import { emptyCycleExecution } from "./cycle-execution.js";
 import { AGENT_CONFIG } from "./config.js";
 
@@ -171,6 +173,10 @@ export const state = {
   } | null,
   narrative: null as MarketNarrative | null,
   macroPause: null as MacroPauseSignal | null,
+  /** LLM conviction jury deliberation for the current cycle (7th factor). */
+  llmDeliberation: null as JuryDeliberation | null,
+  /** Casper ecosystem context fetched via MCP (CSPR.trade + blockchain MCP). */
+  casperEcosystemContext: null as CasperEcosystemContext | null,
   anchorResults: [] as AnchorResult[],
   /** Self-analysis behavioral metrics, computed after each cycle's exits. */
   behavioralMetrics: null as BehavioralMetrics | null,

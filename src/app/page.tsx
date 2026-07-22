@@ -589,6 +589,23 @@ export default function Home() {
               <Link href="/discovery" className="text-foreground-dim hover:text-foreground-muted transition-colors">
                 Discovery
               </Link>
+              <span className="text-foreground-dim/60">·</span>
+              <a
+                href="https://twitter.com/earlynotwrong"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-foreground-dim hover:text-signal transition-colors"
+              >
+                Twitter
+              </a>
+              <a
+                href="https://github.com/thisyearnofear/earlynotwrong"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-foreground-dim hover:text-signal transition-colors"
+              >
+                GitHub
+              </a>
             </div>
           </div>
         </section>

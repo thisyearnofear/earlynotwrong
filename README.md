@@ -237,6 +237,10 @@ A trading bot. A signals platform. A leaderboard for speculation. Financial
 advice. This is **self-knowledge for asymmetric markets** — backed by a
 portable, cross-chain reputation layer.
 
+## AG Grid
+
+[AG Grid](https://www.ag-grid.com/javascript-data-grid/getting-started/) (free Community edition) could make EarlyNotWrong's position explorer, trade history, and conviction score matrix sortable/filterable/groupable — letting users slice by token, conviction tier, or outcome without custom table code. The dashboard surfaces multiple tabular views (open positions, trade log, behavioral metrics) that benefit from inline grid interaction.
+
 ## License
 
 MIT

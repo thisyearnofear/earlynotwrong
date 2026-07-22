@@ -29,6 +29,8 @@ import type {
 } from "../lib/conviction-signal.js";
 import type { MarketNarrative } from "../lib/market-narrative.js";
 import type { MacroPauseSignal } from "../lib/sosovalue-signals.js";
+import type { JuryDeliberation } from "../lib/llm-jury.js";
+import type { CasperEcosystemContext } from "../lib/casper-mcp-client.js";
 import type { TradeStats, ReputationMetrics } from "../lib/agent-state.js";
 import type { LedgerEntry } from "conviction-core";
 import { handleMcpRequest } from "./mcp/server.js";
@@ -74,6 +76,10 @@ export interface AgentServerState {
   convictionSignals: ConvictionSignal[];
   /** Market narrative generated this cycle from SoSoValue feeds + conviction data. */
   narrative: MarketNarrative | null;
+  /** LLM conviction jury deliberation for the current cycle (7th factor). */
+  llmDeliberation: JuryDeliberation | null;
+  /** Casper ecosystem context fetched via MCP (CSPR.trade + blockchain MCP). */
+  casperEcosystemContext: CasperEcosystemContext | null;
   /** Macro event pause state — drives entry sizing this cycle. */
   macroPause: MacroPauseSignal | null;
   heldPositions: HeldPosition[];
@@ -135,6 +141,8 @@ let agentState: AgentServerState = {
   marketRegime: null,
   convictionSignals: [],
   narrative: null,
+  llmDeliberation: null,
+  casperEcosystemContext: null,
   macroPause: null,
   heldPositions: [],
   positionVerdicts: [],
@@ -443,6 +451,16 @@ app.get("/status", async (c) => {
       profitFactor,
     },
     behavioralMetrics: agentState.behavioralMetrics,
+    // LLM jury deliberation summary — provider, model, and top verdict.
+    llmJury: agentState.llmDeliberation
+      ? {
+          provider: agentState.llmDeliberation.provider,
+          model: agentState.llmDeliberation.model,
+          tokensEvaluated: agentState.llmDeliberation.tokensEvaluated,
+          marketAssessment: agentState.llmDeliberation.marketAssessment,
+          topVerdict: agentState.llmDeliberation.verdicts[0] ?? null,
+        }
+      : null,
   };
 
   return c.json(body);
@@ -556,6 +574,17 @@ app.get("/conviction", async (c) => {
 
     // ── Market narrative (SoSoValue feeds + conviction, Phase 3) ────────
     narrative: agentState.narrative,
+
+    // ── LLM conviction jury deliberation (7th factor) ──────────────────
+    // The AI's per-token reasoning, adjustments, and risk assessments.
+    // This is the "meaningful AI integration" — adjustments actually move
+    // the conviction score, and the digest is anchored on-chain.
+    llmDeliberation: agentState.llmDeliberation,
+
+    // ── Casper ecosystem context (via MCP) ─────────────────────────────
+    // The agent consumes CSPR.trade + Casper blockchain MCP servers
+    // as cross-chain market context for the LLM jury.
+    casperEcosystemContext: agentState.casperEcosystemContext,
 
     // ── Macro event pause state (SoSoValue macro calendar) ─────────────
     // Surfaces high-impact macro events that are sizing-down or skipping

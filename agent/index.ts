@@ -36,6 +36,7 @@ import {
   augmentNativeBnbOnchain,
   fetchMarketData,
   analyzeConviction,
+  runLLMJury,
   manageOpenPositions,
   harvestForBnb,
   createTradeProposals,
@@ -173,6 +174,11 @@ async function runCycle(): Promise<void> {
 
     // Step 3: Score market regime + token conviction (contrarian)
     const { regime, convictionSignals } = await analyzeConviction();
+
+    // Step 3b: LLM conviction jury — the 7th scoring factor. The jury
+    // reviews top candidates and adjusts scores ±15 based on context the
+    // deterministic scoring can't capture. Its reasoning is anchored on-chain.
+    await runLLMJury();
 
     // Step 4: Manage open positions — cap losses, let winners run
     await manageOpenPositions();
@@ -474,6 +480,8 @@ function syncServerState(): void {
     heldPositions: state.heldPositions,
     positionVerdicts: state.positionVerdicts,
     narrative: state.narrative,
+    llmDeliberation: state.llmDeliberation,
+    casperEcosystemContext: state.casperEcosystemContext,
     macroPause: state.macroPause,
     portfolio: state.portfolio,
     behavioralMetrics: state.behavioralMetrics,

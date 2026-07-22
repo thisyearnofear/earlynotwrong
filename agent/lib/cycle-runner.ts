@@ -29,6 +29,10 @@ import { sendEntryAlert, sendErrorAlert, sendExitAlert, sendGuardrailBlocked } f
 import { summarizeError } from "./errors.js";
 import { loadHolderCache, saveHolderCache, fetchHolderCount, recordHolderCount, computeHolderMetric } from "./holders.js";
 import { generateNarrative } from "./market-narrative.js";
+import { deliberateConviction, applyJuryVerdicts, computeDeliberationDigest } from "./llm-jury.js";
+import type { JuryTokenContext } from "./llm-jury.js";
+import { fetchCasperEcosystemContext, summarizeCasperContextForJury } from "./casper-mcp-client.js";
+import type { CasperEcosystemContext } from "./casper-mcp-client.js";
 import {
   fetchSsiRegimeSignal,
   fetchMacroPauseSignal,
@@ -300,6 +304,115 @@ export async function analyzeConviction(): Promise<{
   setRankedCandidates(convictionSignals);
 
   return { regime, convictionSignals };
+}
+
+// =============================================================================
+// Step 3b: LLM Conviction Jury (7th factor)
+// =============================================================================
+
+/**
+ * Run the LLM conviction jury on the top conviction candidates and apply
+ * verdicts to the signals. This is the "meaningful AI integration" — the
+ * jury's adjustment actually moves the score and can change entry decisions.
+ *
+ * The deliberation is stored in state.llmDeliberation and its digest is
+ * included in the thesis hash so the AI's reasoning is provably anchored
+ * on-chain.
+ */
+export async function runLLMJury(): Promise<void> {
+  const signals = state.convictionSignals;
+  if (signals.length === 0) {
+    state.llmDeliberation = null;
+    return;
+  }
+
+  // The jury evaluates the top candidates — same K as the entry pipeline,
+  // plus a few extra so the jury can surface tokens the 6-factor score
+  // ranked below the entry cutoff but the LLM might upgrade.
+  const juryK = Math.max(5, AGENT_CONFIG.trading.topK * 3);
+  const topCandidates = [...signals]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, juryK);
+
+  const tokenPrices = state.marketData?.tokenPrices ?? [];
+  const priceMap = new Map<string, TokenQuote>();
+  for (const t of tokenPrices) {
+    priceMap.set(t.symbol.toUpperCase(), t);
+  }
+
+  const contexts: JuryTokenContext[] = topCandidates
+    .map((s) => {
+      const quote = priceMap.get(s.symbol.toUpperCase());
+      if (!quote) return null;
+      return { symbol: s.symbol, signal: s, quote };
+    })
+    .filter((c): c is JuryTokenContext => c !== null);
+
+  if (contexts.length === 0) {
+    state.llmDeliberation = null;
+    return;
+  }
+
+  // Gather news headlines for the jury prompt — reuse the SoSoValue news
+  // the narrative generator already fetched, or pass empty if unavailable.
+  const newsHeadlines: string[] = [];
+  if (state.narrative?.headline) {
+    newsHeadlines.push(state.narrative.headline);
+  }
+
+  // Fetch Casper ecosystem context via MCP — this gives the jury cross-chain
+  // market data from Casper's native DEX (CSPR.trade) and network status.
+  // The agent doesn't just EXPOSE an MCP server — it CONSUMES the Casper
+  // ecosystem's MCP servers as part of its decision process.
+  console.log(`\n[3b/8] LLM conviction jury + Casper MCP context...`);
+  const casperCtx = await fetchCasperEcosystemContext();
+  state.casperEcosystemContext = casperCtx;
+
+  if (casperCtx.dexMcpReachable || casperCtx.chainMcpReachable) {
+    const summary = summarizeCasperContextForJury(casperCtx);
+    console.log(`  [casper-mcp] ${summary}`);
+    // Add the Casper context as an extra headline for the jury prompt
+    newsHeadlines.push(summary);
+  } else {
+    console.log(`  [casper-mcp] CSPR.trade + blockchain MCP servers unreachable — proceeding without cross-chain context`);
+  }
+
+  try {
+    const deliberation = await deliberateConviction(
+      contexts,
+      state.marketRegime!,
+      newsHeadlines,
+    );
+
+    if (!deliberation) {
+      console.log(`  [llm-jury] Disabled (LLM_JURY_DISABLED=1)`);
+      state.llmDeliberation = null;
+      return;
+    }
+
+    state.llmDeliberation = deliberation;
+
+    // Apply verdicts to the conviction signals — this actually moves scores.
+    state.convictionSignals = applyJuryVerdicts(signals, deliberation);
+
+    // Re-rank candidates after jury adjustments.
+    setRankedCandidates(state.convictionSignals);
+
+    // Log the deliberation
+    const providerLabel = deliberation.provider === "template"
+      ? "template (no API key)"
+      : `${deliberation.provider} (${deliberation.model})`;
+    console.log(`  Provider: ${providerLabel}`);
+    console.log(`  Market assessment: ${deliberation.marketAssessment}`);
+    for (const v of deliberation.verdicts.slice(0, 5)) {
+      const adj = v.adjustment >= 0 ? `+${v.adjustment}` : `${v.adjustment}`;
+      console.log(`  ${v.symbol}: ${v.adjustedScore}/100 (${adj} adj, ${v.agreement}) — ${v.keyRisk}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`  [llm-jury] Deliberation failed: ${msg}`);
+    state.llmDeliberation = null;
+  }
 }
 
 // =============================================================================
@@ -1537,6 +1650,13 @@ export async function anchorToMantle(): Promise<void> {
     exitsStop: state.positionVerdicts.filter((v) => v.action === "EXIT_STOP").length,
     exitsTrail: state.positionVerdicts.filter((v) => v.action === "EXIT_TRAIL").length,
     archetype: sentimentLabel,
+    // LLM jury deliberation digest — proves the AI's reasoning was part of
+    // the conviction record anchored on-chain. The digest is a compact,
+    // deterministic representation of the jury's provider, model, and
+    // per-token adjustments + agreement levels.
+    llmJuryDigest: state.llmDeliberation
+      ? computeDeliberationDigest(state.llmDeliberation).slice(0, 64)
+      : null,
   };
 
   const subjectHash = computeSubjectHash(

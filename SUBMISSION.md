@@ -13,14 +13,16 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 
 | Component | Status |
 |---|---|
-| Autonomous AI agent with 6-factor conviction engine | Live |
+| Autonomous AI agent with 7-factor conviction engine (6 deterministic + LLM jury) | Live |
+| LLM conviction jury — OpenAI/Anthropic integration with on-chain reasoning digest | Live |
+| Casper ecosystem MCP consumer — CSPR.trade + blockchain MCP as cross-chain signal input | Live |
 | Odra `ConvictionRegistry` on Casper Testnet | Deployed |
-| MCP server (5 tools) | Live |
+| MCP server (6 tools) — exposes conviction data to other agents | Live |
 | x402 paid paywall via cspr.cloud facilitator | Live |
 | Next.js web app — landing page, dashboard, wallet analyzer | Live |
 | Cross-chain anchoring — Casper + Mantle + Aleo | Live |
 | CROO Agent Store — `signals-live` ($0.05 USDC on Base) | Live + 3 verified purchases |
-| Test suite (Vitest) | 12 files, ~2,820 lines |
+| Test suite (Vitest) | 22 files, 289 tests |
 
 ---
 
@@ -111,9 +113,41 @@ The same live conviction SKU is also hireable on the **[CROO Agent Store](https:
 
 Casper remains the **MCP host chain** and public registry; CROO is the **USDC commerce layer** for allocator agents that discover services on the Store. One conviction engine, two payment rails, one schema: [`signals-live-v1.2.schema.json`](https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json). Verified Store purchases (2026-07-17): `d3e51b1f-…`, `ad8b40fc-…`, `0990e061-…` (3 completed after clearing empty Deliverable Schema). See [`docs/CROO_INTEGRATION.md`](docs/CROO_INTEGRATION.md).
 
-### 5. Next.js Web App — 3-Page Architecture
+### 4c. LLM Conviction Jury — the 7th scoring factor
 
-The web app is structured as a guided narrative across three routes, each with a single job:
+`agent/lib/llm-jury.ts` — an LLM-powered conviction jury that reviews the top-scoring token candidates each cycle and adjusts their conviction scores by ±15 points based on market context the deterministic scoring can't capture.
+
+**How it works:**
+
+1. After the 6-factor deterministic scoring completes, the top candidates are packaged with their price data, breakdown, regime context, and news headlines.
+2. The jury sends a structured prompt to an LLM (OpenAI GPT-4o-mini or Anthropic Claude Haiku, auto-detected from env vars) asking for per-token adjustments, reasoning traces, agreement levels, and key risks.
+3. The LLM returns JSON verdicts. Adjustments are clamped to ±15 and applied to the conviction score — **the AI actually moves the score**, it's not just decoration.
+4. A deliberation digest (deterministic hash of provider, model, and per-token adjustments) is included in the thesis hash anchored on Casper — **proving the AI participated in the decision, not just the commentary**.
+5. When no API key is configured, a template mode generates zero-adjustment verdicts with rule-based reasoning, so the system degrades gracefully.
+
+**Why this matters for the buildathon:**
+
+This is **meaningful AI integration** — the LLM's judgment directly influences trading decisions, and its reasoning is provably anchored on-chain. The jury can see cross-chain context (Casper DEX prices, network status) alongside BSC signals, giving it a multi-chain perspective.
+
+### 4d. Casper Ecosystem MCP Consumer — the agent as MCP client
+
+`agent/lib/casper-mcp-client.ts` — the agent doesn't just EXPOSE an MCP server; it CONSUMES the Casper ecosystem's MCP servers as part of its trading cycle.
+
+**Two MCP servers consumed:**
+
+| MCP Server | Endpoint | Data fetched | Used for |
+|---|---|---|---|
+| CSPR.trade | `https://mcp.cspr.trade/mcp` | Token prices, pair liquidity, DEX tokens | Cross-chain price comparison, Casper DEX health signal |
+| Casper Blockchain | `https://mcp.cspr-ai.xyz/mcp` | Era, validators, total stake, supply | Network health monitoring, macro context |
+
+The Casper ecosystem context is:
+1. Fed to the LLM jury as cross-chain market context (the jury can see what's happening on Casper's DEX alongside BSC signals)
+2. Stored in agent state and surfaced on the dashboard
+3. Included in the cycle summary logs
+
+This makes the agent a **bidirectional participant in the Casper agent economy** — it both provides conviction data via its own MCP server and consumes Casper-native data from the ecosystem's MCP servers.
+
+### 5. Next.js Web App — 3-Page Architecture
 
 #### Landing page (`/`)
 
@@ -200,7 +234,7 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 ## Why This Fits the Buildathon
 
-- **Agentic AI**: the agent autonomously fetches market data, scores conviction, manages positions, executes trades, and anchors theses to Casper without human intervention. The dashboard surfaces the full cycle in real time — conviction signals, held positions, on-chain anchors, and the agent's own behavioral self-score.
+- **Agentic AI**: the agent autonomously fetches market data, scores conviction with a 7-factor engine (6 deterministic + LLM jury), manages positions, executes trades, and anchors theses to Casper without human intervention. The LLM conviction jury reviews top candidates each cycle, adjusts scores ±15 based on cross-chain context, and its reasoning digest is anchored on-chain — **meaningful AI integration, not cosmetic**. The agent is also a **bidirectional MCP participant**: it exposes 6 MCP tools for other agents to query, and consumes 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain signal input.
 - **DeFi**: the agent trades BSC assets with self-custody execution, and the reputation layer applies directly to DeFi agents (yield bots, oracles, treasury managers).
 - **Casper-native**: uses Odra, MCP, x402, CSPR.cloud, and casper-js-sdk — the toolkit the buildathon explicitly promotes. Casper is the primary anchor chain; the agent also mirrors to Mantle (EVM verification) and commits to Aleo (privacy-preserving thesis proof), giving each chain a distinct role in the conviction stack.
 - **Cannot be replicated on EVM**: the x402 + MCP + facilitator combination is Casper's native agent-economy stack. We document this explicitly in `docs/CASPER_INTEGRATION.md`.

@@ -60,7 +60,9 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | `agent/lib/data-providers.ts` | Composite market data: `CmcClient` (CMC Pro REST) + `SosovalueClient` (SoSoValue OpenAPI) |
 | `agent/lib/dex-trading.ts` | SoDEX spot REST client + EIP-712 signing (`SodexClient`, `SodexNonceManager`) |
 | `agent/lib/holders.ts` | On-chain holder counts (NodeReal JSON-RPC + CoinGecko fallback), growth computation |
-| `agent/lib/conviction-signal.ts` | 6-factor contrarian conviction scoring engine (pure functions) |
+| `agent/lib/conviction-signal.ts` | 7-factor contrarian conviction scoring engine (6 deterministic + LLM jury) |
+| `agent/lib/llm-jury.ts` | LLM conviction jury — reviews top candidates, adjusts scores ±15, reasoning anchored on-chain |
+| `agent/lib/casper-mcp-client.ts` | Casper ecosystem MCP consumer — fetches CSPR.trade DEX data + blockchain status as cross-chain context |
 | `agent/lib/risk-guardrails.ts` | Risk limits (drawdown, position size, daily count, concentration) |
 | `agent/lib/twak-executor.ts` | TWAK CLI wrapper (trade execution, address resolution, portfolio) |
 | `agent/lib/telegram.ts` | Telegram dispatch (3-message cycle summaries, startup, error alerts) |
@@ -123,6 +125,12 @@ src/lib/market.ts
    - Regime (20) — fear & greed + funding rate composite
    - Holder growth (10) — on-chain holder base expansion (NodeReal + CoinGecko)
    - Volatility penalty — subtracted for erratic 7d price paths
+3b. **LLM conviction jury + Casper MCP context** — the 7th factor:
+   - Fetch Casper ecosystem context via MCP (CSPR.trade DEX prices + blockchain network status)
+   - An LLM (OpenAI GPT-4o-mini or Anthropic Claude Haiku) reviews top candidates with cross-chain context
+   - Adjusts conviction scores ±15 based on market context the deterministic scoring can't capture
+   - Reasoning digest included in the thesis hash anchored on Casper
+   - Template mode (zero adjustments) when no API key is configured
 4. **Manage open positions** — tiered exits:
    - `HOLD` through ordinary drawdown ("early, not wrong")
    - `EXIT_PARTIAL` at +50% gain — sell 33%, let the rest ride (capital recycling)
@@ -164,7 +172,7 @@ src/lib/market.ts
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (249 tests across 17 files).
+- Tests live in `agent/__tests__/` — Vitest framework (289+ tests across 22+ files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
 - `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.

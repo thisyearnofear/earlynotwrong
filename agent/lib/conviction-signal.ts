@@ -150,6 +150,8 @@ export interface ConvictionSignal {
     volatilityPenalty: number;
     /** SoSoValue news sentiment adjustment (signed, ±newsMax). */
     news: number;
+    /** LLM conviction jury adjustment (signed, ±15). 0 when jury hasn't run. */
+    llmJury?: number;
   };
   /** Active signal weights for this regime — surfaced for transparency. */
   weights: SignalWeights;
@@ -161,6 +163,12 @@ export interface ConvictionSignal {
   newsSentiment: number | null;
   /** Human-readable "why" for logs and the dashboard. */
   rationale: string;
+  /** LLM jury's reasoning trace for this token (7th factor). */
+  juryReasoning?: string;
+  /** LLM jury's agreement with the contrarian thesis. */
+  juryAgreement?: string;
+  /** LLM jury's identified key risk for this entry. */
+  juryKeyRisk?: string;
 }
 
 /**

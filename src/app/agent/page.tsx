@@ -159,6 +159,8 @@ interface ConvictionData {
       volatilityPenalty: number;
       /** SoSoValue news sentiment adjustment (signed, ±10pp). */
       news: number;
+      /** LLM conviction jury adjustment (signed, ±15pp). */
+      llmJury?: number;
     };
     /** Active signal weights for this regime. */
     weights: {
@@ -175,6 +177,12 @@ interface ConvictionData {
     /** Net news sentiment in [−1, +1], or null if no related news in this cycle. */
     newsSentiment: number | null;
     rationale: string;
+    /** LLM jury reasoning trace. */
+    juryReasoning?: string;
+    /** LLM jury agreement level. */
+    juryAgreement?: string;
+    /** LLM jury identified key risk. */
+    juryKeyRisk?: string;
   }>;
   heldPositions: Array<{
     symbol: string;
@@ -206,6 +214,43 @@ interface ConvictionData {
     newsCount: number;
     macroEventCount: number;
     generatedAt: string;
+  } | null;
+  /** LLM conviction jury deliberation (7th factor). */
+  llmDeliberation: {
+    deliberatedAt: string;
+    provider: string;
+    model: string;
+    tokensEvaluated: number;
+    marketAssessment: string;
+    verdicts: Array<{
+      symbol: string;
+      adjustment: number;
+      adjustedScore: number;
+      reasoning: string;
+      agreement: string;
+      keyRisk: string;
+    }>;
+  } | null;
+  /** Casper ecosystem context fetched via MCP (CSPR.trade + blockchain MCP). */
+  casperEcosystemContext: {
+    dexMcpReachable: boolean;
+    chainMcpReachable: boolean;
+    csprPriceUsd: number | null;
+    csprUsdcLiquidityUsd: number | null;
+    topDexTokens: Array<{
+      symbol: string;
+      address: string;
+      decimals: number;
+      priceUsd?: number;
+    }>;
+    networkStatus: {
+      eraId: number;
+      activeValidators: number;
+      totalStakeCspr: number;
+      circulatingSupplyCspr: number;
+      blockHeight: number;
+    } | null;
+    fetchedAt: string;
   } | null;
   /** Macro event pause from SoSoValue calendar — drives entry sizing this cycle. */
   macroPause: {
@@ -1203,6 +1248,9 @@ function Dashboard({
                     ...(top.breakdown.news !== 0
                       ? [{ label: "News", value: top.breakdown.news, color: top.breakdown.news > 0 ? "bg-emerald-400" : "bg-impatience", text: top.breakdown.news > 0 ? "text-emerald-400" : "text-impatience" }]
                       : []),
+                    ...(top.breakdown.llmJury != null && top.breakdown.llmJury !== 0
+                      ? [{ label: "AI Jury", value: top.breakdown.llmJury, color: top.breakdown.llmJury > 0 ? "bg-purple-400" : "bg-rose-400", text: top.breakdown.llmJury > 0 ? "text-purple-400" : "text-rose-400" }]
+                      : []),
                   ];
                   const maxAbs = Math.max(...factors.map((f) => Math.abs(f.value)), 30);
                   return (
@@ -1276,6 +1324,15 @@ function Dashboard({
                             </span>
                           </span>
                         )}
+                        {s.breakdown.llmJury != null && s.breakdown.llmJury !== 0 && (
+                          <span title="LLM conviction jury adjustment">
+                            · jury{" "}
+                            <span className={s.breakdown.llmJury > 0 ? "text-purple-400" : "text-rose-400"}>
+                              {s.breakdown.llmJury > 0 ? "+" : ""}
+                              {s.breakdown.llmJury}
+                            </span>
+                          </span>
+                        )}
                       </div>
                       {s.holderCount != null && (
                         <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-foreground-dim">
@@ -1318,6 +1375,130 @@ function Dashboard({
           </CardContent>
         </Card>
         </motion.div>
+
+        {/* ── AI Deliberation Panel — LLM Conviction Jury (7th factor) ── */}
+        {conviction?.llmDeliberation && conviction.llmDeliberation.verdicts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22, duration: 0.35 }}
+          >
+            <Card className="bg-surface/30 border-border/50 border-purple-500/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+                  <span className="w-3.5 h-3.5 rounded-full bg-purple-400/80 flex items-center justify-center text-[8px]">
+                    AI
+                  </span>
+                  LLM Conviction Jury
+                  <span className="ml-auto text-[9px] font-mono text-foreground-dim normal-case tracking-normal">
+                    {conviction.llmDeliberation.provider === "template"
+                      ? "template mode"
+                      : `${conviction.llmDeliberation.provider} · ${conviction.llmDeliberation.model}`}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-1 space-y-2.5">
+                {/* Market assessment */}
+                <div className="p-2.5 rounded-lg bg-purple-500/5 border border-purple-500/15">
+                  <span className="text-[9px] font-mono uppercase tracking-wider text-purple-400/70">
+                    Market Assessment
+                  </span>
+                  <p className="text-xs text-foreground/80 mt-1 leading-relaxed">
+                    {conviction.llmDeliberation.marketAssessment}
+                  </p>
+                </div>
+
+                {/* Per-token verdicts */}
+                {conviction.llmDeliberation.verdicts.slice(0, 5).map((v, i) => {
+                  const agreementColor =
+                    v.agreement === "strong-agree" ? "text-emerald-400" :
+                    v.agreement === "agree" ? "text-emerald-400/70" :
+                    v.agreement === "neutral" ? "text-foreground-dim" :
+                    v.agreement === "disagree" ? "text-amber-400" :
+                    "text-impatience";
+                  const adjColor = v.adjustment > 0 ? "text-purple-400" : v.adjustment < 0 ? "text-rose-400" : "text-foreground-dim";
+                  return (
+                    <motion.div
+                      key={v.symbol}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 + i * 0.06 }}
+                      className="p-2.5 rounded-lg bg-surface/40 border border-border/30 hover:border-purple-500/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold">{v.symbol}</span>
+                        <span className={`text-[10px] font-mono ${agreementColor}`}>
+                          {v.agreement.replace("-", " ")}
+                        </span>
+                        <span className={`text-[10px] font-mono tabular-nums ml-auto ${adjColor}`}>
+                          {v.adjustment >= 0 ? "+" : ""}{v.adjustment} → {v.adjustedScore}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-foreground/70 leading-relaxed mb-1">
+                        {v.reasoning}
+                      </p>
+                      <div className="flex items-start gap-1 text-[10px] font-mono text-foreground-dim">
+                        <span className="text-amber-400/70 shrink-0">⚠ risk:</span>
+                        <span>{v.keyRisk}</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+
+                <div className="text-[9px] font-mono text-foreground-dim pt-1">
+                  {conviction.llmDeliberation.tokensEvaluated} tokens evaluated ·
+                  deliberated {new Date(conviction.llmDeliberation.deliberatedAt).toLocaleTimeString()} ·
+                  reasoning digest anchored on-chain
+                </div>
+
+                {/* ── Casper ecosystem context (consumed via MCP) ── */}
+                {conviction.casperEcosystemContext && (
+                  <div className="p-2.5 rounded-lg bg-surface/30 border border-border/20 mt-1">
+                    <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">
+                      Cross-chain context · Casper MCP
+                    </span>
+                    <div className="flex items-center gap-3 flex-wrap mt-1 text-[10px] font-mono">
+                      <span className={`flex items-center gap-1 ${conviction.casperEcosystemContext.dexMcpReachable ? "text-emerald-400" : "text-foreground-dim"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${conviction.casperEcosystemContext.dexMcpReachable ? "bg-emerald-400" : "bg-foreground-dim"}`} />
+                        CSPR.trade
+                      </span>
+                      <span className={`flex items-center gap-1 ${conviction.casperEcosystemContext.chainMcpReachable ? "text-emerald-400" : "text-foreground-dim"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${conviction.casperEcosystemContext.chainMcpReachable ? "bg-emerald-400" : "bg-foreground-dim"}`} />
+                        Casper chain
+                      </span>
+                      {conviction.casperEcosystemContext.csprPriceUsd !== null && (
+                        <span className="text-foreground-muted">
+                          CSPR <span className="text-foreground">${conviction.casperEcosystemContext.csprPriceUsd.toFixed(4)}</span>
+                        </span>
+                      )}
+                      {conviction.casperEcosystemContext.csprUsdcLiquidityUsd !== null && (
+                        <span className="text-foreground-muted">
+                          liq <span className="text-foreground">${(conviction.casperEcosystemContext.csprUsdcLiquidityUsd / 1000).toFixed(1)}K</span>
+                        </span>
+                      )}
+                      {conviction.casperEcosystemContext.networkStatus && (
+                        <span className="text-foreground-muted">
+                          era <span className="text-foreground">{conviction.casperEcosystemContext.networkStatus.eraId}</span> ·
+                          validators <span className="text-foreground">{conviction.casperEcosystemContext.networkStatus.activeValidators}</span>
+                        </span>
+                      )}
+                    </div>
+                    {conviction.casperEcosystemContext.topDexTokens.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1 text-[9px] font-mono text-foreground-dim">
+                        <span>DEX tokens:</span>
+                        {conviction.casperEcosystemContext.topDexTokens.slice(0, 6).map((t, i) => (
+                          <span key={i}>
+                            {t.symbol}{t.priceUsd ? ` $${t.priceUsd.toFixed(4)}` : ""}{i < Math.min(conviction.casperEcosystemContext!.topDexTokens.length, 6) - 1 ? "," : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
