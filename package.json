@@ -16,7 +16,7 @@
     "@farcaster/miniapp-sdk": "^0.3.0",
     "@google/generative-ai": "^0.24.1",
     "@lightprotocol/hasher.rs": "^0.2.1",
-    "@provablehq/aleo-wallet-adaptor-core": "^0.3.0-alpha.3",
+    "@provablehq/aleo-wallet-adaptor-core": "^1.0.0",
     "@provablehq/aleo-wallet-adaptor-react": "^0.3.0-alpha.3",
     "@provablehq/aleo-wallet-adaptor-shield": "^0.3.0-alpha.3",
     "@provablehq/sdk": "^0.10.2",
