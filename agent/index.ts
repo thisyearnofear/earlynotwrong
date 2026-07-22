@@ -486,6 +486,7 @@ function syncServerState(): void {
     portfolio: state.portfolio,
     behavioralMetrics: state.behavioralMetrics,
     ledger: state.ledger,
+    cycleHistory: state.cycleHistory,
   };
 
   setAgentState(agentSnapshot);

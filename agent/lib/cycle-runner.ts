@@ -8,6 +8,7 @@
  */
 
 import { state, GAS_BUFFER_USD, getBnbUsd, computeBankrollCap, buildPriceMap, concentrationRejectionCount, unharvestableTokens, stuckSymbols, tickUnharvestableCooldowns } from "./agent-state.js";
+import type { CycleSummary } from "./agent-state.js";
 import { AGENT_CONFIG, AGENT_MODE } from "./config.js";
 import { cmcClient, sosovalueClient, computeRSI14 } from "./data-providers.js";
 import type { TokenQuote } from "./data-providers.js";
@@ -1804,4 +1805,34 @@ export function printCycleSummary(startTime: number): void {
   if (state.errors.length > 0) {
     console.log(`  Errors:       ${state.errors.length} total`);
   }
+
+  // Record cycle summary for the dashboard timeline (ring buffer, last 10)
+  const guardrailStatus = state.portfolio
+    ? guardrails.getStatus(state.portfolio.totalValueUsd)
+    : null;
+  const topSignal = state.convictionSignals[0] ?? null;
+  const mantleAnchor = state.anchorResults.find(r => r.adapter === "mantle");
+  const anchorStatus: "success" | "skipped" | "failed" | null = mantleAnchor
+    ? mantleAnchor.status
+    : state.anchoring
+      ? state.anchoring.mode === "on-chain" ? "success" : "skipped"
+      : null;
+  const summary: CycleSummary = {
+    cycle: state.cycle,
+    startedAt: startTime,
+    durationMs: Date.now() - startTime,
+    tradesExecuted: successfulTrades,
+    tradesFailed: failedTrades,
+    volumeUsd: state.totalVolumeUsd,
+    portfolioValueUsd: state.portfolio?.totalValueUsd ?? 0,
+    drawdownPercent: guardrailStatus?.drawdownPercent ?? 0,
+    topSignal: topSignal ? { symbol: topSignal.symbol, score: topSignal.score } : null,
+    regimeScore: state.marketRegime?.score ?? null,
+    regimeLabel: state.marketRegime?.label ?? null,
+    anchorStatus,
+    juryProvider: state.llmDeliberation?.provider ?? null,
+    juryTopAdjustment: state.llmDeliberation?.verdicts[0]?.adjustment ?? null,
+  };
+  state.cycleHistory.push(summary);
+  if (state.cycleHistory.length > 10) state.cycleHistory.shift();
 }

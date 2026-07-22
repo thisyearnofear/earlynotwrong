@@ -68,6 +68,7 @@ interface PositionVerdict {
   unrealizedPnLPercent: number;
   heldThroughDrawdown: boolean;
   reason: string;
+  action?: "HOLD" | "EXIT_STOP" | "EXIT_TRAIL";
 }
 
 interface ConvictionResponse {
@@ -101,7 +102,7 @@ const ACTS = [
     title: "Score",
     label: "Act 1",
     description:
-      "Know when fear is entry fuel—not when to chase green candles. Contrarian scoring across regime, holders, and quality.",
+      "7-factor contrarian scoring: 6 deterministic factors (regime, holders, quality, RSI, volatility, news) + an LLM conviction jury that adjusts scores with reasoning.",
     color: "text-signal",
   },
   {
@@ -117,7 +118,7 @@ const ACTS = [
     title: "Anchor",
     label: "Act 3",
     description:
-      "Publish an immutable thesis hash every cycle. Proof other agents (and humans) can verify without trusting screenshots.",
+      "Publish an immutable thesis hash every cycle on Mantle + Casper. The jury's reasoning digest is included in the hash — proof other agents can verify.",
     color: "text-signal",
   },
   {
@@ -346,7 +347,14 @@ export default function Home() {
 
                   {/* Live data for each act */}
                   {act.title === "Score" && signals.length > 0 && (
-                    <div className="mt-auto pt-2 border-t border-border/30 space-y-1">
+                    <div className="mt-auto pt-2 border-t border-border/30 space-y-1.5">
+                      {/* 7-factor mini bar */}
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-foreground-dim">
+                        <span className="text-purple-400/80">6 deterministic</span>
+                        <span>+</span>
+                        <span className="text-purple-400 font-semibold">AI jury</span>
+                        <span className="text-foreground-dim">= 7 factors</span>
+                      </div>
                       {signals.slice(0, 2).map((s) => (
                         <div key={s.symbol} className="flex items-center gap-2 text-[10px] font-mono">
                           <Zap className="w-2.5 h-2.5 text-signal" />
@@ -471,38 +479,91 @@ export default function Home() {
           </motion.section>
         )}
 
-        {/* ── "Early, Not Wrong" — empty state when thesis not yet proven ─── */}
-        {convictionData && !convictionProven && isLive && (
-          <motion.section
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.55, duration: 0.4 }}
-            className="relative z-10 mb-16"
-          >
-            <div className="rounded-xl border border-dashed border-patience/30 bg-patience/5 p-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-patience/80">
-                  ◆ Early, Not Wrong
-                </span>
-                <span className="text-[10px] font-mono text-foreground-dim">
-                  — awaiting proof
-                </span>
+        {/* ── "Early, Not Wrong" — holding through drawdown (not yet proven) ─── */}
+        {convictionData && !convictionProven && isLive && (() => {
+          // Show positions currently held through drawdown — the "early" part
+          const holding = convictionData.heldPositions
+            .filter((p) => !p.stuck && p.maxUnderwaterPercent <= -5)
+            .map((p) => {
+              const verdict = convictionData.positionVerdicts.find(
+                (v) => v.symbol === p.symbol,
+              );
+              const signal = convictionData.signals.find(
+                (s) => s.symbol === p.symbol,
+              );
+              return { position: p, verdict, signal };
+            })
+            .sort((a, b) => a.position.maxUnderwaterPercent - b.position.maxUnderwaterPercent);
+
+          return (
+            <motion.section
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.55, duration: 0.4 }}
+              className="relative z-10 mb-16"
+            >
+              <div className="rounded-xl border border-dashed border-patience/30 bg-patience/5 p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-patience/80">
+                    ◆ Early, Not Wrong
+                  </span>
+                  <span className="text-[10px] font-mono text-foreground-dim">
+                    — holding through drawdown, thesis intact
+                  </span>
+                </div>
+
+                {holding.length > 0 ? (
+                  <>
+                    <p className="text-[11px] md:text-xs font-mono text-foreground-muted leading-relaxed max-w-2xl mb-3">
+                      The agent is holding {holding.length} position{holding.length > 1 ? "s" : ""} through drawdown right now.
+                      Conviction is tested when you&apos;re early, not when you&apos;re obviously right.
+                    </p>
+                    <div className="space-y-2">
+                      {holding.slice(0, 3).map(({ position: p, verdict, signal }) => (
+                        <div key={p.symbol} className="flex items-center gap-2 flex-wrap text-[11px] font-mono py-1.5 px-2.5 rounded-lg bg-surface/30 border border-border/30">
+                          <span className="text-foreground font-semibold">{p.symbol}</span>
+                          {signal && (
+                            <span className="text-signal" title={signal.rationale}>
+                              scored {signal.score}
+                            </span>
+                          )}
+                          <span className="text-foreground-dim">→</span>
+                          <span className="text-foreground-muted">
+                            held {p.cyclesHeld} cycles
+                          </span>
+                          <span className="text-foreground-dim">→</span>
+                          <span className="text-impatience font-semibold">
+                            −{p.maxUnderwaterPercent.toFixed(1)}% dip
+                          </span>
+                          {verdict?.action === "HOLD" && (
+                            <span className="text-patience ml-auto flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-patience animate-pulse" />
+                              holding
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[11px] md:text-xs font-mono text-foreground-muted leading-relaxed max-w-2xl">
+                    No open position has held through significant drawdown yet.
+                    The agent holds by design — conviction is tested when you&apos;re
+                    early, not when you&apos;re obviously right.
+                  </p>
+                )}
+
+                <Link
+                  href="/agent#act-2"
+                  className="mt-4 inline-flex items-center gap-1 text-[11px] font-mono text-signal hover:underline"
+                >
+                  Watch the conviction ledger on the dashboard
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
               </div>
-              <p className="text-[11px] md:text-xs font-mono text-foreground-muted leading-relaxed max-w-2xl">
-                No open position has held through ≥10% drawdown and recovered yet.
-                The agent holds by design — conviction is tested when you&apos;re
-                early, not when you&apos;re obviously right.
-              </p>
-              <Link
-                href="/agent#act-2"
-                className="mt-4 inline-flex items-center gap-1 text-[11px] font-mono text-signal hover:underline"
-              >
-                Watch the conviction ledger on the dashboard
-                <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-          </motion.section>
-        )}
+            </motion.section>
+          );
+        })()}
 
         {/* ── Live conviction preview ──────────────────────────────────────── */}
         {signals.length > 0 && (

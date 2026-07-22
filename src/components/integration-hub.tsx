@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, FileCode2, BookOpen, Terminal, ShoppingBag, Network } from "lucide-react";
+import { ExternalLink, FileCode2, BookOpen, Terminal, ShoppingBag, Network, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   crooStoreUrl,
@@ -18,6 +18,16 @@ const REQUESTER_SNIPPET = `cd examples/croo-requester
 npm install && npm run dry-run    # no payment
 export CROO_SDK_KEY=croo_sk_...   # requester key (not provider)
 npm start                         # live CROO purchase`;
+
+const MCP_TOOLS = [
+  { name: "get_latest_conviction", description: "Current top signals + scores", price: "FREE", isNew: false },
+  { name: "get_by_thesis", description: "Query by thesis hash", price: "FREE", isNew: false },
+  { name: "get_agent_reputation", description: "Behavioral metrics + archetype", price: "FREE", isNew: false },
+  { name: "get_jury_deliberation", description: "LLM jury reasoning + verdicts", price: "FREE", isNew: true },
+  { name: "get_subject_history", description: "Historical conviction records", price: "$0.10 CSPR", isNew: false },
+  { name: "cross_chain_lookup", description: "Cross-chain anchor verification", price: "$0.10 CSPR", isNew: false },
+  { name: "get_live_signals", description: "Full signals-live/v1.2 payload", price: "$0.50 CSPR", isNew: false },
+] as const;
 
 interface IntegrationHubProps {
   className?: string;
@@ -84,6 +94,53 @@ export function IntegrationHub({ className }: IntegrationHubProps) {
             Open CROO Store listing
             <ExternalLink className="w-3 h-3" />
           </a>
+        </div>
+      </div>
+
+      {/* ── MCP Tools Surface — 7 tools exposed by the agent's MCP server ── */}
+      <div className="px-4 py-3 border-t border-border/40">
+        <div className="flex items-center gap-2 mb-2">
+          <Wrench className="w-3.5 h-3.5 text-signal" />
+          <span className="text-[10px] font-mono uppercase tracking-widest text-signal">
+            MCP Tools (7)
+          </span>
+          <span className="text-[10px] font-mono text-foreground-dim normal-case tracking-normal">
+            — exposed at {MCP_ENDPOINT.replace("https://", "")}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          {MCP_TOOLS.map((tool) => (
+            <div
+              key={tool.name}
+              className={cn(
+                "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono",
+                tool.isNew
+                  ? "border-purple-500/30 bg-purple-500/5"
+                  : "border-border/30 bg-surface/30",
+              )}
+            >
+              <code className={cn(
+                "text-foreground shrink-0",
+                tool.isNew && "text-purple-400 font-semibold",
+              )}>
+                {tool.name}
+              </code>
+              <span className="text-foreground-dim truncate hidden sm:inline">
+                {tool.description}
+              </span>
+              <span className={cn(
+                "ml-auto shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold",
+                tool.price === "FREE"
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-amber-500/10 text-amber-400",
+              )}>
+                {tool.isNew && (
+                  <span className="mr-1 text-purple-400">NEW</span>
+                )}
+                {tool.price}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 

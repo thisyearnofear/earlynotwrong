@@ -103,6 +103,24 @@ export interface TradeStats {
   largestLossUsd: number;
 }
 
+/** Compact summary of a completed cycle — used for the dashboard timeline. */
+export interface CycleSummary {
+  cycle: number;
+  startedAt: number;
+  durationMs: number;
+  tradesExecuted: number;
+  tradesFailed: number;
+  volumeUsd: number;
+  portfolioValueUsd: number;
+  drawdownPercent: number;
+  topSignal: { symbol: string; score: number } | null;
+  regimeScore: number | null;
+  regimeLabel: string | null;
+  anchorStatus: "success" | "skipped" | "failed" | null;
+  juryProvider: string | null;
+  juryTopAdjustment: number | null;
+}
+
 /** Serializable state published via the MCP server. */
 export interface AgentState {
   cycle: number;
@@ -186,6 +204,8 @@ export const state = {
   cycleExecutionDraft: emptyCycleExecution(0),
   /** Finalized execution snapshot from the last completed cycle step. */
   lastCycleExecution: null as CycleExecutionSnapshot | null,
+  /** Ring buffer of recent cycle summaries for the dashboard timeline. */
+  cycleHistory: [] as CycleSummary[],
 };
 
 // =============================================================================
