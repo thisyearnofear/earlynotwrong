@@ -1,0 +1,70 @@
+{
+  "alert": "Agent cycle slow",
+  "alertType": "METRIC_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "description": "Trading cycle duration exceeded 10 minutes — investigate API latency, holder fetches, or TWAK hangs.",
+  "labels": {
+    "severity": "warning",
+    "team": "early-not-wrong"
+  },
+  "condition": {
+    "compositeQuery": {
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "metrics",
+            "source": "",
+            "stepInterval": 60,
+            "disabled": false,
+            "filter": {
+              "expression": "service.name = 'early-not-wrong-agent'"
+            },
+            "having": { "expression": "" },
+            "aggregations": [
+              {
+                "metricName": "agent.cycle.duration_ms",
+                "timeAggregation": "avg",
+                "spaceAggregation": "max"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "basic": {
+        "kind": "basic",
+        "spec": [
+          {
+            "name": "warning",
+            "op": "above",
+            "target": 600000,
+            "matchType": "at_least_once",
+            "channels": []
+          }
+        ]
+      }
+    }
+  },
+  "evaluation": {
+    "rolling": {
+      "kind": "rolling",
+      "spec": {
+        "evalWindow": "4h",
+        "frequency": "5m"
+      }
+    }
+  },
+  "notificationSettings": {
+    "groupBy": [],
+    "renotify": {
+      "enabled": false,
+      "interval": "4h",
+      "alertStates": ["firing"]
+    }
+  }
+}

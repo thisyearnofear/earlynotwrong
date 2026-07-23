@@ -33,6 +33,7 @@ import { generateNarrative } from "./market-narrative.js";
 import { deliberateConviction, applyJuryVerdicts, computeDeliberationDigest } from "./llm-jury.js";
 import type { JuryTokenContext } from "./llm-jury.js";
 import { fetchCasperEcosystemContext, summarizeCasperContextForJury } from "./casper-mcp-client.js";
+import { withSpan } from "./telemetry/index.js";
 import type { CasperEcosystemContext } from "./casper-mcp-client.js";
 import {
   fetchSsiRegimeSignal,
@@ -176,26 +177,32 @@ export async function analyzeConviction(): Promise<{
   regime: MarketRegime;
   convictionSignals: ConvictionSignal[];
 }> {
-  console.log("\n[3/8] Scoring market regime + token conviction (contrarian)...");
+  return withSpan(
+    "conviction.analyze",
+    async (span) => {
+      console.log("\n[3/8] Scoring market regime + token conviction (contrarian)...");
 
-  const md = state.marketData;
+      const md = state.marketData;
 
-  // SoSoValue augmentations — SSI index regime confirmation + per-symbol
-  // news sentiment. Both degrade silently if SoSoValue is offline.
-  // News keyword-extraction needs the eligible-token universe so common
-  // 3-letter English words (USD, AND, FOR) can't false-match as tickers.
-  const tickerUniverse = new Set(AGENT_CONFIG.competition.eligibleTokens.map((s) => s.toUpperCase()));
-  const [ssi, newsSignal] = await Promise.all([
-    fetchSsiRegimeSignal(),
-    fetchNewsSentimentSignal(tickerUniverse),
-  ]);
-  const ssiConfirmation = ssi.indicesRead > 0 ? ssi.confirmation : null;
+      const tickerUniverse = new Set(
+        AGENT_CONFIG.competition.eligibleTokens.map((s) => s.toUpperCase()),
+      );
+      const [ssi, newsSignal] = await Promise.all([
+        fetchSsiRegimeSignal(),
+        fetchNewsSentimentSignal(tickerUniverse),
+      ]);
+      const ssiConfirmation = ssi.indicesRead > 0 ? ssi.confirmation : null;
 
-  const regime = scoreMarketRegime(
-    md?.globalMetrics ?? null,
-    md?.derivatives ?? null,
-    ssiConfirmation,
-  );
+      const regime = await withSpan("conviction.score_regime", async (regimeSpan) => {
+        const scored = scoreMarketRegime(
+          md?.globalMetrics ?? null,
+          md?.derivatives ?? null,
+          ssiConfirmation,
+        );
+        regimeSpan?.setAttribute("regime.score", scored.score);
+        regimeSpan?.setAttribute("regime.label", scored.label);
+        return scored;
+      });
   const ssiNote =
     ssi.indicesRead > 0
       ? ` · SSI ${ssi.avgPercentChange7d >= 0 ? "+" : ""}${ssi.avgPercentChange7d.toFixed(1)}% (${ssi.indicesRead} indices)`
@@ -304,7 +311,13 @@ export async function analyzeConviction(): Promise<{
 
   setRankedCandidates(convictionSignals);
 
-  return { regime, convictionSignals };
+      span?.setAttribute("conviction.signals", convictionSignals.length);
+      span?.setAttribute("conviction.top_score", top[0]?.score ?? 0);
+
+      return { regime, convictionSignals };
+    },
+    { "cycle.number": state.cycle },
+  );
 }
 
 // =============================================================================
@@ -321,6 +334,7 @@ export async function analyzeConviction(): Promise<{
  * on-chain.
  */
 export async function runLLMJury(): Promise<void> {
+  return withSpan("conviction.llm_jury", async (span) => {
   const signals = state.convictionSignals;
   if (signals.length === 0) {
     state.llmDeliberation = null;
@@ -366,7 +380,12 @@ export async function runLLMJury(): Promise<void> {
   // The agent doesn't just EXPOSE an MCP server — it CONSUMES the Casper
   // ecosystem's MCP servers as part of its decision process.
   console.log(`\n[3b/8] LLM conviction jury + Casper MCP context...`);
-  const casperCtx = await fetchCasperEcosystemContext();
+  const casperCtx = await withSpan("conviction.casper_mcp", async (mcpSpan) => {
+    const ctx = await fetchCasperEcosystemContext();
+    mcpSpan?.setAttribute("casper.dex_reachable", ctx.dexMcpReachable);
+    mcpSpan?.setAttribute("casper.chain_reachable", ctx.chainMcpReachable);
+    return ctx;
+  });
   state.casperEcosystemContext = casperCtx;
 
   if (casperCtx.dexMcpReachable || casperCtx.chainMcpReachable) {
@@ -379,11 +398,21 @@ export async function runLLMJury(): Promise<void> {
   }
 
   try {
-    const deliberation = await deliberateConviction(
-      contexts,
-      state.marketRegime!,
-      newsHeadlines,
-    );
+    const deliberation = await withSpan("conviction.jury_deliberate", async (jurySpan) => {
+      const started = Date.now();
+      const result = await deliberateConviction(
+        contexts,
+        state.marketRegime!,
+        newsHeadlines,
+      );
+      jurySpan?.setAttribute("jury.duration_ms", Date.now() - started);
+      if (result) {
+        jurySpan?.setAttribute("jury.provider", result.provider);
+        jurySpan?.setAttribute("jury.model", result.model);
+        jurySpan?.setAttribute("jury.verdicts", result.verdicts.length);
+      }
+      return result;
+    });
 
     if (!deliberation) {
       console.log(`  [llm-jury] Disabled (LLM_JURY_DISABLED=1)`);
@@ -414,6 +443,7 @@ export async function runLLMJury(): Promise<void> {
     console.warn(`  [llm-jury] Deliberation failed: ${msg}`);
     state.llmDeliberation = null;
   }
+  }, { "cycle.number": state.cycle });
 }
 
 // =============================================================================

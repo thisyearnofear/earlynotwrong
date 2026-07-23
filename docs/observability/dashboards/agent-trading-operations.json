@@ -1,0 +1,1065 @@
+{
+  "title": "Early Not Wrong — Agent Trading Operations",
+  "description": "Autonomous trading agent: portfolio, conviction regime, guardrails, Mantle/Casper anchors, and run_cycle trace waterfall. Import after OTEL export is enabled.",
+  "tags": [
+    "early-not-wrong",
+    "agent",
+    "hackathon",
+    "opentelemetry"
+  ],
+  "version": "v4",
+  "uploadedGrafana": false,
+  "dotMigrated": true,
+  "variables": {},
+  "panelMap": {},
+  "layout": [
+    {
+      "h": 0,
+      "i": 1,
+      "w": 12,
+      "x": 0,
+      "y": "enw-sec-ops-0001",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 0,
+      "i": 3,
+      "w": 3,
+      "x": 1,
+      "y": "enw-val-portfolio",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 3,
+      "i": 3,
+      "w": 3,
+      "x": 1,
+      "y": "enw-val-regime",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 6,
+      "i": 3,
+      "w": 3,
+      "x": 1,
+      "y": "enw-val-drawdown",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 9,
+      "i": 3,
+      "w": 3,
+      "x": 1,
+      "y": "enw-val-positions",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 0,
+      "i": 1,
+      "w": 12,
+      "x": 4,
+      "y": "enw-sec-cycle-0002",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 0,
+      "i": 6,
+      "w": 6,
+      "x": 5,
+      "y": "enw-graph-cycle-dur",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 6,
+      "i": 6,
+      "w": 6,
+      "x": 5,
+      "y": "enw-graph-trades",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 0,
+      "i": 6,
+      "w": 6,
+      "x": 11,
+      "y": "enw-graph-anchors",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 6,
+      "i": 6,
+      "w": 6,
+      "x": 11,
+      "y": "enw-graph-guardrails",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 0,
+      "i": 1,
+      "w": 12,
+      "x": 17,
+      "y": "enw-sec-trace-0003",
+      "moved": false,
+      "static": false
+    },
+    {
+      "h": 0,
+      "i": 8,
+      "w": 12,
+      "x": 18,
+      "y": "enw-list-traces",
+      "moved": false,
+      "static": false
+    }
+  ],
+  "widgets": [
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Portfolio pulse",
+      "fillSpans": false,
+      "id": "enw-sec-ops-0001",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "row",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Portfolio pulse",
+      "yAxisUnit": ""
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Portfolio (USD)",
+      "fillSpans": false,
+      "id": "enw-val-portfolio",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "value",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Portfolio (USD)",
+      "yAxisUnit": "currency",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-val-portfolio-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.portfolio.usd",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "latest"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Regime score",
+      "fillSpans": false,
+      "id": "enw-val-regime",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "value",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Regime score",
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-val-regime-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.regime.score",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "latest"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Drawdown %",
+      "fillSpans": false,
+      "id": "enw-val-drawdown",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "value",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Drawdown %",
+      "yAxisUnit": "percent",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-val-drawdown-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.drawdown.percent",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "latest"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Active positions",
+      "fillSpans": false,
+      "id": "enw-val-positions",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "value",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Active positions",
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-val-positions-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.positions.active",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "latest"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Cycle health",
+      "fillSpans": false,
+      "id": "enw-sec-cycle-0002",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "row",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Cycle health",
+      "yAxisUnit": ""
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Cycle duration (ms)",
+      "fillSpans": false,
+      "id": "enw-graph-cycle-dur",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Cycle duration (ms)",
+      "yAxisUnit": "ms",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-graph-cycle-dur-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.cycle.duration_ms",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "avg"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Trade outcomes / cycle",
+      "fillSpans": false,
+      "id": "enw-graph-trades",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Trade outcomes / cycle",
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-graph-trades-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.trades.succeeded",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "increase"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "succeeded",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            },
+            {
+              "queryName": "B",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "B",
+              "aggregations": [
+                {
+                  "metricName": "agent.trades.failed",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "increase"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "failed",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Anchor results by adapter",
+      "fillSpans": false,
+      "id": "enw-graph-anchors",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Anchor results by adapter",
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-graph-anchors-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.anchor.results",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "sum",
+                  "temporality": null,
+                  "timeAggregation": "increase"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "id": "anchor.adapter--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "anchor.adapter",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "id": "anchor.status--string--tag--false",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "anchor.status",
+                  "type": "tag"
+                }
+              ],
+              "having": {
+                "expression": ""
+              },
+              "legend": "{{anchor.adapter}} {{anchor.status}}",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Guardrail rejections",
+      "fillSpans": false,
+      "id": "enw-graph-guardrails",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Guardrail rejections",
+      "yAxisUnit": "none",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-graph-guardrails-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "queryName": "A",
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "aggregations": [
+                {
+                  "metricName": "agent.guardrails.rejected",
+                  "reduceTo": "avg",
+                  "spaceAggregation": "avg",
+                  "temporality": null,
+                  "timeAggregation": "increase"
+                }
+              ],
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent'"
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "functions": [],
+              "groupBy": [],
+              "having": {
+                "expression": ""
+              },
+              "legend": "rejected",
+              "limit": null,
+              "orderBy": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Trace waterfall",
+      "fillSpans": false,
+      "id": "enw-sec-trace-0003",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "row",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Trace waterfall",
+      "yAxisUnit": ""
+    },
+    {
+      "bucketCount": 30,
+      "bucketWidth": 0,
+      "columnUnits": {},
+      "description": "Recent agent.run_cycle traces",
+      "fillSpans": false,
+      "id": "enw-list-traces",
+      "isStacked": false,
+      "mergeAllActiveQueries": false,
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "list",
+      "selectedLogFields": [
+        {
+          "dataType": "string",
+          "name": "body",
+          "type": ""
+        },
+        {
+          "dataType": "string",
+          "name": "timestamp",
+          "type": ""
+        }
+      ],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "stackedBarChart": false,
+      "thresholds": [],
+      "title": "Recent agent.run_cycle traces",
+      "yAxisUnit": "",
+      "query": {
+        "queryType": "builder",
+        "id": "enw-list-traces-query",
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "builder": {
+          "queryData": [
+            {
+              "dataSource": "traces",
+              "queryName": "A",
+              "aggregateOperator": "noop",
+              "aggregateAttribute": {
+                "key": "",
+                "dataType": "",
+                "type": "",
+                "isColumn": false
+              },
+              "filters": {
+                "items": [],
+                "op": "AND"
+              },
+              "filter": {
+                "expression": "service.name = 'early-not-wrong-agent' AND name = 'agent.run_cycle'"
+              },
+              "groupBy": [],
+              "expression": "A",
+              "disabled": false,
+              "having": {
+                "expression": ""
+              },
+              "legend": "",
+              "limit": 20,
+              "orderBy": [
+                {
+                  "columnName": "timestamp",
+                  "order": "desc"
+                }
+              ],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        }
+      }
+    }
+  ]
+}

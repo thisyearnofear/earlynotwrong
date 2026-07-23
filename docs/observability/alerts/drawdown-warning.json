@@ -1,0 +1,70 @@
+{
+  "alert": "Agent drawdown warning",
+  "alertType": "METRIC_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "description": "Portfolio drawdown exceeds 20% — review guardrails and open positions before the 25% hard limit trips.",
+  "labels": {
+    "severity": "warning",
+    "team": "early-not-wrong"
+  },
+  "condition": {
+    "compositeQuery": {
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "metrics",
+            "source": "",
+            "stepInterval": 60,
+            "disabled": false,
+            "filter": {
+              "expression": "service.name = 'early-not-wrong-agent'"
+            },
+            "having": { "expression": "" },
+            "aggregations": [
+              {
+                "metricName": "agent.drawdown.percent",
+                "timeAggregation": "avg",
+                "spaceAggregation": "max"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "basic": {
+        "kind": "basic",
+        "spec": [
+          {
+            "name": "warning",
+            "op": "above",
+            "target": 20,
+            "matchType": "at_least_once",
+            "channels": []
+          }
+        ]
+      }
+    }
+  },
+  "evaluation": {
+    "rolling": {
+      "kind": "rolling",
+      "spec": {
+        "evalWindow": "15m",
+        "frequency": "5m"
+      }
+    }
+  },
+  "notificationSettings": {
+    "groupBy": [],
+    "renotify": {
+      "enabled": false,
+      "interval": "4h",
+      "alertStates": ["firing"]
+    }
+  }
+}

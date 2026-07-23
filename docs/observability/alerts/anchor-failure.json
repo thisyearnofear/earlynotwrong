@@ -1,0 +1,70 @@
+{
+  "alert": "Agent anchor failure",
+  "alertType": "METRIC_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "description": "Mantle or Casper anchor adapter reported failed status — check operator keys, CSPR balance, and RPC quota.",
+  "labels": {
+    "severity": "critical",
+    "team": "early-not-wrong"
+  },
+  "condition": {
+    "compositeQuery": {
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "metrics",
+            "source": "",
+            "stepInterval": 60,
+            "disabled": false,
+            "filter": {
+              "expression": "service.name = 'early-not-wrong-agent' AND anchor.status = 'failed'"
+            },
+            "having": { "expression": "" },
+            "aggregations": [
+              {
+                "metricName": "agent.anchor.results",
+                "timeAggregation": "increase",
+                "spaceAggregation": "sum"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "basic": {
+        "kind": "basic",
+        "spec": [
+          {
+            "name": "critical",
+            "op": "above",
+            "target": 0,
+            "matchType": "at_least_once",
+            "channels": []
+          }
+        ]
+      }
+    }
+  },
+  "evaluation": {
+    "rolling": {
+      "kind": "rolling",
+      "spec": {
+        "evalWindow": "4h",
+        "frequency": "5m"
+      }
+    }
+  },
+  "notificationSettings": {
+    "groupBy": ["anchor.adapter"],
+    "renotify": {
+      "enabled": true,
+      "interval": "4h",
+      "alertStates": ["firing"]
+    }
+  }
+}

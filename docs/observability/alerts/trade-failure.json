@@ -1,0 +1,70 @@
+{
+  "alert": "Agent trade execution failure",
+  "alertType": "METRIC_BASED_ALERT",
+  "ruleType": "threshold_rule",
+  "schemaVersion": "v2alpha1",
+  "description": "At least one TWAK/SoDEX trade failed in the evaluation window.",
+  "labels": {
+    "severity": "critical",
+    "team": "early-not-wrong"
+  },
+  "condition": {
+    "compositeQuery": {
+      "queries": [
+        {
+          "type": "builder_query",
+          "spec": {
+            "name": "A",
+            "signal": "metrics",
+            "source": "",
+            "stepInterval": 60,
+            "disabled": false,
+            "filter": {
+              "expression": "service.name = 'early-not-wrong-agent'"
+            },
+            "having": { "expression": "" },
+            "aggregations": [
+              {
+                "metricName": "agent.trades.failed",
+                "timeAggregation": "increase",
+                "spaceAggregation": "sum"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "selectedQueryName": "A",
+    "thresholds": {
+      "basic": {
+        "kind": "basic",
+        "spec": [
+          {
+            "name": "critical",
+            "op": "above",
+            "target": 0,
+            "matchType": "at_least_once",
+            "channels": []
+          }
+        ]
+      }
+    }
+  },
+  "evaluation": {
+    "rolling": {
+      "kind": "rolling",
+      "spec": {
+        "evalWindow": "4h",
+        "frequency": "5m"
+      }
+    }
+  },
+  "notificationSettings": {
+    "groupBy": [],
+    "renotify": {
+      "enabled": true,
+      "interval": "4h",
+      "alertStates": ["firing"]
+    }
+  }
+}

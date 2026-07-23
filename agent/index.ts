@@ -28,6 +28,15 @@
 // had already captured process.env. Keys present only in .env (not in pm2's
 // parent env) were silently missed. See lib/env-bootstrap.ts for details.
 import "./lib/env-bootstrap.js";
+import {
+  initTelemetry,
+  shutdownTelemetry,
+  withSpan,
+  recordCycleMetrics,
+  cycleLog,
+} from "./lib/telemetry/index.js";
+
+initTelemetry();
 
 import { state, getBnbUsd, stuckSymbols, tickUnharvestableCooldowns } from "./lib/agent-state.js";
 import { finalizeCycleExecution, resetCycleExecution } from "./lib/cycle-execution.js";
@@ -131,6 +140,7 @@ async function runCycle(): Promise<void> {
   state.status = "running";
   state.lastRunAt = Date.now();
   const cycleStart = Date.now();
+  const cycleNumber = state.cycle;
 
   resetCycleExecution(state.cycle);
 
@@ -155,99 +165,167 @@ async function runCycle(): Promise<void> {
   console.log(`  CYCLE #${state.cycle} — ${new Date().toISOString()}`);
   console.log(`═══════════════════════════════════════`);
 
+  cycleLog.info("cycle.start", { cycle: cycleNumber });
+
   try {
-    // Step 1: Fetch portfolio from TWAK
-    state.portfolio = await twakExecutor.getPortfolio();
-    // Augment with real on-chain value of held BEP-20s (TWAK can't see them)
-    await augmentPortfolioOnchain();
-    console.log(`\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`);
+    await withSpan(
+      "agent.run_cycle",
+      async (rootSpan) => {
+        rootSpan?.setAttribute("cycle.number", cycleNumber);
 
-    // Tick down per-token harvest cooldowns (one cycle elapsed since last tick)
-    tickUnharvestableCooldowns();
+        // Step 1: Fetch portfolio from TWAK
+        await withSpan("agent.fetch_portfolio", async () => {
+          state.portfolio = await twakExecutor.getPortfolio();
+          await augmentPortfolioOnchain();
+          console.log(
+            `\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`,
+          );
+        }, { "cycle.number": cycleNumber });
 
-    // Step 2: Fetch market data from CMC
-    await fetchMarketData();
+        tickUnharvestableCooldowns();
 
-    // Step 2b: If TWAK portfolio failed earlier, fill native BNB from chain
-    // now that we have a BNB price from market data.
-    await augmentNativeBnbOnchain();
+        // Step 2: Fetch market data
+        await withSpan("agent.fetch_market_data", async () => {
+          await fetchMarketData();
+          await augmentNativeBnbOnchain();
+        }, { "cycle.number": cycleNumber });
 
-    // Step 3: Score market regime + token conviction (contrarian)
-    const { regime, convictionSignals } = await analyzeConviction();
+        // Step 3: Score market regime + token conviction (contrarian)
+        await analyzeConviction();
 
-    // Step 3b: LLM conviction jury — the 7th scoring factor. The jury
-    // reviews top candidates and adjusts scores ±15 based on context the
-    // deterministic scoring can't capture. Its reasoning is anchored on-chain.
-    await runLLMJury();
+        // Step 3b: LLM conviction jury — the 7th scoring factor
+        await runLLMJury();
 
-    // Step 4: Manage open positions — cap losses, let winners run
-    await manageOpenPositions();
+        // Step 4: Manage open positions — cap losses, let winners run
+        await withSpan("agent.manage_positions", async () => {
+          await manageOpenPositions();
+        }, { "cycle.number": cycleNumber });
 
-    // Step 4b: Harvest mature positions to BNB if balance is low (self-funding)
-    await harvestForBnb();
+        // Step 4b: Harvest mature positions to BNB if balance is low
+        await withSpan("agent.harvest_bnb", async () => {
+          await harvestForBnb();
+        }, { "cycle.number": cycleNumber });
 
-    // Step 5: Create entry proposals from conviction signals
-    const proposals = await createTradeProposals();
+        // Step 5: Create entry proposals from conviction signals
+        const proposals = await withSpan("agent.create_proposals", async (span) => {
+          const p = await createTradeProposals();
+          span?.setAttribute("proposals.count", p.length);
+          return p;
+        }, { "cycle.number": cycleNumber });
 
-    // If no proposals, still run guardrails/anchor for the conviction record
-    if (proposals.length === 0) {
-      console.log("\n  No qualifying entry proposals this cycle.");
-    }
+        if (proposals.length === 0) {
+          console.log("\n  No qualifying entry proposals this cycle.");
+        }
 
-    // Step 6: Check risk guardrails
-    const passed = proposals.length > 0
-      ? (await checkTradeGuardrails(proposals)).passed
-      : [];
+        // Step 6: Check risk guardrails
+        const passed = proposals.length > 0
+          ? await withSpan("agent.check_guardrails", async (span) => {
+              const result = await checkTradeGuardrails(proposals);
+              span?.setAttribute("guardrails.passed", result.passed.length);
+              span?.setAttribute("guardrails.rejected", result.rejected.length);
+              return result.passed;
+            }, { "cycle.number": cycleNumber })
+          : [];
 
-    // Step 7: Execute entries that passed guardrails
-    if (passed.length > 0) {
-      await executeTrades(passed);
-    } else if (proposals.length > 0) {
-      console.log("\n[7/8] No trades passed guardrails. Skipping execution.");
-    } else {
-      console.log("\n[7/8] No entries to execute.");
-    }
+        // Step 7: Execute entries that passed guardrails
+        await withSpan("agent.execute_trades", async (span) => {
+          if (passed.length > 0) {
+            span?.setAttribute("trades.attempted", passed.length);
+            await executeTrades(passed);
+          } else if (proposals.length > 0) {
+            console.log("\n[7/8] No trades passed guardrails. Skipping execution.");
+          } else {
+            console.log("\n[7/8] No entries to execute.");
+          }
+        }, { "cycle.number": cycleNumber });
 
-    // Step 8: Anchor conviction record to Mantle
-    await anchorToMantle();
+        // Step 8: Anchor conviction record to Mantle + Casper
+        await withSpan("agent.anchor_chains", async () => {
+          await anchorToMantle();
+        }, { "cycle.number": cycleNumber });
 
-    // Step 8b: Generate market narrative from SoSoValue feeds + macro events
-    await generateAndStoreNarrative();
+        // Step 8b: Generate market narrative
+        await withSpan("agent.generate_narrative", async () => {
+          await generateAndStoreNarrative();
+        }, { "cycle.number": cycleNumber });
 
-    state.status = "idle";
-    state.nextRunAt = Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+        state.status = "idle";
+        state.nextRunAt =
+          Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
 
-    // Refresh portfolio snapshot AFTER all trades have settled, then update
-    // peak. The cycle's state.portfolio is from step 1 (pre-trade) and would
-    // otherwise register as a phantom drawdown when capital is deployed into
-    // new positions.
-    try {
-      const postCyclePortfolio = await twakExecutor.getPortfolio();
-      state.portfolio = postCyclePortfolio;
-      // Value held BEP-20s on-chain (contract-priced) so peak/drawdown track
-      // REAL portfolio value, not just the native BNB + USDC TWAK reports.
-      await augmentPortfolioOnchain();
-      await augmentNativeBnbOnchain();
-      guardrails.updatePeakValue(state.portfolio.totalValueUsd);
-    } catch (err) {
-      // If the refresh fails, fall back to the cached value rather than
-      // throw — anchoring already succeeded, this is housekeeping.
-      console.warn(`  [peak-refresh] Post-cycle portfolio refresh failed:`, summarizeError(err));
-      if (state.portfolio) {
-        guardrails.updatePeakValue(state.portfolio.totalValueUsd);
-      }
-    }
+        try {
+          const postCyclePortfolio = await twakExecutor.getPortfolio();
+          state.portfolio = postCyclePortfolio;
+          await augmentPortfolioOnchain();
+          await augmentNativeBnbOnchain();
+          guardrails.updatePeakValue(state.portfolio.totalValueUsd);
+        } catch (err) {
+          console.warn(
+            `  [peak-refresh] Post-cycle portfolio refresh failed:`,
+            summarizeError(err),
+          );
+          if (state.portfolio) {
+            guardrails.updatePeakValue(state.portfolio.totalValueUsd);
+          }
+        }
 
-    // Step 8c: Agent self-analysis — measure the agent's own trading behavior
-    // using the same conviction engine that analyzes user wallets.
-    const selfAnalysis = analyzeAgentBehavior();
-    if (selfAnalysis) {
-      state.behavioralMetrics = selfAnalysis;
-      console.log(`\n[8c/8] Agent behavioral conviction: ${selfAnalysis.score} — ${selfAnalysis.archetype}`);
-    } else {
-      state.behavioralMetrics = null;
-      console.log("\n[8c/8] Agent self-analysis: insufficient closed positions");
-    }
+        // Step 8c: Agent self-analysis
+        await withSpan("agent.self_analysis", async () => {
+          const selfAnalysis = analyzeAgentBehavior();
+          if (selfAnalysis) {
+            state.behavioralMetrics = selfAnalysis;
+            console.log(
+              `\n[8c/8] Agent behavioral conviction: ${selfAnalysis.score} — ${selfAnalysis.archetype}`,
+            );
+          } else {
+            state.behavioralMetrics = null;
+            console.log("\n[8c/8] Agent self-analysis: insufficient closed positions");
+          }
+        }, { "cycle.number": cycleNumber });
+
+        const durationMs = Date.now() - cycleStart;
+        rootSpan?.setAttribute("cycle.duration_ms", durationMs);
+        rootSpan?.setAttribute(
+          "portfolio.usd",
+          state.portfolio?.totalValueUsd ?? 0,
+        );
+        rootSpan?.setAttribute("regime.score", state.regimeScore ?? -1);
+
+        const drawdownPercent = state.portfolio
+          ? guardrails.getStatus(state.portfolio.totalValueUsd).drawdownPercent
+          : 0;
+        const activePositions = state.heldPositions.filter(
+          (p) => !p.stuck && !stuckSymbols.has(p.symbol),
+        ).length;
+        const guardrailsRejected = state.guardrailResults.filter((r) => !r.allowed).length;
+
+        rootSpan?.setAttribute("drawdown.percent", drawdownPercent);
+        rootSpan?.setAttribute("positions.active", activePositions);
+
+        recordCycleMetrics({
+          cycle: cycleNumber,
+          durationMs,
+          portfolioUsd: state.portfolio?.totalValueUsd ?? 0,
+          drawdownPercent,
+          activePositions,
+          guardrailsRejected,
+          tradesSucceeded: state.executedTrades.filter((t) => t.success).length,
+          tradesFailed: state.executedTrades.filter((t) => !t.success).length,
+          regimeScore: state.regimeScore,
+          anchorOutcomes: state.anchorResults.map((r) => ({
+            adapter: r.adapter,
+            status: r.status,
+          })),
+        });
+
+        cycleLog.info("cycle.complete", {
+          cycle: cycleNumber,
+          duration_ms: durationMs,
+          portfolio_usd: state.portfolio?.totalValueUsd ?? 0,
+        });
+      },
+      { "cycle.number": cycleNumber },
+    );
 
     finalizeCycleExecution();
 
@@ -598,6 +676,7 @@ async function main(): Promise<void> {
     stopSubscriberPolling();
     server.close();
     await stopCapClient();
+    await shutdownTelemetry();
     process.exit(0);
   });
 }

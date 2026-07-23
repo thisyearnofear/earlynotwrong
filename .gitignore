@@ -110,6 +110,10 @@ videos/*/capture/.cursorrules
 # Local agent session telemetry — unrelated to repo contents.
 .kimchi/
 
+# SigNoz Foundry generated deployment artifacts
+/pours/
+casting.yaml.lock
+
 # Rendered demo binaries — large, regeneratable, host externally (YouTube /
 # Vercel / asciinema) and link from the README rather than committing.
 docs/demo-*.mp4

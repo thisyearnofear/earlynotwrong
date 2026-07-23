@@ -1,0 +1,10 @@
+# SigNoz Foundry casting — local Docker Compose stack for hackathon observability.
+# Deploy: foundryctl cast -f casting.yaml
+# Docs: docs/observability/README.md
+apiVersion: v1alpha1
+metadata:
+  name: signoz
+spec:
+  deployment:
+    mode: docker
+    flavor: compose
