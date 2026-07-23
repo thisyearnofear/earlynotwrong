@@ -29,6 +29,11 @@
 
     /* Ethos Brand Alignment */
     --ethos-purple: #7c3aed;
+
+    /* Motion tokens (ease-out first — emil-design-eng / transitions.dev) */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --duration-fast: 150ms;
+    --duration-ui: 200ms;
 }
 
 .dark {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -56,6 +56,23 @@ import {
   NORTH_STAR_SHORT,
   DEMO_WALKTHROUGH_HREF,
 } from "@/lib/product-copy";
+import { DisclosureSection } from "@/components/agent/disclosure-section";
+import { AgentPulseSummary } from "@/components/agent/agent-pulse-summary";
+import { AgentHealthGrid } from "@/components/agent/agent-health-grid";
+import { AgentViewPanel } from "@/components/agent/agent-view-panel";
+import { SignalFactorBreakdown, RegimeBar } from "@/components/agent/signal-factor-breakdown";
+import { SignalScoringDetails } from "@/components/agent/signal-scoring-details";
+import {
+  AgentSectionNav,
+  hashToView,
+  VIEW_CONTEXT,
+  type AgentView,
+  type AgentTabBadges,
+} from "@/components/agent/agent-section-nav";
+import { PositionRow } from "@/components/agent/position-row";
+import { ProvenConvictionBanner } from "@/components/agent/proven-conviction-banner";
+import { AgentProofSummary } from "@/components/agent/agent-proof-summary";
+import { AgentHireSummary } from "@/components/agent/agent-hire-summary";
 
 // ─── Types ───
 
@@ -347,17 +364,6 @@ function formatTime(ts: number): string {
 
 // ─── Shared Components ───
 
-function StatusDot({ ok }: { ok: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-block w-2 h-2 rounded-full shadow-[0_0_8px]",
-        ok ? "bg-patience shadow-patience/50" : "bg-impatience shadow-impatience/50",
-      )}
-    />
-  );
-}
-
 function PipelineGrid() {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
@@ -384,8 +390,19 @@ function PipelineGrid() {
   );
 }
 
-// ─── Loading State: Story-Driven Hero ───
+// ─── Loading State ───
 
+function LoadingCompact() {
+  return (
+    <div className="flex flex-col items-center justify-center py-28 gap-4">
+      <RefreshCw className="w-6 h-6 text-signal animate-spin" />
+      <p className="text-sm font-mono text-foreground-muted">Connecting to agent…</p>
+      <p className="text-[10px] font-mono text-foreground-dim">Live data · BSC mainnet</p>
+    </div>
+  );
+}
+
+// Story-driven hero — demo walkthrough only
 function LoadingStory() {
   const [visibleStep, setVisibleStep] = useState(0);
 
@@ -657,33 +674,6 @@ function ActStickyNav() {
   );
 }
 
-function IntentQuickNav() {
-  const items = [
-    { href: "#signals", icon: Signal, label: "Live signals", sub: "Conviction + positions" },
-    { href: "#proof", icon: Network, label: "On-chain proof", sub: "Anchor history" },
-    { href: "#hire", icon: ShoppingBag, label: "Hire / query", sub: "MCP + CROO · v1.2" },
-  ] as const;
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-      {items.map((item) => (
-        <a
-          key={item.href}
-          href={item.href}
-          className="group flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-surface/30 hover:border-signal/30 transition-colors"
-        >
-          <item.icon className="w-4 h-4 text-signal shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-semibold text-foreground">{item.label}</p>
-            <p className="text-[10px] font-mono text-foreground-dim mt-0.5">{item.sub}</p>
-          </div>
-          <ChevronRight className="w-3.5 h-3.5 text-foreground-dim ml-auto shrink-0 group-hover:text-signal group-hover:translate-x-0.5 transition-all" />
-        </a>
-      ))}
-    </div>
-  );
-}
-
 function DemoActBanner({ act, title }: { act: number; title: string }) {
   return (
     <p className="text-[10px] font-mono uppercase tracking-widest text-signal/80 mb-2">
@@ -692,7 +682,108 @@ function DemoActBanner({ act, title }: { act: number; title: string }) {
   );
 }
 
+function LlmJuryCard({ conviction }: { conviction: ConvictionData | null }) {
+  return (
+    <Card className="bg-surface/30 border-border/50 border-purple-500/20">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+          <span className="w-3.5 h-3.5 rounded-full bg-purple-400/80 flex items-center justify-center text-[8px]">
+            AI
+          </span>
+          LLM Conviction Jury
+          <span className="ml-1 text-[9px] font-mono normal-case tracking-normal text-purple-400/70">
+            7th factor
+          </span>
+          {conviction?.llmDeliberation && (
+            <span className="ml-auto text-[9px] font-mono text-foreground-dim normal-case tracking-normal">
+              {conviction.llmDeliberation.provider === "template"
+                ? "template mode"
+                : `${conviction.llmDeliberation.provider} · ${conviction.llmDeliberation.model}`}
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-1 space-y-2.5">
+        {conviction?.llmDeliberation && conviction.llmDeliberation.verdicts.length > 0 ? (
+          <>
+            <div className="p-2.5 rounded-lg bg-purple-500/5 border border-purple-500/15">
+              <span className="text-[9px] font-mono uppercase tracking-wider text-purple-400/70">
+                Market Assessment
+              </span>
+              <p className="text-xs text-foreground/80 mt-1 leading-relaxed">
+                {conviction.llmDeliberation.marketAssessment}
+              </p>
+            </div>
+            {conviction.llmDeliberation.verdicts.slice(0, 5).map((v, i) => {
+              const agreementColor =
+                v.agreement === "strong-agree" ? "text-emerald-400" :
+                v.agreement === "agree" ? "text-emerald-400/70" :
+                v.agreement === "neutral" ? "text-foreground-dim" :
+                v.agreement === "disagree" ? "text-amber-400" :
+                "text-impatience";
+              const adjColor = v.adjustment > 0 ? "text-purple-400" : v.adjustment < 0 ? "text-rose-400" : "text-foreground-dim";
+              const baseScore = v.adjustedScore - v.adjustment;
+              return (
+                <motion.div
+                  key={v.symbol}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 + i * 0.06 }}
+                  className="p-2.5 rounded-lg bg-surface/40 border border-border/30 hover:border-purple-500/20 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold">{v.symbol}</span>
+                    <span className={`text-[10px] font-mono ${agreementColor}`}>
+                      {v.agreement.replace("-", " ")}
+                    </span>
+                    <span className="ml-auto flex items-center gap-1 text-[10px] font-mono tabular-nums">
+                      <span className="text-foreground-dim line-through">{baseScore}</span>
+                      <span className={v.adjustment < 0 ? "text-rose-400" : v.adjustment > 0 ? "text-purple-400" : "text-foreground-dim"}>
+                        {v.adjustment < 0 ? "→" : v.adjustment > 0 ? "→" : "="}
+                      </span>
+                      <span className={adjColor}>{v.adjustedScore}</span>
+                      <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${v.adjustment < 0 ? "bg-rose-500/15 text-rose-400" : v.adjustment > 0 ? "bg-purple-500/15 text-purple-400" : "bg-foreground-dim/10 text-foreground-dim"}`}>
+                        {v.adjustment >= 0 ? "+" : ""}{v.adjustment}
+                      </span>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-foreground/70 leading-relaxed mb-1">
+                    {v.reasoning}
+                  </p>
+                  <div className="flex items-start gap-1 text-[10px] font-mono text-foreground-dim">
+                    <span className="text-amber-400/70 shrink-0">⚠ risk:</span>
+                    <span>{v.keyRisk}</span>
+                  </div>
+                </motion.div>
+              );
+            })}
+            <div className="text-[9px] font-mono text-foreground-dim pt-1">
+              {conviction.llmDeliberation.tokensEvaluated} tokens evaluated ·
+              deliberated {new Date(conviction.llmDeliberation.deliberatedAt).toLocaleTimeString()} ·
+              reasoning digest anchored on-chain
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
+            <span className="w-8 h-8 rounded-full bg-purple-400/20 flex items-center justify-center text-[10px] font-mono text-purple-400 mb-2">
+              AI
+            </span>
+            <p className="text-xs font-mono">Jury in template mode</p>
+            <p className="text-[10px] font-mono text-foreground-dim mt-1 text-center max-w-xs">
+              No LLM API key configured — the jury runs with zero adjustments.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Dashboard ───
+
+function sectionVisible(view: AgentView, target: AgentView, demoMode: boolean): boolean {
+  return demoMode || view === target;
+}
 
 function Dashboard({
   status,
@@ -707,6 +798,51 @@ function Dashboard({
   signalsTeaser: SignalsLiveTeaser | null;
   demoMode: boolean;
 }) {
+  const [view, setView] = useState<AgentView>("live");
+
+  useEffect(() => {
+    if (demoMode || typeof window === "undefined") return;
+    const sync = () => setView(hashToView(window.location.hash));
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [demoMode]);
+
+  const showLive = sectionVisible(view, "live", demoMode);
+  const showProof = sectionVisible(view, "proof", demoMode);
+  const showHire = sectionVisible(view, "hire", demoMode);
+
+  const handleViewChange = useCallback((next: AgentView) => {
+    setView(next);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  const tabBadges = useMemo((): AgentTabBadges => {
+    const top = conviction?.signals[0]?.symbol;
+    const posCount = conviction?.heldPositions.length ?? 0;
+    const anchored = conviction?.anchorResults?.some((r) => r.status === "success");
+    return {
+      live: top ?? (posCount > 0 ? `${posCount} pos` : undefined),
+      proof: anchored ? "anchored" : undefined,
+      hire: "v1.2",
+    };
+  }, [conviction]);
+
+  useEffect(() => {
+    if (demoMode || typeof window === "undefined") return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "1") handleViewChange("live");
+      if (e.key === "2") handleViewChange("proof");
+      if (e.key === "3") handleViewChange("hire");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [demoMode, handleViewChange]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -716,32 +852,46 @@ function Dashboard({
     >
       {demoMode && <ActStickyNav />}
 
-      {/* Orientation — simple by default; full 4-act pipeline in demo walkthrough */}
+      {/* Orientation — compact in simple view; full 4-act pipeline in demo */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0, duration: 0.4 }}
-        className="border-l-2 border-signal/40 pl-4 py-1"
+        className={cn(!demoMode && "space-y-4")}
       >
-        <p className="text-sm text-foreground leading-relaxed">
-          {demoMode ? (
-            <>
+        {demoMode ? (
+          <div className="border-l-2 border-signal/40 pl-4 py-1">
+            <p className="text-sm text-foreground leading-relaxed">
               Demo walkthrough — four acts from live scoring to verifiable hire.
               Same agent, same API; this mode is for judges and integrators
               tracing the full narrative.
-            </>
-          ) : (
-            NORTH_STAR
-          )}
-        </p>
-        <p className="text-[10px] font-mono text-foreground-dim mt-1.5">
-          {NORTH_STAR_SHORT} · cycle #{status.cycle} · BSC mainnet
-        </p>
+            </p>
+            <p className="text-[10px] font-mono text-foreground-dim mt-1.5">
+              {NORTH_STAR_SHORT} · cycle #{status.cycle} · BSC mainnet
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-foreground-muted leading-relaxed max-w-2xl">
+            {NORTH_STAR_SHORT}
+            <span className="text-foreground-dim font-mono text-[10px] ml-2">
+              · cycle #{status.cycle}
+            </span>
+          </p>
+        )}
 
         {!demoMode && (
-          <div className="mt-4">
-            <IntentQuickNav />
-          </div>
+          <>
+            <div className="hidden sm:block">
+              <AgentSectionNav
+                active={view}
+                onChange={handleViewChange}
+                badges={tabBadges}
+              />
+            </div>
+            <p className="text-xs text-foreground-dim leading-relaxed sm:hidden">
+              {VIEW_CONTEXT[view]}
+            </p>
+          </>
         )}
 
         {demoMode && (
@@ -853,268 +1003,40 @@ function Dashboard({
         </motion.div>
       )}
 
-      {/* Row 1 — Act 1: Agent is live (status, portfolio, guardrails, self-score) */}
+      {/* Row 1 — pulse summary (simple) or full stat cards (demo) */}
+      {demoMode ? (
       <motion.div
         id="act-1"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05, duration: 0.4 }}
       >
-        {demoMode && <DemoActBanner act={1} title="Live" />}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <DemoActBanner act={1} title="Live" />
+        <AgentHealthGrid status={status} animated />
+      </motion.div>
+      ) : (
+        <>
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05, duration: 0.35 }}
         >
-          <Card className="bg-surface/30 border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5 text-signal" />
-                Agent Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3">
-                <StatusDot ok={status.status === "idle"} />
-                <span className="text-lg font-semibold capitalize">{status.status}</span>
-                {status.status === "running" && (
-                  <span className="text-xs font-mono text-signal animate-pulse">
-                    RUNNING...
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div>
-                  <span className="text-foreground-muted">Version</span>
-                  <p className="text-foreground">{status.version}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Cycle</span>
-                  <p className="text-foreground">#{status.cycle}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Last Run</span>
-                  <p className="text-foreground">{formatTime(status.lastRunAt)}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Next Run</span>
-                  <p className="text-foreground">{formatTime(status.nextRunAt)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <AgentPulseSummary status={status} conviction={conviction} />
         </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08, duration: 0.35 }}
+        <DisclosureSection
+          title="Agent health & metrics"
+          subtitle="Status · guardrails · performance · conviction index"
+          icon={<Activity className="w-3.5 h-3.5 text-signal" />}
         >
-          <Card className="bg-surface/30 border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                <DollarSign className="w-3.5 h-3.5 text-patience" />
-                Portfolio
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-2xl sm:text-3xl font-bold tabular-nums text-foreground">
-                {formatCurrency(status.portfolio.totalValueUsd)}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div>
-                  <span className="text-foreground-muted">Positions</span>
-                  <p className="text-foreground">{status.portfolio.positions}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Chains</span>
-                  <p className="text-foreground">{status.portfolio.chains.join(", ")}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Volume (total)</span>
-                  <p className="text-patience">{formatCurrency(status.totalVolumeUsd)}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Errors</span>
-                  <p className={cn(status.errors > 0 ? "text-impatience" : "text-patience")}>
-                    {status.errors}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+          <AgentHealthGrid status={status} />
+        </DisclosureSection>
+        </>
+      )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.11, duration: 0.35 }}
-        >
-          <Card className="bg-surface/30 border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-impatience" />
-                Guardrails
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3">
-                <StatusDot ok={status.guardrails.allOk} />
-                <span className={cn(
-                  "text-lg font-semibold",
-                  status.guardrails.allOk ? "text-patience" : "text-impatience",
-                )}>
-                  {status.guardrails.allOk ? "All Systems Nominal" : "Limit Breached"}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div>
-                  <span className="text-foreground-muted">Drawdown</span>
-                  <p className={cn(
-                    status.guardrails.drawdownExceeded ? "text-impatience" : "text-patience"
-                  )}>
-                    {status.guardrails.drawdownPercent.toFixed(1)}%
-                  </p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Peak Value</span>
-                  <p className="text-foreground">{formatCurrency(status.guardrails.peakValueUsd)}</p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Today's Trades</span>
-                  <p className={cn(
-                    status.guardrails.tradesToday >= status.guardrails.dailyLimit
-                      ? "text-impatience"
-                      : "text-patience"
-                  )}>
-                    {status.guardrails.tradesToday}/{status.guardrails.dailyLimit}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.14, duration: 0.35 }}
-        >
-          <Card className="bg-surface/30 border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                <TrendingUp className="w-3.5 h-3.5 text-patience" />
-                Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className={cn(
-                "text-2xl sm:text-3xl font-bold tabular-nums",
-                (status.metrics?.netPnlUsd ?? 0) >= 0 ? "text-patience" : "text-impatience"
-              )}>
-                {formatCurrency(status.metrics?.netPnlUsd ?? 0)}
-                <span className="text-xs font-normal text-foreground-muted ml-2">net PnL</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div>
-                  <span className="text-foreground-muted">Win Rate</span>
-                  <p className={cn(
-                    (status.metrics?.winRate ?? 0) >= 0.5 ? "text-patience" : "text-foreground"
-                  )}>
-                    {((status.metrics?.winRate ?? 0) * 100).toFixed(0)}%
-                  </p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Entries / Exits</span>
-                  <p className="text-foreground">
-                    {(status.metrics?.totalEntries ?? 0)} / {(status.metrics?.totalExits ?? 0)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Profit Factor</span>
-                  <p className={cn(
-                    (status.metrics?.profitFactor ?? 0) >= 1 ? "text-patience" : "text-foreground"
-                  )}>
-                    {(status.metrics?.profitFactor ?? 0).toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-foreground-muted">Gas Spent</span>
-                  <p className="text-foreground">{formatCurrency(status.metrics?.totalGasSpentUsd ?? 0)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.16, duration: 0.35 }}
-        >
-          <Card className="bg-surface/30 border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-signal" />
-                Agent Conviction Index
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {status.behavioralMetrics ? (
-                <>
-                  <div className={cn(
-                    "text-2xl sm:text-3xl font-bold tabular-nums",
-                    (status.behavioralMetrics.score ?? 0) >= 60 ? "text-patience" : "text-impatience"
-                  )}>
-                    {status.behavioralMetrics.score}
-                    <span className="text-xs font-normal text-foreground-muted ml-2">/ 100</span>
-                  </div>
-                  <div className="text-sm font-medium text-foreground">
-                    {status.behavioralMetrics.archetype}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                    <div>
-                      <span className="text-foreground-muted">Win Rate</span>
-                      <p className="text-foreground">{status.behavioralMetrics.winRate}%</p>
-                    </div>
-                    <div>
-                      <span className="text-foreground-muted">Avg Hold</span>
-                      <p className="text-foreground">{status.behavioralMetrics.avgHoldingPeriod}d</p>
-                    </div>
-                    <div>
-                      <span className="text-foreground-muted">Positions</span>
-                      <p className="text-foreground">{status.behavioralMetrics.totalPositions}</p>
-                    </div>
-                    <div>
-                      <span className="text-foreground-muted">Early Exits</span>
-                      <p className={cn(
-                        status.behavioralMetrics.earlyExits === 0 ? "text-patience" : "text-impatience"
-                      )}>
-                        {status.behavioralMetrics.earlyExits}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-sm text-foreground-muted">
-                  Insufficient closed positions yet. The agent will score its
-                  own behavior once it has a few exits.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-        </div>
-      </motion.div>
-
-      {/* Row 2 — Act 1 Score + Act 2 Trade: conviction signals + held positions */}
-      <motion.div
-        id="act-2"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.14, duration: 0.4 }}
-      >
+      {/* Tab panels */}
+      <AnimatePresence mode={demoMode ? "sync" : "wait"}>
+      {showLive && (
+      <AgentViewPanel viewKey="live" animate={!demoMode} id="act-2">
         {demoMode && <DemoActBanner act={2} title="Score & trade" />}
         <div id="signals" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-28">
         {/* ── Left: Conviction Signals with 7-factor breakdown bar ── */}
@@ -1150,6 +1072,7 @@ function Dashboard({
           </CardHeader>
           <CardContent className="space-y-3">
             {conviction?.regime && (
+              demoMode ? (
               <div className="p-3 rounded-lg bg-surface/40 border border-border/40">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
@@ -1222,6 +1145,13 @@ function Dashboard({
                   />
                 </div>
               </div>
+              ) : (
+                <RegimeBar
+                  score={conviction.regime.score}
+                  label={conviction.regime.label}
+                  compact
+                />
+              )
             )}
 
             {conviction?.macroPause && !conviction.macroPause.clear && (
@@ -1253,62 +1183,11 @@ function Dashboard({
 
             {conviction && conviction.signals.length > 0 ? (
               <div className="space-y-1.5">
-                {/* ── 6-factor breakdown bar chart for the top signal ── */}
-                {(() => {
-                  const top = conviction.signals[0];
-                  const factors = [
-                    { label: "Contrarian", value: top.breakdown.contrarian, color: "bg-signal", text: "text-signal" },
-                    { label: "RSI", value: top.breakdown.rsi, color: "bg-cyan-400", text: "text-cyan-400" },
-                    { label: "Quality", value: top.breakdown.quality, color: "bg-patience", text: "text-patience" },
-                    { label: "Regime", value: top.breakdown.regime, color: "bg-blue-400", text: "text-blue-400" },
-                    { label: "Holders", value: top.breakdown.holders, color: "bg-amber-400", text: "text-amber-400" },
-                    ...(top.breakdown.volatilityPenalty > 0
-                      ? [{ label: "Vol penalty", value: -top.breakdown.volatilityPenalty, color: "bg-impatience", text: "text-impatience" }]
-                      : []),
-                    ...(top.breakdown.news !== 0
-                      ? [{ label: "News", value: top.breakdown.news, color: top.breakdown.news > 0 ? "bg-emerald-400" : "bg-impatience", text: top.breakdown.news > 0 ? "text-emerald-400" : "text-impatience" }]
-                      : []),
-                    ...(top.breakdown.llmJury != null && top.breakdown.llmJury !== 0
-                      ? [{ label: "AI Jury", value: top.breakdown.llmJury, color: top.breakdown.llmJury > 0 ? "bg-purple-400" : "bg-rose-400", text: top.breakdown.llmJury > 0 ? "text-purple-400" : "text-rose-400" }]
-                      : []),
-                  ];
-                  const maxAbs = Math.max(...factors.map((f) => Math.abs(f.value)), 30);
-                  return (
-                    <div className="p-3 rounded-lg bg-surface/50 border border-border/30 mb-2">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-foreground-dim">
-                          {top.symbol} · 7-factor composition
-                        </span>
-                        <span className="text-sm font-bold tabular-nums text-signal ml-auto">
-                          {top.score}
-                        </span>
-                      </div>
-                      {/* Stacked horizontal bar — each factor proportional to its contribution */}
-                      <div className="flex h-3 rounded-full overflow-hidden bg-surface/60 gap-px">
-                        {factors.map((f, i) => (
-                          <div
-                            key={i}
-                            className={f.color}
-                            style={{ width: `${(Math.abs(f.value) / maxAbs) * 100}%` }}
-                            title={`${f.label}: ${f.value > 0 ? "+" : ""}${f.value}`}
-                          />
-                        ))}
-                      </div>
-                      {/* Factor labels with values */}
-                      <div className="flex items-center gap-2 flex-wrap mt-2 text-[9px] font-mono">
-                        {factors.map((f, i) => (
-                          <span key={i} className="flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${f.color}`} />
-                            <span className="text-foreground-dim">{f.label}</span>
-                            <span className={f.text}>
-                              {f.value > 0 ? "+" : ""}{f.value}
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {demoMode && conviction.signals[0] && (
+                  <div className="p-3 rounded-lg bg-surface/50 border border-border/30 mb-2">
+                    <SignalFactorBreakdown signal={conviction.signals[0]} />
+                  </div>
+                )}
                 {conviction.signals.slice(0, 1).map((s, i) => (
                   <motion.div
                     key={s.symbol}
@@ -1320,10 +1199,11 @@ function Dashboard({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{s.symbol}</span>
-                        <span className="text-[10px] font-mono text-foreground-dim">
+                        <span className="text-[10px] font-mono text-foreground-dim truncate">
                           {s.rationale}
                         </span>
                       </div>
+                      {demoMode && (
                       <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted">
                         <span>contrarian <span className="text-signal">{s.breakdown.contrarian}</span></span>
                         <span>· rsi <span className="text-cyan-400">{s.breakdown.rsi}</span></span>
@@ -1354,7 +1234,8 @@ function Dashboard({
                           </span>
                         )}
                       </div>
-                      {s.holderCount != null && (
+                      )}
+                      {s.holderCount != null && demoMode && (
                         <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-foreground-dim">
                           <span>{s.holderCount.toLocaleString()} holders</span>
                           {s.holderGrowthPercent != null && (
@@ -1385,6 +1266,20 @@ function Dashboard({
                     className="mt-2"
                   />
                 )}
+                {!demoMode && conviction.signals[0] && (
+                  <DisclosureSection
+                    className="mt-2"
+                    title="How this signal was scored"
+                    subtitle="Regime context · active weights · 7-factor breakdown"
+                    icon={<BarChart3 className="w-3.5 h-3.5 text-signal" />}
+                  >
+                    <SignalScoringDetails
+                      regime={conviction.regime}
+                      topSignal={conviction.signals[0]}
+                      weights={conviction.signals[0].weights}
+                    />
+                  </DisclosureSection>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
@@ -1396,117 +1291,42 @@ function Dashboard({
         </Card>
         </motion.div>
 
-        {/* ── Right: AI Deliberation Panel — LLM Conviction Jury (7th factor) ── */}
+        {/* ── Right: AI Deliberation Panel — demo shows inline; simple view collapses ── */}
+        {demoMode && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.22, duration: 0.35 }}
         >
-          <Card className="bg-surface/30 border-border/50 border-purple-500/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-purple-400/80 flex items-center justify-center text-[8px]">
-                  AI
-                </span>
-                LLM Conviction Jury
-                <span className="ml-1 text-[9px] font-mono normal-case tracking-normal text-purple-400/70">
-                  7th factor
-                </span>
-                {conviction?.llmDeliberation && (
-                  <span className="ml-auto text-[9px] font-mono text-foreground-dim normal-case tracking-normal">
-                    {conviction.llmDeliberation.provider === "template"
-                      ? "template mode"
-                      : `${conviction.llmDeliberation.provider} · ${conviction.llmDeliberation.model}`}
-                  </span>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-1 space-y-2.5">
-              {conviction?.llmDeliberation && conviction.llmDeliberation.verdicts.length > 0 ? (
-                <>
-                  {/* Market assessment */}
-                  <div className="p-2.5 rounded-lg bg-purple-500/5 border border-purple-500/15">
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-purple-400/70">
-                      Market Assessment
-                    </span>
-                    <p className="text-xs text-foreground/80 mt-1 leading-relaxed">
-                      {conviction.llmDeliberation.marketAssessment}
-                    </p>
-                  </div>
-
-                  {/* Per-token verdicts with score adjustment arrows */}
-                  {conviction.llmDeliberation.verdicts.slice(0, 5).map((v, i) => {
-                    const agreementColor =
-                      v.agreement === "strong-agree" ? "text-emerald-400" :
-                      v.agreement === "agree" ? "text-emerald-400/70" :
-                      v.agreement === "neutral" ? "text-foreground-dim" :
-                      v.agreement === "disagree" ? "text-amber-400" :
-                      "text-impatience";
-                    const adjColor = v.adjustment > 0 ? "text-purple-400" : v.adjustment < 0 ? "text-rose-400" : "text-foreground-dim";
-                    const baseScore = v.adjustedScore - v.adjustment;
-                    return (
-                      <motion.div
-                        key={v.symbol}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.3 + i * 0.06 }}
-                        className="p-2.5 rounded-lg bg-surface/40 border border-border/30 hover:border-purple-500/20 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-semibold">{v.symbol}</span>
-                          <span className={`text-[10px] font-mono ${agreementColor}`}>
-                            {v.agreement.replace("-", " ")}
-                          </span>
-                          {/* Score adjustment arrow: base → adjusted */}
-                          <span className="ml-auto flex items-center gap-1 text-[10px] font-mono tabular-nums">
-                            <span className="text-foreground-dim line-through">{baseScore}</span>
-                            <span className={v.adjustment < 0 ? "text-rose-400" : v.adjustment > 0 ? "text-purple-400" : "text-foreground-dim"}>
-                              {v.adjustment < 0 ? "→" : v.adjustment > 0 ? "→" : "="}
-                            </span>
-                            <span className={adjColor}>
-                              {v.adjustedScore}
-                            </span>
-                            <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${v.adjustment < 0 ? "bg-rose-500/15 text-rose-400" : v.adjustment > 0 ? "bg-purple-500/15 text-purple-400" : "bg-foreground-dim/10 text-foreground-dim"}`}>
-                              {v.adjustment >= 0 ? "+" : ""}{v.adjustment}
-                            </span>
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-foreground/70 leading-relaxed mb-1">
-                          {v.reasoning}
-                        </p>
-                        <div className="flex items-start gap-1 text-[10px] font-mono text-foreground-dim">
-                          <span className="text-amber-400/70 shrink-0">⚠ risk:</span>
-                          <span>{v.keyRisk}</span>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-
-                  <div className="text-[9px] font-mono text-foreground-dim pt-1">
-                    {conviction.llmDeliberation.tokensEvaluated} tokens evaluated ·
-                    deliberated {new Date(conviction.llmDeliberation.deliberatedAt).toLocaleTimeString()} ·
-                    reasoning digest anchored on-chain
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
-                  <span className="w-8 h-8 rounded-full bg-purple-400/20 flex items-center justify-center text-[10px] font-mono text-purple-400 mb-2">
-                    AI
-                  </span>
-                  <p className="text-xs font-mono">Jury in template mode</p>
-                  <p className="text-[10px] font-mono text-foreground-dim mt-1 text-center max-w-xs">
-                    No LLM API key configured — the jury runs with zero adjustments.
-                    Set OPENROUTER_API_KEY to enable real deliberation.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <LlmJuryCard conviction={conviction} />
         </motion.div>
+        )}
         </div>
 
-        {/* ── Casper MCP Consumer — standalone cross-chain context card ── */}
-        {conviction?.casperEcosystemContext && (
+        {!demoMode && (
+          <DisclosureSection
+            className="mt-4"
+            title="AI conviction jury"
+            subtitle="7th factor · score adjustments ±15"
+            icon={
+              <span className="w-3.5 h-3.5 rounded-full bg-purple-400/80 flex items-center justify-center text-[8px] text-white">
+                AI
+              </span>
+            }
+            badge={
+              conviction?.llmDeliberation?.verdicts.length ? (
+                <span className="text-[10px] font-mono text-purple-400/80 normal-case">
+                  {conviction.llmDeliberation.verdicts.length} verdicts
+                </span>
+              ) : undefined
+            }
+          >
+            <LlmJuryCard conviction={conviction} />
+          </DisclosureSection>
+        )}
+
+        {/* ── Casper MCP Consumer — demo inline; simple view collapses ── */}
+        {conviction?.casperEcosystemContext && demoMode && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1613,8 +1433,40 @@ function Dashboard({
           </motion.div>
         )}
 
-        {/* ── Cycle Timeline — last 10 cycles with key events ── */}
-        {status?.cycleHistory && status.cycleHistory.length > 0 && (
+        {conviction?.casperEcosystemContext && !demoMode && (
+          <DisclosureSection
+            className="mt-4"
+            title="Cross-chain context"
+            subtitle="Casper MCP · CSPR.trade + network RPC"
+            icon={<Globe className="w-3.5 h-3.5 text-cyan-400" />}
+          >
+            <Card className="bg-surface/30 border-border/50 border-cyan-500/20">
+              <CardContent className="pt-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
+                    <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">CSPR Price</span>
+                    <p className="text-sm font-bold tabular-nums text-foreground mt-0.5">
+                      {conviction.casperEcosystemContext.csprPriceUsd !== null
+                        ? `$${conviction.casperEcosystemContext.csprPriceUsd.toFixed(4)}`
+                        : "—"}
+                    </p>
+                  </div>
+                  {conviction.casperEcosystemContext.networkStatus && (
+                    <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">Casper Network</span>
+                      <p className="text-sm font-bold tabular-nums text-foreground mt-0.5">
+                        Era {conviction.casperEcosystemContext.networkStatus.eraId}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </DisclosureSection>
+        )}
+
+        {/* ── Cycle Timeline — demo inline; simple view collapses ── */}
+        {status?.cycleHistory && status.cycleHistory.length > 0 && demoMode && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1750,6 +1602,39 @@ function Dashboard({
           </motion.div>
         )}
 
+        {status?.cycleHistory && status.cycleHistory.length > 0 && !demoMode && (
+          <DisclosureSection
+            className="mt-4"
+            title="Cycle history"
+            subtitle={`Last ${status.cycleHistory.length} cycles`}
+            icon={<Activity className="w-3.5 h-3.5 text-signal" />}
+          >
+            <div className="space-y-2">
+              {[...status.cycleHistory].reverse().slice(0, 5).map((c, i) => (
+                <div
+                  key={c.cycle}
+                  className="flex items-center gap-2 flex-wrap text-[10px] font-mono p-2 rounded-lg bg-surface/40 border border-border/30"
+                >
+                  <span className={cn("font-semibold", i === 0 ? "text-signal" : "text-foreground")}>
+                    #{c.cycle}
+                  </span>
+                  <span className="text-foreground-dim">
+                    {c.tradesExecuted > 0 ? `${c.tradesExecuted} trade(s)` : "no trades"}
+                  </span>
+                  {c.topSignal && (
+                    <span className="text-foreground-muted">
+                      · {c.topSignal.symbol} {c.topSignal.score}
+                    </span>
+                  )}
+                  <span className={cn("ml-auto", c.anchorStatus === "success" ? "text-signal" : "text-foreground-dim")}>
+                    {c.anchorStatus === "success" ? "✓ anchored" : c.anchorStatus ?? "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </DisclosureSection>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1804,55 +1689,13 @@ function Dashboard({
                   if (proven.length > 0) {
                     const { position: p, verdict, signal } = proven[0]!;
                     return (
-                    <motion.div
-                      key={`proven-${p.symbol}`}
-                      initial={{ opacity: 0, scale: 0.97 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.4 }}
-                      className="rounded-xl border-2 border-patience/40 bg-patience/8 p-3.5 space-y-2.5 shadow-[0_0_20px_-8px_var(--patience-dim)]"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-patience">
-                          ◆ Early, Not Wrong
-                        </span>
-                        <span className="text-[9px] font-mono text-foreground-dim">
-                          conviction proven
-                        </span>
-                      </div>
-                      {/* The full arc: scored → entered → dipped → held → now */}
-                      <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-mono">
-                        <span className="text-foreground font-semibold">{p.symbol}</span>
-                        {signal && (
-                          <>
-                            <span className="text-foreground-dim">·</span>
-                            <span className="text-signal" title={signal.rationale}>
-                              scored {signal.score}
-                          </span>
-                          </>
-                        )}
-                        <span className="text-foreground-dim">→</span>
-                        <span className="text-foreground-muted">
-                          entered cycle {p.entryCycle}
-                        </span>
-                        <span className="text-foreground-dim">→</span>
-                        <span className="text-impatience">
-                          dipped −{p.maxUnderwaterPercent.toFixed(1)}%
-                        </span>
-                        <span className="text-foreground-dim">→</span>
-                        <span className="text-patience font-semibold">
-                          held {p.cyclesHeld} cycles
-                        </span>
-                        <span className="text-foreground-dim">→</span>
-                        <span className="text-patience font-bold text-sm">
-                          now +{verdict!.unrealizedPnLPercent.toFixed(1)}%
-                        </span>
-                      </div>
-                      {verdict?.reason && (
-                        <p className="text-[10px] font-mono text-foreground-muted leading-relaxed">
-                          {verdict.reason}
-                        </p>
-                      )}
-                    </motion.div>
+                      <ProvenConvictionBanner
+                        key={`proven-${p.symbol}`}
+                        position={p}
+                        verdict={verdict!}
+                        signal={signal ?? undefined}
+                        compact={!demoMode}
+                      />
                     );
                   }
 
@@ -1861,93 +1704,32 @@ function Dashboard({
                       <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-patience/80">
                         ◆ Early, Not Wrong — awaiting proof
                       </p>
+                      {demoMode && (
                       <p className="text-[10px] font-mono text-foreground-muted mt-1.5 leading-relaxed">
                         No open position has held through ≥10% drawdown and recovered
                         yet. The agent holds by design — conviction is tested when
                         you&apos;re early, not when you&apos;re obviously right.
                       </p>
+                      )}
                     </div>
                   );
                 })()}
 
-                {conviction.heldPositions.map((p, i) => {
+                {conviction.heldPositions.map((p) => {
                   const verdict = conviction.positionVerdicts.find(
-                    (v) => v.symbol === p.symbol
+                    (v) => v.symbol === p.symbol,
                   );
-                  const currentPnl = verdict?.unrealizedPnLPercent ?? 0;
-                  // Match this position to the signal that motivated entry
                   const entrySignal = conviction.signals.find(
-                    (s) => s.symbol === p.symbol
+                    (s) => s.symbol === p.symbol,
                   );
                   return (
-                    <motion.div
+                    <PositionRow
                       key={p.symbol}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="p-2.5 rounded-lg bg-surface/40 border border-border/40 hover:border-patience/20 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold">{p.symbol}</span>
-                            {verdict && (
-                              <span className={cn(
-                                "text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-full border",
-                                verdict.action === "HOLD"
-                                  ? "border-patience/30 bg-patience/10 text-patience"
-                                  : verdict.action === "EXIT_TRAIL"
-                                  ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400"
-                                  : "border-impatience/30 bg-impatience/10 text-impatience",
-                              )}>
-                                {verdict.action === "HOLD" ? "Holding" : verdict.action === "EXIT_TRAIL" ? "Trailing" : "Stopped"}
-                              </span>
-                            )}
-                            {verdict?.heldThroughDrawdown && (
-                              <span className="text-[10px] font-mono text-signal">
-                                ◆ early, not wrong
-                              </span>
-                            )}
-                            {p.stuck && (
-                              <span
-                                className="text-[10px] font-mono px-1.5 py-0.5 rounded-full border border-impatience/30 bg-impatience/10 text-impatience"
-                                title={`Unexitable — ${p.failedExitAttempts ?? 0} failed exit attempts`}
-                              >
-                                STUCK
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted flex-wrap">
-                            <span>${p.amountUsd.toFixed(0)} entry</span>
-                            <span>·</span>
-                            <span>{p.cyclesHeld} cycles held</span>
-                            <span>·</span>
-                            <span className="text-foreground-dim">
-                              −{p.maxUnderwaterPercent.toFixed(1)}% worst dip
-                            </span>
-                            {entrySignal && (
-                              <>
-                                <span>·</span>
-                                <span className="text-signal" title={entrySignal.rationale}>
-                                  scored {entrySignal.score}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <div className={cn(
-                          "text-sm font-bold tabular-nums shrink-0",
-                          currentPnl >= 0 ? "text-patience" : "text-impatience",
-                        )}>
-                          {currentPnl >= 0 ? "+" : ""}{currentPnl.toFixed(1)}%
-                        </div>
-                      </div>
-                      {verdict && (
-                        <p className="text-[10px] font-mono text-foreground-dim mt-1.5 leading-tight">
-                          {verdict.reason}
-                        </p>
-                      )}
-                    </motion.div>
+                      position={p}
+                      verdict={verdict}
+                      entrySignal={entrySignal}
+                      expandable={!demoMode}
+                    />
                   );
                 })}
               </div>
@@ -1963,32 +1745,40 @@ function Dashboard({
           </CardContent>
         </Card>
         </motion.div>
-      </motion.div>
+      </AgentViewPanel>
+      )}
 
-      {/* Row 3 — Act 3: On-chain anchor history (Casper · Mantle · Aleo) */}
-      <motion.div
-        id="act-3"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.22, duration: 0.4 }}
-      >
+      {showProof && (
+      <AgentViewPanel viewKey="proof" animate={!demoMode} id="act-3">
         {demoMode && <DemoActBanner act={3} title="Anchor" />}
+        {!demoMode && (
+          <AgentProofSummary
+            anchorResults={conviction?.anchorResults}
+            cycle={status.cycle}
+            className="mb-4"
+          />
+        )}
         <div id="proof">
           <RecentAnchors />
         </div>
-      </motion.div>
+      </AgentViewPanel>
+      )}
 
-      {/* Row 4 — Hire marketplace first; personal Casper anchor last */}
-      <motion.div
-        id="act-4"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.26, duration: 0.4 }}
-        className="space-y-4"
-      >
+      {showHire && (
+      <AgentViewPanel viewKey="hire" animate={!demoMode} id="act-4">
         {demoMode && <DemoActBanner act={4} title="Verify & hire" />}
 
+        {!demoMode && signalsTeaser && (
+          <AgentHireSummary
+            guidanceAction={signalsTeaser.guidance.recommendedAction}
+            topCandidate={signalsTeaser.guidance.topCandidate}
+            className="mb-4"
+          />
+        )}
+
         <div id="hire" className="space-y-4 scroll-mt-28">
+          {demoMode ? (
+          <>
           <div className="border-l-2 border-[#65b3ae]/50 pl-4">
             <p className="text-xs font-mono uppercase tracking-wider text-[#65b3ae]">
               Hire this agent
@@ -2008,6 +1798,34 @@ function Dashboard({
             <ReputationApiCard />
             <CrooCapCard />
           </div>
+          </>
+          ) : (
+          <>
+            <ProofLadder variant="compact" />
+            <BuyerPreviewCard />
+            <DisclosureSection
+              title="Integration options"
+              subtitle="MCP x402 · CROO CAP · signals-live/v1.2"
+              icon={<Network className="w-3.5 h-3.5 text-signal" />}
+            >
+              <IntegrationHub className="border-0 bg-transparent" />
+            </DisclosureSection>
+            <DisclosureSection
+              title="MCP reputation API"
+              subtitle="Query stats · x402 pricing"
+              icon={<BarChart3 className="w-3.5 h-3.5 text-signal" />}
+            >
+              <ReputationApiCard />
+            </DisclosureSection>
+            <DisclosureSection
+              title="CROO CAP marketplace"
+              subtitle="USDC on Base · Store listing"
+              icon={<ShoppingBag className="w-3.5 h-3.5 text-[#65b3ae]" />}
+            >
+              <CrooCapCard />
+            </DisclosureSection>
+          </>
+          )}
         </div>
 
         <details id="personal-anchor" className="rounded-xl border border-border/40 bg-surface/20">
@@ -2018,9 +1836,21 @@ function Dashboard({
             <CasperWalletConnect />
           </div>
         </details>
-      </motion.div>
+      </AgentViewPanel>
+      )}
+      </AnimatePresence>
 
-      {/* ── Narrative complete — appendix below ── */}
+      {!demoMode && (
+        <AgentSectionNav
+          active={view}
+          onChange={handleViewChange}
+          badges={tabBadges}
+          layout="dock"
+          showContext={false}
+        />
+      )}
+
+      {/* ── Technical appendix — collapsed by default ── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -3197,7 +3027,12 @@ function AgentDashboardContent() {
     <div className="min-h-screen text-foreground selection:bg-signal/20 overflow-x-hidden relative">
       <TunnelBackground />
       <Navbar />
-      <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[calc(100vh-6rem)] flex flex-col">
+      <main
+        className={cn(
+          "pt-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[calc(100vh-6rem)] flex flex-col",
+          demoMode ? "pb-12" : "pb-24 sm:pb-12",
+        )}
+      >
         {/* Header — persistent across all states */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -3216,7 +3051,7 @@ function AgentDashboardContent() {
               <p className="mt-1 text-sm text-foreground-muted max-w-xl">
                 {demoMode
                   ? "Four-act demo walkthrough for judges and integrators"
-                  : "Live conviction · on-chain proof · hire via MCP or CROO"}
+                  : "Watch live · verify on-chain · hire when ready"}
               </p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
@@ -3235,19 +3070,25 @@ function AgentDashboardContent() {
                 <Search className="w-3 h-3" />
                 Audit wallet
               </Link>
-              {status && (
+              {status && !demoMode && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-xs font-mono">
+                  <RefreshCw className="w-3 h-3 text-foreground-dim" />
+                  <span className="text-foreground-muted">{countdown}s</span>
+                </div>
+              )}
+              {status && demoMode && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-xs font-mono">
                   <span className="text-foreground-muted uppercase tracking-wider">Cycle</span>
                   <span className="font-semibold text-signal">#{status.cycle}</span>
                 </div>
               )}
-              {status && (
+              {status && demoMode && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-xs font-mono">
                   <span className="text-foreground-muted uppercase tracking-wider">Trades</span>
                   <span className="font-semibold text-patience">{status.totalTrades}</span>
                 </div>
               )}
-              {showDashboard && (
+              {showDashboard && demoMode && (
                 <div className="flex items-center gap-2 text-[10px] font-mono text-foreground-dim">
                   <RefreshCw className="w-3 h-3" />
                   {countdown}s
@@ -3266,7 +3107,7 @@ function AgentDashboardContent() {
             </div>
           </div>
 
-          {lastFetch && showDashboard && (
+          {lastFetch && showDashboard && demoMode && (
             <p className="text-[10px] font-mono text-foreground-dim mt-2">
               Last updated: {lastFetch.toLocaleTimeString()} · Auto-refresh every {REFRESH_INTERVAL / 1000}s
             </p>
@@ -3283,7 +3124,7 @@ function AgentDashboardContent() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                <LoadingStory />
+                {demoMode ? <LoadingStory /> : <LoadingCompact />}
               </motion.div>
             )}
 
