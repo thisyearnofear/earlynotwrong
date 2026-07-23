@@ -51,8 +51,6 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import {
-  NORTH_STAR,
-  NORTH_STAR_SHORT,
   DEMO_WALKTHROUGH_HREF,
 } from "@/lib/product-copy";
 import { resolveObservability, prevCycleDuration } from "@/lib/observability";
@@ -62,6 +60,8 @@ import { AgentCommandStrip } from "@/components/agent/agent-command-strip";
 import { AgentLiveHooks } from "@/components/agent/agent-live-hooks";
 import { AgentLiveSideRail } from "@/components/agent/agent-live-side-rail";
 import { AgentProofPanel } from "@/components/agent/agent-proof-panel";
+import { DemoWalkthroughIntro } from "@/components/agent/demo-walkthrough-intro";
+import { DemoActNav, type DemoAct } from "@/components/agent/demo-act-nav";
 import { AgentViewPanel } from "@/components/agent/agent-view-panel";
 import { SignalFactorBreakdown, RegimeBar } from "@/components/agent/signal-factor-breakdown";
 import { SignalScoringDetails } from "@/components/agent/signal-scoring-details";
@@ -645,35 +645,7 @@ function ErrorState({
   );
 }
 
-// ─── Mobile act navigation (sticky below navbar) ───
-
-const ACT_SECTIONS = [
-  { id: "act-1", label: "Act 1 · Live" },
-  { id: "act-2", label: "Act 2 · Score & Trade" },
-  { id: "act-3", label: "Act 3 · Anchor" },
-  { id: "act-4", label: "Act 4 · Verify" },
-] as const;
-
-function ActStickyNav() {
-  return (
-    <nav
-      aria-label="Dashboard acts"
-      className="lg:hidden sticky top-16 z-30 -mx-4 sm:-mx-6 lg:mx-0 px-4 sm:px-6 py-2 mb-4 border-b border-border/40 bg-background/90 backdrop-blur-md"
-    >
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {ACT_SECTIONS.map((act) => (
-          <a
-            key={act.id}
-            href={`#${act.id}`}
-            className="shrink-0 px-3 py-1.5 rounded-full border border-border/50 bg-surface/40 text-[10px] font-mono uppercase tracking-wider text-foreground-muted hover:text-signal hover:border-signal/30 transition-colors"
-          >
-            {act.label}
-          </a>
-        ))}
-      </div>
-    </nav>
-  );
-}
+// ─── Dashboard ───
 
 function DemoActBanner({ act, title }: { act: number; title: string }) {
   return (
@@ -782,9 +754,7 @@ function LlmJuryCard({ conviction }: { conviction: ConvictionData | null }) {
 
 // ─── Dashboard ───
 
-function sectionVisible(view: AgentView, target: AgentView, demoMode: boolean): boolean {
-  return demoMode || view === target;
-}
+// ─── Dashboard ───
 
 function Dashboard({
   status,
@@ -800,6 +770,14 @@ function Dashboard({
   demoMode: boolean;
 }) {
   const [view, setView] = useState<AgentView>("live");
+  const [demoAct, setDemoAct] = useState<DemoAct>(1);
+
+  const handleDemoActChange = useCallback((act: DemoAct) => {
+    setDemoAct(act);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
 
   useEffect(() => {
     if (demoMode || typeof window === "undefined") return;
@@ -809,9 +787,9 @@ function Dashboard({
     return () => window.removeEventListener("hashchange", sync);
   }, [demoMode]);
 
-  const showLive = sectionVisible(view, "live", demoMode);
-  const showProof = sectionVisible(view, "proof", demoMode);
-  const showHire = sectionVisible(view, "hire", demoMode);
+  const showLive = demoMode ? demoAct === 2 : view === "live";
+  const showProof = demoMode ? demoAct === 3 : view === "proof";
+  const showHire = demoMode ? demoAct === 4 : view === "hire";
 
   const handleViewChange = useCallback((next: AgentView) => {
     setView(next);
@@ -871,95 +849,21 @@ function Dashboard({
       transition={{ duration: 0.4 }}
       className="space-y-4"
     >
-      {demoMode && <ActStickyNav />}
+      {demoMode && (
+        <div className="sticky top-16 z-30 -mx-4 sm:-mx-6 lg:mx-0 px-4 sm:px-6 py-2 mb-1 border-b border-border/40 bg-background/90 backdrop-blur-md">
+          <DemoActNav active={demoAct} onChange={handleDemoActChange} />
+        </div>
+      )}
 
-      {/* Orientation — compact in simple view; full 4-act pipeline in demo */}
+      {/* Orientation — demo intro is compact; simple view uses command strip context */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0, duration: 0.4 }}
-        className={cn(!demoMode && "space-y-4")}
       >
         {demoMode ? (
-          <div className="border-l-2 border-signal/40 pl-4 py-1">
-            <p className="text-sm text-foreground leading-relaxed">
-              Demo walkthrough — four acts from live scoring to verifiable hire.
-              Same agent, same API; this mode is for judges and integrators
-              tracing the full narrative.
-            </p>
-            <p className="text-[10px] font-mono text-foreground-dim mt-1.5">
-              {NORTH_STAR_SHORT} · cycle #{status.cycle} · BSC mainnet
-            </p>
-          </div>
+          <DemoWalkthroughIntro cycle={status.cycle} nextRunAt={status.nextRunAt} />
         ) : null}
-
-        {demoMode && (
-          <>
-            <p className="text-xs text-foreground-muted mt-2 leading-relaxed">
-              Every cycle: data → score → manage → execute → anchor → narrate.
-              Anchored to{" "}
-              <span className="text-signal">Casper Testnet + Mantle Sepolia</span>.
-              The{" "}
-              <Link href="/analyzer" className="text-signal hover:underline">
-                wallet analyzer
-              </Link>{" "}
-              uses the same <span className="font-mono">conviction-core</span>{" "}
-              framework.
-            </p>
-
-            {status && (
-              <div className="mt-3 space-y-1">
-                <p className="text-[9px] font-mono text-foreground-dim uppercase tracking-wider">
-                  Per-cycle pipeline · Acts 1–3 below · Act 4 is hire + personal anchor
-                </p>
-                <div className="flex items-center gap-1 flex-wrap text-[9px] font-mono">
-                  <span className="text-foreground-dim uppercase tracking-wider mr-1">
-                    Cycle {status.cycle}:
-                  </span>
-                  {[
-                    { act: 1, title: "Score", steps: ["data", "score"] as const },
-                    { act: 2, title: "Trade", steps: ["manage", "execute"] as const },
-                    { act: 3, title: "Anchor", steps: ["anchor"] as const },
-                  ].map((group, gi) => (
-                    <span key={group.act} className="flex items-center gap-0.5">
-                      {gi > 0 && (
-                        <span className="text-foreground-dim mx-1">·</span>
-                      )}
-                      <span
-                        className="text-signal/80 uppercase tracking-wider"
-                        title={`Act ${group.act}: ${group.title}`}
-                      >
-                        A{group.act}
-                      </span>
-                      {group.steps.map((step, si) => (
-                        <span key={step} className="flex items-center gap-0.5">
-                          {si > 0 && (
-                            <span className="text-foreground-dim mx-0.5">→</span>
-                          )}
-                          <span className="text-patience">✓</span>
-                          <span className="text-foreground-muted">{step}</span>
-                        </span>
-                      ))}
-                    </span>
-                  ))}
-                  <span className="text-foreground-dim mx-1">·</span>
-                  <span className="text-patience">✓</span>
-                  <span className="text-foreground-muted">narrate</span>
-                  <span className="text-foreground-dim ml-2">
-                    · next in{" "}
-                    {status.nextRunAt
-                      ? Math.max(
-                          0,
-                          Math.round((status.nextRunAt - Date.now()) / 60_000),
-                        )
-                      : "—"}
-                    m
-                  </span>
-                </div>
-              </div>
-            )}
-          </>
-        )}
       </motion.div>
 
       {/* Row 0b: Watch this agent — public Telegram alerts. Only rendered
@@ -1021,7 +925,7 @@ function Dashboard({
         />
       </motion.div>
 
-      {demoMode && (
+      {demoMode && demoAct === 1 && (
         <motion.div
           id="act-1"
           initial={{ opacity: 0, y: 8 }}
@@ -1029,11 +933,16 @@ function Dashboard({
           transition={{ delay: 0.06, duration: 0.35 }}
         >
           <DemoActBanner act={1} title="Live" />
+          <p className="text-xs text-foreground-muted mt-2 max-w-xl leading-relaxed">
+            Status metrics above — expand <span className="text-signal font-mono">Health</span> or{" "}
+            <span className="text-signal font-mono">Trace</span> for guardrails and SigNoz pipeline detail.
+            Continue to Act 2 for scoring and positions.
+          </p>
         </motion.div>
       )}
 
-      {/* Tab panels */}
-      <AnimatePresence mode={demoMode ? "sync" : "wait"}>
+      {/* Tab panels / demo acts 2–4 */}
+      <AnimatePresence mode="wait">
       {showLive && (
       <AgentViewPanel viewKey="live" animate={!demoMode} id="act-2">
         {demoMode && <DemoActBanner act={2} title="Score & trade" />}
@@ -1071,86 +980,11 @@ function Dashboard({
           </CardHeader>
           <CardContent className="space-y-3">
             {conviction?.regime && (
-              demoMode ? (
-              <div className="p-3 rounded-lg bg-surface/40 border border-border/40">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <p className="text-xs font-mono text-foreground-muted uppercase tracking-wider">
-                      {conviction.regime.label}
-                    </p>
-                    <p className="text-[10px] font-mono text-foreground-dim mt-0.5">
-                      FGI {conviction.regime.fearGreedIndex ?? "—"} · {conviction.regime.fearLevel}
-                      {conviction.regime.ssiConfirmation != null && (
-                        <>
-                          {" · "}
-                          <span
-                            className={cn(
-                              conviction.regime.ssiConfirmation > 0.2
-                                ? "text-patience"
-                                : conviction.regime.ssiConfirmation < -0.2
-                                  ? "text-impatience"
-                                  : "text-foreground-dim",
-                            )}
-                            title="SoSoValue SSI index 7d move — confirms or contradicts the contrarian fear regime"
-                          >
-                            SSI{" "}
-                            {conviction.regime.ssiConfirmation > 0
-                              ? "confirms"
-                              : conviction.regime.ssiConfirmation < 0
-                                ? "contradicts"
-                                : "neutral"}{" "}
-                            ({conviction.regime.ssiConfirmation > 0 ? "+" : ""}
-                            {conviction.regime.ssiConfirmation.toFixed(2)})
-                          </span>
-                        </>
-                      )}
-                    </p>
-                    {conviction.signals[0]?.weights && (
-                      <p
-                        className="text-[10px] font-mono text-foreground-dim/70 mt-1"
-                        title="Active signal weights shifted by current regime"
-                      >
-                        weights{" "}
-                        <span className="text-signal">C{conviction.signals[0].weights.contrarian}</span>
-                        {" · "}
-                        <span className="text-cyan-400">R{conviction.signals[0].weights.rsi}</span>
-                        {" · "}
-                        <span className="text-patience">Q{conviction.signals[0].weights.quality}</span>
-                        {" · "}
-                        <span className="text-cyan-400">M{conviction.signals[0].weights.regime}</span>
-                        {" · "}
-                        <span className="text-amber-400">H{conviction.signals[0].weights.holders}</span>
-                        {" · "}
-                        <span className="text-impatience">V{conviction.signals[0].weights.volatilityPenaltyMax}</span>
-                        {" · "}
-                        <span className="text-emerald-400">N{conviction.signals[0].weights.newsMax}</span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-3xl font-bold tabular-nums text-signal">
-                    {conviction.regime.score}
-                  </div>
-                </div>
-                <div className="mt-2 h-1.5 rounded-full bg-surface/60 overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${conviction.regime.score}%` }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    className={cn(
-                      "h-full rounded-full",
-                      conviction.regime.score >= 60 ? "bg-patience" :
-                      conviction.regime.score <= 30 ? "bg-impatience" : "bg-amber-400",
-                    )}
-                  />
-                </div>
-              </div>
-              ) : (
-                <RegimeBar
-                  score={conviction.regime.score}
-                  label={conviction.regime.label}
-                  compact
-                />
-              )
+              <RegimeBar
+                score={conviction.regime.score}
+                label={conviction.regime.label}
+                compact
+              />
             )}
 
             {conviction?.macroPause && !conviction.macroPause.clear && (
@@ -1182,11 +1016,6 @@ function Dashboard({
 
             {conviction && conviction.signals.length > 0 ? (
               <div className="space-y-1.5">
-                {demoMode && conviction.signals[0] && (
-                  <div className="p-3 rounded-lg bg-surface/50 border border-border/30 mb-2">
-                    <SignalFactorBreakdown signal={conviction.signals[0]} />
-                  </div>
-                )}
                 {conviction.signals.slice(0, 1).map((s, i) => (
                   <motion.div
                     key={s.symbol}
@@ -1202,48 +1031,6 @@ function Dashboard({
                           {s.rationale}
                         </span>
                       </div>
-                      {demoMode && (
-                      <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-foreground-muted">
-                        <span>contrarian <span className="text-signal">{s.breakdown.contrarian}</span></span>
-                        <span>· rsi <span className="text-cyan-400">{s.breakdown.rsi}</span></span>
-                        <span>· quality <span className="text-patience">{s.breakdown.quality}</span></span>
-                        <span>· regime <span className="text-cyan-400">{s.breakdown.regime}</span></span>
-                        {s.holderCount != null && (
-                          <span>· holders <span className="text-amber-400">{s.breakdown.holders}</span></span>
-                        )}
-                        {s.breakdown.volatilityPenalty > 0 && (
-                          <span>· vol <span className="text-impatience">−{s.breakdown.volatilityPenalty}</span></span>
-                        )}
-                        {s.breakdown.news !== 0 && (
-                          <span title="SoSoValue news sentiment adjustment">
-                            · news{" "}
-                            <span className={s.breakdown.news > 0 ? "text-emerald-400" : "text-impatience"}>
-                              {s.breakdown.news > 0 ? "+" : ""}
-                              {s.breakdown.news}
-                            </span>
-                          </span>
-                        )}
-                        {s.breakdown.llmJury != null && s.breakdown.llmJury !== 0 && (
-                          <span title="LLM conviction jury adjustment">
-                            · jury{" "}
-                            <span className={s.breakdown.llmJury > 0 ? "text-purple-400" : "text-rose-400"}>
-                              {s.breakdown.llmJury > 0 ? "+" : ""}
-                              {s.breakdown.llmJury}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                      )}
-                      {s.holderCount != null && demoMode && (
-                        <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-foreground-dim">
-                          <span>{s.holderCount.toLocaleString()} holders</span>
-                          {s.holderGrowthPercent != null && (
-                            <span className={s.holderGrowthPercent >= 0 ? "text-emerald-500" : "text-impatience"}>
-                              {s.holderGrowthPercent >= 0 ? "+" : ""}{s.holderGrowthPercent.toFixed(1)}% growth
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <div className="w-12 h-1 rounded-full bg-surface/60 overflow-hidden">
@@ -1279,6 +1066,31 @@ function Dashboard({
                     />
                   </DisclosureSection>
                 )}
+                {demoMode && conviction.signals[0] && (
+                  <>
+                    <DisclosureSection
+                      className="mt-2"
+                      title="7-factor breakdown"
+                      subtitle="Top candidate · deterministic + jury"
+                      icon={<BarChart3 className="w-3.5 h-3.5 text-signal" />}
+                      defaultOpen
+                    >
+                      <SignalFactorBreakdown signal={conviction.signals[0]} />
+                    </DisclosureSection>
+                    <DisclosureSection
+                      className="mt-2"
+                      title="Scoring context"
+                      subtitle="Regime · weights · macro"
+                      icon={<Signal className="w-3.5 h-3.5 text-signal" />}
+                    >
+                      <SignalScoringDetails
+                        regime={conviction.regime}
+                        topSignal={conviction.signals[0]}
+                        weights={conviction.signals[0].weights}
+                      />
+                    </DisclosureSection>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-foreground-muted">
@@ -1304,37 +1116,24 @@ function Dashboard({
         </motion.div>
         </div>
 
-        {/* ── Casper MCP Consumer — demo inline; simple view collapses ── */}
-        {conviction?.casperEcosystemContext && demoMode && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.18, duration: 0.35 }}
+        {conviction?.casperEcosystemContext && (
+          <DisclosureSection
             className="mt-4"
+            title="Cross-chain context"
+            subtitle="Casper MCP · CSPR.trade + network RPC"
+            icon={<Globe className="w-3.5 h-3.5 text-cyan-400" />}
+            badge={
+              conviction.casperEcosystemContext.dexMcpReachable ||
+              conviction.casperEcosystemContext.chainMcpReachable ? (
+                <span className="text-[9px] font-mono text-emerald-400/90 normal-case">
+                  MCP live
+                </span>
+              ) : undefined
+            }
           >
             <Card className="bg-surface/30 border-border/50 border-cyan-500/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                  Cross-Chain Context
-                  <span className="ml-1 text-[9px] font-mono normal-case tracking-normal text-cyan-400/70">
-                    consumed via MCP
-                  </span>
-                  <span className="ml-auto flex items-center gap-2 text-[9px] font-mono">
-                    <span className={`flex items-center gap-1 ${conviction.casperEcosystemContext.dexMcpReachable ? "text-emerald-400" : "text-foreground-dim"}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${conviction.casperEcosystemContext.dexMcpReachable ? "bg-emerald-400 animate-pulse" : "bg-foreground-dim"}`} />
-                      CSPR.trade MCP
-                    </span>
-                    <span className={`flex items-center gap-1 ${conviction.casperEcosystemContext.chainMcpReachable ? "text-emerald-400" : "text-foreground-dim"}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${conviction.casperEcosystemContext.chainMcpReachable ? "bg-emerald-400 animate-pulse" : "bg-foreground-dim"}`} />
-                      Casper RPC
-                    </span>
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-1">
+              <CardContent className="pt-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {/* CSPR price */}
                   <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
                     <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">
                       CSPR Price
@@ -1344,14 +1143,7 @@ function Dashboard({
                         ? `$${conviction.casperEcosystemContext.csprPriceUsd.toFixed(4)}`
                         : "—"}
                     </p>
-                    {conviction.casperEcosystemContext.csprUsdcLiquidityUsd !== null && (
-                      <p className="text-[9px] font-mono text-foreground-dim mt-0.5">
-                        liq ${(conviction.casperEcosystemContext.csprUsdcLiquidityUsd / 1000).toFixed(1)}K
-                      </p>
-                    )}
                   </div>
-
-                  {/* Network status */}
                   {conviction.casperEcosystemContext.networkStatus && (
                     <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
                       <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">
@@ -1360,15 +1152,9 @@ function Dashboard({
                       <p className="text-sm font-bold tabular-nums text-foreground mt-0.5">
                         Era {conviction.casperEcosystemContext.networkStatus.eraId}
                       </p>
-                      <p className="text-[9px] font-mono text-foreground-dim mt-0.5">
-                        {conviction.casperEcosystemContext.networkStatus.activeValidators} validators ·{" "}
-                        {conviction.casperEcosystemContext.networkStatus.totalStakeCspr.toLocaleString()} CSPR staked
-                      </p>
                     </div>
                   )}
-
-                  {/* Block height */}
-                  {conviction.casperEcosystemContext.networkStatus && (
+                  {demoMode && conviction.casperEcosystemContext.networkStatus && (
                     <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
                       <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">
                         Block Height
@@ -1376,220 +1162,49 @@ function Dashboard({
                       <p className="text-sm font-bold tabular-nums text-foreground mt-0.5">
                         {conviction.casperEcosystemContext.networkStatus.blockHeight.toLocaleString()}
                       </p>
-                      <p className="text-[9px] font-mono text-foreground-dim mt-0.5">
-                        fetched {new Date(conviction.casperEcosystemContext.fetchedAt).toLocaleTimeString()}
-                      </p>
                     </div>
                   )}
-
-                  {/* DEX tokens */}
-                  {conviction.casperEcosystemContext.topDexTokens.length > 0 && (
-                    <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
-                      <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">
-                        CSPR.trade DEX Tokens
-                      </span>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                        {conviction.casperEcosystemContext.topDexTokens.slice(0, 6).map((t, i) => (
-                          <span key={i} className="text-[10px] font-mono text-foreground">
-                            {t.symbol}{t.priceUsd ? ` $${t.priceUsd.toFixed(4)}` : ""}{i < Math.min(conviction.casperEcosystemContext!.topDexTokens.length, 6) - 1 ? "," : ""}
-                          </span>
-                        ))}
+                  {demoMode &&
+                    conviction.casperEcosystemContext.topDexTokens.length > 0 && (
+                      <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
+                        <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">
+                          CSPR.trade DEX
+                        </span>
+                        <div className="flex items-center gap-1 flex-wrap mt-1">
+                          {conviction.casperEcosystemContext.topDexTokens
+                            .slice(0, 4)
+                            .map((t, i) => (
+                              <span key={i} className="text-[10px] font-mono text-foreground">
+                                {t.symbol}
+                              </span>
+                            ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
-
-                {/* Bidirectional MCP note */}
-                <div className="mt-2 flex items-center gap-2 text-[9px] font-mono text-foreground-dim">
-                  <Network className="w-3 h-3 text-cyan-400/60" />
-                  <span>
-                    Agent consumes Casper ecosystem MCP servers (CSPR.trade + blockchain RPC) for cross-chain context,
-                    and exposes its own MCP server with 7 tools for other agents to query.
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {conviction?.casperEcosystemContext && !demoMode && (
-          <DisclosureSection
-            className="mt-4"
-            title="Cross-chain context"
-            subtitle="Casper MCP · CSPR.trade + network RPC"
-            icon={<Globe className="w-3.5 h-3.5 text-cyan-400" />}
-          >
-            <Card className="bg-surface/30 border-border/50 border-cyan-500/20">
-              <CardContent className="pt-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">CSPR Price</span>
-                    <p className="text-sm font-bold tabular-nums text-foreground mt-0.5">
-                      {conviction.casperEcosystemContext.csprPriceUsd !== null
-                        ? `$${conviction.casperEcosystemContext.csprPriceUsd.toFixed(4)}`
-                        : "—"}
-                    </p>
-                  </div>
-                  {conviction.casperEcosystemContext.networkStatus && (
-                    <div className="p-2.5 rounded-lg bg-surface/40 border border-border/30">
-                      <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim">Casper Network</span>
-                      <p className="text-sm font-bold tabular-nums text-foreground mt-0.5">
-                        Era {conviction.casperEcosystemContext.networkStatus.eraId}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                {demoMode && (
+                  <p className="mt-2 text-[9px] font-mono text-foreground-dim flex items-start gap-2">
+                    <Network className="w-3 h-3 text-cyan-400/60 shrink-0 mt-0.5" />
+                    Bidirectional MCP — consumes CSPR.trade + Casper RPC; exposes 7 tools on /mcp.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </DisclosureSection>
         )}
 
-        {/* ── Cycle Timeline — demo inline; simple view collapses ── */}
-        {status?.cycleHistory && status.cycleHistory.length > 0 && demoMode && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.20, duration: 0.35 }}
-            className="mt-4"
-          >
-            <Card className="bg-surface/30 border-border/50">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-signal" />
-                  Cycle Timeline
-                  <span className="ml-auto text-[9px] font-mono text-foreground-dim normal-case tracking-normal">
-                    last {status.cycleHistory.length} cycles
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-1">
-                <div className="relative">
-                  {/* Timeline line */}
-                  <div className="absolute left-3 top-0 bottom-0 w-px bg-border/40" />
-
-                  <div className="space-y-2">
-                    {[...status.cycleHistory].reverse().map((c, i) => {
-                      const isLatest = i === 0;
-                      const hasTrades = c.tradesExecuted > 0 || c.tradesFailed > 0;
-                      const anchorOk = c.anchorStatus === "success";
-                      const anchorSkipped = c.anchorStatus === "skipped";
-                      const juryActive = c.juryProvider && c.juryProvider !== "template";
-                      return (
-                        <div key={c.cycle} className="relative flex items-start gap-3 pl-1">
-                          {/* Timeline dot */}
-                          <div className={cn(
-                            "relative z-10 w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 border-2",
-                            isLatest
-                              ? "bg-signal border-signal animate-pulse"
-                              : hasTrades
-                                ? "bg-patience border-patience"
-                                : "bg-surface border-border/60",
-                          )} />
-
-                          {/* Cycle content */}
-                          <div className={cn(
-                            "flex-1 min-w-0 rounded-lg px-2.5 py-1.5 border text-[10px] font-mono",
-                            isLatest
-                              ? "bg-surface/50 border-signal/20"
-                              : "bg-surface/30 border-border/20",
-                          )}>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={cn("font-semibold", isLatest ? "text-signal" : "text-foreground")}>
-                                #{c.cycle}
-                              </span>
-                              <span className="text-foreground-dim">
-                                {new Date(c.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                              <span className="text-foreground-dim">
-                                · {(c.durationMs / 1000).toFixed(0)}s
-                              </span>
-
-                              {/* Trades indicator */}
-                              {hasTrades ? (
-                                <span className="flex items-center gap-1 text-patience">
-                                  <Zap className="w-2.5 h-2.5" />
-                                  {c.tradesExecuted} trade{c.tradesExecuted !== 1 ? "s" : ""}
-                                  {c.tradesFailed > 0 && (
-                                    <span className="text-impatience">({c.tradesFailed} failed)</span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span className="text-foreground-dim">no trades</span>
-                              )}
-
-                              {/* Top signal */}
-                              {c.topSignal && (
-                                <span className="text-foreground-muted">
-                                  · top: <span className="text-signal">{c.topSignal.symbol}</span> <span className="tabular-nums">{c.topSignal.score}</span>
-                                </span>
-                              )}
-
-                              {/* Jury adjustment */}
-                              {juryActive && c.juryTopAdjustment !== null && (
-                                <span className={cn(
-                                  "px-1 py-0.5 rounded text-[9px] font-bold",
-                                  c.juryTopAdjustment < 0
-                                    ? "bg-rose-500/15 text-rose-400"
-                                    : c.juryTopAdjustment > 0
-                                      ? "bg-purple-500/15 text-purple-400"
-                                      : "bg-foreground-dim/10 text-foreground-dim",
-                                )}>
-                                  AI {c.juryTopAdjustment >= 0 ? "+" : ""}{c.juryTopAdjustment}
-                                </span>
-                              )}
-
-                              {/* Anchor status */}
-                              <span className={cn(
-                                "ml-auto flex items-center gap-1",
-                                anchorOk ? "text-signal" : anchorSkipped ? "text-foreground-dim" : "text-impatience",
-                              )}>
-                                {anchorOk ? "✓ anchored" : anchorSkipped ? "◌ cached" : c.anchorStatus === "failed" ? "⚠ failed" : ""}
-                              </span>
-                            </div>
-
-                            {/* Portfolio value + drawdown */}
-                            <div className="flex items-center gap-3 mt-0.5 text-foreground-dim">
-                              {c.portfolioValueUsd > 0 && (
-                                <span>
-                                  ${c.portfolioValueUsd.toFixed(2)}
-                                </span>
-                              )}
-                              {c.drawdownPercent > 0 && (
-                                <span className="text-impatience/70">
-                                  −{c.drawdownPercent.toFixed(1)}% DD
-                                </span>
-                              )}
-                              {c.regimeLabel && (
-                                <span>
-                                  regime: <span className="text-foreground-muted">{c.regimeLabel}</span>
-                                </span>
-                              )}
-                              {c.juryProvider && (
-                                <span className={juryActive ? "text-purple-400/70" : "text-foreground-dim"}>
-                                  jury: {c.juryProvider}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {status?.cycleHistory && status.cycleHistory.length > 0 && !demoMode && (
+        {status?.cycleHistory && status.cycleHistory.length > 0 && (
           <DisclosureSection
             className="mt-4"
-            title="Cycle history"
+            title={demoMode ? "Cycle timeline" : "Cycle history"}
             subtitle={`Last ${status.cycleHistory.length} cycles`}
             icon={<Activity className="w-3.5 h-3.5 text-signal" />}
           >
             <div className="space-y-2">
-              {[...status.cycleHistory].reverse().slice(0, 5).map((c, i) => (
+              {[...status.cycleHistory]
+                .reverse()
+                .slice(0, demoMode ? 8 : 5)
+                .map((c, i) => (
                 <div
                   key={c.cycle}
                   className="flex items-center gap-2 flex-wrap text-[10px] font-mono p-2 rounded-lg bg-surface/40 border border-border/30"
@@ -1673,7 +1288,7 @@ function Dashboard({
                         position={p}
                         verdict={verdict!}
                         signal={signal ?? undefined}
-                        compact={!demoMode}
+                        compact
                       />
                     );
                   }
@@ -1707,7 +1322,7 @@ function Dashboard({
                       position={p}
                       verdict={verdict}
                       entrySignal={entrySignal}
-                      expandable={!demoMode}
+                      expandable
                     />
                   );
                 })}
@@ -1725,15 +1340,19 @@ function Dashboard({
         </Card>
         </motion.div>
 
-        {!demoMode && (
-          <AgentLiveHooks
-            className="mt-2"
-            onNavigate={handleViewChange}
-            anchorResults={conviction?.anchorResults}
-            guidanceAction={signalsTeaser?.guidance.recommendedAction}
-            topCandidate={signalsTeaser?.guidance.topCandidate}
-          />
-        )}
+        <AgentLiveHooks
+          className="mt-2"
+          onNavigate={(target) => {
+            if (demoMode) {
+              handleDemoActChange(target === "proof" ? 3 : 4);
+            } else {
+              handleViewChange(target);
+            }
+          }}
+          anchorResults={conviction?.anchorResults}
+          guidanceAction={signalsTeaser?.guidance.recommendedAction}
+          topCandidate={signalsTeaser?.guidance.topCandidate}
+        />
       </AgentViewPanel>
       )}
 
@@ -1760,55 +1379,37 @@ function Dashboard({
         )}
 
         <div id="hire" className="space-y-4 scroll-mt-28">
-          {demoMode ? (
-          <>
-          <div className="border-l-2 border-[#65b3ae]/50 pl-4">
-            <p className="text-xs font-mono uppercase tracking-wider text-[#65b3ae]">
-              Hire this agent
-            </p>
-            <p className="text-sm text-foreground-muted mt-1 leading-relaxed">
-              Hire an autonomous contrarian agent that scores BSC tokens every 4 hours and
-              anchors every thesis on Casper + Mantle. Same{" "}
+          {demoMode && (
+            <p className="text-sm text-foreground-muted leading-relaxed border-l-2 border-[#65b3ae]/50 pl-4">
+              Hire an autonomous contrarian agent — same{" "}
               <span className="font-mono text-foreground">signals-live/v1.2</span> on MCP
-              (Casper x402) and CROO CAP (USDC on Base) — guidance plus per-cycle
-              execution alignment.
+              and CROO CAP. Expand sections below for integration paths.
             </p>
-          </div>
-          <ProofLadder variant="full" />
-          <IntegrationHub />
-          <BuyerPreviewCard />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ReputationApiCard />
-            <CrooCapCard />
-          </div>
-          </>
-          ) : (
-          <>
-            <ProofLadder variant="compact" />
-            <BuyerPreviewCard />
-            <DisclosureSection
-              title="Integration options"
-              subtitle="MCP x402 · CROO CAP · signals-live/v1.2"
-              icon={<Network className="w-3.5 h-3.5 text-signal" />}
-            >
-              <IntegrationHub className="border-0 bg-transparent" />
-            </DisclosureSection>
-            <DisclosureSection
-              title="MCP reputation API"
-              subtitle="Query stats · x402 pricing"
-              icon={<BarChart3 className="w-3.5 h-3.5 text-signal" />}
-            >
-              <ReputationApiCard />
-            </DisclosureSection>
-            <DisclosureSection
-              title="CROO CAP marketplace"
-              subtitle="USDC on Base · Store listing"
-              icon={<ShoppingBag className="w-3.5 h-3.5 text-[#65b3ae]" />}
-            >
-              <CrooCapCard />
-            </DisclosureSection>
-          </>
           )}
+          <ProofLadder variant="compact" />
+          <BuyerPreviewCard />
+          <DisclosureSection
+            title="Integration options"
+            subtitle="MCP x402 · CROO CAP · signals-live/v1.2"
+            icon={<Network className="w-3.5 h-3.5 text-signal" />}
+            defaultOpen={demoMode}
+          >
+            <IntegrationHub className="border-0 bg-transparent" />
+          </DisclosureSection>
+          <DisclosureSection
+            title="MCP reputation API"
+            subtitle="Query stats · x402 pricing"
+            icon={<BarChart3 className="w-3.5 h-3.5 text-signal" />}
+          >
+            <ReputationApiCard />
+          </DisclosureSection>
+          <DisclosureSection
+            title="CROO CAP marketplace"
+            subtitle="USDC on Base · Store listing"
+            icon={<ShoppingBag className="w-3.5 h-3.5 text-[#65b3ae]" />}
+          >
+            <CrooCapCard />
+          </DisclosureSection>
         </div>
 
         <details id="personal-anchor" className="rounded-xl border border-border/40 bg-surface/20">
@@ -3023,7 +2624,7 @@ function AgentDashboardContent() {
               </h1>
               <p className="mt-1 text-sm text-foreground-muted max-w-xl">
                 {demoMode
-                  ? "Four-act demo walkthrough for judges and integrators"
+                  ? "One act at a time — expand sections as you go"
                   : "Watch live · verify on-chain · hire when ready"}
               </p>
             </div>
