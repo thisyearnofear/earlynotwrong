@@ -225,9 +225,14 @@ export const AGENT_CONFIG = {
       paymentMotes: "50000000000",
       // Minimum operator balance required before we attempt an anchor.
       // If balance is below this, the adapter skips to avoid guaranteed
-      // "Invalid transaction" failures and wasted RPC calls. Defaults to
-      // 2x the payment cap so a failed/repriced deploy doesn't drain the key.
-      minOperatorBalanceMotes: "100000000000",
+      // "Invalid transaction" failures and wasted RPC calls. Set well above
+      // the real per-anchor gas cost (a Casper contract call burns <1 CSPR of
+      // the 50 CSPR payment cap; unused gas is refunded) so a failed/repriced
+      // deploy can't drain the key, but low enough that the wallet rides down
+      // to ~30 CSPR before skipping — buying more cycles per top-up. The
+      // primary spend lever is anchor *frequency*, controlled by the
+      // thesis-hash dedup + quantized jury digest, not this gate.
+      minOperatorBalanceMotes: "30000000000",
     },
   },
 

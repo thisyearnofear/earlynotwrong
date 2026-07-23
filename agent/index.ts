@@ -494,6 +494,14 @@ async function restoreSnapshot(): Promise<void> {
     if (typeof totalTrades === "number" && Number.isFinite(totalTrades) && totalTrades > 0) {
       state.totalTrades = totalTrades;
     }
+    // Restore the last anchored thesis hash so the dedup in `anchorToMantle`
+    // survives restarts. Without this, the first cycle after every pm2 bounce
+    // re-anchors an unchanged thesis and wastes Casper gas.
+    const persistedThesisHash = (persisted?.agent as { lastAnchoredThesisHash?: string | null } | undefined)?.lastAnchoredThesisHash;
+    if (typeof persistedThesisHash === "string" && persistedThesisHash.length > 0) {
+      state.lastAnchoredThesisHash = persistedThesisHash;
+      console.log(`  Snapshot: restored last anchored thesis hash (${persistedThesisHash.slice(0, 18)}…)`);
+    }
     // totalVolumeUsd was not persisted in agent state historically, but the
     // guardrail totals have tracked it all along. Restore from there.
     const guardrailVolume = persisted?.guardrails?.totalVolumeUsd;
@@ -590,6 +598,7 @@ function syncServerState(): void {
     marketData: state.marketData,
     executedTrades: state.executedTrades,
     lastAnchoredHash: state.lastAnchoredHash,
+    lastAnchoredThesisHash: state.lastAnchoredThesisHash,
     anchoring: state.anchoring,
     anchorResults: state.anchorResults,
     marketRegime: state.marketRegime,

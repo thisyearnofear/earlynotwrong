@@ -326,6 +326,101 @@ describe("LLM Conviction Jury", () => {
       // Same digest because only reasoning/keyRisk text changed, not structural data
       expect(computeDeliberationDigest(del1)).toBe(computeDeliberationDigest(del2));
     });
+
+    it("quantizes adjustments to 5-point buckets (absorbs LLM jitter)", () => {
+      // The core spend fix: +4 vs +5 on the same token must NOT move the
+      // digest, otherwise the thesis-hash dedup never fires and the agent
+      // re-anchors (and pays Casper gas) every cycle on pure LLM noise.
+      const base = {
+        deliberatedAt: "2026-01-01T00:00:00Z",
+        provider: "openai" as const,
+        model: "gpt-4o-mini",
+        tokensEvaluated: 1,
+        marketAssessment: "test",
+        verdicts: [
+          { symbol: "TWT", adjustment: 4, adjustedScore: 69, reasoning: "ok", agreement: "agree" as const, keyRisk: "none" },
+        ],
+      };
+      const jittered = {
+        ...base,
+        verdicts: [{ ...base.verdicts[0], adjustment: 5, adjustedScore: 70 }],
+      };
+      // Both quantize to 5 → same digest → dedup fires → no redundant anchor.
+      expect(computeDeliberationDigest(base)).toBe(computeDeliberationDigest(jittered));
+
+      // But a meaningful shift (5 → 12, i.e. bucket 5 → 10) still moves it.
+      const shifted = {
+        ...base,
+        verdicts: [{ ...base.verdicts[0], adjustment: 12, adjustedScore: 77 }],
+      };
+      expect(computeDeliberationDigest(base)).not.toBe(computeDeliberationDigest(shifted));
+    });
+
+    it("drops tokens the jury is neutral on (quantized adjustment 0)", () => {
+      // A token with adjustment 2 quantizes to 0 and is dropped from the
+      // digest entirely — the jury being ~neutral on it is not a thesis claim
+      // worth anchoring, and dropping it keeps small jitter from moving the hash.
+      const withNeutral = {
+        deliberatedAt: "2026-01-01T00:00:00Z",
+        provider: "openai" as const,
+        model: "gpt-4o-mini",
+        tokensEvaluated: 2,
+        marketAssessment: "test",
+        verdicts: [
+          { symbol: "TWT", adjustment: 10, adjustedScore: 75, reasoning: "ok", agreement: "agree" as const, keyRisk: "none" },
+          { symbol: "ETH", adjustment: 2, adjustedScore: 52, reasoning: "meh", agreement: "neutral" as const, keyRisk: "reg" },
+        ],
+      };
+      const withoutNeutral = {
+        ...withNeutral,
+        verdicts: [withNeutral.verdicts[0]],
+      };
+      expect(computeDeliberationDigest(withNeutral)).toBe(computeDeliberationDigest(withoutNeutral));
+    });
+
+    it("collapses agreement to sign (agree vs strong-agree is not meaningful)", () => {
+      const agree = {
+        deliberatedAt: "2026-01-01T00:00:00Z",
+        provider: "openai" as const,
+        model: "gpt-4o-mini",
+        tokensEvaluated: 1,
+        marketAssessment: "test",
+        verdicts: [
+          { symbol: "TWT", adjustment: 10, adjustedScore: 75, reasoning: "ok", agreement: "agree" as const, keyRisk: "none" },
+        ],
+      };
+      const strongAgree = {
+        ...agree,
+        verdicts: [{ ...agree.verdicts[0], agreement: "strong-agree" as const }],
+      };
+      expect(computeDeliberationDigest(agree)).toBe(computeDeliberationDigest(strongAgree));
+
+      // But a flip agree → disagree moves it.
+      const disagree = {
+        ...agree,
+        verdicts: [{ ...agree.verdicts[0], agreement: "disagree" as const }],
+      };
+      expect(computeDeliberationDigest(agree)).not.toBe(computeDeliberationDigest(disagree));
+    });
+
+    it("is order-independent (verdicts sorted by symbol)", () => {
+      const delA = {
+        deliberatedAt: "2026-01-01T00:00:00Z",
+        provider: "openai" as const,
+        model: "gpt-4o-mini",
+        tokensEvaluated: 2,
+        marketAssessment: "test",
+        verdicts: [
+          { symbol: "ZEBRA", adjustment: 10, adjustedScore: 75, reasoning: "ok", agreement: "agree" as const, keyRisk: "none" },
+          { symbol: "ALPHA", adjustment: -8, adjustedScore: 40, reasoning: "no", agreement: "disagree" as const, keyRisk: "reg" },
+        ],
+      };
+      const delB = {
+        ...delA,
+        verdicts: [delA.verdicts[1], delA.verdicts[0]],
+      };
+      expect(computeDeliberationDigest(delA)).toBe(computeDeliberationDigest(delB));
+    });
   });
 
   // ── LLM mode (mocked fetch) ──────────────────────────────────────────────

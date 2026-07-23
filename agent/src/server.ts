@@ -61,6 +61,11 @@ export interface AgentServerState {
   marketData: CmcMarketData | null;
   executedTrades: SwapResult[];
   lastAnchoredHash: string | null;
+  /** Last thesis hash that was (or would have been) anchored. Persists across
+   *  restarts so the dedup in `anchorToMantle` survives pm2 bounces — without
+   *  this, the first cycle after every restart re-anchors an unchanged thesis
+   *  and burns Casper gas for nothing. */
+  lastAnchoredThesisHash: string | null;
   anchoring: {
     hash: string;
     mode: "on-chain" | "reverted" | "off-chain" | "simulator" | "cached";
@@ -140,6 +145,7 @@ let agentState: AgentServerState = {
   marketData: null,
   executedTrades: [],
   lastAnchoredHash: null,
+  lastAnchoredThesisHash: null,
   anchoring: null,
   anchorResults: [],
   marketRegime: null,

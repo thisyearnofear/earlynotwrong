@@ -574,18 +574,55 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Compute a deterministic hash of the deliberation for on-chain anchoring.
  * This is included in the thesis metrics so the AI's reasoning is provably
- * part of the anchored record.
+ * part of the anchored record. The digest is *quantized* — see
+ * `quantizeAdjustment` / `bucketAgreement` below — so LLM output jitter
+ * doesn't churn the thesis hash and trigger redundant on-chain anchors.
  */
+/**
+ * Quantize an adjustment to the nearest 5-point bucket. The jury's adjustment
+ * range is ±15; LLM output is non-deterministic, so the same market state can
+ * yield +4 one cycle and +5 the next. Without quantization that single-bit
+ * jitter churns the thesis hash and forces a redundant on-chain anchor (and
+ * on Casper, a 50 CSPR payment-cap deploy). Buckets preserve the *meaningful*
+ * conviction shift while absorbing LLM noise.
+ */
+function quantizeAdjustment(adj: number): number {
+  return Math.round(adj / 5) * 5;
+}
+
+/**
+ * Collapse the 5-level agreement scale to a 3-bucket sign. The jury waffling
+ * between "agree" and "strong-agree" is not a meaningful thesis change — the
+ * adjustment magnitude already encodes conviction. Only a flip between
+ * agree / neutral / disagree moves the digest.
+ */
+function bucketAgreement(ag: JuryAgreement): -1 | 0 | 1 {
+  if (ag === "disagree" || ag === "strong-disagree") return -1;
+  if (ag === "neutral") return 0;
+  return 1;
+}
+
 export function computeDeliberationDigest(deliberation: JuryDeliberation): string {
-  // A compact, stable representation of the deliberation for hashing.
+  // Compact, stable representation of the deliberation for hashing. Only
+  // *meaningful* verdict shifts move the digest:
+  //   - adjustments quantized to 5-point buckets (absorbs ±1-2 LLM jitter)
+  //   - agreement collapsed to sign (agree vs strong-agree is not meaningful)
+  //   - tokens the jury is neutral on (quantized adjustment 0) are dropped
+  //   - verdicts sorted by symbol so token order doesn't move the digest
+  // This makes the thesis-hash dedup in `anchorToMantle` actually fire when
+  // market state is stable, so anchoring only happens when the jury's
+  // *direction* on a token changes — not every cycle on LLM noise.
   const compact = {
     p: deliberation.provider,
     m: deliberation.model,
-    v: deliberation.verdicts.map((v) => ({
-      s: v.symbol,
-      a: v.adjustment,
-      ag: v.agreement,
-    })),
+    v: deliberation.verdicts
+      .map((v) => ({
+        s: v.symbol,
+        a: quantizeAdjustment(v.adjustment),
+        ag: bucketAgreement(v.agreement),
+      }))
+      .filter((v) => v.a !== 0)
+      .sort((a, b) => a.s.localeCompare(b.s)),
   };
   return JSON.stringify(compact);
 }
