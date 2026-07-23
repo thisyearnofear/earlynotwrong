@@ -209,8 +209,18 @@ export const AGENT_CONFIG = {
   // Casper Network (Buildathon Qualification Round)
   casper: {
     testnet: {
-      // CSPR.cloud free-tier JSON-RPC endpoint. Authentication header is sent
-      // by the adapter via process.env.CSPR_CLOUD_TOKEN — never committed.
+      // RPC fallback chain — tried in order. The public Casper Association
+      // node is primary (no auth, no quota, verified working); cspr.cloud is
+      // fallback (needs CSPR_CLOUD_TOKEN, free-tier daily quota 1,200 reqs).
+      // The agent's read path (balance checks, event reads) cycles through
+      // these; tx submission uses the first reachable one.
+      rpcUrls: [
+        "https://node.testnet.casper.network/rpc",
+        "https://node.testnet.cspr.cloud/rpc",
+      ] as readonly string[],
+      // Kept for backward compat with one-shot scripts (deploy, smoke, transfer)
+      // that still use a single URL. Maps to the cspr.cloud endpoint so scripts
+      // that need the auth token keep working unchanged.
       rpcUrl: "https://node.testnet.cspr.cloud/rpc",
       chainName: "casper-test",
       explorerUrl: "https://testnet.cspr.live",

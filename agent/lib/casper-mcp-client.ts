@@ -346,34 +346,54 @@ export async function fetchCsprUsdcQuote(): Promise<{ priceUsd: number; liquidit
 // Casper Blockchain RPC — Network Status (direct JSON-RPC fallback)
 // =============================================================================
 
-const CASPER_RPC_URL = process.env.CASPER_RPC_URL || AGENT_CONFIG.casper.testnet.rpcUrl;
+// RPC fallback chain — same as the anchoring adapter. Tries the public node
+// (no auth, no quota) first, then cspr.cloud (with token, rate-limited).
+const CASPER_RPC_URLS: readonly string[] =
+  process.env.CASPER_RPC_URL
+    ? [process.env.CASPER_RPC_URL]
+    : AGENT_CONFIG.casper.testnet.rpcUrls ?? [AGENT_CONFIG.casper.testnet.rpcUrl];
 
 /**
- * Call a Casper JSON-RPC method.
- * Uses the same auth token as the anchoring adapter (CSPR_CLOUD_TOKEN).
- * Token is read at call time (not module init) to ensure env-bootstrap has run.
+ * Call a Casper JSON-RPC method with fallback chain.
+ * Tries each endpoint in order; cspr.cloud gets the CSPR_CLOUD_TOKEN auth
+ * header, the public node doesn't need one. Skips 429s to the next endpoint.
  */
 async function casperRpc(method: string, params: unknown = null): Promise<any> {
   const token = process.env.CSPR_CLOUD_TOKEN || "";
-  const response = await fetch(CASPER_RPC_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: token } : {}),
-    },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
-  });
+  let lastErr: Error | null = null;
+  for (const url of CASPER_RPC_URLS) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(url.includes("cspr.cloud") && token ? { Authorization: token } : {}),
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: AbortSignal.timeout(MCP_TIMEOUT_MS),
+      });
 
-  if (!response.ok) {
-    throw new Error(`Casper RPC returned ${response.status}`);
-  }
+      if (response.status === 429) {
+        lastErr = new Error(`429 from ${url}`);
+        continue;
+      }
+      if (!response.ok) {
+        lastErr = new Error(`Casper RPC ${response.status} from ${url}`);
+        continue;
+      }
 
-  const json: any = await response.json();
-  if (json.error) {
-    throw new Error(`Casper RPC error: ${json.error.message}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any = await response.json();
+      if (json.error) {
+        throw new Error(`Casper RPC error: ${json.error.message}`);
+      }
+      return json.result;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      continue;
+    }
   }
-  return json.result;
+  throw lastErr ?? new Error("all Casper RPC endpoints failed");
 }
 
 /**

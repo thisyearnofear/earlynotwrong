@@ -92,13 +92,25 @@ function hexToBytesArg(hex: string): CLValue {
   return CLValue.newCLList(CLTypeUInt8, u8s);
 }
 
-/** Build the RPC client with the cspr.cloud auth header. */
+/** Build the RPC client. Uses the public endpoint as primary (no auth, no
+ *  quota); falls back to cspr.cloud (with CSPR_CLOUD_TOKEN) if the public
+ *  node is unreachable. */
 function buildRpcClient(): RpcClient {
+  const urls = AGENT_CONFIG.casper.testnet.rpcUrls ?? [AGENT_CONFIG.casper.testnet.rpcUrl];
   const token = process.env.CSPR_CLOUD_TOKEN;
-  if (!token) throw new Error("CSPR_CLOUD_TOKEN not set");
-  const handler = new HttpHandler(AGENT_CONFIG.casper.testnet.rpcUrl);
-  handler.setCustomHeaders({ Authorization: token });
-  return new RpcClient(handler);
+  for (const url of urls) {
+    try {
+      const handler = new HttpHandler(url);
+      // cspr.cloud endpoints need the auth header; the public node doesn't.
+      if (url.includes("cspr.cloud") && token) {
+        handler.setCustomHeaders({ Authorization: token });
+      }
+      return new RpcClient(handler);
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("No reachable Casper RPC endpoint for tx submission");
 }
 
 /** Load operator keypair from the configured PEM file.
@@ -142,8 +154,19 @@ export class CasperAnchorAdapter implements AnchorAdapter {
   private balanceCache: { balance: bigint; fetchedAt: number } | null = null;
   private static readonly BALANCE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
+  // 429 backoff: when the RPC rate-limits the balance check, stop hitting it
+  // every cycle and use the cached value instead. Exponential backoff with a
+  // cap so a prolonged cspr.cloud outage doesn't silence the balance check
+  // for hours. Reset on the first successful query.
+  private balanceCheckBackoffUntil = 0;
+  private balanceCheckConsecutive429s = 0;
+  private static readonly BALANCE_BACKOFF_BASE_MS = 15 * 60 * 1000; // 15 min
+  private static readonly BALANCE_BACKOFF_MAX_MS = 4 * 60 * 60 * 1000; // 4h
+
   isAvailable(): boolean {
-    if (!process.env.CSPR_CLOUD_TOKEN) return false;
+    // CSPR_CLOUD_TOKEN is no longer strictly required — the public
+    // node.testnet.casper.network endpoint needs no auth. But we still need
+    // the operator key + registry hash to do anything useful.
     if (!process.env.CASPER_OPERATOR_PEM) return false;
     if (!process.env.CASPER_REGISTRY_HASH && !AGENT_CONFIG.casper.testnet.registryHash) return false;
     return true;
@@ -164,26 +187,62 @@ export class CasperAnchorAdapter implements AnchorAdapter {
    * exist or the RPC call fails, so an unfunded key is treated the same as a
    * depleted one. Result is cached for a few minutes to avoid an extra RPC
    * round-trip every cycle.
+   *
+   * 429 backoff: when the RPC rate-limits us, we stop querying for an
+   * exponentially increasing period (15m → 30m → 1h → 2h → 4h cap) and
+   * return the last cached balance. This prevents the agent from burning
+   * RPC quota on a doomed check every cycle when cspr.cloud is throttling.
    */
   private async checkOperatorBalance(): Promise<{ sufficient: boolean; balance: bigint; minimum: bigint }> {
     const now = Date.now();
     const minimum = BigInt(AGENT_CONFIG.casper.testnet.minOperatorBalanceMotes);
+
+    // Fast path: serve from cache within TTL.
     if (this.balanceCache && now - this.balanceCache.fetchedAt < CasperAnchorAdapter.BALANCE_CACHE_TTL_MS) {
       return { sufficient: this.balanceCache.balance >= minimum, balance: this.balanceCache.balance, minimum };
     }
+
+    // Backoff path: if we're being rate-limited, don't hit the RPC. Use the
+    // last cached balance (or 0 if we never got one) and wait out the backoff.
+    if (now < this.balanceCheckBackoffUntil) {
+      const remaining = Math.round((this.balanceCheckBackoffUntil - now) / 60_000);
+      const cached = this.balanceCache?.balance ?? 0n;
+      console.log(`  [Casper] Balance check in 429 backoff (${remaining}m remaining) — using cached ${cached.toString()} motes`);
+      return { sufficient: cached >= minimum, balance: cached, minimum };
+    }
+
     try {
       const key = loadOperatorKey();
-      const token = process.env.CSPR_CLOUD_TOKEN!;
+      const token = process.env.CSPR_CLOUD_TOKEN ?? "";
       const res = await rpc("query_balance", {
         purse_identifier: { main_purse_under_public_key: key.publicKey.toHex() },
       }, token);
       const balance = BigInt(res?.balance ?? "0");
       this.balanceCache = { balance, fetchedAt: now };
+      // Success — reset the backoff.
+      this.balanceCheckConsecutive429s = 0;
+      this.balanceCheckBackoffUntil = 0;
       return { sufficient: balance >= minimum, balance, minimum };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[Casper] Balance check failed: ${message}`);
-      return { sufficient: false, balance: 0n, minimum };
+      // Detect rate-limiting (429 or the "access lim" body that cspr.cloud
+      // returns when quota is exhausted). Enter backoff so we don't hammer
+      // the RPC every cycle.
+      const isRateLimit = message.includes("429") || message.includes("access lim");
+      if (isRateLimit) {
+        this.balanceCheckConsecutive429s += 1;
+        const backoffMs = Math.min(
+          CasperAnchorAdapter.BALANCE_BACKOFF_BASE_MS * (2 ** (this.balanceCheckConsecutive429s - 1)),
+          CasperAnchorAdapter.BALANCE_BACKOFF_MAX_MS,
+        );
+        this.balanceCheckBackoffUntil = now + backoffMs;
+        const backoffMin = Math.round(backoffMs / 60_000);
+        console.warn(`  [Casper] Balance check rate-limited — backing off for ${backoffMin}m (attempt #${this.balanceCheckConsecutive429s})`);
+      } else {
+        console.warn(`  [Casper] Balance check failed: ${message}`);
+      }
+      const cached = this.balanceCache?.balance ?? 0n;
+      return { sufficient: cached >= minimum, balance: cached, minimum };
     }
   }
 
@@ -362,9 +421,9 @@ interface ContractEventRefs {
 
 /** Find the __events and __events_length urefs for our deployed contract. */
 async function findContractEventUrefs(): Promise<ContractEventRefs | null> {
-  const token = process.env.CSPR_CLOUD_TOKEN;
+  const token = process.env.CSPR_CLOUD_TOKEN ?? "";
   const pkgHex = (process.env.CASPER_REGISTRY_HASH ?? AGENT_CONFIG.casper.testnet.registryHash).replace(/^0x/, "");
-  if (!token || !pkgHex) return null;
+  if (!pkgHex) return null;
 
   // Look up the latest contract entity under the package, then read its named keys.
   const srh = await rpc("chain_get_state_root_hash", {}, token);
@@ -391,8 +450,7 @@ async function findContractEventUrefs(): Promise<ContractEventRefs | null> {
 }
 
 async function readAnchoredEvents(): Promise<AnchoredRecord[]> {
-  const token = process.env.CSPR_CLOUD_TOKEN;
-  if (!token) return [];
+  const token = process.env.CSPR_CLOUD_TOKEN ?? "";
   const refs = await findContractEventUrefs();
   if (!refs) return [];
 
@@ -432,20 +490,47 @@ async function readAnchoredEvents(): Promise<AnchoredRecord[]> {
   return out;
 }
 
-/** RPC helper — never throws on jsonrpc errors, returns the loose result envelope.
+/** RPC helper with fallback chain — tries each endpoint in order until one
+ *  succeeds. The public Casper Association node is primary (no auth, no
+ *  quota); cspr.cloud is fallback (needs token, rate-limited). Skips 429
+ *  responses and network errors to the next endpoint instead of failing.
+ *
  *  We use `any` here because JSON-RPC responses are inherently dynamic; the
  *  call sites narrow as they walk known fields. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function rpc(method: string, params: unknown, token: string): Promise<any> {
-  const r = await fetch(AGENT_CONFIG.casper.testnet.rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: token },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = (await r.json()) as any;
-  if (data?.error) throw new Error(data.error.message ?? "rpc error");
-  return data?.result ?? {};
+  const urls = AGENT_CONFIG.casper.testnet.rpcUrls ?? [AGENT_CONFIG.casper.testnet.rpcUrl];
+  let lastErr: Error | null = null;
+  for (const url of urls) {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      // cspr.cloud endpoints need the auth header; the public node doesn't.
+      if (url.includes("cspr.cloud") && token) {
+        headers.Authorization = token;
+      }
+      const r = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      });
+      if (r.status === 429) {
+        lastErr = new Error(`429 Too Many Requests from ${url}`);
+        continue; // try next endpoint
+      }
+      if (!r.ok) {
+        lastErr = new Error(`HTTP ${r.status} from ${url}`);
+        continue;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (await r.json()) as any;
+      if (data?.error) throw new Error(data.error.message ?? "rpc error");
+      return data?.result ?? {};
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      continue;
+    }
+  }
+  throw lastErr ?? new Error("all Casper RPC endpoints failed");
 }
 
 /**
@@ -509,13 +594,12 @@ function decodeAnchoredEvent(bytes: Uint8Array): AnchoredRecord | null {
 // =============================================================================
 
 /**
- * Query the CSPR balance (in motes) of any public key via the cspr.cloud RPC.
- * Returns 0n for unfunded or non-existent accounts. Does NOT require the
- * operator PEM — only CSPR_CLOUD_TOKEN.
+ * Query the CSPR balance (in motes) of any public key via the RPC fallback
+ * chain. Returns 0n for unfunded or non-existent accounts. Does NOT require
+ * the operator PEM — uses the public node (no auth) or cspr.cloud (with token).
  */
 export async function queryBalance(publicKeyHex: string): Promise<bigint> {
-  const token = process.env.CSPR_CLOUD_TOKEN;
-  if (!token) throw new Error("CSPR_CLOUD_TOKEN not set");
+  const token = process.env.CSPR_CLOUD_TOKEN ?? "";
   try {
     const res = await rpc("query_balance", {
       purse_identifier: { main_purse_under_public_key: publicKeyHex },
