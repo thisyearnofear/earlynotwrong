@@ -114,4 +114,11 @@ Wire notification channels in SigNoz UI after import (Slack/PagerDuty/etc.).
 
 When spans are active, `cycleLog` emits JSON with `trace_id` / `span_id` for log-trace correlation in SigNoz.
 
+## Web dashboard (`/agent`)
+
+The Next.js agent page reads `observability` from `GET /status` and shows:
+
+- OTel on/off, last cycle duration, drawdown, trades, regime, anchor chips
+- Trace ID with copy + **View in SigNoz** when `NEXT_PUBLIC_SIGNOZ_URL` is set on the web app
+
 Module: `agent/lib/telemetry/`

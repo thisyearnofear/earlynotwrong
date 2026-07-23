@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TunnelBackground } from "@/components/ui/tunnel-background";
 import { CasperWalletConnect } from "@/components/casper-wallet-connect";
-import { RecentAnchors } from "@/components/recent-anchors";
 import { ProofLadder } from "@/components/proof-ladder";
 import { IntegrationHub } from "@/components/integration-hub";
 import {
@@ -56,22 +55,22 @@ import {
   NORTH_STAR_SHORT,
   DEMO_WALKTHROUGH_HREF,
 } from "@/lib/product-copy";
+import { resolveObservability, prevCycleDuration } from "@/lib/observability";
 import { DisclosureSection } from "@/components/agent/disclosure-section";
-import { AgentPulseSummary } from "@/components/agent/agent-pulse-summary";
-import { AgentHealthGrid } from "@/components/agent/agent-health-grid";
+import type { CycleObservability } from "@/components/agent/agent-observability-panel";
+import { AgentCommandStrip } from "@/components/agent/agent-command-strip";
+import { AgentLiveHooks } from "@/components/agent/agent-live-hooks";
+import { AgentProofPanel } from "@/components/agent/agent-proof-panel";
 import { AgentViewPanel } from "@/components/agent/agent-view-panel";
 import { SignalFactorBreakdown, RegimeBar } from "@/components/agent/signal-factor-breakdown";
 import { SignalScoringDetails } from "@/components/agent/signal-scoring-details";
 import {
-  AgentSectionNav,
   hashToView,
-  VIEW_CONTEXT,
   type AgentView,
   type AgentTabBadges,
 } from "@/components/agent/agent-section-nav";
 import { PositionRow } from "@/components/agent/position-row";
 import { ProvenConvictionBanner } from "@/components/agent/proven-conviction-banner";
-import { AgentProofSummary } from "@/components/agent/agent-proof-summary";
 import { AgentHireSummary } from "@/components/agent/agent-hire-summary";
 
 // ─── Types ───
@@ -147,6 +146,7 @@ interface AgentStatus {
     juryProvider: string | null;
     juryTopAdjustment: number | null;
   }>;
+  observability?: CycleObservability | null;
 }
 
 interface Trade {
@@ -819,16 +819,36 @@ function Dashboard({
     }
   }, []);
 
+  const resolvedObs = useMemo(
+    () =>
+      resolveObservability(status.observability, demoMode, status.cycle),
+    [status.observability, status.cycle, demoMode],
+  );
+
+  const prevDuration = useMemo(
+    () =>
+      resolvedObs
+        ? prevCycleDuration(status.cycleHistory, resolvedObs.cycle)
+        : null,
+    [resolvedObs, status.cycleHistory],
+  );
+
   const tabBadges = useMemo((): AgentTabBadges => {
     const top = conviction?.signals[0]?.symbol;
     const posCount = conviction?.heldPositions.length ?? 0;
     const anchored = conviction?.anchorResults?.some((r) => r.status === "success");
+    const traced =
+      resolvedObs?.traceId != null
+        ? "traced"
+        : status.status === "running"
+          ? "live"
+          : undefined;
     return {
-      live: top ?? (posCount > 0 ? `${posCount} pos` : undefined),
+      live: traced ?? top ?? (posCount > 0 ? `${posCount} pos` : undefined),
       proof: anchored ? "anchored" : undefined,
       hire: "v1.2",
     };
-  }, [conviction]);
+  }, [conviction, resolvedObs?.traceId, status.status]);
 
   useEffect(() => {
     if (demoMode || typeof window === "undefined") return;
@@ -848,7 +868,7 @@ function Dashboard({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="space-y-6"
+      className="space-y-4"
     >
       {demoMode && <ActStickyNav />}
 
@@ -870,29 +890,7 @@ function Dashboard({
               {NORTH_STAR_SHORT} · cycle #{status.cycle} · BSC mainnet
             </p>
           </div>
-        ) : (
-          <p className="text-sm text-foreground-muted leading-relaxed max-w-2xl">
-            {NORTH_STAR_SHORT}
-            <span className="text-foreground-dim font-mono text-[10px] ml-2">
-              · cycle #{status.cycle}
-            </span>
-          </p>
-        )}
-
-        {!demoMode && (
-          <>
-            <div className="hidden sm:block">
-              <AgentSectionNav
-                active={view}
-                onChange={handleViewChange}
-                badges={tabBadges}
-              />
-            </div>
-            <p className="text-xs text-foreground-dim leading-relaxed sm:hidden">
-              {VIEW_CONTEXT[view]}
-            </p>
-          </>
-        )}
+        ) : null}
 
         {demoMode && (
           <>
@@ -1003,34 +1001,34 @@ function Dashboard({
         </motion.div>
       )}
 
-      {/* Row 1 — pulse summary (simple) or full stat cards (demo) */}
-      {demoMode ? (
       <motion.div
-        id="act-1"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05, duration: 0.4 }}
+        transition={{ delay: 0.05, duration: 0.35 }}
       >
-        <DemoActBanner act={1} title="Live" />
-        <AgentHealthGrid status={status} animated />
+        <AgentCommandStrip
+          status={status}
+          conviction={conviction}
+          observability={resolvedObs}
+          prevDurationMs={prevDuration}
+          isDemoObs={demoMode && !status.observability?.pipelineSteps?.length}
+          active={view}
+          onViewChange={handleViewChange}
+          tabBadges={tabBadges}
+          showNav={!demoMode}
+          demoMode={demoMode}
+        />
       </motion.div>
-      ) : (
-        <>
+
+      {demoMode && (
         <motion.div
+          id="act-1"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.35 }}
+          transition={{ delay: 0.06, duration: 0.35 }}
         >
-          <AgentPulseSummary status={status} conviction={conviction} />
+          <DemoActBanner act={1} title="Live" />
         </motion.div>
-        <DisclosureSection
-          title="Agent health & metrics"
-          subtitle="Status · guardrails · performance · conviction index"
-          icon={<Activity className="w-3.5 h-3.5 text-signal" />}
-        >
-          <AgentHealthGrid status={status} />
-        </DisclosureSection>
-        </>
       )}
 
       {/* Tab panels */}
@@ -1745,22 +1743,26 @@ function Dashboard({
           </CardContent>
         </Card>
         </motion.div>
+
+        {!demoMode && (
+          <AgentLiveHooks
+            className="mt-2"
+            onNavigate={handleViewChange}
+            anchorResults={conviction?.anchorResults}
+            guidanceAction={signalsTeaser?.guidance.recommendedAction}
+            topCandidate={signalsTeaser?.guidance.topCandidate}
+          />
+        )}
       </AgentViewPanel>
       )}
 
       {showProof && (
       <AgentViewPanel viewKey="proof" animate={!demoMode} id="act-3">
         {demoMode && <DemoActBanner act={3} title="Anchor" />}
-        {!demoMode && (
-          <AgentProofSummary
-            anchorResults={conviction?.anchorResults}
-            cycle={status.cycle}
-            className="mb-4"
-          />
-        )}
-        <div id="proof">
-          <RecentAnchors />
-        </div>
+        <AgentProofPanel
+          anchorResults={conviction?.anchorResults}
+          cycle={status.cycle}
+        />
       </AgentViewPanel>
       )}
 
@@ -1839,16 +1841,6 @@ function Dashboard({
       </AgentViewPanel>
       )}
       </AnimatePresence>
-
-      {!demoMode && (
-        <AgentSectionNav
-          active={view}
-          onChange={handleViewChange}
-          badges={tabBadges}
-          layout="dock"
-          showContext={false}
-        />
-      )}
 
       {/* ── Technical appendix — collapsed by default ── */}
       <motion.div

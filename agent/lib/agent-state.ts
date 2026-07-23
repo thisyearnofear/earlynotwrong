@@ -121,6 +121,30 @@ export interface CycleSummary {
   juryTopAdjustment: number | null;
 }
 
+/** Last completed cycle telemetry — surfaced on /status for the web dashboard + SigNoz deep links. */
+export interface CycleObservabilitySnapshot {
+  cycle: number;
+  completedAt: number;
+  durationMs: number;
+  traceId: string | null;
+  spanId: string | null;
+  otelEnabled: boolean;
+  portfolioUsd: number;
+  drawdownPercent: number;
+  activePositions: number;
+  regimeScore: number | null;
+  tradesSucceeded: number;
+  tradesFailed: number;
+  guardrailsRejected: number;
+  anchorOutcomes: Array<{ adapter: string; status: string }>;
+  pipelineSteps: Array<{
+    id: string;
+    label: string;
+    durationMs: number;
+    status: "ok" | "warn" | "error" | "skipped";
+  }>;
+}
+
 /** Serializable state published via the MCP server. */
 export interface AgentState {
   cycle: number;
@@ -206,6 +230,8 @@ export const state = {
   lastCycleExecution: null as CycleExecutionSnapshot | null,
   /** Ring buffer of recent cycle summaries for the dashboard timeline. */
   cycleHistory: [] as CycleSummary[],
+  /** OpenTelemetry snapshot from the last completed cycle (SigNoz deep links). */
+  lastCycleObservability: null as CycleObservabilitySnapshot | null,
 };
 
 // =============================================================================

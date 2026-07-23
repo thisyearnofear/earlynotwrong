@@ -10,7 +10,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   ExternalLink,
   Anchor,
@@ -107,7 +108,7 @@ function formatSkipReason(error?: string): string | undefined {
   return error;
 }
 
-export function RecentAnchors() {
+export function RecentAnchors({ embedded = false }: { embedded?: boolean }) {
   const [conviction, setConviction] = useState<ConvictionData | null>(null);
   const [history, setHistory] = useState<AnchorHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,18 +152,20 @@ export function RecentAnchors() {
 
   const successCount = history.filter((a) => a.status === "success").length;
 
-  return (
-    <Card className="bg-surface/30 border-border/50">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
-          <Anchor className="w-3.5 h-3.5 text-signal" />
-          On-Chain Proof
-          <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case">
-            Agent auto-anchor · each cycle
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+  const body = (
+    <>
+      {!embedded && (
+        <div className="px-4 pt-3 pb-2 border-b border-border/35">
+          <div className="text-xs font-mono uppercase tracking-wider text-foreground-muted flex items-center gap-2">
+            <Anchor className="w-3.5 h-3.5 text-signal" />
+            On-Chain Proof
+            <span className="ml-auto text-[10px] text-foreground-dim font-normal normal-case">
+              Agent auto-anchor · each cycle
+            </span>
+          </div>
+        </div>
+      )}
+      <div className={cn("space-y-4", embedded ? "p-3 sm:p-4" : "p-4 pt-3")}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {latestByChain.map((chain) => (
             <div
@@ -285,7 +288,15 @@ export function RecentAnchors() {
             })}
           </div>
         )}
-      </CardContent>
+      </div>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <Card className="bg-surface/30 border-border/50">
+      {body}
     </Card>
   );
 }

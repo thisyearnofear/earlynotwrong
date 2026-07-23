@@ -31,7 +31,7 @@ import type { MarketNarrative } from "../lib/market-narrative.js";
 import type { MacroPauseSignal } from "../lib/sosovalue-signals.js";
 import type { JuryDeliberation } from "../lib/llm-jury.js";
 import type { CasperEcosystemContext } from "../lib/casper-mcp-client.js";
-import type { TradeStats, ReputationMetrics, CycleSummary } from "../lib/agent-state.js";
+import type { TradeStats, ReputationMetrics, CycleSummary, CycleObservabilitySnapshot } from "../lib/agent-state.js";
 import type { LedgerEntry } from "conviction-core";
 import { handleMcpRequest } from "./mcp/server.js";
 import { x402Middleware } from "./mcp/x402.js";
@@ -99,6 +99,8 @@ export interface AgentServerState {
   anchorHistory: AnchorHistoryEntry[];
   /** Ring buffer of recent cycle summaries for the dashboard timeline (last 10). */
   cycleHistory: CycleSummary[];
+  /** OpenTelemetry snapshot from the last completed cycle. */
+  lastCycleObservability: CycleObservabilitySnapshot | null;
 }
 
 /** Compact history entry for the /casper/anchors endpoint. */
@@ -153,6 +155,7 @@ let agentState: AgentServerState = {
   ledger: [],
   anchorHistory: [],
   cycleHistory: [],
+  lastCycleObservability: null,
 };
 
 /**
@@ -466,6 +469,7 @@ app.get("/status", async (c) => {
           topVerdict: agentState.llmDeliberation.verdicts[0] ?? null,
         }
       : null,
+    observability: agentState.lastCycleObservability,
   };
 
   return c.json(body);

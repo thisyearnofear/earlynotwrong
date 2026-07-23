@@ -27,7 +27,7 @@ export function AgentViewPanel({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: EASE_OUT }}
-        className="space-y-6"
+        className="space-y-4"
       >
         {children}
       </motion.div>

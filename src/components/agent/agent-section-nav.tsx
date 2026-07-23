@@ -26,6 +26,8 @@ interface AgentSectionNavProps {
   className?: string;
   /** inline = under header copy; dock = fixed bottom bar (mobile) */
   layout?: "inline" | "dock";
+  /** Strip outer chrome when nested in AgentCommandStrip */
+  embedded?: boolean;
   badges?: AgentTabBadges;
   showContext?: boolean;
 }
@@ -35,6 +37,7 @@ export function AgentSectionNav({
   onChange,
   className,
   layout = "inline",
+  embedded = false,
   badges,
   showContext = true,
 }: AgentSectionNavProps) {
@@ -44,10 +47,13 @@ export function AgentSectionNav({
     <nav
       aria-label={isDock ? "Agent sections (mobile)" : "Agent dashboard sections"}
       className={cn(
-        "flex gap-1 p-1 rounded-xl border border-border/50",
+        "flex gap-1 p-1",
+        !embedded && "rounded-xl border border-border/50",
         isDock
           ? "bg-background/95 backdrop-blur-md shadow-[0_-4px_24px_-8px_rgba(0,0,0,0.35)] safe-area-inset"
-          : "bg-surface/40 w-full sm:w-fit",
+          : embedded
+            ? "bg-transparent w-full"
+            : "bg-surface/40 w-full sm:w-fit",
       )}
     >
       {VIEWS.map(({ id, label, shortLabel, icon: Icon, hash }) => {
@@ -123,9 +129,9 @@ export function AgentSectionNav({
   }
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn(embedded ? className : "space-y-2", !embedded && className)}>
       {nav}
-      {showContext && (
+      {showContext && !embedded && (
         <p className="text-xs text-foreground-dim leading-relaxed max-w-xl hidden sm:block">
           {VIEW_CONTEXT[active]}
         </p>

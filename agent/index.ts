@@ -34,7 +34,10 @@ import {
   withSpan,
   recordCycleMetrics,
   cycleLog,
+  isTelemetryEnabled,
+  createPipelineRecorder,
 } from "./lib/telemetry/index.js";
+import { trace, context } from "@opentelemetry/api";
 
 initTelemetry();
 
@@ -172,116 +175,116 @@ async function runCycle(): Promise<void> {
       "agent.run_cycle",
       async (rootSpan) => {
         rootSpan?.setAttribute("cycle.number", cycleNumber);
+        const pipeline = createPipelineRecorder();
 
-        // Step 1: Fetch portfolio from TWAK
-        await withSpan("agent.fetch_portfolio", async () => {
-          state.portfolio = await twakExecutor.getPortfolio();
-          await augmentPortfolioOnchain();
-          console.log(
-            `\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`,
-          );
-        }, { "cycle.number": cycleNumber });
+        await pipeline.record("portfolio", "Portfolio", () =>
+          withSpan("agent.fetch_portfolio", async () => {
+            state.portfolio = await twakExecutor.getPortfolio();
+            await augmentPortfolioOnchain();
+            console.log(
+              `\n[1/8] Portfolio: $${state.portfolio.totalValueUsd.toFixed(2)} across ${state.portfolio.positions.length} positions`,
+            );
+          }, { "cycle.number": cycleNumber }),
+        );
 
         tickUnharvestableCooldowns();
 
-        // Step 2: Fetch market data
-        await withSpan("agent.fetch_market_data", async () => {
-          await fetchMarketData();
-          await augmentNativeBnbOnchain();
-        }, { "cycle.number": cycleNumber });
+        await pipeline.record("market", "Market", () =>
+          withSpan("agent.fetch_market_data", async () => {
+            await fetchMarketData();
+            await augmentNativeBnbOnchain();
+          }, { "cycle.number": cycleNumber }),
+        );
 
-        // Step 3: Score market regime + token conviction (contrarian)
-        await analyzeConviction();
+        await pipeline.record("score", "Score", () => analyzeConviction());
+        await pipeline.record("jury", "Jury", () => runLLMJury());
 
-        // Step 3b: LLM conviction jury — the 7th scoring factor
-        await runLLMJury();
+        await pipeline.record("positions", "Positions", () =>
+          withSpan("agent.manage_positions", async () => {
+            await manageOpenPositions();
+          }, { "cycle.number": cycleNumber }).then(() =>
+            withSpan("agent.harvest_bnb", async () => {
+              await harvestForBnb();
+            }, { "cycle.number": cycleNumber }),
+          ),
+        );
 
-        // Step 4: Manage open positions — cap losses, let winners run
-        await withSpan("agent.manage_positions", async () => {
-          await manageOpenPositions();
-        }, { "cycle.number": cycleNumber });
+        await pipeline.record("trade", "Trade", async () => {
+          const proposals = await withSpan("agent.create_proposals", async (span) => {
+            const p = await createTradeProposals();
+            span?.setAttribute("proposals.count", p.length);
+            return p;
+          }, { "cycle.number": cycleNumber });
 
-        // Step 4b: Harvest mature positions to BNB if balance is low
-        await withSpan("agent.harvest_bnb", async () => {
-          await harvestForBnb();
-        }, { "cycle.number": cycleNumber });
-
-        // Step 5: Create entry proposals from conviction signals
-        const proposals = await withSpan("agent.create_proposals", async (span) => {
-          const p = await createTradeProposals();
-          span?.setAttribute("proposals.count", p.length);
-          return p;
-        }, { "cycle.number": cycleNumber });
-
-        if (proposals.length === 0) {
-          console.log("\n  No qualifying entry proposals this cycle.");
-        }
-
-        // Step 6: Check risk guardrails
-        const passed = proposals.length > 0
-          ? await withSpan("agent.check_guardrails", async (span) => {
-              const result = await checkTradeGuardrails(proposals);
-              span?.setAttribute("guardrails.passed", result.passed.length);
-              span?.setAttribute("guardrails.rejected", result.rejected.length);
-              return result.passed;
-            }, { "cycle.number": cycleNumber })
-          : [];
-
-        // Step 7: Execute entries that passed guardrails
-        await withSpan("agent.execute_trades", async (span) => {
-          if (passed.length > 0) {
-            span?.setAttribute("trades.attempted", passed.length);
-            await executeTrades(passed);
-          } else if (proposals.length > 0) {
-            console.log("\n[7/8] No trades passed guardrails. Skipping execution.");
-          } else {
-            console.log("\n[7/8] No entries to execute.");
+          if (proposals.length === 0) {
+            console.log("\n  No qualifying entry proposals this cycle.");
           }
-        }, { "cycle.number": cycleNumber });
 
-        // Step 8: Anchor conviction record to Mantle + Casper
-        await withSpan("agent.anchor_chains", async () => {
-          await anchorToMantle();
-        }, { "cycle.number": cycleNumber });
+          const passed = proposals.length > 0
+            ? await withSpan("agent.check_guardrails", async (span) => {
+                const result = await checkTradeGuardrails(proposals);
+                span?.setAttribute("guardrails.passed", result.passed.length);
+                span?.setAttribute("guardrails.rejected", result.rejected.length);
+                return result.passed;
+              }, { "cycle.number": cycleNumber })
+            : [];
 
-        // Step 8b: Generate market narrative
-        await withSpan("agent.generate_narrative", async () => {
-          await generateAndStoreNarrative();
-        }, { "cycle.number": cycleNumber });
+          await withSpan("agent.execute_trades", async (span) => {
+            if (passed.length > 0) {
+              span?.setAttribute("trades.attempted", passed.length);
+              await executeTrades(passed);
+            } else if (proposals.length > 0) {
+              console.log("\n[7/8] No trades passed guardrails. Skipping execution.");
+            } else {
+              console.log("\n[7/8] No entries to execute.");
+            }
+          }, { "cycle.number": cycleNumber });
+        });
 
-        state.status = "idle";
-        state.nextRunAt =
-          Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+        await pipeline.record("anchor", "Anchor", () =>
+          withSpan("agent.anchor_chains", async () => {
+            await anchorToMantle();
+          }, { "cycle.number": cycleNumber }),
+        );
 
-        try {
-          const postCyclePortfolio = await twakExecutor.getPortfolio();
-          state.portfolio = postCyclePortfolio;
-          await augmentPortfolioOnchain();
-          await augmentNativeBnbOnchain();
-          guardrails.updatePeakValue(state.portfolio.totalValueUsd);
-        } catch (err) {
-          console.warn(
-            `  [peak-refresh] Post-cycle portfolio refresh failed:`,
-            summarizeError(err),
-          );
-          if (state.portfolio) {
+        await pipeline.record("wrap", "Wrap", async () => {
+          await withSpan("agent.generate_narrative", async () => {
+            await generateAndStoreNarrative();
+          }, { "cycle.number": cycleNumber });
+
+          state.status = "idle";
+          state.nextRunAt =
+            Date.now() + AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+
+          try {
+            const postCyclePortfolio = await twakExecutor.getPortfolio();
+            state.portfolio = postCyclePortfolio;
+            await augmentPortfolioOnchain();
+            await augmentNativeBnbOnchain();
             guardrails.updatePeakValue(state.portfolio.totalValueUsd);
-          }
-        }
-
-        // Step 8c: Agent self-analysis
-        await withSpan("agent.self_analysis", async () => {
-          const selfAnalysis = analyzeAgentBehavior();
-          if (selfAnalysis) {
-            state.behavioralMetrics = selfAnalysis;
-            console.log(
-              `\n[8c/8] Agent behavioral conviction: ${selfAnalysis.score} — ${selfAnalysis.archetype}`,
+          } catch (err) {
+            console.warn(
+              `  [peak-refresh] Post-cycle portfolio refresh failed:`,
+              summarizeError(err),
             );
-          } else {
-            state.behavioralMetrics = null;
-            console.log("\n[8c/8] Agent self-analysis: insufficient closed positions");
+            if (state.portfolio) {
+              guardrails.updatePeakValue(state.portfolio.totalValueUsd);
+            }
           }
-        }, { "cycle.number": cycleNumber });
+
+          await withSpan("agent.self_analysis", async () => {
+            const selfAnalysis = analyzeAgentBehavior();
+            if (selfAnalysis) {
+              state.behavioralMetrics = selfAnalysis;
+              console.log(
+                `\n[8c/8] Agent behavioral conviction: ${selfAnalysis.score} — ${selfAnalysis.archetype}`,
+              );
+            } else {
+              state.behavioralMetrics = null;
+              console.log("\n[8c/8] Agent self-analysis: insufficient closed positions");
+            }
+          }, { "cycle.number": cycleNumber });
+        });
 
         const durationMs = Date.now() - cycleStart;
         rootSpan?.setAttribute("cycle.duration_ms", durationMs);
@@ -317,6 +320,42 @@ async function runCycle(): Promise<void> {
             status: r.status,
           })),
         });
+
+        const spanContext = trace.getSpan(context.active())?.spanContext();
+
+        if (state.executedTrades.some((t) => !t.success)) {
+          const tradeStep = pipeline.steps.find((s) => s.id === "trade");
+          if (tradeStep) tradeStep.status = "error";
+        }
+        const anchorFailed = state.anchorResults.some((r) => r.status === "failed");
+        if (anchorFailed) {
+          const anchorStep = pipeline.steps.find((s) => s.id === "anchor");
+          if (anchorStep) anchorStep.status = "error";
+        } else if (state.anchorResults.some((r) => r.status === "skipped")) {
+          const anchorStep = pipeline.steps.find((s) => s.id === "anchor");
+          if (anchorStep && anchorStep.status === "ok") anchorStep.status = "warn";
+        }
+
+        state.lastCycleObservability = {
+          cycle: cycleNumber,
+          completedAt: Date.now(),
+          durationMs,
+          traceId: spanContext?.traceId ?? null,
+          spanId: spanContext?.spanId ?? null,
+          otelEnabled: isTelemetryEnabled(),
+          portfolioUsd: state.portfolio?.totalValueUsd ?? 0,
+          drawdownPercent,
+          activePositions,
+          regimeScore: state.regimeScore,
+          tradesSucceeded: state.executedTrades.filter((t) => t.success).length,
+          tradesFailed: state.executedTrades.filter((t) => !t.success).length,
+          guardrailsRejected,
+          anchorOutcomes: state.anchorResults.map((r) => ({
+            adapter: r.adapter,
+            status: r.status,
+          })),
+          pipelineSteps: pipeline.steps,
+        };
 
         cycleLog.info("cycle.complete", {
           cycle: cycleNumber,
@@ -565,6 +604,7 @@ function syncServerState(): void {
     behavioralMetrics: state.behavioralMetrics,
     ledger: state.ledger,
     cycleHistory: state.cycleHistory,
+    lastCycleObservability: state.lastCycleObservability,
   };
 
   setAgentState(agentSnapshot);

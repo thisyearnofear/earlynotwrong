@@ -6,3 +6,8 @@ export {
 export { withSpan, getTracer } from "./spans.js";
 export { cycleLog } from "./logger.js";
 export { recordCycleMetrics, type CycleMetricsInput } from "./metrics.js";
+export {
+  createPipelineRecorder,
+  type PipelineStepSnapshot,
+  type PipelineStepStatus,
+} from "./pipeline-timing.js";
