@@ -60,6 +60,7 @@ import { DisclosureSection } from "@/components/agent/disclosure-section";
 import type { CycleObservability } from "@/components/agent/agent-observability-panel";
 import { AgentCommandStrip } from "@/components/agent/agent-command-strip";
 import { AgentLiveHooks } from "@/components/agent/agent-live-hooks";
+import { AgentLiveSideRail } from "@/components/agent/agent-live-side-rail";
 import { AgentProofPanel } from "@/components/agent/agent-proof-panel";
 import { AgentViewPanel } from "@/components/agent/agent-view-panel";
 import { SignalFactorBreakdown, RegimeBar } from "@/components/agent/signal-factor-breakdown";
@@ -1289,39 +1290,19 @@ function Dashboard({
         </Card>
         </motion.div>
 
-        {/* ── Right: AI Deliberation Panel — demo shows inline; simple view collapses ── */}
-        {demoMode && (
+        {/* ── Right: jury + cycle pipeline ── */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.22, duration: 0.35 }}
         >
-          <LlmJuryCard conviction={conviction} />
+          <AgentLiveSideRail
+            juryPanel={<LlmJuryCard conviction={conviction} />}
+            observability={resolvedObs}
+            isRunning={status.status === "running"}
+          />
         </motion.div>
-        )}
         </div>
-
-        {!demoMode && (
-          <DisclosureSection
-            className="mt-4"
-            title="AI conviction jury"
-            subtitle="7th factor · score adjustments ±15"
-            icon={
-              <span className="w-3.5 h-3.5 rounded-full bg-purple-400/80 flex items-center justify-center text-[8px] text-white">
-                AI
-              </span>
-            }
-            badge={
-              conviction?.llmDeliberation?.verdicts.length ? (
-                <span className="text-[10px] font-mono text-purple-400/80 normal-case">
-                  {conviction.llmDeliberation.verdicts.length} verdicts
-                </span>
-              ) : undefined
-            }
-          >
-            <LlmJuryCard conviction={conviction} />
-          </DisclosureSection>
-        )}
 
         {/* ── Casper MCP Consumer — demo inline; simple view collapses ── */}
         {conviction?.casperEcosystemContext && demoMode && (

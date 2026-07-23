@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCycleDuration, signozTraceUrl } from "@/lib/signoz";
+import { ElectricBorder } from "@/components/ui/electric-border";
 import {
   AgentSectionNav,
   VIEW_CONTEXT,
@@ -66,6 +67,7 @@ function MetricCell({
   className,
   onClick,
   active,
+  expandHint,
 }: {
   icon: typeof Activity;
   label: string;
@@ -73,19 +75,10 @@ function MetricCell({
   className?: string;
   onClick?: () => void;
   active?: boolean;
+  expandHint?: string;
 }) {
-  const Tag = onClick ? "button" : "div";
-  return (
-    <Tag
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
-      className={cn(
-        "p-2.5 sm:p-3 min-w-0 text-left transition-colors duration-200",
-        onClick && "hover:bg-surface/40 cursor-pointer",
-        active && "bg-signal/5",
-        className,
-      )}
-    >
+  const inner = (
+    <>
       <div className="flex items-center gap-1 mb-1">
         <Icon className="w-3 h-3 text-foreground-dim shrink-0" />
         <span className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim truncate">
@@ -101,7 +94,46 @@ function MetricCell({
         )}
       </div>
       {children}
-    </Tag>
+      {onClick && expandHint && (
+        <p
+          className={cn(
+            "text-[8px] font-mono uppercase tracking-wider mt-1.5 transition-colors",
+            active ? "text-signal" : "text-signal/50",
+          )}
+        >
+          {expandHint}
+        </p>
+      )}
+    </>
+  );
+
+  if (!onClick) {
+    return (
+      <div className={cn("p-2.5 sm:p-3 min-w-0 text-left", className)}>
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <ElectricBorder
+      as="button"
+      type="button"
+      onClick={onClick}
+      active={active}
+      hint={!active}
+      borderRadius={10}
+      aria-expanded={active}
+      aria-label={`${label}: ${active ? "collapse" : "expand"} panel`}
+      className={cn(
+        "p-2.5 sm:p-3 min-w-0 w-full text-left transition-colors duration-200",
+        "hover:bg-surface/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40",
+        active && "bg-signal/5",
+        className,
+      )}
+    >
+      {inner}
+    </ElectricBorder>
   );
 }
 
@@ -187,6 +219,7 @@ export function AgentCommandStrip({
           label="Health"
           onClick={() => toggle("health")}
           active={expand === "health"}
+          expandHint="Tap to expand"
           className="hidden sm:block"
         >
           <p
@@ -213,6 +246,7 @@ export function AgentCommandStrip({
           label="Trace"
           onClick={() => toggle("trace")}
           active={expand === "trace"}
+          expandHint="Tap to expand"
           className="col-span-2 sm:col-span-1"
         >
           {isRunning ? (
@@ -254,35 +288,51 @@ export function AgentCommandStrip({
           />
         )}
         <div className="flex items-center gap-1 sm:hidden ml-auto">
-          <button
+          <ElectricBorder
+            as="button"
             type="button"
+            hint={expand !== "health"}
+            active={expand === "health"}
+            borderRadius={8}
             onClick={() => toggle("health")}
+            aria-expanded={expand === "health"}
             className={cn(
-              "px-2 py-1 rounded-md text-[10px] font-mono border transition-colors",
+              "px-2 py-1 rounded-md text-[10px] font-mono transition-colors",
               expand === "health"
-                ? "border-signal/40 text-signal bg-signal/10"
-                : "border-border/40 text-foreground-dim",
+                ? "text-signal bg-signal/10"
+                : "text-foreground-dim",
             )}
           >
             Health
-          </button>
-          <button
+          </ElectricBorder>
+          <ElectricBorder
+            as="button"
             type="button"
+            hint={expand !== "trace"}
+            active={expand === "trace"}
+            borderRadius={8}
             onClick={() => toggle("trace")}
+            aria-expanded={expand === "trace"}
             className={cn(
-              "px-2 py-1 rounded-md text-[10px] font-mono border transition-colors",
+              "px-2 py-1 rounded-md text-[10px] font-mono transition-colors",
               expand === "trace"
-                ? "border-signal/40 text-signal bg-signal/10"
-                : "border-border/40 text-foreground-dim",
+                ? "text-signal bg-signal/10"
+                : "text-foreground-dim",
             )}
           >
             Trace
-          </button>
+          </ElectricBorder>
         </div>
       </div>
 
       <p className="px-3 pb-2 text-[10px] text-foreground-dim leading-relaxed border-t border-border/25 bg-surface/10">
         {VIEW_CONTEXT[active]}
+        {showNav && (
+          <span className="text-foreground-dim/80">
+            {" "}
+            · Switch tabs below · expand Health or Trace for details
+          </span>
+        )}
       </p>
 
       {/* Murphy-desk expand */}

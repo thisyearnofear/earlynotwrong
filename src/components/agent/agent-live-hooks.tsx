@@ -2,6 +2,7 @@
 
 import { Anchor, ShoppingBag, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ElectricBorder } from "@/components/ui/electric-border";
 import { guidanceActionClass } from "@/components/hire-signals-cta";
 import type { BuyerRecommendedAction } from "@/lib/signals-teaser-types";
 import { GUIDANCE_LABELS } from "@/lib/signals-teaser-types";
@@ -34,15 +35,15 @@ export function AgentLiveHooks({
 
   return (
     <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-2", className)}>
-      <button
+      <ElectricBorder
+        as="button"
         type="button"
+        hint
+        borderRadius={12}
         onClick={() => onNavigate("proof")}
-        className={cn(
-          "group flex items-center gap-3 p-3 rounded-xl text-left",
-          "border border-border/45 bg-surface/25 hover:bg-surface/40 hover:border-signal/25",
-          "transition-colors duration-200 active:scale-[0.995]",
-        )}
+        className="group w-full text-left rounded-xl active:scale-[0.995] transition-transform"
       >
+        <div className="flex items-center gap-3 p-3 bg-surface/25 group-hover:bg-surface/40">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg border border-border/40 bg-surface/30 shrink-0">
           <Anchor className="w-3.5 h-3.5 text-signal" />
         </div>
@@ -59,17 +60,19 @@ export function AgentLiveHooks({
           </p>
         </div>
         <ChevronRight className="w-4 h-4 text-foreground-dim group-hover:text-signal shrink-0" />
-      </button>
+        </div>
+      </ElectricBorder>
 
-      <button
+      <ElectricBorder
+        as="button"
         type="button"
+        hint
+        borderRadius={12}
+        color="var(--patience)"
         onClick={() => onNavigate("hire")}
-        className={cn(
-          "group flex items-center gap-3 p-3 rounded-xl text-left",
-          "border border-border/45 bg-surface/25 hover:bg-surface/40 hover:border-[#65b3ae]/30",
-          "transition-colors duration-200 active:scale-[0.995]",
-        )}
+        className="group w-full text-left rounded-xl active:scale-[0.995] transition-transform"
       >
+        <div className="flex items-center gap-3 p-3 bg-surface/25 group-hover:bg-surface/40">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg border border-border/40 bg-surface/30 shrink-0">
           <ShoppingBag className="w-3.5 h-3.5 text-[#65b3ae]" />
         </div>
@@ -87,7 +90,8 @@ export function AgentLiveHooks({
           </p>
         </div>
         <ChevronRight className="w-4 h-4 text-foreground-dim group-hover:text-[#65b3ae] shrink-0" />
-      </button>
+        </div>
+      </ElectricBorder>
     </div>
   );
 }

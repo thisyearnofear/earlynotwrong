@@ -164,6 +164,64 @@ body {
     .momentum-scroll {
         -webkit-overflow-scrolling: touch;
     }
+
+    /* Electric border — interactive affordance (command strip + tabs) */
+    .electric-border-shell {
+        --electric-color: var(--signal);
+        --electric-glow: var(--signal-glow);
+    }
+
+    .electric-border-shell--active {
+        --electric-glow: color-mix(in srgb, var(--signal) 35%, transparent);
+    }
+
+    .electric-border-glow {
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        border: 1px solid color-mix(in srgb, var(--electric-color) 45%, transparent);
+        opacity: 0.6;
+    }
+
+    .electric-border-glow-1 {
+        filter: blur(0.5px);
+    }
+
+    .electric-border-glow-2 {
+        filter: blur(3px);
+        opacity: 0.35;
+    }
+
+    .electric-border-bg-glow {
+        pointer-events: none;
+        position: absolute;
+        inset: -2px;
+        border-radius: inherit;
+        background: linear-gradient(
+            -30deg,
+            color-mix(in srgb, var(--electric-color) 25%, transparent),
+            transparent 40%,
+            transparent 60%,
+            color-mix(in srgb, var(--electric-color) 20%, transparent)
+        );
+        filter: blur(14px);
+        opacity: 0.35;
+        z-index: 0;
+    }
+
+    .electric-border-shell:hover .electric-border-bg-glow,
+    .electric-border-shell--active .electric-border-bg-glow {
+        opacity: 0.55;
+    }
+
+    .electric-border-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+    }
 }
 
 /* Respect the user's motion preference: collapse CSS animations and

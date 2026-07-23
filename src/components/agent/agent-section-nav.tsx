@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Signal, Network, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ElectricBorder } from "@/components/ui/electric-border";
 import type { AgentView } from "./agent-section-nav-types";
 import { VIEW_CONTEXT } from "./agent-section-nav-types";
 
@@ -60,20 +61,26 @@ export function AgentSectionNav({
         const selected = active === id;
         const badge = badges?.[id];
         return (
-          <button
+          <ElectricBorder
             key={id}
+            as="button"
             type="button"
+            hint={!selected}
+            active={selected}
+            borderRadius={10}
             onClick={() => {
               onChange(id);
               if (typeof window !== "undefined") {
                 window.history.replaceState(null, "", hash);
               }
             }}
+            aria-current={selected ? "page" : undefined}
+            title={selected ? undefined : `View ${label}`}
             className={cn(
               "relative flex-1 min-h-[44px] px-3 py-2.5 rounded-lg touch-target",
               "text-xs font-mono uppercase tracking-wider",
               "flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-0.5 sm:gap-2",
-              "transition-colors duration-200",
+              "transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40",
               selected
                 ? "text-background"
                 : "text-foreground-muted hover:text-foreground",
@@ -109,7 +116,7 @@ export function AgentSectionNav({
                 {badge}
               </span>
             )}
-          </button>
+          </ElectricBorder>
         );
       })}
     </nav>
