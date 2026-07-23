@@ -18,10 +18,13 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-07-22. Live commit on `nuncio-vultr`: `86f33210`.
+> Last updated: 2026-07-23. Live commit on `nuncio-vultr`: `117c827f` (RPC fallback + spend fix; applied via patch pending origin push).
 
 ### Recently shipped
 
+- **Casper RPC fallback chain + 429 backoff** — `agent/lib/anchors/casper.ts` + `agent/lib/casper-mcp-client.ts`. Public `node.testnet.casper.network` (no auth, no quota) is now the primary RPC; cspr.cloud with `CSPR_CLOUD_TOKEN` is fallback. Both the anchoring adapter and the MCP consumer try endpoints in order, skipping 429s. Balance check has exponential 429 backoff (15m→30m→1h→2h→4h cap) so the agent stops burning RPC quota on doomed checks when rate-limited.
+- **Casper anchor spend fix** — `agent/lib/llm-jury.ts` + `agent/index.ts`. The thesis-hash dedup was effectively dead: the LLM jury digest included raw adjustment floats, so non-deterministic LLM output moved the thesis hash every cycle and forced redundant 50-CSPR Casper anchors. Fixed by quantizing the digest (5-pt adjustment buckets, agreement→sign, drop neutrals, sort by symbol). Also persisted `lastAnchoredThesisHash` across pm2 restarts and lowered the balance gate from 100→30 CSPR. 4 new jury digest tests.
+- **SigNoz observability + demo progressive disclosure** — per-cycle pipeline timing exposed on `/agent` via `AgentObservabilityPanel` + `AgentCommandStrip`. Demo mode (`?demo=1`) refactored to one-act-at-a-time with sticky `DemoActNav` and collapsed secondary panels behind `DisclosureSection`.
 - **LLM conviction jury (7th factor)** — `agent/lib/llm-jury.ts`. After the 6-factor deterministic scoring, an LLM reviews top candidates and adjusts conviction scores ±15. Reasoning digest included in the thesis hash anchored on Casper. Provider priority: OpenRouter (`openrouter/auto`) > OpenAI > Anthropic > template (no key). Live on VPS with OpenRouter — jury delivered real verdicts on first deployed cycle (DAI -4, USDC -4, XRP -8). 21 jury tests + 14 Casper MCP client tests.
 - **Casper ecosystem MCP consumer** — `agent/lib/casper-mcp-client.ts`. Agent consumes CSPR.trade MCP (DEX prices/liquidity) and Casper blockchain MCP (era/validators/stake) as cross-chain context for the LLM jury. Agent is now a bidirectional MCP participant (exposes 6 tools + consumes 2 ecosystem servers). Note: both public MCP endpoints were unreachable at deploy time; code degrades gracefully.
 - **OpenRouter integration** — OpenRouter wired as primary LLM provider for both jury and market narrative. Default model `openrouter/auto` routes to best available free model. `OPENROUTER_API_KEY` set on VPS.
@@ -44,7 +47,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 - TWAK/LiquidMesh sometimes routes through pools where the wallet only has allowance on a different spender (e.g., 1inch `0x0000001fF...` vs LiquidMesh router `0x3d90...`). The entry probe now detects this before a full entry.
 - SoSoValue API is occasionally rate-limiting the agent (HTTP 429). The agent suspends SoSoValue for 15 min and falls back to CMC/fallback data.
 - Casper ecosystem MCP endpoints (`mcp.cspr.trade`, `mcp.cspr-ai.xyz`) were unreachable at deploy time. The `casper-mcp-client.ts` module degrades gracefully — jury proceeds without cross-chain context. If endpoints come back online, no code change needed; context will flow automatically.
-- Casper operator CSPR balance is 0 — anchoring to Casper is skipped. Mantle anchoring continues to work.
+- Casper operator CSPR balance is ~3,065 CSPR (funded 2026-07-23 from testnet faucet). Anchoring is active via the public `node.testnet.casper.network` RPC (no auth, no quota). The thesis-hash dedup + quantized jury digest means anchors only fire on meaningful conviction shifts, not every cycle.
 
 ---
 
@@ -217,10 +220,12 @@ If you rotate the key, restart the process so the singleton client picks it up a
 
 The agent publishes conviction records to a Casper testnet contract. Because every anchor is an on-chain transaction, the operator key (`CASPER_OPERATOR_PEM`) must hold enough CSPR to pay the deploy's gas reserve.
 
-- **Payment cap vs. actual cost:** `AGENT_CONFIG.casper.testnet.paymentMotes` is the *maximum* gas the deploy may consume (currently 50 CSPR). Casper refunds unused gas, so the actual execution cost is much lower. Do not treat `paymentMotes` as spent gas.
-- **Balance gate:** `CasperAnchorAdapter.anchor()` queries the operator's main-purse balance before building the transaction. If the balance is below `minOperatorBalanceMotes` (currently 100 CSPR), the adapter returns `skipped` with a clear message instead of submitting a guaranteed-failure transaction. This preserves RPC quota and avoids log noise.
+- **Payment cap vs. actual cost:** `AGENT_CONFIG.casper.testnet.paymentMotes` is the *maximum* gas the deploy may consume (currently 50 CSPR). Casper refunds unused gas, so the actual execution cost is much lower (~0.5 CSPR for a contract call). Do not treat `paymentMotes` as spent gas.
+- **Balance gate:** `CasperAnchorAdapter.anchor()` queries the operator's main-purse balance before building the transaction. If the balance is below `minOperatorBalanceMotes` (currently 30 CSPR), the adapter returns `skipped` with a clear message instead of submitting a guaranteed-failure transaction. This preserves RPC quota and avoids log noise.
+- **429 backoff on balance check:** when the RPC rate-limits the balance check, the adapter enters exponential backoff (15m→30m→1h→2h→4h cap) and serves the last cached balance instead of hammering the RPC every cycle. Resets on the first successful query.
+- **RPC fallback chain:** `AGENT_CONFIG.casper.testnet.rpcUrls` is an ordered list tried by the `rpc()` helper and `buildRpcClient()`. Primary: `node.testnet.casper.network` (public, no auth, no quota). Fallback: `node.testnet.cspr.cloud/rpc` (needs `CSPR_CLOUD_TOKEN`, free-tier 1,200 req/day). The `casper-mcp-client.ts` consumer uses the same chain. `CSPR_CLOUD_TOKEN` is no longer strictly required for `isAvailable()`.
 - **If anchors start failing with `-32016 Invalid transaction`:** the operator account is likely empty or below the minimum balance. Fund it from the Casper testnet faucet, or remove `casper` from `AGENT_CONFIG.anchoring.adapters` to disable it.
-- **Redundancy is reduced:** `cycle-runner` now skips `anchorAll()` entirely when the thesis hash is identical to the last successfully anchored one. This avoids paying gas every 4h for unchanged conviction while still re-anchoring immediately when the thesis changes.
+- **Thesis-hash dedup (quantized):** `cycle-runner` skips `anchorAll()` entirely when the thesis hash is identical to the last successfully anchored one. The jury digest is *quantized* (5-pt adjustment buckets, agreement→sign, drop neutrals, sort by symbol) so LLM output jitter doesn't churn the hash — only a meaningful verdict shift triggers a re-anchor. `lastAnchoredThesisHash` is persisted across pm2 restarts so the dedup survives bounces.
 
 ---
 
