@@ -34,20 +34,15 @@ pub struct ConvictionRecord {
 ///
 /// Storage choice rationale: subject history grows with use; a Vec inside a
 /// Mapping<Bytes, Vec<_>> is the Odra idiom and matches the Solidity contract.
-#[odra::module(events = [ConvictionAnchored, OperatorAuthorizationUpdated])]
+#[odra::module(events = [ConvictionAnchored])]
 pub struct ConvictionRegistry {
     /// subject_hash (32 bytes) → all conviction records anchored for that subject.
     subject_history: Mapping<Bytes, Vec<ConvictionRecord>>,
     /// thesis_hash (32 bytes) → the single record carrying that thesis.
     by_thesis: Mapping<Bytes, ConvictionRecord>,
-    /// Operator allow-list. The deployer is the implicit owner; other operators
-    /// must be authorized explicitly. Matches the Solidity `authorizedOperators`.
-    authorized_operators: Mapping<Address, bool>,
-    /// Contract owner (the deployer). Set on `init`, immutable after.
-    owner: Var<Address>,
 }
 
-/// Emitted whenever an operator anchors a conviction record.
+/// Emitted whenever an agent anchors a conviction record.
 #[odra::event]
 pub struct ConvictionAnchored {
     pub subject_hash: Bytes,
@@ -57,40 +52,18 @@ pub struct ConvictionAnchored {
     pub archetype: String,
 }
 
-/// Emitted when the owner adds/revokes an operator.
-#[odra::event]
-pub struct OperatorAuthorizationUpdated {
-    pub operator: Address,
-    pub authorized: bool,
-}
-
 #[odra::module]
 impl ConvictionRegistry {
-    /// Deployer becomes owner + first authorized operator.
-    pub fn init(&mut self) {
-        let caller = self.env().caller();
-        self.owner.set(caller);
-        self.authorized_operators.set(&caller, true);
-        self.env().emit_event(OperatorAuthorizationUpdated {
-            operator: caller,
-            authorized: true,
-        });
-    }
-
-    /// Owner-only: add or revoke an operator.
-    pub fn set_operator_authorization(&mut self, operator: Address, authorized: bool) {
-        self.require_owner();
-        self.authorized_operators.set(&operator, authorized);
-        self.env().emit_event(OperatorAuthorizationUpdated { operator, authorized });
-    }
+    /// Init is a no-op — anchoring is permissionless.
+    /// The deployer's address is recorded as `anchored_by` on their submissions.
+    pub fn init(&mut self) {}
 
     /// Anchor a new conviction record.
     ///
     /// Open to any caller — submissions carry the caller as `anchored_by`,
     /// so every record is on-chain-attributed without a separate allow-list.
-    /// (Operator gating fits a multi-tenant deployment; for this demo where
-    /// the contract is owned by a single agent, the gate added Casper 2.0
-    /// entity-model friction without changing the trust story.)
+    /// This removes Casper 2.0 entity-model friction while preserving the
+    /// trust story: the caller's account hash is right there in the record.
     pub fn anchor_conviction(
         &mut self,
         subject_hash: Bytes,
@@ -143,23 +116,6 @@ impl ConvictionRegistry {
     pub fn get_by_thesis(&self, thesis_hash: Bytes) -> Option<ConvictionRecord> {
         self.by_thesis.get(&thesis_hash)
     }
-
-    /// Whether an address can anchor.
-    pub fn is_operator(&self, operator: Address) -> bool {
-        self.authorized_operators.get(&operator).unwrap_or(false)
-    }
-
-    // ── Guards ──
-
-    fn require_owner(&self) {
-        let owner = self.owner.get().expect("not initialized");
-        assert_eq!(self.env().caller(), owner, "only owner");
-    }
-
-    fn require_operator(&self, who: Address) {
-        let authorized = self.authorized_operators.get(&who).unwrap_or(false);
-        assert!(authorized, "not authorized operator");
-    }
 }
 
 #[cfg(test)]
@@ -172,10 +128,19 @@ mod tests {
     }
 
     #[test]
-    fn deployer_becomes_owner_and_operator() {
+    fn init_is_noop_and_anchoring_is_permissionless() {
         let env = odra_test::env();
-        let registry = ConvictionRegistry::deploy(&env, NoArgs);
-        assert!(registry.is_operator(env.get_account(0)));
+        let mut registry = ConvictionRegistry::deploy(&env, NoArgs);
+        // Any account can anchor — no operator gating
+        registry.anchor_conviction(
+            b32(0xAA),
+            b32(0xBB),
+            72,
+            "DEEP FEAR — PRIME CONTRARIAN".to_string(),
+            1_782_408_000_000,
+        );
+        let latest = registry.get_latest_conviction(b32(0xAA)).unwrap();
+        assert_eq!(latest.conviction_score, 72);
     }
 
     #[test]
@@ -221,8 +186,6 @@ mod tests {
     #[test]
     #[should_panic]
     fn rejects_out_of_range_score() {
-        // Odra wraps contract panics as VmError, so we just assert any panic.
-        // The assertion text is exercised but not matched here.
         let env = odra_test::env();
         let mut registry = ConvictionRegistry::deploy(&env, NoArgs);
         registry.anchor_conviction(b32(0), b32(0), 101, "x".to_string(), 0);
