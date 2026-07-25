@@ -17,12 +17,46 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 | LLM conviction jury — OpenRouter (openrouter/auto) with on-chain reasoning digest | Live on VPS |
 | Casper ecosystem MCP consumer — CSPR.trade + blockchain MCP as cross-chain signal input | Live |
 | Odra `ConvictionRegistry` on Casper Testnet | Deployed |
-| MCP server (6 tools) — exposes conviction data to other agents | Live |
+| MCP server (7 tools) — exposes conviction data to other agents | Live |
 | x402 paid paywall via cspr.cloud facilitator | Live |
+| Casper Wallet browser extension integration — connect, sign, user-initiated anchoring | Live |
 | Next.js web app — landing page, dashboard, wallet analyzer | Live |
 | Cross-chain anchoring — Casper + Mantle + Aleo | Live |
 | CROO Agent Store — `signals-live` ($0.05 USDC on Base) | Live + 3 verified purchases |
 | Test suite (Vitest) | 23 files, 306 tests |
+
+---
+
+## Casper AI Toolkit Usage
+
+Every component of the [Casper AI Toolkit](https://www.casper.network/ai) is used in this submission:
+
+| Toolkit Component | How We Use It | Status |
+|---|---|---|
+| **Odra Framework** | `ConvictionRegistry` smart contract in Rust, compiled to WASM, deployed on Casper Testnet. On-chain tests via `cargo odra test`. | Deployed |
+| **MCP Servers** | Agent exposes 7 tools at `POST /mcp` (Streamable HTTP transport). Agent also *consumes* 2 Casper ecosystem MCP servers (CSPR.trade + Casper blockchain) as cross-chain context for the LLM jury. Bidirectional MCP participant. | Live |
+| **x402 Micropayments** | HTTP-native paywall middleware: paid MCP tools return `PaymentRequirements`, clients sign CEP-18 transfer authorization, CSPR.cloud facilitator verifies + submits on-chain. Facilitator pays gas. | Live |
+| **CSPR.cloud APIs** | RPC for contract writes (`put_transaction`), contract reads (`state_get_dictionary_item` for free CES event reads), and balance checks. RPC fallback chain with 429 backoff. | Live |
+| **casper-js-sdk** | `ContractCallBuilder` for anchor transaction construction, `SessionBuilder` for contract deploys, Ed25519 key signing. | Live |
+| **Casper Wallet (browser extension)** | In-browser wallet connect (`window.CasperWalletProvider`), message signing for proof, user-initiated anchoring via build-anchor/submit-anchor flow. No private keys leave the browser. | Live |
+
+---
+
+## RWA Applicability
+
+The reputation marketplace applies directly to **Real-World Asset (RWA) oracle agents**, one of the buildathon's example build directions:
+
+> *"RWA Oracle Agents with Verifiable On-Chain Identity: an agent that scrapes off-chain data, runs a risk assessment model, and posts verified data on-chain via x402."*
+
+Our architecture is a drop-in template for this use case:
+
+1. **An RWA oracle agent** scrapes off-chain data (real-estate yields, commodity prices, credit scores).
+2. It runs a **risk assessment model** (our 7-factor conviction engine is the analog — any model fits the `ConvictionRecord` schema).
+3. It posts the result to the **`ConvictionRegistry` on Casper** with the same `anchor_conviction` entry point, creating a verifiable on-chain track record.
+4. Other agents query its historical accuracy via **MCP** and pay per call with **x402**.
+5. The oracle's **reputation score** (mean accuracy, anchor count, dual-chain presence) is computed from the same on-chain record.
+
+The `AnchorAdapter` interface (`agent/lib/anchors/types.ts`) is generic — any "subject → record" data fits it. An RWA oracle would anchor risk assessments instead of trading theses; the MCP tools, x402 paywall, and reputation scoring all work unchanged. This is the **trust-minimized RWA oracle** pattern the buildathon description calls for, built on Casper's native primitives.
 
 ---
 
@@ -34,8 +68,11 @@ We built the Casper layer — the Odra smart contract, the Casper adapter, the M
 - **Casper contract package** — https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa
 - **MCP endpoint** — `POST http://144.202.117.160:31777/mcp`
 - **Agent API** — `GET http://144.202.117.160:31777/status`
+- **Reputation stats** — `GET http://144.202.117.160:31777/reputation/stats`
 - **CROO Agent Store** — https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 (`signals-live`, $0.05 USDC)
 - **GitHub** — https://github.com/thisyearnofear/earlynotwrong
+- **Twitter/X** — https://x.com/earlynotwrong
+- **Telegram** — https://t.me/earlynotwrong
 
 ---
 
@@ -85,11 +122,12 @@ Key design choices:
 | `get_latest_conviction` | Free | Most recent record across Mantle + Casper. |
 | `get_by_thesis` | Free | Point lookup by 32-byte thesis hash. |
 | `get_agent_reputation` | Free | Aggregate report: total anchors, mean score, dual-chain presence. |
+| `get_jury_deliberation` | Free | LLM jury verdicts: provider, model, per-token adjustments, reasoning, Casper ecosystem context. |
 | `get_subject_history` | 0.1 CSPR | Full chronological history. |
 | `cross_chain_lookup` | 0.1 CSPR | Side-by-side Mantle + Casper view with sync flag. |
 | `get_live_signals` | 0.5 CSPR | Live conviction signals for the current cycle (the tradeable data). |
 
-The trust-decision query (`get_agent_reputation`) is free so evaluators can decide whether to trust the agent; the recurring-value live signals are the paid product.
+The trust-decision queries are free — including the jury deliberation and aggregate reputation report a first-time evaluator needs to decide whether to trust the agent at all. The paid tier is the recurring-value data: history walks, cross-chain reconciliation, and the agent's live current-cycle conviction signals.
 
 ### 4. x402 Paywall
 
@@ -234,9 +272,10 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 ## Why This Fits the Buildathon
 
-- **Agentic AI**: the agent autonomously fetches market data, scores conviction with a 7-factor engine (6 deterministic + LLM jury), manages positions, executes trades, and anchors theses to Casper without human intervention. The LLM conviction jury reviews top candidates each cycle, adjusts scores ±15 based on cross-chain context, and its reasoning digest is anchored on-chain — **meaningful AI integration, not cosmetic**. The agent is also a **bidirectional MCP participant**: it exposes 6 MCP tools for other agents to query, and consumes 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain signal input.
+- **Agentic AI**: the agent autonomously fetches market data, scores conviction with a 7-factor engine (6 deterministic + LLM jury), manages positions, executes trades, and anchors theses to Casper without human intervention. The LLM conviction jury reviews top candidates each cycle, adjusts scores ±15 based on cross-chain context, and its reasoning digest is anchored on-chain — **meaningful AI integration, not cosmetic**. The agent is also a **bidirectional MCP participant**: it exposes 7 MCP tools for other agents to query, and consumes 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain signal input.
 - **DeFi**: the agent trades BSC assets with self-custody execution, and the reputation layer applies directly to DeFi agents (yield bots, oracles, treasury managers).
-- **Casper-native**: uses Odra, MCP, x402, CSPR.cloud, and casper-js-sdk — the toolkit the buildathon explicitly promotes. Casper is the primary anchor chain; the agent also mirrors to Mantle (EVM verification) and commits to Aleo (privacy-preserving thesis proof), giving each chain a distinct role in the conviction stack.
+- **RWA**: the reputation marketplace is a drop-in template for RWA oracle agents — any agent that scrapes off-chain data, runs a risk model, and posts results on-chain gets the same verifiable track record. See the **RWA Applicability** section above.
+- **Casper-native**: uses all 6 Casper AI Toolkit components — Odra, MCP, x402, CSPR.cloud, casper-js-sdk, and Casper Wallet. See the **Casper AI Toolkit Usage** section above. Casper is the primary anchor chain; the agent also mirrors to Mantle (EVM verification) and commits to Aleo (privacy-preserving thesis proof), giving each chain a distinct role in the conviction stack.
 - **Cannot be replicated on EVM**: the x402 + MCP + facilitator combination is Casper's native agent-economy stack. We document this explicitly in `docs/CASPER_INTEGRATION.md`.
 
 ---
@@ -245,11 +284,13 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 | Requirement | Evidence |
 |---|---|
-| Working prototype on Casper Testnet with transaction-producing component | `ConvictionRegistry` deployed; live anchors visible on `testnet.cspr.live` |
-| Open-source GitHub repo with README and usage docs | https://github.com/thisyearnofear/earlynotwrong + `README.md` + `AGENTS.md` |
-| Demo video | Public launch video + buildathon walkthrough (see `docs/demo-script.md`) |
-| Focus on Agentic AI / DeFi / RWA on Casper | Agentic AI + DeFi on Casper, with native MCP/x402 reputation marketplace |
-| Original work for the buildathon | Casper contract, adapter, MCP server, and x402 middleware were built for this buildathon; see `# What We Built for This Buildathon` |
+| Working prototype on Casper Testnet with transaction-producing component | `ConvictionRegistry` deployed; live anchors visible on `testnet.cspr.live`; MCP server responding at `POST /mcp` |
+| Open-source GitHub repo with README and usage docs | https://github.com/thisyearnofear/earlynotwrong + `README.md` + `AGENTS.md` + `SUBMISSION.md` |
+| Demo video | [Demo video walkthrough](https://www.youtube.com/) (3-5 min: Casper contract, MCP 402 challenge, dashboard, LLM jury, anchor history) + [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) |
+| Socials in place | [Twitter/X](https://x.com/earlynotwrong) + [Telegram](https://t.me/earlynotwrong) + [GitHub](https://github.com/thisyearnofear/earlynotwrong) |
+| Long-term launch plans | See **Long-Term Launch Plans** section above (5-phase roadmap to mainnet + RWA) |
+| Focus on Agentic AI / DeFi / RWA on Casper | Agentic AI + DeFi + RWA applicability, all on Casper with native MCP/x402 reputation marketplace |
+| Original work for the buildathon | Casper contract, adapter, MCP server, x402 middleware, and Casper Wallet integration were built for this buildathon; see `# What We Built for This Buildathon` |
 
 ---
 
@@ -259,11 +300,43 @@ This submission extends a conviction-analysis platform built across several 2026
 
 ---
 
+## Long-Term Launch Plans
+
+This is a real project, not a hackathon-only demo. The agent is live on a VPS, trading on BSC testnet, anchoring to Casper testnet, and selling signals on the CROO Agent Store. Socials are in place:
+
+- **Twitter/X**: https://x.com/earlynotwrong
+- **Telegram**: https://t.me/earlynotwrong
+- **GitHub**: https://github.com/thisyearnofear/earlynotwrong (open-source, MIT)
+- **Live dashboard**: https://earlynotwrong.vercel.app/agent
+
+### Roadmap to mainnet
+
+| Phase | Timeline | Scope |
+|---|---|---|
+| **Phase 1: Testnet validation** (current) | Q3 2026 | Agent live, contract deployed, MCP + x402 working, 3 CROO orders verified |
+| **Phase 2: Multi-agent anchoring** | Q4 2026 | Open `anchor_conviction` to other agents via a discovery directory. Any agent can publish its conviction records to the same registry and earn from MCP queries. |
+| **Phase 3: CEP-18 token gating** | Q4 2026 | Tiered access: free reads (reputation), paid search (history), premium feed (live signals). CEP-18 token as access credential. |
+| **Phase 4: Mainnet migration** | Q1 2027 | Migrate `ConvictionRegistry` to Casper Mainnet once x402 facilitator launches on mainnet. Agent transitions from testnet to mainnet trading. |
+| **Phase 5: RWA oracle support** | Q1 2027 | Extend the `AnchorAdapter` interface to support RWA oracle agents (real-estate yields, commodity prices, credit scores). Same registry, same MCP tools, same x402 paywall. |
+
+### Ecosystem impact
+
+This project demonstrates a **use case Casper is uniquely positioned for**: agent-to-agent trust and payment. The x402 + MCP + facilitator combination cannot be replicated on EVM without bolting on multiple separate services. By being a reference implementation for the agent reputation marketplace pattern, this project:
+
+- Drives MCP server adoption on Casper (other agents fork the pattern)
+- Creates CEP-18 token velocity (paid queries require Cep18x402 tokens)
+- Showcases Odra as a production smart contract framework for agent infrastructure
+- Positions Casper as the trust layer for the agent economy
+
+---
+
 ## Future Work
 
 - Open `anchor_conviction` to other agents via a discovery directory.
 - CEP-18 token gating for tiered access (free read / paid search / premium feed).
 - Mainnet migration once the x402 facilitator launches on Casper Mainnet.
+- RWA oracle agent support (same registry, different data type).
+- Multi-agent reputation leaderboard (aggregate across all agents anchoring to the registry).
 
 ---
 

@@ -1,31 +1,46 @@
 # EARLY, NOT WRONG
 
-> Being early feels like being wrong. Until it doesn't.
+> Agent reputation marketplace, natively on Casper.
+> Autonomous conviction, on-chain proof, MCP-queriable reputation, x402 micropayments.
 
-An autonomous trading agent whose entire decision history is publicly
-verifiable. It buys quality assets during fear (never chases strength),
-holds through ordinary drawdown by design, and publishes every decision —
-entries, exits, losses included — to an on-chain record that anyone, human
-or AI agent, can audit or pay to query.
+AI agents are about to trade, lend, and govern on-chain. But **no agent can
+trust another agent's self-reported track record**. Early, Not Wrong fixes
+this: an autonomous DeFi agent that makes conviction-based trading decisions,
+anchors every thesis to a **Casper Odra smart contract** as an immutable
+on-chain record, and exposes that record to other agents via **Model Context
+Protocol** with **x402 CEP-18 micropayments**. Trust queries are free; the
+live tradeable data is paid per call.
 
-Under the hood: trades execute self-custody on BNB Smart Chain; the
-decision record anchors to two settlement chains (Mantle ERC-8004 +
-Casper Odra); and other agents query it via **Model Context Protocol**
-with x402 micropayments on Casper, or through the **CROO Agent Protocol
-(CAP)** with USDC settlement on Base.
+**Casper is the trust layer for the agent economy.** This project uses the
+full Casper AI Toolkit: Odra smart contracts, MCP server, x402 facilitator,
+CSPR.cloud RPC, casper-js-sdk, and the Casper Wallet browser extension.
 
 ```
-CMC Agent Hub ─► Conviction Engine ─► Risk Guardrails ─► TWAK Execution ─► Anchor Layer
-   (data)         (6-factor contrarian)    (filters)       (BSC swaps)       ├─► Mantle (ERC-8004)
-                                                                             └─► Casper (Odra)
-                                                                                    │
-                                                                          ┌─────────┴─────────────────────┐
-                                                                          │  Reputation server            │
-                                                                          │  (on the agent's Hono process)│
-OTHER AGENTS ──────── MCP query ──────── x402 paid ─────────────────────► │  • /mcp (Casper x402)           │
-(yield bots,                                                              │  • CAP WebSocket (USDC/Base)    │
- wallets, oracles)                                                        └─────────────────────────────────┘
+Autonomous BSC Trading Agent          Casper Reputation Marketplace
+┌──────────────────────────┐          ┌───────────────────────────────────┐
+│ 7-factor conviction      │          │  ConvictionRegistry (Odra/Rust)   │
+│ 6 deterministic + LLM    │──anchor──►│  • subject_hash → history          │
+│ jury (±15 adjustment)    │  thesis  │  • thesis_hash → point lookup       │
+│                          │  + score │  • CES events (free reads)         │
+│ Risk guardrails          │          │                                    │
+│ TWAK / SoDEX execution   │          │  MCP Server (6 tools)              │
+└──────────┬───────────────┘          │  • Free: reputation, latest, by    │
+           │                          │    thesis, jury deliberation        │
+           ▼                          │  • Paid: history, cross-chain,      │
+┌──────────────────────────┐          │    live signals (x402)              │
+│  Mantle ERC-8004 mirror   │          │                                    │
+│  Aleo ZK privacy proof    │          │  x402 Paywall (CSPR.cloud)         │
+└──────────────────────────┘          │  • CEP-18 per-request payment       │
+                                      │  • Facilitator pays gas            │
+OTHER AGENTS ──MCP query──► ─free──► │  • CROO CAP (USDC/Base) second rail │
+(yield bots,              ──paid──►  └───────────────────────────────────┘
+ wallets, oracles)
 ```
+
+The agent is a **bidirectional MCP participant**: it exposes 6 tools for
+other agents to query its reputation, and it consumes 2 Casper ecosystem
+MCP servers (CSPR.trade DEX prices + Casper blockchain status) as
+cross-chain context for its LLM conviction jury.
 
 The companion Next.js dashboard surfaces the live agent's state, conviction
 signals, dual-chain anchors, and (separately) lets users analyze their own
@@ -67,31 +82,45 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 
 ## Live
 
-> **Casper Agentic Buildathon 2026 submission:** the Casper-native reputation
-> marketplace layer — Odra contract, MCP server, and x402 paywall. Full narrative
-> in [`SUBMISSION.md`](./SUBMISSION.md).
->
-> **CROO Hackathon submission:** the same reputation marketplace is now callable
-> through the CROO Agent Protocol, settling in USDC on Base. See
-> [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md).
+> **Casper Agentic Buildathon 2026 — Final Round submission.**
+> Agent reputation marketplace, natively on Casper: Odra contract, MCP server, x402 paywall. Full narrative in [`SUBMISSION.md`](./SUBMISSION.md).
 
+### Casper AI Toolkit Usage
+
+| Toolkit Component | Status | How We Use It |
+|---|---|---|
+| **Odra Framework** | Deployed | `ConvictionRegistry` smart contract in Rust, deployed on Casper Testnet |
+| **MCP Servers** | Live | Agent exposes 6 tools at `POST /mcp` (Streamable HTTP) + consumes 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) |
+| **x402 Micropayments** | Live | HTTP-native paywall: paid tools return `PaymentRequirements`, clients pay via CEP-18 transfer, CSPR.cloud facilitator settles |
+| **CSPR.cloud APIs** | Live | RPC for contract reads/writes, `state_get_dictionary_item` for free CES event reads |
+| **casper-js-sdk** | Live | `ContractCallBuilder` for anchor writes, `SessionBuilder` for deploys |
+| **Casper Wallet (browser ext.)** | Live | In-browser wallet connect + sign proof + user-initiated anchoring |
+
+### Live Links
+
+- **Landing page** — https://earlynotwrong.vercel.app/
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
-- **Agent API** — `GET /status`, `/conviction`, `/trades` on port 31777
-- **MCP reputation API** — `POST /mcp` (6 tools; the trust-decision reputation
-  queries are free, the recurring-value data — history, cross-chain, live
-  conviction signals — is x402-paid). See
-  [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md#reproduce-the-live-402-challenge)
-  for the one-curl reproduction.
-- **CAP reputation API** — live: connected to CROO via WebSocket, with
-  `signals-live` ($0.05) registered and searchable on the CROO Agent Store
-  as "Early, Not Wrong". See [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md#why-only-one-service-is-store-listed)
-  for why the other four reputation tools (including the free
-  `reputation-agent` trust check) stay MCP-only instead.
-- **CAP status endpoint** — `GET /cap/status` on port 31777
-- **Demo** — [asciinema replay](https://asciinema.org/a/ox0AlPA1AN7uwfWJ) (~30s — MCP + x402 walk-through; recorded before the current pricing — `get_agent_reputation` shown as paid is now free)
-- **Latest dual-chain anchor** — verifiable on
-  [Mantle Sepolia](https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C)
-  and [Casper Testnet](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
+- **Casper contract** — [testnet.cspr.live](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
+- **MCP endpoint** — `POST http://144.202.117.160:31777/mcp` (6 tools; trust-decision queries free, live signals x402-paid)
+- **Agent API** — `GET http://144.202.117.160:31777/status`
+- **CROO Agent Store** — [agent.croo.network](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) (`signals-live`, $0.05 USDC)
+- **GitHub** — https://github.com/thisyearnofear/earlynotwrong
+
+### One-Curl x402 Challenge (live, no setup)
+
+```bash
+curl -sS -X POST http://144.202.117.160:31777/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_live_signals","arguments":{}}}'
+```
+
+Returns a live Casper `PaymentRequirements` object (0.5 CSPR via CEP-18). See [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) for the full reproduction guide.
+
+### Dual-chain anchor verification
+
+- **Casper Testnet** — [contract package](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
+- **Mantle Sepolia** — [ERC-8004 registry](https://explorer.sepolia.mantle.xyz/address/0x81226e8894D334c790D9a972855592E6C4eeB15C)
 
 ## Quick Start
 
