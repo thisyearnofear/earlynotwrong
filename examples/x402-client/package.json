@@ -1,0 +1,14 @@
+{
+  "name": "early-not-wrong-x402-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference x402 MCP client — completes the full paid round-trip on Casper testnet",
+  "scripts": {
+    "start": "node index.mjs",
+    "free": "node index.mjs --free",
+    "challenge": "node index.mjs --challenge",
+    "help": "node index.mjs --help"
+  },
+  "dependencies": {}
+}
