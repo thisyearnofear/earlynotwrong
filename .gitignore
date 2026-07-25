@@ -107,6 +107,14 @@ videos/*/capture/AGENTS.md
 videos/*/capture/CLAUDE.md
 videos/*/capture/.cursorrules
 
+# HyperFrames video project (video/ — singular, buildathon demo)
+# Entire directory ignored: contains rendered MP4s, audio assets, screenshots,
+# and auto-generated HyperFrames boilerplate. Regeneratable from source.
+video/
+
+# Stray HyperFrames catalog blocks installed at repo root by mistake.
+compositions/
+
 # Local agent session telemetry — unrelated to repo contents.
 .kimchi/
 
