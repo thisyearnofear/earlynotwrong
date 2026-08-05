@@ -180,7 +180,10 @@ bodies (for build/submit) to the agent server.
 | `agent/scripts/casper-deploy.mjs` | Odra contract install via SessionBuilder |
 | `agent/scripts/casper-transfer.mjs` | Native CSPR transfer (operator → recipient) |
 | `src/components/casper-wallet-connect.tsx` | Dashboard "Casper Wallet" panel — connect, sign proof, balance, anchor to Casper |
-| `src/app/agent/page.tsx` | Dashboard "Reputation API" panel — live MCP + x402 stats + wallet connect |
+| `src/app/agent/page.tsx` | Dashboard — composes the extracted cards (see `src/components/agent/`) |
+| `src/components/agent/reputation-api-card.tsx` | Dashboard "Reputation API" panel — live MCP + x402 stats + copy-paste curls |
+| `src/components/agent/croo-cap-card.tsx` | Dashboard "CROO · CAP" panel — Store listing + USDC settlement stats |
+| `src/components/agent/buyer-preview-card.tsx` | Dashboard "What buyers get" panel — public signals-live teaser |
 | `src/app/api/agent/proxy/route.ts` | Next.js proxy — forwards GET + POST to agent server (balance, build-anchor, submit-anchor) |
 
 ## How Other Agents Use This

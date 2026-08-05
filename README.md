@@ -117,6 +117,14 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 Returns a live Casper `PaymentRequirements` object (0.5 CSPR via CEP-18). See [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) for the full reproduction guide.
 
+### One-curl edge report (does the signal have edge?)
+
+```bash
+curl -sS http://144.202.117.160:31777/edge-report | jq '.verdict, .hasEdge, .edge'
+```
+
+Returns the conviction strategy vs naive-baseline head-to-head: Sharpe/return/drawdown deltas and factor attribution of winning exits. Or run it locally with `npm run edge-report` (prints a formatted table).
+
 ### Dual-chain anchor verification
 
 - **Casper Testnet** — [contract package](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
@@ -195,6 +203,7 @@ incoming reputation orders. Payment settles on-chain in USDC on Base.
 | [`POSITIONING.md`](./docs/POSITIONING.md) | ICP, differentiation, creative monopoly frame, messaging do/don't |
 | [`OUTBOUND_INTEGRATORS.md`](./docs/OUTBOUND_INTEGRATORS.md) | Surgical outreach to 5 integrator personas — DMs, ask, success metrics |
 | [`docs/MCP_INTEGRATION.md`](./docs/MCP_INTEGRATION.md) | **Start here for buyers** — MCP + CROO rails, signals-live/v1.2, curl + requester |
+| [`examples/buyer-agent/`](./examples/buyer-agent/) | **End-to-end buyer integration** — allocator decision flow: trust gate → paid signals → act + audit. Copy-paste-able, zero deps. See [`DEPLOYMENT.md`](./examples/buyer-agent/DEPLOYMENT.md) for cron/Docker scheduling |
 | [`docs/community-share.md`](./docs/community-share.md) | Paste-ready Telegram/Discord announcements for CROO + Casper channels |
 | [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) | Casper Odra registry + MCP server + x402 reputation paywall |
 | [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md) | CROO Agent Protocol integration — CAP services, USDC settlement, SDK methods |

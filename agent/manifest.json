@@ -76,6 +76,11 @@
       "public": false
     },
     {
+      "path": "/api/edge-report",
+      "port": 31777,
+      "public": false
+    },
+    {
       "path": "/api/mcp",
       "port": 31777,
       "public": false

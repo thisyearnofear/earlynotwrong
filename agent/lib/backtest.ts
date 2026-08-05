@@ -483,6 +483,22 @@ export function runBacktestVariant(
     if (value > state.peakValueUsd) state.peakValueUsd = value;
   }
 
+  return finalizeResult(state, days, variant, initialValue, lastPriceMap);
+}
+
+/**
+ * Shared result finalization — computes Sharpe, max drawdown, win rate,
+ * profit factor from a completed simulation state. Used by both the
+ * conviction variant runner and the naive baseline so their metrics are
+ * computed identically (no apples-to-oranges).
+ */
+function finalizeResult(
+  state: SimState,
+  days: BacktestDay[],
+  variant: string,
+  initialValue: number,
+  lastPriceMap: Map<string, number> | undefined,
+): BacktestResult {
   const finalValue = totalValue(state, lastPriceMap);
   const returns = state.dailyValues.map((v) => (v / initialValue) - 1);
   const avgReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
@@ -542,4 +558,320 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestResul
   ];
   for (const r of results) (r as any).dataSource = dataSource;
   return results;
+}
+
+// =============================================================================
+// Edge report — does conviction scoring beat a naive baseline?
+// =============================================================================
+//
+// runBacktest() above compares three VARIANTS of the conviction strategy
+// against each other. That answers "which config is best?" but not the
+// question a buyer agent actually asks: "does the conviction signal itself
+// have edge, or would any disciplined exit policy do as well?"
+//
+// The edge report runs the conviction strategy alongside a NAIVE BASELINE
+// (equal-weight random entry, same risk rules) on the same price paths and
+// attributes the conviction strategy's realized P&L to the factor that scored
+// highest on each winning entry. If conviction beats naive on risk-adjusted
+// return AND the wins cluster on high-conviction entries, the signal has
+// demonstrable edge.
+
+/**
+ * Run a naive baseline: enter a random eligible token each cycle (seeded),
+ * same position sizing, same exit rules. No conviction scoring at all.
+ *
+ * This is the control. If the conviction strategy doesn't beat it on
+ * risk-adjusted return, the scoring adds no value — the exits are doing
+ * all the work.
+ */
+export function runBaselineVariant(
+  days: BacktestDay[],
+  cfg: BacktestConfig,
+  variant = "naive_baseline",
+): BacktestResult {
+  const state: SimState = {
+    cashUsd: cfg.initialCashUsd,
+    bnbUsd: cfg.initialBnbUsd,
+    positions: [],
+    trades: [],
+    gasSpentUsd: 0,
+    realizedPnlUsd: 0,
+    peakValueUsd: cfg.initialCashUsd + cfg.initialBnbUsd,
+    dailyValues: [],
+  };
+  const initialValue = totalValue(state);
+  let cycle = 0;
+  const rnd = makeRng(7); // different seed from the conviction run
+  let lastPriceMap: Map<string, number> | undefined;
+
+  for (const day of days) {
+    cycle += 1;
+    const priceMap = new Map(day.quotes.map((q) => [q.symbol.toUpperCase(), q.price]));
+    lastPriceMap = priceMap;
+
+    // 1. Accrue + evaluate exits (IDENTICAL risk rules to the conviction run).
+    for (const p of state.positions) {
+      const price = priceMap.get(p.symbol.toUpperCase()) ?? 0;
+      if (price > 0) Object.assign(p, accruePosition(p, price));
+    }
+    const toExit: { pos: HeldPosition; verdict: PositionVerdict }[] = [];
+    for (const pos of state.positions) {
+      const price = priceMap.get(pos.symbol.toUpperCase()) ?? 0;
+      if (price <= 0) continue;
+      const verdict = evaluatePosition(pos, price);
+      if (verdict.action !== "HOLD") toExit.push({ pos, verdict });
+    }
+    for (const { pos, verdict } of toExit) {
+      const price = priceMap.get(pos.symbol.toUpperCase()) ?? 0;
+      if (price <= 0) continue;
+      const type: BacktestTrade["type"] =
+        verdict.action === "EXIT_STOP" ? "exit_stop" :
+        verdict.action === "EXIT_TRAIL" ? "exit_trail" : "exit_partial";
+      sellPosition(state, pos, price, day.date, type, verdict.sellFraction, cfg.gasUsd, cfg.slippageBps);
+      if (type === "exit_partial") pos.partialProfitTaken = true;
+    }
+    state.positions = state.positions.filter((p) => p.amountUsd > 0.01);
+
+    // 2. Enter a RANDOM eligible token (no conviction scoring).
+    const reserve = cfg.minBnbReserveUsd;
+    const tradeableBnb = Math.max(0, state.bnbUsd - reserve);
+    const portfolioValue = totalValue(state, priceMap);
+    const maxTradeSize = Math.min(portfolioValue * 0.15, tradeableBnb * cfg.maxTradeFractionOfBnb);
+
+    if (state.positions.length < cfg.maxOpenPositions && maxTradeSize > 1) {
+      const eligible = day.quotes.filter(
+        (q) => !state.positions.some((p) => p.symbol.toUpperCase() === q.symbol.toUpperCase()),
+      );
+      if (eligible.length > 0) {
+        const pick = eligible[Math.floor(rnd() * eligible.length)];
+        const price = pick.price;
+        if (price > 0) {
+          const entryUsd = Math.min(maxTradeSize, Math.max(2, state.bnbUsd - reserve));
+          const pos = openPosition({
+            symbol: pick.symbol,
+            entryPriceUsd: price,
+            amountUsd: entryUsd,
+            cycle,
+            now: day.timestamp,
+          });
+          state.positions.push(pos);
+          state.bnbUsd -= entryUsd;
+          state.gasSpentUsd += cfg.gasUsd;
+          state.trades.push({
+            day: day.date, symbol: pick.symbol, type: "entry",
+            amountUsd: entryUsd, pnlUsd: 0, priceUsd: price,
+          });
+        }
+      }
+    }
+
+    // 3. Harvest if at cap / low BNB (same rule as conviction run).
+    if ((state.bnbUsd < cfg.initialBnbUsd * 0.25 || state.positions.length >= cfg.maxOpenPositions) && state.positions.length > 0) {
+      const candidates = [...state.positions].sort(
+        (a, b) =>
+          positionValueUsd(a, priceMap.get(a.symbol.toUpperCase()) ?? 0) -
+          positionValueUsd(b, priceMap.get(b.symbol.toUpperCase()) ?? 0),
+      );
+      const victim = candidates[0];
+      if (victim) {
+        const price = priceMap.get(victim.symbol.toUpperCase()) ?? 0;
+        if (price > 0) {
+          sellPosition(state, victim, price, day.date, "exit_harvest", 1, cfg.gasUsd, cfg.slippageBps);
+          state.positions = state.positions.filter((p) => p.symbol !== victim.symbol);
+        }
+      }
+    }
+
+    const value = totalValue(state, priceMap);
+    state.dailyValues.push(value);
+    if (value > state.peakValueUsd) state.peakValueUsd = value;
+  }
+
+  return finalizeResult(state, days, variant, initialValue, lastPriceMap);
+}
+
+/** Factor that contributed most to an entry's conviction score. */
+export type ConvictionFactor =
+  | "contrarian"
+  | "rsi"
+  | "quality"
+  | "regime"
+  | "holders"
+  | "news"
+  | "llmJury";
+
+export interface FactorAttribution {
+  factor: ConvictionFactor;
+  /** Number of winning exits whose entry was led by this factor. */
+  winningExits: number;
+  /** Realized P&L (USD) from those winning exits. */
+  realizedPnlUsd: number;
+  /** Mean conviction score of entries led by this factor. */
+  meanEntryScore: number;
+}
+
+export interface EdgeReport {
+  /** Conviction (adaptive) strategy result. */
+  conviction: BacktestResult;
+  /** Naive random-entry baseline result. */
+  naive: BacktestResult;
+  /** Head-to-head deltas (conviction minus naive). Positive = conviction edge. */
+  edge: {
+    totalReturnPercent: number;
+    sharpeRatio: number;
+    maxDrawdownPercent: number;
+    winRate: number;
+    profitFactor: number;
+  };
+  /** Does the conviction strategy beat naive on risk-adjusted return (Sharpe)? */
+  hasEdge: boolean;
+  /** One-line verdict for logs / dashboards. */
+  verdict: string;
+  /** P&L attributed to the factor that led each winning entry. */
+  factorAttribution: FactorAttribution[];
+  /** Where the data came from. */
+  dataSource: "live" | "synthetic";
+}
+
+/**
+ * Determine which factor contributed most to a conviction score.
+ * Used to attribute winning exits back to the signal component that drove
+ * the entry — answering "is the contrarian factor doing the work?"
+ */
+export function leadingFactor(breakdown: ConvictionSignal["breakdown"]): ConvictionFactor {
+  const candidates: Array<[ConvictionFactor, number]> = [
+    ["contrarian", breakdown.contrarian],
+    ["rsi", breakdown.rsi],
+    ["quality", breakdown.quality],
+    ["regime", breakdown.regime],
+    ["holders", breakdown.holders],
+    ["news", Math.abs(breakdown.news)],
+    ["llmJury", Math.abs(breakdown.llmJury ?? 0)],
+  ];
+  candidates.sort((a, b) => b[1] - a[1]);
+  return candidates[0][0];
+}
+
+/**
+ * Build the full edge report: conviction strategy vs naive baseline, with
+ * factor attribution of winning exits.
+ *
+ * This is the function a buyer agent (or the agent's own self-analysis)
+ * should call to answer "does this signal have demonstrable edge?"
+ */
+export async function runEdgeReport(
+  config: BacktestConfig,
+): Promise<EdgeReport> {
+  const cfg = { ...DEFAULT_CONFIG, ...config };
+  let days: BacktestDay[];
+  let dataSource: "live" | "synthetic" = "live";
+  try {
+    days = await loadHistoricalData(cfg);
+  } catch {
+    days = generateSyntheticData(cfg);
+    dataSource = "synthetic";
+  }
+  if (days.length === 0) throw new Error("No historical data loaded");
+
+  const conviction = runBacktestVariant(
+    days, { ...cfg, adaptiveWeights: true, honeypotGate: false }, "conviction_adaptive",
+  );
+  const naive = runBaselineVariant(days, cfg, "naive_baseline");
+
+  // Attribute winning exits to the leading factor of their entry signal.
+  // We re-score each entry day to recover the breakdown (the trade log only
+  // stores price/symbol). This is O(days × symbols) — cheap.
+  const factorMap = new Map<ConvictionFactor, {
+    winningExits: number;
+    realizedPnlUsd: number;
+    scoreSum: number;
+    scoreCount: number;
+  }>();
+  const entryBreakdownBySymbolDay = new Map<string, ConvictionSignal["breakdown"]>();
+
+  for (const day of days) {
+    const regime = cloneRegimeForWeights(day.regime, true);
+    const rsiBySymbol = new Map<string, number>();
+    for (const q of day.quotes) {
+      const klines = (q as any).klines as SosovalueKline[] | undefined;
+      if (klines && klines.length >= 15) rsiBySymbol.set(q.symbol.toUpperCase(), computeRSI14(klines));
+    }
+    for (const q of day.quotes) {
+      const sig = scoreTokenConviction(q, regime, undefined, null, rsiBySymbol.get(q.symbol.toUpperCase()) ?? null);
+      entryBreakdownBySymbolDay.set(`${q.symbol.toUpperCase()}@${day.date}`, sig.breakdown);
+    }
+  }
+
+  for (const t of conviction.tradeLog) {
+    if (t.type === "entry") continue;
+    if (t.pnlUsd <= 0) continue; // only attribute WINNING exits
+    // Find the entry breakdown for this symbol on the most recent entry day
+    // at or before the exit day.
+    const exitDayIdx = days.findIndex((d) => d.date === t.day);
+    let entryBreakdown: ConvictionSignal["breakdown"] | undefined;
+    for (let i = exitDayIdx; i >= 0; i--) {
+      const key = `${t.symbol.toUpperCase()}@${days[i].date}`;
+      const b = entryBreakdownBySymbolDay.get(key);
+      if (b) { entryBreakdown = b; break; }
+    }
+    if (!entryBreakdown) continue;
+
+    const factor = leadingFactor(entryBreakdown);
+    const slot = factorMap.get(factor) ?? { winningExits: 0, realizedPnlUsd: 0, scoreSum: 0, scoreCount: 0 };
+    slot.winningExits += 1;
+    slot.realizedPnlUsd += t.pnlUsd;
+    // Reconstruct the entry score from the breakdown sum for the mean.
+    const entryScore = entryBreakdown.contrarian + entryBreakdown.rsi + entryBreakdown.quality +
+      entryBreakdown.regime + entryBreakdown.holders - entryBreakdown.volatilityPenalty + entryBreakdown.news;
+    slot.scoreSum += entryScore;
+    slot.scoreCount += 1;
+    factorMap.set(factor, slot);
+  }
+
+  const factorAttribution: FactorAttribution[] = [...factorMap.entries()]
+    .map(([factor, s]) => ({
+      factor,
+      winningExits: s.winningExits,
+      realizedPnlUsd: Math.round(s.realizedPnlUsd * 100) / 100,
+      meanEntryScore: s.scoreCount > 0 ? Math.round((s.scoreSum / s.scoreCount) * 10) / 10 : 0,
+    }))
+    .sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd);
+
+  const edge = {
+    totalReturnPercent: round2(conviction.totalReturnPercent - naive.totalReturnPercent),
+    sharpeRatio: round2(conviction.sharpeRatio - naive.sharpeRatio),
+    maxDrawdownPercent: round2(conviction.maxDrawdownPercent - naive.maxDrawdownPercent),
+    winRate: round4(conviction.winRate - naive.winRate),
+    profitFactor: round2(conviction.profitFactor - naive.profitFactor),
+  };
+
+  // Edge = conviction beats naive on risk-adjusted return (Sharpe) AND does
+  // not lose money in absolute terms. We use Sharpe rather than raw return as
+  // the primary test because the naive baseline can get lucky on a bull path;
+  // risk-adjusted return is the honest test. But a strategy that loses less
+  // catastrophically isn't "edge" — so we also require non-negative return.
+  const hasEdge = conviction.sharpeRatio > naive.sharpeRatio && conviction.totalReturnPercent >= 0;
+
+  const verdict = hasEdge
+    ? `Conviction beats naive baseline: Sharpe ${conviction.sharpeRatio.toFixed(2)} vs ${naive.sharpeRatio.toFixed(2)} (+${edge.sharpeRatio.toFixed(2)}), return ${conviction.totalReturnPercent.toFixed(1)}% vs ${naive.totalReturnPercent.toFixed(1)}%`
+    : conviction.totalReturnPercent < 0
+      ? `No demonstrable edge: conviction return is negative (${conviction.totalReturnPercent.toFixed(1)}%) — signal does not produce profit on this path even if Sharpe beats naive`
+      : `No demonstrable edge: naive baseline Sharpe ${naive.sharpeRatio.toFixed(2)} >= conviction ${conviction.sharpeRatio.toFixed(2)}`;
+
+  return {
+    conviction,
+    naive,
+    edge,
+    hasEdge,
+    verdict,
+    factorAttribution,
+    dataSource,
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
 }

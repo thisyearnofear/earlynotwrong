@@ -22,6 +22,9 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ### Recently shipped
 
+- **Edge report + buyer-agent integration example** — `agent/lib/backtest.ts` + `examples/buyer-agent/`. The backtest harness now answers the actual buyer question: "does the conviction signal have edge, or would any disciplined exit policy do as well?" `runEdgeReport()` runs the conviction strategy alongside a **naive random-entry baseline** (same risk rules, no scoring) on the same price paths, computes head-to-head Sharpe/return/drawdown deltas, and attributes winning-exit P&L to the leading conviction factor (contrarian / RSI / quality / regime / holders / news / llmJury). `hasEdge` requires conviction to beat naive on Sharpe *and* be non-negative in absolute return (a strategy that just loses less isn't edge). New `GET /edge-report` endpoint surfaces the live verdict; `npm run edge-report` prints it. The `examples/buyer-agent/` example is a complete allocator decision flow: free `get_agent_reputation` trust gate → optional `--edge-report` pre-check → paid `get_live_signals` → act on `guidance.recommendedAction` with the buyer's own sizing, cross-checking `provenance.behavioral.status` before acting on `evaluate`. Supports `--json` (machine-readable audit line) and `--edge-report` (skip the paid call if the signal has no demonstrable edge). 9 new edge-report tests.
+- **Signal Edge dashboard panel + agent page component extraction** — `src/components/agent/signal-edge-panel.tsx` + `llm-jury-card.tsx` + `agent-types.ts`. The `/agent` dashboard's Proof view now surfaces a live "Signal Edge" panel: conviction vs naive baseline head-to-head table, verdict banner, and factor-attribution bar chart (which conviction factor drove the winning exits). The 2,751-line `agent/page.tsx` god component was reduced to 1,846 lines (−33%) by extracting: the `ConvictionData` type to a shared `agent-types.ts` (reusable by card components), `LlmJuryCard`, `BuyerPreviewCard`, `ReputationApiCard`, `CrooCapCard`, and their shared types/helpers/constants (`ReputationStats`, `formatCspr`, `formatUsdc`, MCP curl snippets) to `hire-card-shared.ts`. Each card is now independently testable. The `SignalEdgePanel` loads lazily (opt-in backtest run) so it doesn't block the dashboard's critical path.
+- **Buyer-agent integration hardened for production** — `examples/buyer-agent/`. The allocator decision flow now implements the full x402 payment round-trip: when `CASPER_PRIVATE_KEY_HEX` is set, it gets the 402 challenge, constructs the `X-PAYMENT` header (with a real signed CEP-18 transfer via `casper-js-sdk` when installed, or an observable unsigned envelope otherwise), and re-POSTs to settle. Added `--json` mode (machine-readable JSONL audit for cron), `--edge-report` pre-check (skip the paid call if the signal has no demonstrable edge), a `bin` entry (`enw-buyer`), `optionalDependencies` on `casper-js-sdk`, and `DEPLOYMENT.md` (cron scheduling, Docker, env vars, exit codes, the full decision-contract audit schema). The buyer never touches funds — it emits the decision; a downstream executor holds custody.
 - **Casper RPC fallback chain + 429 backoff** — `agent/lib/anchors/casper.ts` + `agent/lib/casper-mcp-client.ts`. Public `node.testnet.casper.network` (no auth, no quota) is now the primary RPC; cspr.cloud with `CSPR_CLOUD_TOKEN` is fallback. Both the anchoring adapter and the MCP consumer try endpoints in order, skipping 429s. Balance check has exponential 429 backoff (15m→30m→1h→2h→4h cap) so the agent stops burning RPC quota on doomed checks when rate-limited.
 - **Casper anchor spend fix** — `agent/lib/llm-jury.ts` + `agent/index.ts`. The thesis-hash dedup was effectively dead: the LLM jury digest included raw adjustment floats, so non-deterministic LLM output moved the thesis hash every cycle and forced redundant 50-CSPR Casper anchors. Fixed by quantizing the digest (5-pt adjustment buckets, agreement→sign, drop neutrals, sort by symbol). Also persisted `lastAnchoredThesisHash` across pm2 restarts and lowered the balance gate from 100→30 CSPR. 4 new jury digest tests.
 - **SigNoz observability + demo progressive disclosure** — per-cycle pipeline timing exposed on `/agent` via `AgentObservabilityPanel` + `AgentCommandStrip`. Demo mode (`?demo=1`) refactored to one-act-at-a-time with sticky `DemoActNav` and collapsed secondary panels behind `DisclosureSection`.
@@ -58,7 +61,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | File / Module | Purpose |
 |---------------|---------|
 | `agent/index.ts` | Startup, main loop orchestrator (`.env` inline loader, `runCycle()`, `restoreSnapshot()`) |
-| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
+| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/edge-report`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
 | `agent/src/mcp/` | MCP server + x402 paywall — exposes cross-chain conviction data to AI agents |
 | `agent/src/cap/` | CROO Agent Protocol adapter — reputation services settled in USDC on Base |
 | `agent/src/payment-stats.ts` | Shared A2A payment counters for x402 and CAP |
@@ -80,6 +83,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | `agent/lib/market-narrative.ts` | AI market narrative generation from SoSoValue feeds + macro events |
 | `agent/lib/anchors/` | Cross-chain anchoring adapters — `MantleAnchorAdapter` + `CasperAnchorAdapter` |
 | `agent/lib/self-analysis.ts` | Builds the agent's canonical trade ledger and scores its own behavior each cycle via `conviction-core` |
+| `agent/lib/backtest.ts` | Backtest harness + **edge report** — conviction strategy vs naive baseline, factor attribution of winning exits. `runEdgeReport()` answers "does the signal have demonstrable edge?" |
 
 ### Module Dependency Graph
 
@@ -341,6 +345,13 @@ If a step fails, the log includes a `TWAK help:` line with the exact fix. The cy
 | `aleo-conviction-card.tsx` | Aleo private ZK proof card |
 | `mantle-conviction-card.tsx` | Mantle anchored conviction card |
 | `casper-wallet-connect.tsx` | In-browser Casper Wallet connect + sign proof (uses `window.CasperWalletProvider` injected by the extension) |
+| `agent/signal-edge-panel.tsx` | Signal Edge panel — conviction vs naive baseline head-to-head + factor attribution (Proof view) |
+| `agent/llm-jury-card.tsx` | LLM Conviction Jury card — 7th factor verdicts (extracted from agent page) |
+| `agent/buyer-preview-card.tsx` | Buyer preview — public signals-live teaser (guidance + top symbol) |
+| `agent/reputation-api-card.tsx` | MCP · x402 reputation API card — query stats, per-tool pricing, copy-paste curls |
+| `agent/croo-cap-card.tsx` | CROO · CAP marketplace card — Store listing, USDC settlement stats, requester snippet |
+| `agent/hire-card-shared.ts` | Shared types/helpers/constants for the hire-view cards (`ReputationStats`, `formatCspr`, MCP curl snippets) |
+| `agent/agent-types.ts` | Shared agent dashboard types (`ConvictionData`, `LlmDeliberation`, etc.) — extracted so card components don't import the god component |
 
 ## Common Tasks
 

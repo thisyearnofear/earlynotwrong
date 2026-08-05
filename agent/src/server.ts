@@ -40,6 +40,7 @@ import { paymentStats, serializeByTool } from "./payment-stats.js";
 import { CAP_PRICING } from "./cap/pricing.js";
 import { getCapStatus } from "./cap/client.js";
 import { getBotUsername, getSubscriberCount } from "../lib/telegram-subscribers.js";
+import { runEdgeReport, type BacktestConfig } from "../lib/backtest.js";
 import { aleoSignHmacMiddleware, handleSignVoucher } from "./aleo/sign-service.js";
 import { queryBalance, buildAnchorTransaction, submitSignedTransaction } from "../lib/anchors/casper.js";
 
@@ -482,6 +483,44 @@ app.get("/status", async (c) => {
 });
 
 // ===========================================================================
+// GET /edge-report
+// ===========================================================================
+// On-demand edge report: conviction strategy vs naive baseline, with factor
+// attribution. Answers the buyer-agent question "does the signal have
+// demonstrable edge?" in real time. Runs against live SoSoValue klines when
+// available (synthetic fallback otherwise — clearly flagged in the response).
+
+app.get("/edge-report", async (c) => {
+  const today = new Date();
+  const start = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const cfg: BacktestConfig = {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: today.toISOString().slice(0, 10),
+    initialBnbUsd: 9,
+    initialCashUsd: 70,
+    symbols: AGENT_CONFIG.competition.eligibleTokens.slice(0, 20),
+    adaptiveWeights: true,
+    honeypotGate: false,
+    slippageBps: 100,
+    gasUsd: 1.5,
+    maxOpenPositions: AGENT_CONFIG.trading.maxOpenPositions,
+    minConvictionScore: 60,
+    maxTradeFractionOfBnb: AGENT_CONFIG.trading.bankroll.maxTradeFractionOfBnb,
+    minBnbReserveUsd: AGENT_CONFIG.trading.bankroll.minBnbReserveUsd,
+    stopLossPercent: AGENT_CONFIG.trading.stopLossPercent,
+    partialProfitGainPercent: AGENT_CONFIG.trading.partialProfitGainPercent,
+    trailingActivationGainPercent: AGENT_CONFIG.trading.trailingActivationGainPercent,
+    trailingStopPercent: AGENT_CONFIG.trading.trailingStopPercent,
+  };
+  try {
+    const report = await runEdgeReport(cfg);
+    return c.json(report);
+  } catch (err) {
+    return c.json({ error: "edge report failed", message: String(err) }, 500);
+  }
+});
+
+// ===========================================================================
 // GET /trades
 // ===========================================================================
 
@@ -668,6 +707,7 @@ export function startServer(
       console.log(`[server] Running on port ${actualPort}`);
       console.log(`[server] Routes:`);
       console.log(`  GET /status     — Agent status and guardrails`);
+      console.log(`  GET /edge-report — Conviction vs naive baseline edge + factor attribution`);
       console.log(`  GET /trades     — Trade history`);
       console.log(`  GET /conviction — Market data and conviction scores`);
       console.log(`  GET /casper/balance    — CSPR balance for a public key`);

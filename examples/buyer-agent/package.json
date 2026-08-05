@@ -1,0 +1,20 @@
+{
+  "name": "earlynotwrong-buyer-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Allocator buyer agent — consumes the Early, Not Wrong reputation marketplace to make a verifiable pre-trade decision.",
+  "type": "module",
+  "bin": {
+    "enw-buyer": "./index.mjs"
+  },
+  "scripts": {
+    "start": "node index.mjs",
+    "dry-run": "node index.mjs --dry-run",
+    "json": "node index.mjs --json",
+    "edge": "node index.mjs --edge-report --json",
+    "cron": "node index.mjs --edge-report --json >> /var/log/enw-buyer.log 2>&1"
+  },
+  "optionalDependencies": {
+    "casper-js-sdk": "^2.15.0"
+  }
+}

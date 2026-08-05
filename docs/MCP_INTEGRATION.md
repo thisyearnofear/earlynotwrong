@@ -10,6 +10,8 @@
 | **JSON Schema** | https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json |
 | **Example payload** | https://earlynotwrong.vercel.app/samples/signals-live-v1.2.example.json |
 | **Reference requester** | [`examples/croo-requester/`](../examples/croo-requester/) |
+| **Allocator buyer agent** | [`examples/buyer-agent/`](../examples/buyer-agent/) — full decision flow: trust gate → edge check → paid signals → act + audit. See [`DEPLOYMENT.md`](../examples/buyer-agent/DEPLOYMENT.md) for cron/Docker. |
+| **Edge report** | `GET http://144.202.117.160:31777/edge-report` — conviction vs naive baseline; does the signal have demonstrable edge? |
 
 ---
 

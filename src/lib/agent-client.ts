@@ -140,3 +140,63 @@ export async function fetchAgentConviction(): Promise<AgentConviction | null> {
     return null;
   }
 }
+
+// ─── Edge report ────────────────────────────────────────────────────────────
+//
+// The edge report answers the buyer question: "does the conviction signal
+// have demonstrable edge, or would any disciplined exit policy do as well?"
+// It runs the conviction strategy alongside a naive random-entry baseline
+// on the same price paths and reports head-to-head deltas + factor attribution.
+
+export interface EdgeReportFactorAttribution {
+  factor: "contrarian" | "rsi" | "quality" | "regime" | "holders" | "news" | "llmJury";
+  winningExits: number;
+  realizedPnlUsd: number;
+  meanEntryScore: number;
+}
+
+export interface EdgeReport {
+  conviction: {
+    variant: string;
+    totalReturnPercent: number;
+    maxDrawdownPercent: number;
+    winRate: number;
+    profitFactor: number;
+    trades: number;
+    sharpeRatio: number;
+  };
+  naive: {
+    variant: string;
+    totalReturnPercent: number;
+    maxDrawdownPercent: number;
+    winRate: number;
+    profitFactor: number;
+    trades: number;
+    sharpeRatio: number;
+  };
+  edge: {
+    totalReturnPercent: number;
+    sharpeRatio: number;
+    maxDrawdownPercent: number;
+    winRate: number;
+    profitFactor: number;
+  };
+  hasEdge: boolean;
+  verdict: string;
+  factorAttribution: EdgeReportFactorAttribution[];
+  dataSource: "live" | "synthetic";
+}
+
+/**
+ * Fetch the on-demand edge report (conviction vs naive baseline).
+ * This runs a backtest on each call, so it can take a few seconds.
+ */
+export async function fetchEdgeReport(): Promise<EdgeReport | null> {
+  try {
+    const response = await tryFetch("/edge-report");
+    if (!response) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
