@@ -184,7 +184,11 @@ export interface EdgeReport {
   hasEdge: boolean;
   verdict: string;
   factorAttribution: EdgeReportFactorAttribution[];
-  dataSource: "live" | "synthetic";
+  /** "live" = fresh SoSoValue klines; "live-stale" = real klines served from
+   *  the disk cache past their TTL (API rate-limited); "synthetic" = the
+   *  deterministic generator (mechanics only, not real edge). */
+  dataSource: "live" | "live-stale" | "synthetic";
+  staleSymbols: string[];
 }
 
 /**

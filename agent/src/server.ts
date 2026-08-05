@@ -488,9 +488,21 @@ app.get("/status", async (c) => {
 // On-demand edge report: conviction strategy vs naive baseline, with factor
 // attribution. Answers the buyer-agent question "does the signal have
 // demonstrable edge?" in real time. Runs against live SoSoValue klines when
-// available (synthetic fallback otherwise — clearly flagged in the response).
+// available (stale-cache or synthetic fallback otherwise — honestly flagged
+// in the response dataSource).
+
+/** Cache the report for 30 min — a backtest is expensive (20 symbols ×
+ *  kline fetches through the 3s/symbol throttle) and the 90-day window
+ *  barely moves between calls. Repeated hits shouldn't burn API quota. */
+let edgeReportCache: { report: unknown; computedAt: number } | null = null;
+const EDGE_REPORT_CACHE_TTL_MS = 30 * 60 * 1000;
 
 app.get("/edge-report", async (c) => {
+  const fresh = c.req.query("fresh") === "1" || c.req.query("fresh") === "true";
+  if (!fresh && edgeReportCache && Date.now() - edgeReportCache.computedAt < EDGE_REPORT_CACHE_TTL_MS) {
+    return c.json({ ...(edgeReportCache.report as object), cached: true, cachedAt: edgeReportCache.computedAt });
+  }
+
   const today = new Date();
   const start = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
   const cfg: BacktestConfig = {
@@ -514,7 +526,8 @@ app.get("/edge-report", async (c) => {
   };
   try {
     const report = await runEdgeReport(cfg);
-    return c.json(report);
+    edgeReportCache = { report, computedAt: Date.now() };
+    return c.json({ ...report, cached: false });
   } catch (err) {
     return c.json({ error: "edge report failed", message: String(err) }, 500);
   }

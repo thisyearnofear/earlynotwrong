@@ -88,6 +88,9 @@ if (report.factorAttribution.length > 0) {
 if (report.dataSource === "synthetic") {
   console.log("\n  ⚠ SYNTHETIC DATA — results demonstrate mechanics only, not live edge.");
   console.log("    Set SOSOVALUE_API_KEY to run against live historical klines.\n");
+} else if (report.dataSource === "live-stale") {
+  console.log(`\n  ◔ LIVE-STALE — real SoSoValue klines from the disk cache (API rate-limited).`);
+  console.log(`    Stale symbols: ${report.staleSymbols.join(", ")}. Real history, possibly a cycle old.\n`);
 } else {
   console.log("\n  DATA: live SoSoValue historical klines.\n");
 }

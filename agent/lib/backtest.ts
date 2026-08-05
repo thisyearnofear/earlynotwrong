@@ -251,9 +251,35 @@ function buildDaysFromKlines(
   return days;
 }
 
-export async function loadHistoricalData(
+/** Where a backtest's price history came from. */
+export type BacktestDataSource =
+  | "live"        // all symbols fetched fresh from SoSoValue this call
+  | "live-stale"  // at least one symbol served from the stale kline cache
+  | "synthetic";  // no live/stale data — the deterministic synthetic generator
+
+export interface HistoricalDataResult {
+  days: BacktestDay[];
+  dataSource: BacktestDataSource;
+  /** Symbols served from the stale kline cache (API suspended / rate-limited). */
+  staleSymbols: string[];
+}
+
+/**
+ * Load historical daily klines into BacktestDay[].
+ *
+ * Fallback ladder per symbol:
+ *   1. Fresh fetch from SoSoValue (fetchKlinesBySymbol)
+ *   2. STALE kline cache (getCachedKlines — TTL-agnostic). The disk cache
+ *      holds ~111-day series from the trading cycle's top-10 RSI fetches,
+ *      so a rate-limited VPS can still serve a real 90-day backtest.
+ *   3. Skipped (symbol has no usable klines at all)
+ *
+ * Throws only when NOTHING loads (all 3 ladders miss for every symbol) —
+ * callers then fall back to the synthetic generator.
+ */
+export async function loadHistoricalDataDetailed(
   config: Pick<BacktestConfig, "startDate" | "endDate" | "symbols">
-): Promise<BacktestDay[]> {
+): Promise<HistoricalDataResult> {
   const symbols = config.symbols ?? AGENT_CONFIG.competition.eligibleTokens.slice(0, 50);
   const start = new Date(config.startDate);
   const end = new Date(config.endDate);
@@ -261,14 +287,25 @@ export async function loadHistoricalData(
   const dayCount = Math.max(1, Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1);
 
   const klinesBySymbol = new Map<string, SosovalueKline[]>();
+  const staleSymbols: string[] = [];
   for (const symbol of symbols) {
+    let klines: SosovalueKline[] = [];
     try {
-      const klines = await sosovalueClient.fetchKlinesBySymbol(symbol, "1d", dayCount + 20);
-      if (klines.length >= 15) {
-        klinesBySymbol.set(symbol.toUpperCase(), klines.slice().sort((a, b) => a.timestamp - b.timestamp));
-      }
+      klines = await sosovalueClient.fetchKlinesBySymbol(symbol, "1d", dayCount + 20);
     } catch {
-      // Ignore individual-symbol failures; fall through to synthetic data if none load.
+      // fresh fetch failed (network, suspended, 429) — try the stale cache.
+    }
+    let fromStaleCache = false;
+    if (klines.length < 15) {
+      const cached = sosovalueClient.getCachedKlines(symbol, "1d");
+      if (cached && cached.klines.length >= 15) {
+        klines = cached.klines;
+        fromStaleCache = true;
+      }
+    }
+    if (klines.length >= 15) {
+      klinesBySymbol.set(symbol.toUpperCase(), klines.slice().sort((a, b) => a.timestamp - b.timestamp));
+      if (fromStaleCache) staleSymbols.push(symbol.toUpperCase());
     }
   }
 
@@ -276,7 +313,18 @@ export async function loadHistoricalData(
     throw new Error("No historical klines could be loaded from SoSoValue");
   }
 
-  return buildDaysFromKlines(start, dayCount, klinesBySymbol);
+  return {
+    days: buildDaysFromKlines(start, dayCount, klinesBySymbol),
+    dataSource: staleSymbols.length > 0 ? "live-stale" : "live",
+    staleSymbols,
+  };
+}
+
+/** Back-compat wrapper: returns just the days (see loadHistoricalDataDetailed). */
+export async function loadHistoricalData(
+  config: Pick<BacktestConfig, "startDate" | "endDate" | "symbols">
+): Promise<BacktestDay[]> {
+  return (await loadHistoricalDataDetailed(config)).days;
 }
 
 function cloneRegimeForWeights(regime: MarketRegime, adaptive: boolean): MarketRegime {
@@ -537,9 +585,14 @@ function finalizeResult(
 export async function runBacktest(config: BacktestConfig): Promise<BacktestResult[]> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   let days: BacktestDay[];
-  let dataSource = "live";
+  let dataSource: BacktestDataSource = "live";
   try {
-    days = await loadHistoricalData(cfg);
+    const loaded = await loadHistoricalDataDetailed(cfg);
+    days = loaded.days;
+    dataSource = loaded.dataSource;
+    if (loaded.staleSymbols.length > 0) {
+      console.warn(`[backtest] Serving ${loaded.staleSymbols.length} symbols from the stale kline cache (API rate-limited)`);
+    }
   } catch {
     console.warn("[backtest] Live SoSoValue klines unavailable — falling back to synthetic data");
     days = generateSyntheticData(cfg);
@@ -729,8 +782,13 @@ export interface EdgeReport {
   verdict: string;
   /** P&L attributed to the factor that led each winning entry. */
   factorAttribution: FactorAttribution[];
-  /** Where the data came from. */
-  dataSource: "live" | "synthetic";
+  /** Where the data came from. "live-stale" = real SoSoValue klines served
+   *  from the disk cache past their TTL (API rate-limited) — real history,
+   *  not synthetic, but possibly a cycle old. */
+  dataSource: BacktestDataSource;
+  /** Symbols served from the stale kline cache (empty when dataSource is
+   *  "live" or "synthetic"). */
+  staleSymbols: string[];
 }
 
 /**
@@ -764,9 +822,13 @@ export async function runEdgeReport(
 ): Promise<EdgeReport> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   let days: BacktestDay[];
-  let dataSource: "live" | "synthetic" = "live";
+  let dataSource: BacktestDataSource = "live";
+  let staleSymbols: string[] = [];
   try {
-    days = await loadHistoricalData(cfg);
+    const loaded = await loadHistoricalDataDetailed(cfg);
+    days = loaded.days;
+    dataSource = loaded.dataSource;
+    staleSymbols = loaded.staleSymbols;
   } catch {
     days = generateSyntheticData(cfg);
     dataSource = "synthetic";
@@ -866,6 +928,7 @@ export async function runEdgeReport(
     verdict,
     factorAttribution,
     dataSource,
+    staleSymbols,
   };
 }
 

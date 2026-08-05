@@ -342,6 +342,8 @@ async function checkEdge() {
       convictionSharpe: report.conviction?.sharpeRatio,
       naiveSharpe: report.naive?.sharpeRatio,
       dataSource: report.dataSource,
+      staleSymbols: report.staleSymbols ?? [],
+      cached: report.cached ?? false,
     };
   } catch {
     return null;
@@ -513,6 +515,8 @@ function emitAudit({ trust, edge, signals, decision }) {
       convictionSharpe: edge.convictionSharpe,
       naiveSharpe: edge.naiveSharpe,
       dataSource: edge.dataSource,
+      staleSymbols: edge.staleSymbols,
+      cached: edge.cached,
     } : null,
     paid: signals ? !signals.teaser : false,
     cycle: signals?.freshness?.cycle,

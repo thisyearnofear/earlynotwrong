@@ -264,6 +264,15 @@ export function SignalEdgePanel() {
                 the agent to run against live historical klines.
               </p>
             )}
+            {report.dataSource === "live-stale" && (
+              <p className="text-[9px] font-mono text-foreground-dim leading-relaxed">
+                ◔ Real SoSoValue history served from the disk cache (API rate-limited).
+                {report.staleSymbols.length > 0 && (
+                  <> Stale symbols: <span className="text-foreground-muted">{report.staleSymbols.join(", ")}</span>. May lag the current cycle.
+                  </>
+                )}
+              </p>
+            )}
           </motion.div>
         )}
       </CardContent>

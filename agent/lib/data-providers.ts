@@ -891,6 +891,44 @@ export class SosovalueClient implements MarketDataProvider {
     return this.fetchKlines(id, interval, limit);
   }
 
+  /**
+   * Return CACHED klines for a symbol regardless of TTL — used by the
+   * backtest as a fallback when the API is rate-limited/suspended (429s).
+   *
+   * Historical klines age gracefully: a 111-day series fetched yesterday
+   * still covers a 90-day backtest window, so stale-beyond-TTL data is
+   * perfectly valid there. Checks the in-memory cache first, then the raw
+   * disk cache (disk holds entries past their in-memory TTL, since TTL
+   * filtering only happens when restoring into memory). Picks the entry
+   * with the most klines for the symbol's base key (any limit).
+   *
+   * No network calls. Returns null when the symbol has never been cached.
+   */
+  getCachedKlines(symbol: string, interval: string = "1d"): { klines: SosovalueKline[]; fetchedAt: number } | null {
+    const upper = symbol.toUpperCase();
+    const id = this.currencyIdCache.get(upper)?.id;
+    if (!id) return null;
+    const baseKey = `${id}:${interval}:`;
+    let best: { klines: SosovalueKline[]; fetchedAt: number } | null = null;
+    const consider = (k: string, v: { klines: SosovalueKline[]; fetchedAt: number }) => {
+      if (!k.startsWith(baseKey)) return;
+      if (!v?.klines || v.klines.length === 0) return;
+      if (!best || v.klines.length > best.klines.length || (v.klines.length === best.klines.length && v.fetchedAt > best.fetchedAt)) {
+        best = v;
+      }
+    };
+    for (const [k, v] of this.klineCache) consider(k, v);
+    if (!best) {
+      // Disk cache keeps entries past the in-memory TTL — this is where the
+      // stale-but-usable klines live.
+      const disk = loadSsvCache();
+      if (disk?.klineCache) {
+        for (const [k, v] of disk.klineCache) consider(k, v);
+      }
+    }
+    return best;
+  }
+
   /** Fetch all available SoSoValue Indices. */
   async fetchIndices(): Promise<SosovalueIndex[]> {
     if (!this.isAvailable()) return [];
