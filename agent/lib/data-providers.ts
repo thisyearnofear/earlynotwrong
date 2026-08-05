@@ -611,6 +611,41 @@ function snapshotToTokenQuote(snapshot: { id: string | number; symbol: string; p
 }
 
 /**
+ * Normalize a raw SoSoValue kline into the canonical SosovalueKline shape.
+ *
+ * SoSoValue returns kline timestamps as **strings of milliseconds**
+ * (e.g. "1778198400000") despite the interface claiming number-of-seconds,
+ * and OHLCV fields arrive as strings too. Downstream consumers assume
+ * number seconds — the backtest's date-window matching (`timestamp * 1000 >=
+ * dayMs`) silently matches nothing when fed string-ms, producing an empty
+ * day series (the "No historical data loaded" bug that only surfaced once
+ * the stale-cache fallback let real klines actually reach the backtest).
+ *
+ * Idempotent: already-normalized fixtures (number seconds) pass through.
+ *
+ * Second-vs-millisecond threshold: 1e11. In seconds that's AD 5138 (no real
+ * timestamp), in milliseconds it's Jan 1973 (impossible for this data), so
+ * values ≥ 1e11 are milliseconds and values below are seconds.
+ */
+export function normalizeKlineTimestamp(ts: number | string): number {
+  const n = typeof ts === "string" ? Number(ts) : ts;
+  if (!Number.isFinite(n)) return 0;
+  return n >= 1e11 ? Math.floor(n / 1000) : n;
+}
+
+/** Normalize a kline's timestamp to number-seconds and OHLCV to numbers. */
+export function normalizeKline(k: SosovalueKline): SosovalueKline {
+  return {
+    timestamp: normalizeKlineTimestamp(k.timestamp),
+    open: Number(k.open),
+    high: Number(k.high),
+    low: Number(k.low),
+    close: Number(k.close),
+    volume: Number(k.volume),
+  };
+}
+
+/**
  * SoSoValue OpenAPI client.
  *
  * Provides token price quotes (preferred over CMC), currency listing,
@@ -873,7 +908,7 @@ export class SosovalueClient implements MarketDataProvider {
     const cached = this.klineCache.get(cacheKey);
     if (cached && now - cached.fetchedAt < SosovalueClient.KLINE_CACHE_TTL_MS) return cached.klines;
     const raw = await ssvRestGet<unknown>(`/currencies/${encodeURIComponent(currencyId)}/klines?interval=${encodeURIComponent(interval)}&limit=${limit}`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
-    const klines = extractList<SosovalueKline>(raw);
+    const klines = extractList<SosovalueKline>(raw).map(normalizeKline);
     if (klines.length > 0) {
       this.klineCache.set(cacheKey, { klines, fetchedAt: now });
       this.saveCache();
@@ -909,24 +944,31 @@ export class SosovalueClient implements MarketDataProvider {
     const id = this.currencyIdCache.get(upper)?.id;
     if (!id) return null;
     const baseKey = `${id}:${interval}:`;
-    let best: { klines: SosovalueKline[]; fetchedAt: number } | null = null;
-    const consider = (k: string, v: { klines: SosovalueKline[]; fetchedAt: number }) => {
+    const candidates: Array<{ klines: SosovalueKline[]; fetchedAt: number }> = [];
+    const collect = (k: string, v: { klines: SosovalueKline[]; fetchedAt: number }) => {
       if (!k.startsWith(baseKey)) return;
       if (!v?.klines || v.klines.length === 0) return;
-      if (!best || v.klines.length > best.klines.length || (v.klines.length === best.klines.length && v.fetchedAt > best.fetchedAt)) {
-        best = v;
-      }
+      candidates.push(v);
     };
-    for (const [k, v] of this.klineCache) consider(k, v);
-    if (!best) {
+    for (const [k, v] of this.klineCache) collect(k, v);
+    if (candidates.length === 0) {
       // Disk cache keeps entries past the in-memory TTL — this is where the
       // stale-but-usable klines live.
       const disk = loadSsvCache();
       if (disk?.klineCache) {
-        for (const [k, v] of disk.klineCache) consider(k, v);
+        for (const [k, v] of disk.klineCache) collect(k, v);
       }
     }
-    return best;
+    // Most klines wins; ties break to the freshest fetch.
+    candidates.sort(
+      (a, b) => b.klines.length - a.klines.length || b.fetchedAt - a.fetchedAt,
+    );
+    const best = candidates[0] ?? null;
+    // Normalize on read: legacy disk entries predate the timestamp/field
+    // normalization in fetchKlines (raw SoSoValue klines carry timestamps as
+    // strings of milliseconds, which silently breaks date-window matching
+    // downstream — see normalizeKline).
+    return best ? { klines: best.klines.map(normalizeKline), fetchedAt: best.fetchedAt } : null;
   }
 
   /** Fetch all available SoSoValue Indices. */
