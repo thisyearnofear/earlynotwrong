@@ -511,7 +511,7 @@ function getSsvDataDir(): string | null {
 interface SsvPersistentCache {
   currencyIdCache: Array<[string, { id: string; symbol: string; name?: string }]> | null;
   currencyCacheLastFetched: number;
-  snapshotCache: Array<[string, { snapshot: SosovalueMarketSnapshot; fetchedAt: number }]> | null;
+  snapshotCache: Array<[string, { snapshot: SosovalueMarketSnapshot; fetchedAt: number; ttlMs?: number }]> | null;
   klineCache: Array<[string, { klines: SosovalueKline[]; fetchedAt: number }]> | null;
   hotNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null;
   featuredNewsCache: { items: SosovalueFeedItem[]; fetchedAt: number } | null;
@@ -544,25 +544,47 @@ function saveSsvCache(cache: SsvPersistentCache): void {
 }
 
 const SSV_RATE_LIMIT_PER_MIN = 20;
-const SSV_RATE_LIMIT_CAPACITY = SSV_RATE_LIMIT_PER_MIN;
-const SSV_REFILL_MS_PER_TOKEN = 60_000 / SSV_RATE_LIMIT_PER_MIN;
+const SSV_WINDOW_MS = 60_000;
 
-let ssvBucketTokens = SSV_RATE_LIMIT_CAPACITY;
-let ssvBucketLast = Date.now();
+// Rolling-window rate limiter: at most SSV_RATE_LIMIT_PER_MIN requests leave
+// in ANY trailing 60-second window — the same metric SoSoValue enforces
+// server-side. This replaces the previous token bucket (capacity 20, refill
+// 1/3s), which allowed a ~40-request first minute (20 instant-burst + 20
+// paced refill) and was the root cause of the recurring HTTP 429 storms on
+// the token-universe refresh.
+let ssvTimestamps: number[] = [];
 let ssvBucketChain: Promise<void> = Promise.resolve();
+
+/**
+ * Compute how long to wait before the next request may fire, in ms.
+ * Returns 0 when a slot is free in the trailing window (i.e. fewer than
+ * `limit` timestamps are still inside it). Pure — testable.
+ */
+export function computeSsvThrottleWaitMs(
+  timestamps: readonly number[],
+  now: number,
+  windowMs: number,
+  limit: number,
+): number {
+  const cutoff = now - windowMs;
+  const active = timestamps.filter((t) => t > cutoff);
+  if (active.length < limit) return 0;
+  // Wait until the oldest in-window timestamp ages out (+5ms jitter buffer).
+  return active[0] - cutoff + 5;
+}
 
 async function ssvThrottle(): Promise<void> {
   const run = ssvBucketChain.then(async () => {
     for (;;) {
       const now = Date.now();
-      const elapsed = now - ssvBucketLast;
-      ssvBucketTokens = Math.min(SSV_RATE_LIMIT_CAPACITY, ssvBucketTokens + elapsed / SSV_REFILL_MS_PER_TOKEN);
-      ssvBucketLast = now;
-      if (ssvBucketTokens >= 1) {
-        ssvBucketTokens -= 1;
+      const waitMs = computeSsvThrottleWaitMs(ssvTimestamps, now, SSV_WINDOW_MS, SSV_RATE_LIMIT_PER_MIN);
+      if (waitMs === 0) {
+        ssvTimestamps.push(now);
+        // Bound the array: anything older than the window is dead weight.
+        ssvTimestamps = ssvTimestamps.filter((t) => t > now - SSV_WINDOW_MS);
         return;
       }
-      await new Promise((r) => setTimeout(r, (1 - ssvBucketTokens) * SSV_REFILL_MS_PER_TOKEN));
+      await new Promise((r) => setTimeout(r, waitMs));
     }
   });
   ssvBucketChain = run.catch(() => {});
@@ -645,6 +667,26 @@ export function normalizeKline(k: SosovalueKline): SosovalueKline {
   };
 }
 
+/** Snapshot cache TTLs (module-level so snapshotTtlMs can reference them
+ *  before the class declaration). */
+export const SSV_SNAPSHOT_TTL_MS = 12 * 60 * 60 * 1000; // 12h (covers 3 cycles at 4h intervals)
+export const SSV_SNAPSHOT_TTL_JITTER_MS_MAX = 2 * 60 * 60 * 1000; // 2h
+
+/**
+ * Per-currency snapshot TTL: 12h base minus a deterministic jitter derived
+ * from the currency id, spreading expiries across a 2-hour window.
+ *
+ * Without jitter, all ~147 snapshots share the same 12h TTL and are fetched
+ * in the same burst wave — they expire in the same minute and the next cycle
+ * re-bursts 147 calls, instantly hitting SoSoValue's 20 req/min key limit
+ * (the recurring 429 storm). Deterministic (hash-based, stable across
+ * restarts and machines) so tests and behavior don't depend on Math.random.
+ */
+export function snapshotTtlMs(currencyId: string): number {
+  const jitter = Math.abs(hashStringToNumber(currencyId)) % SSV_SNAPSHOT_TTL_JITTER_MS_MAX;
+  return SSV_SNAPSHOT_TTL_MS - jitter;
+}
+
 /**
  * SoSoValue OpenAPI client.
  *
@@ -675,8 +717,10 @@ export class SosovalueClient implements MarketDataProvider {
 
   // Market snapshot cache: avoid re-fetching 150+ snapshots every cycle.
   // TTL is intentionally longer than the cycle interval so most cycles hit cache.
-  private snapshotCache = new Map<string, { snapshot: SosovalueMarketSnapshot; fetchedAt: number }>();
-  private static readonly SNAPSHOT_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h (covers 3 cycles at 4h intervals)
+  private snapshotCache = new Map<string, { snapshot: SosovalueMarketSnapshot; fetchedAt: number; ttlMs?: number }>();
+  private static readonly SNAPSHOT_CACHE_TTL_MS = SSV_SNAPSHOT_TTL_MS;
+  /** Max jitter subtracted from the snapshot TTL, per currency. */
+  private static readonly SNAPSHOT_TTL_JITTER_MS_MAX = SSV_SNAPSHOT_TTL_JITTER_MS_MAX;
 
   // Kline cache: daily klines change once per day, so cache until next UTC midnight.
   private klineCache = new Map<string, { klines: SosovalueKline[]; fetchedAt: number }>();
@@ -749,7 +793,7 @@ export class SosovalueClient implements MarketDataProvider {
     }
     if (raw.snapshotCache) {
       for (const [k, v] of raw.snapshotCache) {
-        if (now - v.fetchedAt < SosovalueClient.SNAPSHOT_CACHE_TTL_MS) this.snapshotCache.set(k, v);
+        if (now - v.fetchedAt < (v.ttlMs ?? SosovalueClient.SNAPSHOT_CACHE_TTL_MS)) this.snapshotCache.set(k, v);
       }
     }
     if (raw.klineCache) {
@@ -850,16 +894,16 @@ export class SosovalueClient implements MarketDataProvider {
     return match?.id ?? null;
   }
 
-  /** Fetch live market snapshot for a currency by SoSoValue ID. Returns null if unavailable. */
+/** Fetch live market snapshot for a currency by SoSoValue ID. Returns null if unavailable. */
   async fetchMarketSnapshot(currencyId: string): Promise<SosovalueMarketSnapshot | null> {
     if (!this.isAvailable()) return null;
     const now = Date.now();
     const cached = this.snapshotCache.get(currencyId);
-    if (cached && now - cached.fetchedAt < SosovalueClient.SNAPSHOT_CACHE_TTL_MS) return cached.snapshot;
+    if (cached && now - cached.fetchedAt < (cached.ttlMs ?? SosovalueClient.SNAPSHOT_CACHE_TTL_MS)) return cached.snapshot;
     const raw = await ssvRestGet<Record<string, unknown>>(`/currencies/${encodeURIComponent(currencyId)}/market-snapshot`, this.apiKey, this.baseUrl, (status) => this.recordApiCall(status));
     const snapshot = raw ? this.parseSnapshot(raw) : null;
     if (snapshot) {
-      this.snapshotCache.set(currencyId, { snapshot, fetchedAt: now });
+      this.snapshotCache.set(currencyId, { snapshot, fetchedAt: now, ttlMs: snapshotTtlMs(currencyId) });
       this.saveCache();
     }
     return snapshot;
