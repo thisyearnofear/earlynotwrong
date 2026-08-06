@@ -18,7 +18,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-08-05. Live commit on `nuncio-vultr`: `d501ae95` (edge-report stale-kline fallback + kline timestamp normalization).
+> Last updated: 2026-08-06. Live commit on `nuncio-vultr`: `10e07426` (kline timestamp normalization + rolling-window rate limiter + jittered snapshot TTL).
 
 ### Recently shipped
 
@@ -54,7 +54,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 ### Ongoing watchlist
 
 - TWAK/LiquidMesh sometimes routes through pools where the wallet only has allowance on a different spender (e.g., 1inch `0x0000001fF...` vs LiquidMesh router `0x3d90...`). The entry probe now detects this before a full entry.
-- SoSoValue API is occasionally rate-limiting the agent (HTTP 429). The agent suspends SoSoValue for 15 min and falls back to CMC/fallback data. The backtest now survives this too: `loadHistoricalDataDetailed` falls back to the stale disk kline cache (real history, `dataSource: "live-stale"`) instead of silently going synthetic.
+- SoSoValue API rate-limiting (HTTP 429) is **fixed**. Root cause: the token bucket (capacity 20, refill 1/3s) allowed a ~40-request first minute against the 20 req/min key limit — everything past ~20 got 429'd, 3 consecutive failures tripped the 15-min circuit breaker, and the 147-token snapshot refresh thrashed. Two fixes: (1) a rolling-window rate limiter (`computeSsvThrottleWaitMs`) hard-caps 20 requests in any trailing 60s — the same metric SoSoValue enforces; (2) jittered per-token snapshot TTL (`snapshotTtlMs`, 12h ± 2h hash-derived) so 147 expiries don't land in the same minute. Verified live: 0 HTTP 429s since deploy, `Fetched 124/147` and climbing (was 57/147 thrashing).
 - Casper ecosystem MCP endpoints (`mcp.cspr.trade`, `mcp.cspr-ai.xyz`) were unreachable at deploy time. The `casper-mcp-client.ts` module degrades gracefully — jury proceeds without cross-chain context. If endpoints come back online, no code change needed; context will flow automatically.
 - Casper operator CSPR balance is ~3,065 CSPR (funded 2026-07-23 from testnet faucet). Anchoring is active via the public `node.testnet.casper.network` RPC (no auth, no quota). The thesis-hash dedup + quantized jury digest means anchors only fire on meaningful conviction shifts, not every cycle.
 
@@ -190,7 +190,7 @@ src/lib/market.ts
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (342 tests across 28 files).
+- Tests live in `agent/__tests__/` — Vitest framework (352 tests across 29 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
 - `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.
