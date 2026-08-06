@@ -7,6 +7,7 @@ const VALID_GET_ENDPOINTS = [
   "status",
   "trades",
   "conviction",
+  "edge-report",
   "reputation/stats",
   "cap/status",
   "signals/preview",
@@ -14,6 +15,13 @@ const VALID_GET_ENDPOINTS = [
   "casper/balance",
   "casper/anchors",
 ] as const;
+
+/** Endpoints whose first (uncached) call can take minutes — the edge report
+ *  runs a 90-day backtest through the rolling-window rate limiter (20
+ *  symbols × 3s pacing). The agent caches the result for 30 min, so repeat
+ *  calls are instant, but the cold call needs a generous timeout. */
+const SLOW_ENDPOINTS = new Set(["edge-report"]);
+const SLOW_ENDPOINT_TIMEOUT_MS = 8 * 60 * 1000; // 8 min — covers a 20-symbol cold fill
 
 const VALID_POST_ENDPOINTS = [
   "casper/build-anchor",
@@ -37,8 +45,9 @@ export async function GET(req: NextRequest) {
   const url = `http://${AGENT_HOST}:${AGENT_PORT}/${endpoint}${qs ? `?${qs}` : ""}`;
 
   try {
+    const timeoutMs = SLOW_ENDPOINTS.has(endpoint) ? SLOW_ENDPOINT_TIMEOUT_MS : 10_000;
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!res.ok) {

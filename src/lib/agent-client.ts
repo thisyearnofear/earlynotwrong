@@ -80,7 +80,7 @@ export interface AgentConviction {
 /**
  * Try to fetch from the agent server, falling back to alternative ports.
  */
-async function tryFetch(path: string): Promise<Response | null> {
+async function tryFetch(path: string, timeoutMs: number = 3000): Promise<Response | null> {
   // Match the agent's actual fallback ports from agent/src/server.ts
   const ports = [AGENT_PORT, 3100, 3001];
   let lastError: unknown;
@@ -89,7 +89,7 @@ async function tryFetch(path: string): Promise<Response | null> {
     try {
       const url = `${AGENT_HOST}:${port}${path}`;
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (response.ok) return response;
     } catch (err) {
@@ -205,11 +205,13 @@ export interface EdgeReport {
 
 /**
  * Fetch the on-demand edge report (conviction vs naive baseline).
- * This runs a backtest on each call, so it can take a few seconds.
+ * The agent caches the result for 30 min, so most calls are instant — but
+ * the first cold call (or ?fresh=1) paces 20 symbols through the rolling-
+ * window rate limiter (~7 min). 8 min timeout covers the cold fill.
  */
 export async function fetchEdgeReport(): Promise<EdgeReport | null> {
   try {
-    const response = await tryFetch("/edge-report");
+    const response = await tryFetch("/edge-report", 8 * 60 * 1000);
     if (!response) return null;
     return await response.json();
   } catch {

@@ -17,7 +17,7 @@ import { motion } from "framer-motion";
 import { Activity, TrendingUp, TrendingDown, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { fetchEdgeReport, type EdgeReport } from "@/lib/agent-client";
+import type { EdgeReport } from "@/lib/agent-client";
 
 function fmtPct(n: number, suffix = ""): string {
   const sign = n > 0 ? "+" : "";
@@ -44,11 +44,17 @@ export function SignalEdgePanel() {
   const load = async () => {
     setLoading(true);
     setError(null);
-    const r = await fetchEdgeReport();
-    if (r) {
+    try {
+      // Fetch via the Vercel proxy (same path as the other dashboard cards).
+      // The proxy has an 8-min timeout for edge-report (the cold backtest can
+      // take ~7 min through the rolling-window rate limiter; the agent caches
+      // the result for 30 min so repeat calls are instant).
+      const res = await fetch("/api/agent/proxy?endpoint=edge-report");
+      if (!res.ok) throw new Error(`edge-report returned ${res.status}`);
+      const r = (await res.json()) as EdgeReport;
       setReport(r);
-    } else {
-      setError("Edge report unavailable — agent may be mid-cycle or unreachable.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "edge report unavailable");
     }
     setLoading(false);
   };
