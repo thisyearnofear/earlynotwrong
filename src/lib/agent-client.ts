@@ -189,6 +189,18 @@ export interface EdgeReport {
    *  deterministic generator (mechanics only, not real edge). */
   dataSource: "live" | "live-stale" | "synthetic";
   staleSymbols: string[];
+  /** Per-regime edge breakdown. The signal is designed for fear regimes;
+   *  this segments the backtest so the verdict can say "edge in fear, not in
+   *  greed" rather than a flat "no edge". */
+  regimeBreakdown: Array<{
+    regime: "fear" | "non-fear";
+    days: number;
+    conviction: { sharpeRatio: number; totalReturnPercent: number };
+    naive: { sharpeRatio: number; totalReturnPercent: number };
+    sharpeEdge: number;
+    returnEdge: number;
+    hasEdge: boolean;
+  }>;
 }
 
 /**

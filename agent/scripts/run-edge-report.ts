@@ -85,6 +85,22 @@ if (report.factorAttribution.length > 0) {
   console.log("\n  FACTOR ATTRIBUTION: no winning exits to attribute (no edge to decompose).");
 }
 
+if (report.regimeBreakdown && report.regimeBreakdown.length > 0) {
+  console.log("\n  EDGE BY REGIME (the signal is designed for fear):");
+  console.log("  ┌────────────────┬────────┬──────────────┬──────────────┬──────────┐");
+  console.log("  │ Regime         │  Days  │ Conv Sharpe  │ Naive Sharpe │ Verdict  │");
+  console.log("  ├────────────────┼────────┼──────────────┼──────────────┼──────────┤");
+  for (const seg of report.regimeBreakdown) {
+    const verdict = seg.hasEdge ? "EDGE" : "no edge";
+    console.log(
+      `  │ ${seg.regime.padEnd(14)} │ ${String(seg.days).padStart(6)} │ ${seg.conviction.sharpeRatio.toFixed(1).padStart(12)} │ ${seg.naive.sharpeRatio.toFixed(1).padStart(12)} │ ${verdict.padStart(8)} │`,
+    );
+  }
+  console.log("  └────────────────┴────────┴──────────────┴──────────────┴──────────┘");
+  console.log("  The conviction signal is contrarian by design — edge in the fear segment");
+  console.log("  is the thesis working; underperformance in non-fear is expected, not a bug.");
+}
+
 if (report.dataSource === "synthetic") {
   console.log("\n  ⚠ SYNTHETIC DATA — results demonstrate mechanics only, not live edge.");
   console.log("    Set SOSOVALUE_API_KEY to run against live historical klines.\n");

@@ -258,6 +258,53 @@ export function SignalEdgePanel() {
               </div>
             )}
 
+            {/* Regime-conditional edge breakdown */}
+            {report.regimeBreakdown && report.regimeBreakdown.length > 0 && (
+              <div>
+                <p className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim mb-1.5">
+                  Edge by regime (the signal is designed for fear)
+                </p>
+                <div className="space-y-1.5">
+                  {report.regimeBreakdown.map((seg) => (
+                    <div
+                      key={seg.regime}
+                      className={cn(
+                        "flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] font-mono",
+                        seg.regime === "fear"
+                          ? "border-signal/30 bg-signal/5"
+                          : "border-border/30 bg-surface/20",
+                      )}
+                    >
+                      <span className={cn("w-16 capitalize", seg.regime === "fear" ? "text-signal" : "text-foreground-muted")}>
+                        {seg.regime}
+                      </span>
+                      <span className="text-foreground-dim">{seg.days}d</span>
+                      <span className="text-foreground-dim">·</span>
+                      <span className="text-foreground-muted">Sharpe</span>
+                      <span className="text-foreground tabular-nums">{seg.conviction.sharpeRatio.toFixed(1)}</span>
+                      <span className="text-foreground-dim">vs</span>
+                      <span className="text-foreground-dim tabular-nums">{seg.naive.sharpeRatio.toFixed(1)}</span>
+                      <span
+                        className={cn(
+                          "ml-auto px-1.5 py-0.5 rounded text-[9px] font-bold",
+                          seg.hasEdge
+                            ? "bg-patience/15 text-patience"
+                            : "bg-foreground-dim/10 text-foreground-dim",
+                        )}
+                      >
+                        {seg.hasEdge ? "EDGE" : "no edge"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[9px] font-mono text-foreground-dim mt-1.5">
+                  The conviction signal is contrarian by design — it enters quality assets down
+                  during fear. Edge in the fear segment is the thesis working; underperformance
+                  in non-fear is expected, not a bug.
+                </p>
+              </div>
+            )}
+
             {report.dataSource === "synthetic" && (
               <p className="text-[9px] font-mono text-foreground-dim leading-relaxed">
                 ⚠ Synthetic data — set <span className="text-foreground-muted">SOSOVALUE_API_KEY</span> on

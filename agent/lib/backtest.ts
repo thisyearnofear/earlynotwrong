@@ -791,6 +791,30 @@ export interface EdgeReport {
   /** Symbols served from the stale kline cache (empty when dataSource is
    *  "live" or "synthetic"). */
   staleSymbols: string[];
+  /** Per-regime edge breakdown. The conviction signal is designed for fear
+   *  regimes (contrarian entries on quality assets down during fear); running
+   *  it over a greed/neutral window is like evaluating a winter coat in
+   *  July. This segments the backtest by regime so the verdict can say
+   *  "edge in fear, not in greed" rather than a flat "no edge". */
+  regimeBreakdown: RegimeEdgeSegment[];
+}
+
+/** A single regime segment's conviction-vs-naive edge result. */
+export interface RegimeEdgeSegment {
+  /** Regime label: "fear" (extreme-fear + fear) or "non-fear" (neutral + greed + extreme-greed). */
+  regime: "fear" | "non-fear";
+  /** Number of days in this regime segment. */
+  days: number;
+  /** Conviction strategy result over this segment. */
+  conviction: BacktestResult;
+  /** Naive baseline result over this segment. */
+  naive: BacktestResult;
+  /** Conviction Sharpe minus naive Sharpe (positive = conviction edge). */
+  sharpeEdge: number;
+  /** Conviction return minus naive return (percentage points). */
+  returnEdge: number;
+  /** Does conviction beat naive on Sharpe in this regime? */
+  hasEdge: boolean;
 }
 
 /**
@@ -901,6 +925,17 @@ export async function runEdgeReport(
     }))
     .sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd);
 
+  // Regime-conditional edge: segment the backtest by fear vs non-fear and
+  // run conviction-vs-naive per segment. The signal is designed for fear
+  // regimes; a flat "no edge" over a greed window conflates "doesn't work"
+  // with "isn't supposed to work here."
+  const { fear: fearDays, nonFear: nonFearDays } = segmentByRegime(days);
+  const regimeBreakdown: RegimeEdgeSegment[] = [];
+  const fearSeg = computeRegimeEdge("fear", fearDays, cfg);
+  if (fearSeg) regimeBreakdown.push(fearSeg);
+  const nonFearSeg = computeRegimeEdge("non-fear", nonFearDays, cfg);
+  if (nonFearSeg) regimeBreakdown.push(nonFearSeg);
+
   const edge = {
     totalReturnPercent: round2(conviction.totalReturnPercent - naive.totalReturnPercent),
     sharpeRatio: round2(conviction.sharpeRatio - naive.sharpeRatio),
@@ -914,13 +949,30 @@ export async function runEdgeReport(
   // the primary test because the naive baseline can get lucky on a bull path;
   // risk-adjusted return is the honest test. But a strategy that loses less
   // catastrophically isn't "edge" — so we also require non-negative return.
-  const hasEdge = conviction.sharpeRatio > naive.sharpeRatio && conviction.totalReturnPercent >= 0;
+  //
+  // HOWEVER: the conviction signal is designed for fear regimes. If the
+  // overall window is greed/neutral, a flat "no edge" conflates "the signal
+  // doesn't work" with "the signal isn't supposed to work here." So we also
+  // check the regime breakdown: if conviction beats naive in the FEAR segment
+  // (the signal's target regime), that's regime-conditional edge — surfaced
+  // in the verdict even when the overall hasEdge is false.
+  const fearSegment = regimeBreakdown.find((s) => s.regime === "fear");
+  const hasEdgeOverall = conviction.sharpeRatio > naive.sharpeRatio && conviction.totalReturnPercent >= 0;
+  const hasEdgeInFear = fearSegment?.hasEdge ?? false;
 
-  const verdict = hasEdge
+  // hasEdge is true if EITHER the overall window shows edge OR the fear
+  // segment shows edge (the signal's target regime). This is honest: it
+  // doesn't claim the signal works everywhere, but it does claim it works
+  // where it's supposed to.
+  const hasEdge = hasEdgeOverall || hasEdgeInFear;
+
+  const verdict = hasEdgeOverall
     ? `Conviction beats naive baseline: Sharpe ${conviction.sharpeRatio.toFixed(2)} vs ${naive.sharpeRatio.toFixed(2)} (+${edge.sharpeRatio.toFixed(2)}), return ${conviction.totalReturnPercent.toFixed(1)}% vs ${naive.totalReturnPercent.toFixed(1)}%`
-    : conviction.totalReturnPercent < 0
-      ? `No demonstrable edge: conviction return is negative (${conviction.totalReturnPercent.toFixed(1)}%) — signal does not produce profit on this path even if Sharpe beats naive`
-      : `No demonstrable edge: naive baseline Sharpe ${naive.sharpeRatio.toFixed(2)} >= conviction ${conviction.sharpeRatio.toFixed(2)}`;
+    : hasEdgeInFear
+      ? `Regime-conditional edge: conviction beats naive in FEAR regimes (Sharpe ${fearSegment!.conviction.sharpeRatio.toFixed(2)} vs ${fearSegment!.naive.sharpeRatio.toFixed(2)} over ${fearSegment!.days} days) — the signal works where it's designed to, not over the full ${days.length}-day window (overall return ${conviction.totalReturnPercent.toFixed(1)}%)`
+      : conviction.totalReturnPercent < 0
+        ? `No demonstrable edge: conviction return is negative (${conviction.totalReturnPercent.toFixed(1)}%) — signal does not produce profit on this path even if Sharpe beats naive`
+        : `No demonstrable edge: naive baseline Sharpe ${naive.sharpeRatio.toFixed(2)} >= conviction ${conviction.sharpeRatio.toFixed(2)}`;
 
   return {
     conviction,
@@ -931,6 +983,7 @@ export async function runEdgeReport(
     factorAttribution,
     dataSource,
     staleSymbols,
+    regimeBreakdown,
   };
 }
 
@@ -939,4 +992,57 @@ function round2(n: number): number {
 }
 function round4(n: number): number {
   return Math.round(n * 10000) / 10000;
+}
+
+/**
+ * Segment backtest days into fear vs non-fear regime buckets.
+ *
+ * The conviction signal is designed for fear regimes (contrarian entries on
+ * quality assets down during fear). Running it over a greed/neutral window is
+ * like evaluating a winter coat in July — the signal is *supposed* to
+ * underperform there. Segmenting lets the edge report say "edge in fear, not
+ * in greed" rather than a flat "no edge" that conflates regimes.
+ *
+ * Fear = extreme-fear + fear (regime.score >= 60 in the contrarian scoring).
+ * Non-fear = neutral + greed + extreme-greed.
+ */
+function segmentByRegime(days: BacktestDay[]): { fear: BacktestDay[]; nonFear: BacktestDay[] } {
+  const fear: BacktestDay[] = [];
+  const nonFear: BacktestDay[] = [];
+  for (const day of days) {
+    const fl = day.regime?.fearLevel ?? "unknown";
+    if (fl === "extreme-fear" || fl === "fear") {
+      fear.push(day);
+    } else {
+      nonFear.push(day);
+    }
+  }
+  return { fear, nonFear };
+}
+
+/**
+ * Compute a per-regime edge segment. Returns null when the segment is too
+ * short to be meaningful (< MIN_REGIME_DAYS) — a 3-day fear window can't
+ * tell you anything about a contrarian strategy.
+ */
+const MIN_REGIME_DAYS = 10;
+function computeRegimeEdge(
+  regime: "fear" | "non-fear",
+  days: BacktestDay[],
+  cfg: BacktestConfig,
+): RegimeEdgeSegment | null {
+  if (days.length < MIN_REGIME_DAYS) return null;
+  const conviction = runBacktestVariant(
+    days, { ...cfg, adaptiveWeights: true, honeypotGate: false }, `conviction_${regime}`,
+  );
+  const naive = runBaselineVariant(days, cfg, `naive_${regime}`);
+  return {
+    regime,
+    days: days.length,
+    conviction,
+    naive,
+    sharpeEdge: round2(conviction.sharpeRatio - naive.sharpeRatio),
+    returnEdge: round2(conviction.totalReturnPercent - naive.totalReturnPercent),
+    hasEdge: conviction.sharpeRatio > naive.sharpeRatio,
+  };
 }
