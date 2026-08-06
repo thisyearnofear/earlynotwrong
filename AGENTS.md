@@ -18,7 +18,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-08-06. Live commit on `nuncio-vultr`: `10e07426` (kline timestamp normalization + rolling-window rate limiter + jittered snapshot TTL).
+> Last updated: 2026-08-06. Live commit on `nuncio-vultr`: `5b3176f9` (regime-conditional edge report + rolling-window rate limiter + kline timestamp normalization).
 
 ### Recently shipped
 
@@ -190,7 +190,7 @@ src/lib/market.ts
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (352 tests across 29 files).
+- Tests live in `agent/__tests__/` — Vitest framework (356 tests across 29 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
 - `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.
