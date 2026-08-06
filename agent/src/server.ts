@@ -529,7 +529,7 @@ app.get("/edge-report", async (c) => {
     edgeReportCache = { report, computedAt: Date.now() };
     return c.json({ ...report, cached: false });
   } catch (err) {
-    return c.json({ error: "edge report failed", message: String(err), stack: err instanceof Error ? err.stack?.split("\n").slice(1, 4) : undefined }, 500);
+    return c.json({ error: "edge report failed", message: String(err) }, 500);
   }
 });
 

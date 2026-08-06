@@ -798,7 +798,13 @@ export class SosovalueClient implements MarketDataProvider {
     }
     if (raw.klineCache) {
       for (const [k, v] of raw.klineCache) {
-        if (now - v.fetchedAt < SosovalueClient.KLINE_CACHE_TTL_MS) this.klineCache.set(k, v);
+        // Normalize on restore: legacy disk entries written by pre-fix code
+        // carry timestamps as strings of milliseconds. If they're restored
+        // into memory raw, fetchKlines' fresh-cache-hit path returns them
+        // un-normalized and the backtest's date-window match produces 0 days.
+        if (now - v.fetchedAt < SosovalueClient.KLINE_CACHE_TTL_MS) {
+          this.klineCache.set(k, { klines: v.klines.map(normalizeKline), fetchedAt: v.fetchedAt });
+        }
       }
     }
     if (raw.hotNewsCache && now - raw.hotNewsCache.fetchedAt < SosovalueClient.NEWS_CACHE_TTL_MS) this.hotNewsCache = raw.hotNewsCache;

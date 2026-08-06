@@ -314,13 +314,6 @@ export async function loadHistoricalDataDetailed(
   }
 
   const days = buildDaysFromKlines(start, dayCount, klinesBySymbol);
-  if (days.length === 0) {
-    // Diagnostic: real klines loaded but none overlapped the requested window.
-    // Logs the actual ranges so we can see the mismatch from pm2 logs.
-    for (const [sym, ks] of klinesBySymbol) {
-      console.warn(`[backtest] ${sym}: ${ks.length} klines ts[${ks[0].timestamp}..${ks[ks.length - 1].timestamp}] vs window ${Math.floor(start.getTime() / 1000)}..${Math.floor(end.getTime() / 1000)}`);
-    }
-  }
 
   return {
     days,

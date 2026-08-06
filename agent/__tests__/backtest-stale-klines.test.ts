@@ -8,7 +8,10 @@
  * mark the run "live-stale" so the dashboard stays honest about the lag.
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SosovalueClient, sosovalueClient, normalizeKlineTimestamp, normalizeKline } from "../lib/data-providers.js";
 import { loadHistoricalDataDetailed } from "../lib/backtest.js";
 
@@ -172,6 +175,35 @@ describe("loadHistoricalDataDetailed — stale fallback before synthetic", () =>
     // The critical regression assertion: the date-window matching must
     // actually produce days from string-ms timestamps.
     expect(result.days.length).toBeGreaterThan(0);
+  });
+
+  it("restores kline caches through normalizeKline (legacy string-ms disk entries)", () => {
+    // Seed a disk cache exactly like the production file: string-ms klines
+    // (pre-fix write), fresh fetchedAt (inside the 4h TTL).
+    const dir = mkdtempSync(join(tmpdir(), "ssv-cache-test-"));
+    process.env.AGENT_DATA_DIR = dir;
+    writeFileSync(
+      join(dir, "sosovalue-cache.json"),
+      JSON.stringify({
+        currencyIdCache: [["ETH", { id: "eth-1", symbol: "ETH" }]],
+        currencyCacheLastFetched: Date.now(),
+        klineCache: [[
+          "eth-1:1d:111",
+          { klines: makeRawServerKlines(90), fetchedAt: Date.now() - 60_000 },
+        ]],
+      }),
+    );
+
+    const client = new SosovalueClient();
+    const mem = (client as any).klineCache.get("eth-1:1d:111") as { klines: Array<{ timestamp: number }> } | undefined;
+    expect(mem).toBeDefined();
+    // Restored klines must be normalized to number-of-seconds: raw disk string-ms
+    // restoring un-normalized was the live "0 days" bug.
+    expect(mem!.klines[0].timestamp).toBe(Math.floor(Date.UTC(2026, 4, 1) / 1000));
+    expect(mem!.klines[0].timestamp).not.toBe(Math.floor(Date.UTC(2026, 4, 1) / 1000) * 1000);
+
+    delete process.env.AGENT_DATA_DIR;
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it("throws when nothing loads (fresh fails AND no cache) so callers fall back to synthetic", async () => {
