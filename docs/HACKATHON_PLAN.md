@@ -1,5 +1,12 @@
 # BNB Hackathon: Implementation Plan
 
+> **SUPERSEDED (2026-08-14).** This was the June 2026 BNB hackathon plan. Its
+> "conviction-weighted copy-trader" direction and Ethos-multiplier ranking were
+> explicitly abandoned: the product now rejects copy-trading (see
+> `docs/POSITIONING.md`) and Discovery ranks wallets by behavioral conviction
+> only — Ethos is an access gate, never a ranking weight. Kept as history, not
+> as guidance.
+
 > **Event**: BNB Hack: AI Trading Agent Edition (CMC × Trust Wallet)
 > **Deadline**: Build window closes June 21, 2026 | Trading window June 22–28
 > **Track**: Track 1 — Autonomous Trading Agents ($24K pool)
