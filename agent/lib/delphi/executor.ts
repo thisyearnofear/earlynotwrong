@@ -117,6 +117,19 @@ export interface DelphiClientLike {
     marketAddress: string;
     outcomeIndices: number[];
   }): Promise<{ transactionHash: string }>;
+  /** Quote selling `sharesIn` shares of an outcome (no gas). */
+  quoteSell(params: {
+    marketAddress: string;
+    outcomeIdx: number;
+    sharesIn: bigint;
+  }): Promise<{ tokensOut: bigint }>;
+  /** Sell an exact number of outcome shares back into the LMSR pool. */
+  sellShares(params: {
+    marketAddress: string;
+    outcomeIdx: number;
+    sharesIn: bigint;
+    minTokensOut: bigint;
+  }): Promise<{ transactionHash: string }>;
 }
 
 export interface DelphiExecutorConfig {
@@ -322,9 +335,126 @@ export class DelphiExecutor {
     };
   }
 
+  /**
+   * Quote selling `sharesIn` shares of an outcome. In simulator mode the
+   * quote is synthesized at `syntheticPrice` (same convention as quoteBuy).
+   * Returns tokensOut as an 18-dec string plus the effective sell price.
+   */
+  async quoteSell(
+    marketAddress: string,
+    outcomeIdx: number,
+    sharesIn: bigint,
+    syntheticPrice?: number,
+  ): Promise<DelphiQuote> {
+    if (this.simulator) {
+      const price = syntheticPrice ?? 0.5;
+      const tokensOut = (sharesIn * BigInt(Math.round(price * 1e6))) / 1_000_000n;
+      return {
+        marketAddress,
+        outcomeIdx,
+        sharesOut: sharesIn.toString(),
+        tokensIn: tokensOut.toString(), // reuse tokensIn field as "tokens received" for sells
+        pricePerShare: price,
+        quotedAt: Date.now(),
+      };
+    }
+    const client = await this.getClient();
+    const { tokensOut } = await withRetry(
+      async () => client.quoteSell({ marketAddress, outcomeIdx, sharesIn }),
+      { label: "delphi-quote-sell", ...this.retryPolicy },
+    );
+    const pricePerShare = sharesIn > 0n ? Number(tokensOut) / Number(sharesIn) : 0;
+    return {
+      marketAddress,
+      outcomeIdx,
+      sharesOut: sharesIn.toString(),
+      tokensIn: tokensOut.toString(),
+      pricePerShare,
+      quotedAt: Date.now(),
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Trading
   // ---------------------------------------------------------------------------
+
+  /**
+   * Sell shares of an outcome back into the LMSR pool (sell-into-convergence
+   * exit). Applies the slippage guard as a floor: receive at least
+   * quote × (1 − slippageBps). In simulator mode, records the trade in
+   * memory and returns success without touching the chain.
+   */
+  async sellShares(params: {
+    marketAddress: string;
+    outcomeIdx: number;
+    sharesIn: bigint;
+    estimatedProbability?: number;
+    syntheticPrice?: number;
+  }): Promise<DelphiTradeResult> {
+    const timestamp = Date.now();
+    try {
+      const quote = await this.quoteSell(
+        params.marketAddress,
+        params.outcomeIdx,
+        params.sharesIn,
+        params.syntheticPrice,
+      );
+
+      if (this.simulator) {
+        const result: DelphiTradeResult = {
+          success: true,
+          marketAddress: params.marketAddress,
+          outcomeIdx: params.outcomeIdx,
+          sharesOut: quote.sharesOut,
+          tokensIn: quote.tokensIn, // tokens received on a sell
+          effectivePrice: quote.pricePerShare,
+          estimatedProbability: params.estimatedProbability,
+          timestamp,
+        };
+        this.tradeLog.push(result);
+        return result;
+      }
+
+      const tokensOutBig = BigInt(quote.tokensIn);
+      const minTokensOut = (tokensOutBig * BigInt(10_000 - this.slippageBps)) / 10_000n;
+
+      const client = await this.getClient();
+      const { transactionHash } = await withRetry(
+        async () =>
+          client.sellShares({
+            marketAddress: params.marketAddress,
+            outcomeIdx: params.outcomeIdx,
+            sharesIn: params.sharesIn,
+            minTokensOut,
+          }),
+        { label: "delphi-sell-shares", ...this.retryPolicy },
+      );
+
+      const result: DelphiTradeResult = {
+        success: true,
+        transactionHash,
+        marketAddress: params.marketAddress,
+        outcomeIdx: params.outcomeIdx,
+        sharesOut: quote.sharesOut,
+        tokensIn: quote.tokensIn,
+        effectivePrice: quote.pricePerShare,
+        estimatedProbability: params.estimatedProbability,
+        timestamp,
+      };
+      this.tradeLog.push(result);
+      return result;
+    } catch (err) {
+      const result: DelphiTradeResult = {
+        success: false,
+        marketAddress: params.marketAddress,
+        outcomeIdx: params.outcomeIdx,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp,
+      };
+      this.tradeLog.push(result);
+      return result;
+    }
+  }
 
   /**
    * Buy shares of an outcome. Applies the configured slippage guard to the

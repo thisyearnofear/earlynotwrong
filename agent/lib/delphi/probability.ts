@@ -27,13 +27,15 @@
 // Re-exported so callers don't have to touch the executor for the market type.
 export type { DelphiMarket } from "./executor.js";
 
-import { chatCompletion } from "../llm-providers.js";
+import { AGENT_CONFIG } from "../config.js";
+import { chatCompletion, parseLenientJson } from "../llm-providers.js";
+import type { WebSearchBriefing } from "./web-search.js";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export type ForecasterProvider = "openrouter" | "openai" | "anthropic" | "injected";
+export type ForecasterProvider = "vercel-gateway" | "openrouter" | "openai" | "anthropic" | "injected";
 
 /** Per-outcome probability estimate from the jury. */
 export interface OutcomeEstimate {
@@ -50,6 +52,9 @@ export interface MarketEstimate {
   marketAddress: string;
   /** The question being priced. */
   question: string;
+  /** Market category (crypto/economics/politics/sports/culture/…). Drives
+   *  the category-aware edge gate in evaluateProbabilitySignal. */
+  category?: string;
   /** Probability estimates per outcome. For binary markets: length 2. */
   outcomes: OutcomeEstimate[];
   provider: ForecasterProvider;
@@ -68,6 +73,19 @@ export interface MarketEstimateInput {
   outcomes: string[];
   /** Market close/settlement time, if known (ISO). */
   closesAt?: string;
+  /**
+   * Sourced web briefing (Exa via Vercel AI Gateway) for prompt injection.
+   * Qualitative alpha the model can't know from stale training data.
+   * Optional — the runner skips it when search is unavailable/budgeted out.
+   */
+  webBriefing?: WebSearchBriefing;
+  /**
+   * Quantitative reference probability for outcome 0 on crypto threshold
+   * markets (driftless log-normal from realized vol — see vol-baseline.ts).
+   * NOT shown to the LLM (keeps the samples independent); blended into the
+   * final estimate mechanically after sampling.
+   */
+  volBaselineProbability?: number;
 }
 
 /** A caller-provided estimator (tests, quantitative models). */
@@ -94,7 +112,11 @@ export interface ProbabilitySignal {
 }
 
 export interface ProbabilityConfig {
-  /** Minimum |edge| to consider a trade. Default: AGENT_CONFIG.delphi.minEdgeToTrade = 0.08. */
+  /**
+   * Explicit edge-gate override (tests, kill switch). When unset, the gate
+   * is category-aware: AGENT_CONFIG.delphi.categoryEdgeGates[category], or
+   * defaultCategoryGate for unknown categories.
+   */
   minEdgeToTrade?: number;
   /** Slippage budget consumed from the edge (0-1). Default: delphi.defaultSlippageBps. */
   slippageBudget?: number;
@@ -102,6 +124,16 @@ export interface ProbabilityConfig {
   estimator?: ProbabilityEstimator;
   /** Timeout for LLM provider calls (ms). Default 45_000. */
   timeoutMs?: number;
+  /**
+   * Ensemble size: independent LLM samples combined by per-outcome median.
+   * Default: AGENT_CONFIG.delphi.ensembleSamples (3). 1 disables ensembling.
+   */
+  ensembleSamples?: number;
+  /**
+   * Blend weight for the crypto vol baseline reference (0 = LLM only,
+   * 1 = quant only). Default: AGENT_CONFIG.delphi.volBaselineWeight.
+   */
+  volBaselineWeight?: number;
 }
 
 // =============================================================================
@@ -135,9 +167,20 @@ function buildForecasterPrompt(input: MarketEstimateInput): string {
     `Question: ${input.question}`,
     `Category: ${input.category ?? "unknown"}`,
     `Closes/settles: ${input.closesAt ?? "unknown"}`,
-    "",
-    "Outcomes (index · label · market-implied probability):",
   ];
+
+  // Context injection: a sourced web briefing, when available. Presented as
+  // evidence, not instruction — the model must still reconcile it with the
+  // market-implied odds. Vol baseline is deliberately NOT shown here: it
+  // blends mechanically after sampling so the LLM samples stay independent.
+  if (input.webBriefing?.text) {
+    lines.push("");
+    lines.push("Recent evidence (web search — cite only when relevant):");
+    lines.push(input.webBriefing.text);
+  }
+
+  lines.push("");
+  lines.push("Outcomes (index · label · market-implied probability):");
   input.outcomes.forEach((label, i) => {
     lines.push(`  ${i} · ${label} · ${(input.impliedProbabilities[i] ?? 0).toFixed(2)}`);
   });
@@ -179,18 +222,187 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+// =============================================================================
+// Ensemble forecasting + vol-baseline blend (pure, testable)
+// =============================================================================
+
+/** Median of a numeric list (returns the mean for even-length lists). */
+function median(values: number[]): number {
+  if (values.length === 0) return 0.5;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Combine N valid market estimates into one by per-outcome median.
+ *
+ * Why median instead of mean: a single overconfident outlier sample (a known
+ * LLM failure mode — "this is obviously 0.95") shouldn't drag the ensemble.
+ * All inputs must have the same outcome layout; mismatched estimates are
+ * dropped, and null is returned when nothing valid remains.
+ *
+ * Exported for tests.
+ */
+export function combineEstimates(estimates: MarketEstimate[]): MarketEstimate | null {
+  const valid = estimates.filter((e) => e && e.outcomes.length >= 1);
+  if (valid.length === 0) return null;
+  if (valid.length === 1) return valid[0];
+
+  const outcomeCount = valid[0].outcomes.length;
+  if (valid.some((e) => e.outcomes.length !== outcomeCount)) return null;
+
+  const outcomes: OutcomeEstimate[] = [];
+  for (let idx = 0; idx < outcomeCount; idx++) {
+    const samples = valid.map((e) => e.outcomes[idx].probability);
+    const reasonings = valid.map((e) => e.outcomes[idx].reasoning).filter((r) => r.trim().length > 0);
+    outcomes.push({
+      outcomeIdx: idx,
+      probability: median(samples),
+      // Keep the median sample's rationale; the ensemble's spread is logged
+      // by the caller, not stuffed into every reasoning string.
+      reasoning: reasonings[Math.floor(reasonings.length / 2)] ?? "",
+    });
+  }
+
+  return normalizeEstimate({
+    marketAddress: valid[0].marketAddress,
+    question: valid[0].question,
+    category: valid[0].category,
+    outcomes,
+    provider: valid[0].provider,
+    model: `${valid[0].model} ×${valid.length} median`,
+    estimatedAt: Date.now(),
+  });
+}
+
+/**
+ * Blend an LLM estimate with the crypto vol-baseline reference probability.
+ *
+ * final₀ = (1 − w) · llm₀ + w · quant, final₁ = 1 − final₀. The quant
+ * reference is a driftless log-normal P(close > threshold) computed from
+ * realized volatility — it's not an opinion, it's arithmetic, so it anchors
+ * the LLM against its well-documented bias toward round-number overconfidence
+ * on threshold markets.
+ *
+ * Returns the input untouched when there's no reference, no weight, or a
+ * wrong outcome layout. Exported for tests.
+ */
+export function blendVolBaseline(estimate: MarketEstimate, volBaseline: number | undefined, weight: number): MarketEstimate {
+  if (volBaseline === undefined || volBaseline === null) return estimate;
+  if (weight <= 0) return estimate;
+  if (estimate.outcomes.length !== 2) return estimate;
+  const w = Math.min(1, Math.max(0, weight));
+  const blended0 = clamp((1 - w) * estimate.outcomes[0].probability + w * volBaseline, 0.01, 0.99);
+  const blended1 = clamp(1 - blended0, 0.01, 0.99);
+  return {
+    ...estimate,
+    outcomes: [
+      {
+        ...estimate.outcomes[0],
+        probability: blended0,
+        reasoning: `${estimate.outcomes[0].reasoning} [vol-baseline anchor ${volBaseline.toFixed(2)}, w=${w.toFixed(2)}]`,
+      },
+      { ...estimate.outcomes[1], probability: blended1 },
+    ],
+  };
+}
+
+// =============================================================================
+// Category-aware edge gate
+// =============================================================================
+
+/**
+ * The edge required before a trade is actionable, per market category.
+ * Crypto threshold markets have a computed vol baseline, so they get the
+ * standard gate; categories with no quantitative anchor (politics, culture)
+ * demand more edge — the LLM estimate alone is a weaker signal.
+ *
+ * Exported for tests.
+ */
+export function minEdgeForCategory(category: string | undefined): number {
+  const gates = AGENT_CONFIG.delphi.categoryEdgeGates as Record<string, number>;
+  const key = (category ?? "").trim().toLowerCase();
+  return gates[key] ?? AGENT_CONFIG.delphi.defaultCategoryGate;
+}
+
+// =============================================================================
+// Sell-into-convergence exit policy (pure, testable)
+// =============================================================================
+
+/** Inputs for deciding whether an open position should be exited early. */
+export interface ConvergenceExitInput {
+  /** Estimated true probability at entry (our forecast for the held outcome). */
+  forecast: number;
+  /** Market price (implied probability of held outcome) at entry. */
+  entryPrice: number;
+  /** Current market price (implied probability) of the held outcome. */
+  currentPrice: number;
+  /** Take profit when price reaches within `tolerance` of forecast. */
+  tolerance?: number;
+  /** Stop when price falls this far below the entry price. */
+  stopEdge?: number;
+}
+
+export type ConvergenceExitAction = "sell-convergence" | "sell-stop" | "hold";
+
+export interface ConvergenceExit {
+  action: ConvergenceExitAction;
+  reason: string;
+}
+
+/**
+ * Decide whether to exit an open position before settlement.
+ *
+ * The strategy is "sell into convergence": we bought an outcome because our
+ * forecast was above the market price. If the price rises to converge with
+ * our forecast, the edge we paid for is realized — sell and redeploy rather
+ * than hold to settlement for a 1/0 payoff. If the price instead falls a
+ * full `stopEdge` below our entry, the market is telling us the thesis is
+ * wrong — cut the loss.
+ *
+ * Pure function of (forecast, entryPrice, currentPrice) + policy thresholds.
+ * Defaults come from AGENT_CONFIG.delphi. Exported for tests.
+ */
+export function evaluateConvergenceExit(input: ConvergenceExitInput): ConvergenceExit {
+  const tolerance = input.tolerance ?? AGENT_CONFIG.delphi.convergenceTolerance;
+  const stopEdge = input.stopEdge ?? AGENT_CONFIG.delphi.thesisStopEdge;
+  const { forecast, entryPrice, currentPrice } = input;
+  // Float guard: 0.6 − 0.02 is 0.5800000000000001 in IEEE754 — an exact
+  // boundary price must still trigger the exit it's meant to trigger.
+  const EPS = 1e-9;
+
+  if (!(currentPrice > 0 && currentPrice < 1)) {
+    return { action: "hold", reason: "current price out of (0,1) bounds — cannot evaluate exit" };
+  }
+
+  // Take profit: price converged to within tolerance of our forecast.
+  if (currentPrice >= forecast - tolerance - EPS) {
+    return {
+      action: "sell-convergence",
+      reason: `converged: price ${currentPrice.toFixed(2)} ≥ forecast ${forecast.toFixed(2)} − tol ${tolerance}`,
+    };
+  }
+  // Stop loss: price fell stopEdge below entry (moved against the thesis).
+  if (currentPrice <= entryPrice - stopEdge + EPS) {
+    return {
+      action: "sell-stop",
+      reason: `stopped: price ${currentPrice.toFixed(2)} ≤ entry ${entryPrice.toFixed(2)} − stop ${stopEdge}`,
+    };
+  }
+  return { action: "hold", reason: "within thesis band" };
+}
+
 function parseForecasterResponse(
   content: string,
   input: MarketEstimateInput,
   provider: ForecasterProvider,
   model: string,
 ): MarketEstimate | null {
-  let raw: RawForecasterResponse;
-  try {
-    raw = JSON.parse(content) as RawForecasterResponse;
-  } catch {
-    return null;
-  }
+  // Lenient: GLM 5.2 wraps JSON in Markdown fences when the prompt includes
+  // web evidence; openrouter/auto models vary too. See parseLenientJson.
+  const raw = parseLenientJson<RawForecasterResponse>(content);
+  if (!raw) return null;
   const outcomes: OutcomeEstimate[] = [];
   for (const o of raw.outcomes ?? []) {
     const idx = typeof o.outcomeIdx === "number" ? o.outcomeIdx : -1;
@@ -205,6 +417,7 @@ function parseForecasterResponse(
   return normalizeEstimate({
     marketAddress: input.marketAddress,
     question: input.question,
+    category: input.category,
     outcomes,
     provider,
     model,
@@ -216,8 +429,11 @@ function parseForecasterResponse(
 // LLM estimate (shared provider ladder — llm-providers.ts)
 // =============================================================================
 
-/** Default model per provider for the Delphi forecaster. */
+/** Default model per provider for the Delphi forecaster. Free-first: the
+ *  Vercel AI Gateway's GLM 5.2 (free during the Aug 2026 promo) leads the
+ *  ladder when its key is set. */
 const FORECASTER_DEFAULT_MODELS = {
+  "vercel-gateway": "zai/glm-5.2",
   openrouter: "openrouter/auto",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
@@ -231,11 +447,12 @@ async function fetchLlmEstimate(
     systemPrompt: FORECASTER_SYSTEM_PROMPT,
     userPrompt: buildForecasterPrompt(input),
     models: {
+      "vercel-gateway": { envVar: "VERCEL_GATEWAY_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS["vercel-gateway"] },
       openrouter: { envVar: "OPENROUTER_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.openrouter },
       openai: { envVar: "OPENAI_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.openai },
       anthropic: { envVar: "ANTHROPIC_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.anthropic },
     },
-    maxTokens: 800,
+    maxTokens: 1600, // headroom for longer reasoning when web briefing context is injected
     temperature: 0.2, // lower temp than the token jury — calibration, not creativity
     timeoutMs,
     xTitle: "Early Not Wrong — Delphi Probability Forecaster",
@@ -251,7 +468,14 @@ async function fetchLlmEstimate(
 /**
  * Estimate probabilities for one binary market.
  *
- * Priority: injected estimator > OpenRouter > OpenAI > Anthropic > null.
+ * Priority: injected estimator > LLM ladder (Vercel gateway > OpenRouter >
+ * OpenAI > Anthropic) > null.
+ *
+ * The LLM path is an ENSEMBLE: `ensembleSamples` independent estimates are
+ * taken and combined by per-outcome median (kills single-sample
+ * overconfidence). When the input carries a crypto vol-baseline reference
+ * probability, the ensemble is blended toward it by `volBaselineWeight`.
+ *
  * Returns null when no provider is configured or the estimate can't be
  * formed (provider error, malformed response, non-binary market).
  */
@@ -265,7 +489,15 @@ export async function estimateProbability(
   if (config.estimator) {
     try {
       const raw = await config.estimator(input);
-      return raw ? normalizeEstimate(raw) : null;
+      if (!raw) return null;
+      // Injected estimators may omit category; inherit from the input so the
+      // downstream category-aware gate always has it.
+      const estimate: MarketEstimate = { ...raw, category: raw.category ?? input.category };
+      // Apply the same mechanical blend to injected estimates so quant +
+      // LLM paths share one post-processing pipeline (and so tests can
+      // exercise blending without a provider).
+      const weight = config.volBaselineWeight ?? AGENT_CONFIG.delphi.volBaselineWeight;
+      return blendVolBaseline(normalizeEstimate(estimate), input.volBaselineProbability, weight);
     } catch (err) {
       console.warn(
         `  [delphi-probability] injected estimator failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -275,14 +507,35 @@ export async function estimateProbability(
   }
 
   const timeoutMs = config.timeoutMs ?? 45_000;
-  try {
-    return await fetchLlmEstimate(input, timeoutMs);
-  } catch (err) {
-    console.warn(
-      `  [delphi-probability] LLM estimate failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
+  const samples = Math.max(1, config.ensembleSamples ?? AGENT_CONFIG.delphi.ensembleSamples);
+
+  // Independent samples. Run sequentially: free-tier rate limits punish
+  // bursts, and 3 × ~3s is still a small fraction of the hourly cycle.
+  const estimates: MarketEstimate[] = [];
+  for (let i = 0; i < samples; i++) {
+    try {
+      const est = await fetchLlmEstimate(input, timeoutMs);
+      if (est) estimates.push(est);
+    } catch (err) {
+      console.warn(
+        `  [delphi-probability] LLM sample ${i + 1}/${samples} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
+  if (estimates.length === 0) return null;
+
+  const combined = combineEstimates(estimates);
+  if (!combined) return null;
+
+  const weight = config.volBaselineWeight ?? AGENT_CONFIG.delphi.volBaselineWeight;
+  const blended = blendVolBaseline(combined, input.volBaselineProbability, weight);
+
+  if (estimates.length < samples) {
+    console.warn(
+      `  [delphi-probability] ensemble degraded: ${estimates.length}/${samples} samples for "${input.question.slice(0, 50)}"`,
+    );
+  }
+  return blended;
 }
 
 /**
@@ -291,13 +544,16 @@ export async function estimateProbability(
  * Pure function. The gate consumes edge (|estimate − implied|), market
  * mechanics (valid price, slippage budget), and risk policy. The LLM
  * influences the estimate; only the gate decides whether to trade.
+ *
+ * The edge threshold is category-aware (minEdgeForCategory) unless
+ * config.minEdgeToTrade is set explicitly.
  */
 export function evaluateProbabilitySignal(
   estimate: MarketEstimate,
   impliedProbabilities: number[],
   config: ProbabilityConfig = {},
 ): ProbabilitySignal[] {
-  const minEdge = config.minEdgeToTrade ?? 0.08;
+  const minEdge = config.minEdgeToTrade ?? minEdgeForCategory(estimate.category);
   const slippageBudget = config.slippageBudget ?? 0.03;
   const signals: ProbabilitySignal[] = [];
 

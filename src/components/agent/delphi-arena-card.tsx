@@ -162,6 +162,22 @@ export function DelphiArenaCard() {
               ))}
             </div>
 
+            {/* Alpha stack — the inputs behind each forecast */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-lg border border-border/30 bg-surface/20 px-2.5 py-2 text-[9px] font-mono text-foreground-dim">
+              <span>
+                web briefings <span className="text-foreground-muted tabular-nums">{status.snapshot?.briefingsFetched ?? 0}</span>
+              </span>
+              <span>
+                vol baselines <span className="text-foreground-muted tabular-nums">{status.snapshot?.volBaselines ?? 0}</span>
+              </span>
+              <span>
+                exits <span className="text-foreground-muted tabular-nums">{(status.snapshot?.exitsConvergence ?? 0) + (status.snapshot?.exitsStopped ?? 0)}</span>
+                <span className="ml-1">
+                  ({status.snapshot?.exitsConvergence ?? 0} converged · {status.snapshot?.exitsStopped ?? 0} stopped)
+                </span>
+              </span>
+            </div>
+
             {/* Open forecasts */}
             {status.openPositions.length > 0 && (
               <div>

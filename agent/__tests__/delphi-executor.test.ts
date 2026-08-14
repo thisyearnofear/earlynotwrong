@@ -49,6 +49,11 @@ function makeFakeClient(overrides: Partial<DelphiClientLike> = {}): DelphiClient
     getErc20Balance: async () => 1_000_000_000_000_000_000n,
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
+    quoteSell: async ({ sharesIn }) => ({
+      // Symmetric to the quoteBuy fake: 0.42 per share.
+      tokensOut: (sharesIn * 42n) / 100n,
+    }),
+    sellShares: async () => ({ transactionHash: "0xsell" }),
     ...overrides,
   };
 }

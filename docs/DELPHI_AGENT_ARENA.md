@@ -48,15 +48,27 @@ Framed as *"Delphi executor + prediction-market signal product on existing rails
 
 ```
 agent/lib/delphi/
-  executor.ts      — DelphiExecutor: listMarkets/quote/buy/redeem/liquidate wrapper
-                     with retry + slippage guard + simulator mode. Position lifecycle
-                     reads (listPositions/getErc20Balance/getOpenPositions). Lazy-imports
-                     the SDK; tests inject a DelphiClientLike fake.
-  probability.ts   — probability estimation + sizing. estimateProbability (OpenRouter >
-                     OpenAI > Anthropic > injected via the shared llm-providers ladder),
-                     evaluateProbabilitySignal (pure edge gate), normalizeEstimate
-                     (sum-to-1 invariant on both paths), and sizeSharesBudget/
-                     perTradeBudget (Kelly-lite bankroll fractions).
+  executor.ts      — DelphiExecutor: listMarkets/quote/buy/sell/redeem/liquidate
+                     wrapper with retry + slippage guard + simulator mode. Position
+                     lifecycle reads (listPositions/getErc20Balance/getOpenPositions).
+                     Lazy-imports the SDK; tests inject a DelphiClientLike fake.
+  probability.ts   — probability estimation + sizing. estimateProbability (Vercel
+                     gateway > OpenRouter > OpenAI > Anthropic > injected via the
+                     shared llm-providers ladder; N-sample ensemble combined by
+                     per-outcome median, blended toward the crypto vol baseline),
+                     evaluateProbabilitySignal (pure, category-aware edge gate),
+                     evaluateConvergenceExit (sell-into-convergence / thesis stop),
+                     normalizeEstimate (sum-to-1 invariant on both paths), and
+                     sizeSharesBudget/perTradeBudget (Kelly-lite bankroll fractions).
+  vol-baseline.ts  — quantitative anchor for crypto threshold markets: driftless
+                     log-normal P(close > threshold) from realized daily vol
+                     (SoSoValue klines) + spot, with question parsing (threshold /
+                     expiry date / asset symbol). Zero inference cost; the Delphi
+                     analog of the edge report's naive baseline.
+  web-search.ts    — DelphiWebSearch: Exa-sourced briefings via the Vercel AI
+                     Gateway (`gateway.tools.exaSearch`, free promo) injected into
+                     the forecaster prompt. Per-cycle budget + TTL cache; failures
+                     and budget exhaustion skip context, never block.
   lifecycle.ts     — settled-market redemption + expired/failed liquidation sweep.
                      Per-market failure isolation; sized by groupOutcomesByMarket.
   anchoring.ts     — on-chain thesis anchoring (the analog of BSC cycle step 8).
@@ -65,11 +77,13 @@ agent/lib/delphi/
                      publishes through the shared Mantle + Casper adapters with
                      thesis-hash dedup persisted in the snapshot.
   runner.ts        — standalone loop entry (pm2 process earlynotwrong-delphi): sweep
-                     → discover → estimate → gate → size → trade → anchor. JSONL trade
-                     ledger, open-position ledger (positions.json), resolved-forecast
+                     → convergence-exit pass → discover → brief + vol-anchor →
+                     estimate → gate → size → trade → anchor. JSONL trade ledger,
+                     open-position ledger (positions.json), resolved-forecast
                      calibration ledger (forecasts.jsonl), snapshot, and exposure.json
                      under AGENT_DATA_DIR/delphi/; DELPHI_ENABLED is a runtime check,
-                     not a build-time config value.
+                     not a build-time config value. Side-effect-imports env-bootstrap
+                     (its own entry point, not index.ts) so agent/.env keys are live.
   status.ts        — disk-backed read of the runner's persisted state for the main
                      HTTP server (separate pm2 process, so no shared memory). Powers
                      GET /delphi/status and the dashboard's Prediction Arena card.
@@ -81,10 +95,15 @@ packages/conviction-core/src/calibration.ts
                      once, so estimation accuracy — not Sharpe — is the yardstick.
 ```
 
-LLM plumbing note: the OpenRouter > OpenAI > Anthropic ladder lives in
-`agent/lib/llm-providers.ts` (`chatCompletion`) and is shared by the token
-jury (`llm-jury.ts`) and the Delphi forecaster (`delphi/probability.ts`) —
-one place to change model defaults, timeouts, or add a provider.
+LLM plumbing note: the Vercel AI Gateway > OpenRouter > OpenAI > Anthropic
+ladder lives in `agent/lib/llm-providers.ts` (`chatCompletion`) and is shared
+by the token jury (`llm-jury.ts`) and the Delphi forecaster
+(`delphi/probability.ts`) — one place to change model defaults, timeouts, or
+add a provider. Gateway specifics (verified live, 2026-08-15): the gateway
+rejects `response_format` (400), so JSON comes from the system prompt;
+`reasoning: { effort: "none" }` must always be sent because GLM 5.2 is a
+reasoning model and unbounded reasoning tokens leave `content` empty; JSON
+replies are parsed leniently (`parseLenientJson` — strips Markdown fences).
 
 Env (added to `agent/manifest.json` secrets + `.env.example`):
 
@@ -94,6 +113,7 @@ Env (added to `agent/manifest.json` secrets + `.env.example`):
 | `DELPHI_NETWORK` | `competition-testnet` now, `mainnet` later |
 | `DELPHI_API_ACCESS_KEY` | REST reads (markets/positions). Generate at https://delphi-api-access.gensyn.ai/ |
 | `DELPHI_WALLET_PRIVATE_KEY` | Fresh, competition-only keypair. Never the TWAK or Casper operator key |
+| `VERCEL_AI_GATEWAY_API_KEY` | Free-first inference (zai/glm-5.2) + Exa web search for the Delphi forecaster. Promo window; the paid ladder below stays wired as fallback |
 
 Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode: competition`; chain ID 685685; competition gateway `0x097599c9D966fF496284b892A8F13BF885b258ef`; market statuses `open | awaiting_settlement | settled | expired | failed` — `settled` → `redeemMarket`, `expired`/`failed` → `liquidate`.
 
@@ -107,8 +127,52 @@ Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode:
 | 3 | Standalone runner loop + pm2 process + Telegram reporting | **landed** — `agent/lib/delphi/runner.ts`, `earlynotwrong-delphi` pm2 app, `sendDelphiCycleSummary`, JSONL trade ledger + snapshot under `AGENT_DATA_DIR/delphi/`, gated by `DELPHI_ENABLED` (checked per cycle, not at build) |
 | 4 | Position lifecycle, redemption scanner, bankroll-aware sizing | **landed** — `agent/lib/delphi/lifecycle.ts` (settled→redeem / expired+failed→liquidate sweep, per-market failure isolation), executor extended with `listPositions`/`liquidate`/`getErc20Balance`/`getOpenPositions`, `sizeSharesBudget` + `perTradeBudget` (Kelly-lite: `maxPositionFraction`/`maxMarketFraction` caps), per-market exposure ledger (`exposure.json`) |
 | 4b | On-chain anchoring + calibration ledger + dashboard surfacing | **landed** — `delphi/anchoring.ts` publishes a quantized per-cycle thesis via the shared Mantle + Casper adapters (thesis-hash dedup persisted across restarts); resolved redemptions feed `forecasts.jsonl`; `packages/conviction-core/src/calibration.ts` computes Brier / log-loss / hit-rate / reliability buckets; `GET /delphi/status` + the dashboard's Prediction Arena card (Proof view) surface it live |
+| 4c | Alpha stack: context injection, vol pricing, category gates, ensemble, sell-into-convergence | **landed** — free-first inference (Vercel AI Gateway, GLM 5.2) at the top of the shared ladder; Exa web briefings (`web-search.ts`, 10/cycle budget + 6h cache); driftless log-normal vol baseline (`vol-baseline.ts`) blended into crypto threshold estimates at w=0.35; category-aware edge gates (crypto 0.08 → culture 0.14); 3-sample median ensemble; executor `quoteSell`/`sellShares` + the runner's convergence-exit pass (take profit at forecast−2¢, stop at entry−10¢). See below |
 | 5 | Post-mortem: run the calibration report over `forecasts.jsonl`; decide graduate-or-archive | after 08-24 |
 | 6 | If graduate: `DELPHI_NETWORK=mainnet`, MCP tool `getPredictionSignals`, CAP serviceId `predictions-live` | later |
+
+### Alpha stack (Phase 4c)
+
+Five sources of edge, all behind the free Vercel AI Gateway promo
+(`VERCEL_AI_GATEWAY_API_KEY` — GLM 5.2 inference free through 2026-08-27,
+Exa search free through 2026-08-31). The paid ladder (OpenRouter > OpenAI >
+Anthropic) stays wired as fallback when the promo ends.
+
+1. **Context injection** (`web-search.ts` → prompt). Markets about *current*
+   events are where a model's training cutoff costs the most calibration. One
+   gateway `generateText` call gives GLM the `exa_search` tool; it searches,
+   reads, and returns a short sourced briefing that is injected into the
+   forecaster prompt as evidence. Live verification: on "BTC above $150k on
+   Aug 24?" the uninformed estimate was ~0.35 (stale priors); with the Exa
+   briefing (BTC at ~$63k) it dropped to ~0.02 — the whole trade.
+2. **Crypto vol baseline** (`vol-baseline.ts` → blend). For threshold markets
+   ("Will X close above $K on date D?") we compute
+   P(close > K) = Φ(ln(S₀/K)/(σ√T)) from realized daily vol (SoSoValue
+   klines) and spot — arithmetic, not opinion. The final estimate is
+   (1−w)·LLM + w·quant with w=0.35. The quant reference is never shown to the
+   LLM so ensemble samples stay independent. Pure functions, zero inference
+   cost; when parsing fails (no threshold/date/symbol) the blend is skipped.
+3. **Category-aware edge gates** (`probability.ts` → config). The gate is now
+   per-category: crypto 0.08 (has the vol anchor), economics 0.10,
+   politics/sports 0.12, culture/miscellaneous 0.14 — LLM-only estimates on
+   soft categories need more edge before we trust them against the market.
+4. **Ensemble forecasting** (`combineEstimates`). N=3 independent LLM samples
+   per market, combined by per-outcome **median** — a single overconfident
+   outlier ("obviously 0.95") gets no pull. Sequential sampling respects
+   free-tier rate limits; a degraded ensemble (1-2 samples) still ships with a
+   warning rather than blocking.
+5. **Sell-into-convergence** (`evaluateConvergenceExit` + executor sells).
+   We bought because our forecast beat the price; when the price converges to
+   within 2¢ of the forecast, the edge we paid for is realized — sell and
+   redeploy instead of holding for a 1/0 payoff. A price drop of 10¢ below
+   entry is a thesis stop. The exit pass re-quotes the full position
+   (realizable average incl. depth impact) every cycle; quote failures hold
+   rather than sell blind. Early exits are deliberately *not* scored for
+   calibration — no ground truth yet, so no fabricated Brier points.
+
+Config knobs (`AGENT_CONFIG.delphi`): `ensembleSamples`, `volBaselineWeight`,
+`categoryEdgeGates` + `defaultCategoryGate`, `convergenceTolerance`,
+`thesisStopEdge`, `webSearchMaxCallsPerCycle`.
 
 ### Surfacing policy (agreed 2026-08-14)
 

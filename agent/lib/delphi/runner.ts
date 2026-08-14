@@ -15,14 +15,30 @@
  * existing persistence/telegram modules. It exits the process when the
  * trading window closes (the competition ends 2026-08-24).
  *
+ * Alpha stack (Phase 5):
+ *   - Context injection: per-market Exa web briefing (web-search.ts) into
+ *     the forecaster prompt — free via the Vercel AI Gateway promo.
+ *   - Crypto vol baseline: threshold markets get a computed log-normal
+ *     reference probability (vol-baseline.ts) blended into the LLM estimate.
+ *   - Sell-into-convergence: open positions are re-priced every cycle and
+ *     exited when the market converges to our forecast (or stops against us).
+ *
  * State: JSONL trade ledger + a last-cycle snapshot under
  * `AGENT_DATA_DIR/delphi/` so a pm2 restart resumes cleanly.
  */
+
+// Load agent/.env BEFORE any sibling module evaluates. The runner is its own
+// pm2 entry point (dist/lib/delphi/runner.js) and does NOT go through
+// index.ts — without this, keys that live only in .env (SOSOVALUE_API_KEY,
+// VERCEL_AI_GATEWAY_API_KEY) would be invisible to the singletons imported
+// below. Must stay the first import.
+import "../env-bootstrap.js";
 
 import { existsSync, mkdirSync, appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_CONFIG } from "../config.js";
 import { sendDelphiCycleSummary, sendErrorAlert } from "../telegram.js";
+import { sosovalueClient } from "../data-providers.js";
 import type { AnchorResult } from "../anchors/types.js";
 import { DelphiExecutor, type DelphiMarket } from "./executor.js";
 import { redeemAndLiquidate } from "./lifecycle.js";
@@ -34,11 +50,18 @@ import {
 import {
   estimateProbability,
   evaluateProbabilitySignal,
+  evaluateConvergenceExit,
   perTradeBudget,
   sizeSharesBudget,
   type MarketEstimateInput,
   type ProbabilityConfig,
 } from "./probability.js";
+import {
+  estimateDailyVolFromCloses,
+  cryptoThresholdProbability,
+  matchCryptoThresholdMarket,
+} from "./vol-baseline.js";
+import { DelphiWebSearch, type WebSearchBriefing, type WebSearchSource } from "./web-search.js";
 import type { ProbabilityForecast } from "conviction-core";
 
 // =============================================================================
@@ -66,6 +89,20 @@ export interface DelphiRunnerConfig {
    * a fake in tests; pass `() => Promise.resolve([])` to disable.
    */
   anchor?: DelphiAnchorFn;
+  /**
+   * Web-search briefing provider (Exa via the Vercel AI Gateway). Inject a
+   * fake in tests; omit to construct the default (no-op without the
+   * gateway key).
+   */
+  webSearch?: WebSearchSource;
+  /**
+   * Volatility fetcher for the crypto baseline. Inject a fake in tests;
+   * omit to use SoSoValue daily klines (returns undefined when the symbol
+   * isn't in the catalog or vol can't be estimated).
+   */
+  fetchVolBaseline?: (question: string, category: string | undefined, now: number) => Promise<number | undefined>;
+  /** Injectable clock (tests). */
+  now?: () => number;
 }
 
 interface DelphiRunnerSnapshot {
@@ -73,6 +110,11 @@ interface DelphiRunnerSnapshot {
   cyclesRun: number;
   tradesPlaced: number;
   marketsSeen: number;
+  /** Cumulative alpha-stack counters for the dashboard (honest totals). */
+  exitsConvergence: number;
+  exitsStopped: number;
+  briefingsFetched: number;
+  volBaselines: number;
   /** Dedup guard: last thesis hash we attempted to anchor (persists across
    *  pm2 restarts, same pattern as the BSC loop's `lastAnchoredThesisHash`). */
   lastAnchoredThesisHash: string | null;
@@ -101,6 +143,14 @@ interface CycleResult {
   anchorDeduped: boolean;
   /** Per-adapter anchor results when a publish was attempted. */
   anchorResults: AnchorResult[];
+  /** Open positions closed by sell-into-convergence (price reached forecast). */
+  exitsConvergence: number;
+  /** Open positions closed by the thesis stop (price moved against us). */
+  exitsStopped: number;
+  /** Web briefings fetched fresh this cycle (not served from cache). */
+  briefingsFetched: number;
+  /** Markets that got a computed crypto vol-baseline reference. */
+  volBaselines: number;
 }
 
 // =============================================================================
@@ -125,6 +175,10 @@ const EMPTY_SNAPSHOT: DelphiRunnerSnapshot = {
   cyclesRun: 0,
   tradesPlaced: 0,
   marketsSeen: 0,
+  exitsConvergence: 0,
+  exitsStopped: 0,
+  briefingsFetched: 0,
+  volBaselines: 0,
   lastAnchoredThesisHash: null,
   lastAnchor: null,
 };
@@ -268,6 +322,52 @@ export function loadCalibrationLedger(dir: string): Array<ProbabilityForecast & 
 }
 
 // =============================================================================
+// Crypto vol baseline (default SoSoValue implementation)
+// =============================================================================
+
+/**
+ * Compute the quantitative reference probability for a crypto threshold
+ * market: P(close > threshold at expiry) from realized daily volatility
+ * (SoSoValue klines) and the current spot price. Returns undefined for
+ * non-threshold markets, unknown symbols, or when klines/spot are missing —
+ * the LLM estimate then stands alone (no blend).
+ *
+ * Pure policy on top of real data sources; an injected fake replaces it in tests.
+ */
+async function fetchVolBaselineFromSoSoValue(
+  question: string,
+  category: string | undefined,
+  now: number,
+): Promise<number | undefined> {
+  const match = matchCryptoThresholdMarket(question, category, now);
+  if (!match) return undefined;
+  if (!sosovalueClient.isAvailable()) return undefined;
+
+  // Realized daily vol over the last 30 closes + the current spot from the
+  // live quote (klines lag; the quote client gives the freshest price).
+  const klines = await sosovalueClient.fetchKlinesBySymbol(match.symbol, "1d", 30);
+  const closes = klines.map((k) => k.close).filter((c) => Number.isFinite(c) && c > 0);
+  const volDaily = estimateDailyVolFromCloses(closes);
+  if (volDaily === null) return undefined;
+
+  let spot = await sosovalueClient.fetchTokenPrice(match.symbol);
+  if (!(spot > 0)) spot = closes[closes.length - 1] ?? 0; // last daily close fallback
+  if (!(spot > 0)) return undefined;
+
+  const p = cryptoThresholdProbability({
+    spotPrice: spot,
+    volDaily,
+    daysToExpiry: match.daysToExpiry,
+    threshold: match.threshold,
+  });
+  if (p === null) return undefined;
+  console.log(
+    `  [delphi-vol] ${match.symbol} threshold ${match.threshold.toLocaleString("en-US")} in ${match.daysToExpiry.toFixed(1)}d: vol=${(volDaily * 100).toFixed(2)}%/d spot=${spot.toLocaleString("en-US")} → P=${p.toFixed(3)}`,
+  );
+  return p;
+}
+
+// =============================================================================
 // Market → EstimateInput mapping
 // =============================================================================
 
@@ -277,11 +377,17 @@ export function loadCalibrationLedger(dir: string): Array<ProbabilityForecast & 
  * quotes: a 1-share quote for each outcome gives us the implied price per
  * outcome, which (on a well-formed binary market) sums to ~1.
  *
+ * Alpha context is attached here:
+ *   - webBriefing: Exa-sourced evidence for the forecaster prompt
+ *   - volBaseline: the computed crypto reference (blended mechanically
+ *     after sampling — never shown to the LLM, keeps samples independent)
+ *
  * Binary markets only for Phase 2 — multi-outcome needs a sizing model.
  */
 async function buildEstimateInput(
   market: DelphiMarket,
   executor: DelphiExecutor,
+  ctx: { webBriefing?: WebSearchBriefing; volBaseline?: number },
 ): Promise<MarketEstimateInput | null> {
   const question = market.question;
   if (!question) return null;
@@ -298,6 +404,8 @@ async function buildEstimateInput(
     category: market.category,
     impliedProbabilities,
     outcomes,
+    webBriefing: ctx.webBriefing,
+    volBaselineProbability: ctx.volBaseline,
   };
 }
 
@@ -313,6 +421,13 @@ export class DelphiRunner {
   private readonly telegramEnabled: boolean;
   private readonly enabledCheck: () => boolean;
   private readonly anchorFn?: DelphiAnchorFn;
+  private readonly webSearch: WebSearchSource;
+  private readonly fetchVolBaseline: (
+    question: string,
+    category: string | undefined,
+    now: number,
+  ) => Promise<number | undefined>;
+  private readonly clock: () => number;
   private snapshot: DelphiRunnerSnapshot;
   private running = false;
 
@@ -325,6 +440,11 @@ export class DelphiRunner {
     this.telegramEnabled = config.telegramEnabled ?? true;
     this.enabledCheck = config.enabled ?? (() => process.env.DELPHI_ENABLED === "1");
     this.anchorFn = config.anchor;
+    this.webSearch =
+      config.webSearch ??
+      new DelphiWebSearch({ maxCallsPerCycle: AGENT_CONFIG.delphi.webSearchMaxCallsPerCycle });
+    this.fetchVolBaseline = config.fetchVolBaseline ?? fetchVolBaselineFromSoSoValue;
+    this.clock = config.now ?? (() => Date.now());
     this.snapshot = loadSnapshot(this.dataDir);
   }
 
@@ -347,6 +467,10 @@ export class DelphiRunner {
       anchored: false,
       anchorDeduped: false,
       anchorResults: [],
+      exitsConvergence: 0,
+      exitsStopped: 0,
+      briefingsFetched: 0,
+      volBaselines: 0,
     };
 
     if (!this.enabledCheck()) {
@@ -359,6 +483,9 @@ export class DelphiRunner {
       const help = health.help ? ` (${health.help})` : "";
       throw new Error(`Delphi health check failed: ${health.diagnostics.join("; ")}${help}`);
     }
+
+    // Fresh Exa budget per cycle — the cache serves repeats within a cycle.
+    this.webSearch.resetCycleBudget();
 
     // ── 1. Redeem settled + liquidate expired/failed (cash-out → redeploy) ─
     let bankrollTokens = 0n;
@@ -386,6 +513,16 @@ export class DelphiRunner {
       console.warn(`[delphi-runner] lifecycle sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    // ── 1b. Sell-into-convergence exit pass over tracked open positions ────
+    //
+    // Markets that resolved were already closed by the redeem sweep above;
+    // what remains are positions in still-open markets. Re-price each one
+    // against its entry forecast: take profit when the price converged,
+    // stop when the market moved against the thesis.
+    const exits = await this.convergenceExitPass(positions, exposure);
+    result.exitsConvergence = exits.convergence;
+    result.exitsStopped = exits.stopped;
+
     // ── 2. Discover + estimate + gate + trade ─────────────────────────────
     const markets = await this.executor.listOpenMarkets({ limit: 25 });
     result.marketsEvaluated = markets.length;
@@ -400,7 +537,28 @@ export class DelphiRunner {
     }> = [];
 
     for (const market of markets) {
-      const input = await buildEstimateInput(market, this.executor);
+      // Alpha context: web briefing (capped, cached) + vol baseline (crypto
+      // threshold markets only). Both are best-effort — a failure degrades
+      // to the plain LLM estimate, never blocks the market.
+      let webBriefing: WebSearchBriefing | undefined;
+      try {
+        const briefing = await this.webSearch.briefing(market.question ?? "");
+        if (briefing) {
+          webBriefing = briefing;
+          if (!briefing.cached) result.briefingsFetched++;
+        }
+      } catch (err) {
+        console.warn(`  [delphi-search] briefing error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      let volBaseline: number | undefined;
+      try {
+        volBaseline = await this.fetchVolBaseline(market.question ?? "", market.category, this.clock());
+        if (volBaseline !== undefined) result.volBaselines++;
+      } catch (err) {
+        console.warn(`  [delphi-vol] baseline error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      const input = await buildEstimateInput(market, this.executor, { webBriefing, volBaseline });
       if (!input) continue;
 
       const estimate = await estimateProbability(input, this.probability);
@@ -521,6 +679,7 @@ export class DelphiRunner {
         estimatesProduced: result.estimatesProduced,
         tradesPlaced: result.tradesPlaced,
         redeemsSucceeded: result.redeemsSucceeded + result.liquidatesSucceeded,
+        exits: { convergence: result.exitsConvergence, stopped: result.exitsStopped },
         entries: entriesForSummary,
       });
     }
@@ -532,15 +691,119 @@ export class DelphiRunner {
       cyclesRun: this.snapshot.cyclesRun + 1,
       tradesPlaced: this.snapshot.tradesPlaced + result.tradesPlaced,
       marketsSeen: this.snapshot.marketsSeen + result.marketsEvaluated,
+      exitsConvergence: this.snapshot.exitsConvergence + result.exitsConvergence,
+      exitsStopped: this.snapshot.exitsStopped + result.exitsStopped,
+      briefingsFetched: this.snapshot.briefingsFetched + result.briefingsFetched,
+      volBaselines: this.snapshot.volBaselines + result.volBaselines,
     };
     saveSnapshot(this.dataDir, this.snapshot);
     saveExposure(this.dataDir, exposure);
     savePositions(this.dataDir, positions);
 
     console.log(
-      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} trades=${result.tradesPlaced} redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips}`,
+      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines}`,
     );
     return result;
+  }
+
+  /**
+   * Sell-into-convergence exit pass.
+   *
+   * For every tracked open position, re-quote the realizable sell price of
+   * the held shares and apply the pure exit policy (probability.ts
+   * `evaluateConvergenceExit`): take profit when the market price converged
+   * to within tolerance of our entry forecast, stop when it moved a full
+   * `thesisStopEdge` against the entry price.
+   *
+   * Notes:
+   *   - Positions are scored only at settlement (resolvePositions). A
+   *     position we exit early never joins the calibration ledger — honest
+   *     by design: there's no ground-truth outcome to score yet.
+   *   - Quote the FULL position (quoteSell) so the decision uses the actual
+   *     realizable average price, including LMSR depth impact.
+   *   - Failures are per-position; a broken sell never aborts the cycle.
+   */
+  private async convergenceExitPass(
+    positions: Record<string, DelphiOpenPosition>,
+    exposure: ExposureLedger,
+  ): Promise<{ convergence: number; stopped: number }> {
+    const counts = { convergence: 0, stopped: 0 };
+    if (Object.keys(positions).length === 0) return counts;
+
+    for (const position of Object.values(positions)) {
+      const shares = BigInt(position.shares ?? "0");
+      if (shares <= 0n) {
+        // Dust position (partial fill rounded to zero shares) — drop it.
+        delete positions[position.id];
+        continue;
+      }
+      try {
+        let quote;
+        try {
+          quote = await this.executor.quoteSell(position.marketAddress, position.outcomeIdx, shares);
+        } catch (err) {
+          // Quote failed (e.g. market paused, client without sell support).
+          // Hold the position — re-evaluate next cycle. Never sell blind.
+          console.warn(
+            `  [delphi-exit] sell quote failed for ${position.id}, holding: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          continue;
+        }
+        const exit = evaluateConvergenceExit({
+          forecast: position.forecast,
+          entryPrice: position.impliedProbability,
+          currentPrice: quote.pricePerShare,
+        });
+        if (exit.action === "hold") continue;
+
+        let trade;
+        try {
+          trade = await this.executor.sellShares({
+            marketAddress: position.marketAddress,
+            outcomeIdx: position.outcomeIdx,
+            sharesIn: shares,
+          });
+        } catch (err) {
+          console.warn(`  [delphi-exit] sell threw for ${position.id}: ${err instanceof Error ? err.message : String(err)}`);
+          continue;
+        }
+        if (!trade.success) {
+          console.warn(`  [delphi-exit] sell failed for ${position.id}: ${trade.error}`);
+          continue;
+        }
+
+        // Release the entry-time exposure for this position.
+        const marketExposure = BigInt(exposure[position.marketAddress] ?? "0");
+        const released = BigInt(position.tokensIn ?? "0");
+        const remaining = marketExposure - released;
+        if (remaining > 0n) exposure[position.marketAddress] = remaining.toString();
+        else delete exposure[position.marketAddress];
+        delete positions[position.id];
+
+        if (exit.action === "sell-convergence") counts.convergence++;
+        else counts.stopped++;
+
+        appendTradeLedger(this.dataDir, {
+          type: exit.action === "sell-convergence" ? "exit-convergence" : "exit-stop",
+          marketAddress: position.marketAddress,
+          outcomeIdx: position.outcomeIdx,
+          question: position.question,
+          forecast: position.forecast,
+          entryPrice: position.impliedProbability,
+          exitPrice: quote.pricePerShare,
+          shares: position.shares,
+          tokensOut: trade.tokensIn, // tokens received on the sell
+          transactionHash: trade.transactionHash,
+          reason: exit.reason,
+        });
+        console.log(
+          `  [delphi-exit] ${exit.action === "sell-convergence" ? "converged" : "stopped"}: "${position.question.slice(0, 50)}" @ ${quote.pricePerShare.toFixed(2)} (${exit.reason})`,
+        );
+      } catch (err) {
+        console.warn(`  [delphi-exit] pass error for ${position.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return counts;
   }
 
   /**
@@ -614,7 +877,7 @@ export class DelphiRunner {
 // Entry point
 // =============================================================================
 
-if (process.argv[1] && process.argv[1].endsWith("runner.js")) {
+if (process.argv[1] && (process.argv[1].endsWith("/delphi/runner.js") || process.argv[1].endsWith("\\delphi\\runner.js"))) {
   const runner = new DelphiRunner();
   runner.start().catch((err) => {
     console.error("[delphi-runner] fatal:", err);

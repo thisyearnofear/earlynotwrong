@@ -487,6 +487,7 @@ export async function sendDelphiCycleSummary(params: {
   estimatesProduced: number;
   tradesPlaced: number;
   redeemsSucceeded: number;
+  exits?: { convergence: number; stopped: number };
   entries?: Array<{
     question: string;
     outcomeIdx: number;
@@ -498,9 +499,13 @@ export async function sendDelphiCycleSummary(params: {
 }): Promise<void> {
   if (!isConfigured()) return;
 
+  const exitPart =
+    params.exits && params.exits.convergence + params.exits.stopped > 0
+      ? ` · Exits: <code>${params.exits.convergence + params.exits.stopped}</code>`
+      : "";
   const lines: string[] = [
     `🔮 <b>Delphi cycle #${params.cycle}</b>`,
-    `   Markets: <code>${params.marketsEvaluated}</code> · Estimates: <code>${params.estimatesProduced}</code> · Entries: <code>${params.tradesPlaced}</code> · Redeems: <code>${params.redeemsSucceeded}</code>`,
+    `   Markets: <code>${params.marketsEvaluated}</code> · Estimates: <code>${params.estimatesProduced}</code> · Entries: <code>${params.tradesPlaced}</code> · Redeems: <code>${params.redeemsSucceeded}</code>${exitPart}`,
   ];
 
   if (params.entries && params.entries.length > 0) {

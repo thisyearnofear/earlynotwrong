@@ -31,6 +31,7 @@
     "@opentelemetry/sdk-node": "^0.57.2",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "@provablehq/sdk": "^0.10.5",
+    "ai": "^7.0.65",
     "casper-js-sdk": "^5.0.12",
     "conviction-core": "file:../packages/conviction-core",
     "hono": "^4.12.26",

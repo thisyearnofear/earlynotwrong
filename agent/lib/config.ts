@@ -302,6 +302,35 @@ export const AGENT_CONFIG = {
     // Decision gates for the probability-vs-price strategy. edge = |estimate − implied|;
     // we only trade when it clears threshold + fees + slippage.
     minEdgeToTrade: 0.08,
+    // Category-aware edge gates. Crypto threshold markets have a computed
+    // vol baseline anchor, so the standard gate applies; categories with no
+    // quantitative anchor (politics, culture) demand more edge before we
+    // trust an LLM-only estimate against the market.
+    categoryEdgeGates: {
+      crypto: 0.08,
+      economics: 0.1,
+      politics: 0.12,
+      sports: 0.12,
+      culture: 0.14,
+      miscellaneous: 0.14,
+    } as Record<string, number>,
+    // Gate for categories not listed above (unknown/absent category).
+    defaultCategoryGate: 0.12,
+    // Ensemble forecasting: N independent LLM samples per market, combined by
+    // per-outcome median. 1 disables ensembling. Free-tier latency is the
+    // cost; median kills single-sample outlier overconfidence.
+    ensembleSamples: 3,
+    // Crypto vol baseline blend: when a threshold market has BOTH an LLM
+    // estimate and a computed log-normal reference probability, the final
+    // estimate is (1 − w)·LLM + w·quant. w=0 disables blending.
+    volBaselineWeight: 0.35,
+    // Sell-into-convergence exit policy (see probability.ts).
+    // Take profit when the market price reaches within `tolerance` of our
+    // entry estimate; cut the position when price moves `stopEdge` against us.
+    convergenceTolerance: 0.02,
+    thesisStopEdge: 0.1,
+    // Exa web-search briefings per runner cycle (free-tier budget guard).
+    webSearchMaxCallsPerCycle: 10,
     // Per-trade caps as a fraction of available bankroll — LMSR shares resolve
     // 1/0, so a full-size losing entry is a total loss of stake.
     maxPositionFraction: 0.1,

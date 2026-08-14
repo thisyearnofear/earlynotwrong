@@ -23,13 +23,13 @@
 
 import type { ConvictionSignal, MarketRegime } from "./conviction-signal.js";
 import type { TokenQuote } from "./data-providers.js";
-import { chatCompletion, firstAvailableLlmProvider } from "./llm-providers.js";
+import { chatCompletion, firstAvailableLlmProvider, parseLenientJson } from "./llm-providers.js";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export type JuryProvider = "openrouter" | "openai" | "anthropic" | "template";
+export type JuryProvider = "vercel-gateway" | "openrouter" | "openai" | "anthropic" | "template";
 
 export type JuryAgreement =
   | "strong-agree"
@@ -164,12 +164,14 @@ export interface JurySignalFields {
 // LLM Deliberation — shared provider ladder (llm-providers.ts)
 // =============================================================================
 //
-// Provider priority: OpenRouter > OpenAI > Anthropic > template.
+// Provider priority (free-first): Vercel AI Gateway (GLM 5.2, free promo)
+// > OpenRouter > OpenAI > Anthropic > template.
 // OpenRouter uses the OpenAI-compatible chat completions API; the default
 // model is openrouter/auto — OpenRouter routes to the best available free
 // model, maximizing reliability across provider outages.
 
 const JURY_MODELS = {
+  "vercel-gateway": { envVar: "VERCEL_GATEWAY_JURY_MODEL", defaultModel: "zai/glm-5.2" },
   openrouter: { envVar: "OPENROUTER_JURY_MODEL", defaultModel: "openrouter/auto" },
   openai: { envVar: "OPENAI_JURY_MODEL", defaultModel: "gpt-4o-mini" },
   anthropic: { envVar: "ANTHROPIC_JURY_MODEL", defaultModel: "claude-3-haiku-20240307" },
@@ -190,7 +192,7 @@ async function deliberateWithLlm(
     models: JURY_MODELS,
     maxTokens: 1200,
     temperature: 0.4,
-    timeoutMs: provider === "openrouter" ? 45_000 : 30_000, // free tier can be slower
+    timeoutMs: provider === "openrouter" || provider === "vercel-gateway" ? 45_000 : 30_000, // free tiers can be slower
     xTitle: "Early Not Wrong - Conviction Jury",
   });
   if (!result) return null;
@@ -289,10 +291,10 @@ function parseJuryResponse(
   provider: JuryProvider,
   model: string,
 ): JuryDeliberation {
-  let raw: RawJuryResponse;
-  try {
-    raw = JSON.parse(content) as RawJuryResponse;
-  } catch {
+  // Lenient: free-tier models (GLM 5.2 via the Vercel gateway) sometimes
+  // wrap the JSON verdict in Markdown code fences. See parseLenientJson.
+  const raw = parseLenientJson<RawJuryResponse>(content);
+  if (!raw) {
     // If the LLM returns non-JSON, fall back to template mode.
     console.warn(`  [llm-jury] Failed to parse LLM response as JSON, using template fallback`);
     return templateDeliberation(candidates, regime);

@@ -45,6 +45,11 @@ export interface DelphiStatus {
     cyclesRun: number;
     tradesPlaced: number;
     marketsSeen: number;
+    /** Cumulative alpha-stack activity since the runner first produced data. */
+    exitsConvergence: number;
+    exitsStopped: number;
+    briefingsFetched: number;
+    volBaselines: number;
     lastAnchoredThesisHash: string | null;
   } | null;
   /** Most recent on-chain anchor attempt (per-adapter results). */
@@ -92,6 +97,10 @@ interface DiskSnapshot {
   cyclesRun: number;
   tradesPlaced: number;
   marketsSeen: number;
+  exitsConvergence?: number;
+  exitsStopped?: number;
+  briefingsFetched?: number;
+  volBaselines?: number;
   lastAnchoredThesisHash: string | null;
   lastAnchor: DelphiStatus["lastAnchor"];
 }
@@ -125,6 +134,11 @@ export function readDelphiStatus(config: { windowOpens: string; windowCloses: st
           cyclesRun: snapshot.cyclesRun,
           tradesPlaced: snapshot.tradesPlaced,
           marketsSeen: snapshot.marketsSeen,
+          // Older snapshots predate the alpha-stack counters — default to 0.
+          exitsConvergence: snapshot.exitsConvergence ?? 0,
+          exitsStopped: snapshot.exitsStopped ?? 0,
+          briefingsFetched: snapshot.briefingsFetched ?? 0,
+          volBaselines: snapshot.volBaselines ?? 0,
           lastAnchoredThesisHash: snapshot.lastAnchoredThesisHash,
         }
       : null,

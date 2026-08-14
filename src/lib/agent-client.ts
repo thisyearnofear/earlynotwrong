@@ -272,6 +272,11 @@ export interface DelphiStatus {
     cyclesRun: number;
     tradesPlaced: number;
     marketsSeen: number;
+    /** Cumulative alpha-stack activity (web briefings, vol baselines, exits). */
+    exitsConvergence: number;
+    exitsStopped: number;
+    briefingsFetched: number;
+    volBaselines: number;
     lastAnchoredThesisHash: string | null;
   } | null;
   lastAnchor: {

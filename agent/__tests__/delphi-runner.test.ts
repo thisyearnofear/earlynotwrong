@@ -51,10 +51,24 @@ function makeFakeClient(options: {
     getErc20Balance: async () => options.balanceTokens ?? 1_000_000_000_000_000_000_000n,
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
+    quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {
+      const price = (options.prices?.[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
+      return { tokensOut: (sharesIn * BigInt(Math.round(price * 1e6))) / 1_000_000n };
+    },
+    sellShares: async () => ({ transactionHash: "0xsell" }),
   };
 }
 
 const ENABLED_ENV_SNAPSHOT: Record<string, string | undefined> = {};
+
+/**
+ * No-op alpha data sources. runner.ts side-effect-imports env-bootstrap,
+ * which loads agent/.env (including a real VERCEL_AI_GATEWAY_API_KEY) into
+ * the test process — without these injections the default DelphiWebSearch
+ * and SoSoValue vol fetcher would make live network calls and time out.
+ */
+const noopWebSearch = { resetCycleBudget: () => {}, briefing: async () => null };
+const noopVolBaseline = async () => undefined;
 
 describe("DelphiRunner", () => {
   let dataDir: string;
@@ -86,7 +100,7 @@ describe("DelphiRunner", () => {
   it("skips the cycle when DELPHI_ENABLED is off", async () => {
     delete process.env.DELPHI_ENABLED;
     const executor = new DelphiExecutor({ apiKey: "k", clientFactory: async () => makeFakeClient({ markets: [] }) });
-    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false });
+    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false, webSearch: noopWebSearch, fetchVolBaseline: noopVolBaseline });
     const result = await runner.runCycle(1);
     expect(result.marketsEvaluated).toBe(0);
   });
@@ -94,7 +108,7 @@ describe("DelphiRunner", () => {
   it("throws on health-check failure with a helpful message", async () => {
     process.env.DELPHI_ENABLED = "1";
     const executor = new DelphiExecutor({ apiKey: "" }); // simulator → unavailable
-    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false });
+    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false, webSearch: noopWebSearch, fetchVolBaseline: noopVolBaseline });
     await expect(runner.runCycle(1)).rejects.toThrow(/health check failed/);
   });
 
@@ -118,6 +132,8 @@ describe("DelphiRunner", () => {
       executor,
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: {
         minEdgeToTrade: 0.08,
         estimator: (input: MarketEstimateInput) => ({
@@ -174,6 +190,8 @@ describe("DelphiRunner", () => {
       executor,
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: {
         estimator: (input) => ({
           marketAddress: input.marketAddress,
@@ -205,6 +223,8 @@ describe("DelphiRunner", () => {
       executor: new DelphiExecutor(factoryConfig),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
     });
     await first.runCycle(1);
     await first.runCycle(2);
@@ -213,6 +233,8 @@ describe("DelphiRunner", () => {
       executor: new DelphiExecutor(factoryConfig),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
     });
     await second.runCycle(3);
 

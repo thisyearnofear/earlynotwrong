@@ -210,9 +210,23 @@ function makeMutableFakeClient() {
     getErc20Balance: async () => 10n ** 18n * 1000n,
     listPositions: async () => ({ positions: cfg.positions }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
+    quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {
+      const price = (cfg.prices[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
+      return { tokensOut: (sharesIn * BigInt(Math.round(price * 1e6))) / 1_000_000n };
+    },
+    sellShares: async () => ({ transactionHash: "0xsell" }),
   };
   return { cfg, client };
 }
+
+/**
+ * No-op alpha data sources. runner.ts side-effect-imports env-bootstrap,
+ * which loads agent/.env (including a real VERCEL_AI_GATEWAY_API_KEY) into
+ * the test process — without these injections the default DelphiWebSearch
+ * and SoSoValue vol fetcher would make live network calls and time out.
+ */
+const noopWebSearch = { resetCycleBudget: () => {}, briefing: async () => null };
+const noopVolBaseline = async () => undefined;
 
 const estimatorWithEdge = (yesProb: number) => (input: { marketAddress: string; question: string }) => ({
   marketAddress: input.marketAddress,
@@ -229,16 +243,24 @@ const estimatorWithEdge = (yesProb: number) => (input: { marketAddress: string; 
 describe("DelphiRunner anchoring + calibration integration", () => {
   let dataDir: string;
   let savedEnabled: string | undefined;
+  let savedGatewayKey: string | undefined;
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), "delphi-anchor-test-"));
     savedEnabled = process.env.DELPHI_ENABLED;
     process.env.DELPHI_ENABLED = "1";
+    // runner.ts's env-bootstrap import loads agent/.env into the test process;
+    // hide the real gateway key so no construction can hit the network
+    // even without an injected no-op webSearch.
+    savedGatewayKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_AI_GATEWAY_API_KEY;
   });
 
   afterEach(() => {
     if (savedEnabled === undefined) delete process.env.DELPHI_ENABLED;
     else process.env.DELPHI_ENABLED = savedEnabled;
+    if (savedGatewayKey === undefined) delete process.env.VERCEL_AI_GATEWAY_API_KEY;
+    else process.env.VERCEL_AI_GATEWAY_API_KEY = savedGatewayKey;
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -258,6 +280,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor,
     });
@@ -270,6 +294,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor,
     });
@@ -283,6 +309,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.75) },
       anchor,
     });
@@ -299,6 +327,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor: async () => [],
     });
@@ -336,6 +366,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor: async () => [],
     });
@@ -365,6 +397,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       // est [0.5, 0.5] vs implied [0.35, 0.35] → edge +0.15 on both outcomes.
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.5) },
       anchor: async () => [],
@@ -396,6 +430,8 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor: async () => [],
     });
