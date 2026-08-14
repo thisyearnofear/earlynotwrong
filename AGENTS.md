@@ -18,9 +18,18 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-08-06. Live commit on `nuncio-vultr`: `5b3176f9` (regime-conditional edge report + rolling-window rate limiter + kline timestamp normalization).
+> Last updated: 2026-08-14. Live commit on `nuncio-vultr`: `5b3176f9` (regime-conditional edge report + rolling-window rate limiter + kline timestamp normalization).
 
 ### Recently shipped
+
+- **Delphi Agent Arena gap closure (`529c7bbf`)** — `agent/lib/delphi/`, `packages/conviction-core/src/calibration.ts`, `src/components/agent/delphi-arena-card.tsx`. The Gensyn Delphi prediction-market competition entry (trading window 2026-08-10 → 2026-08-24) is code-complete through Phase 4b:
+  - **Shared LLM ladder**: `agent/lib/llm-providers.ts` (`chatCompletion`) now owns the OpenRouter > OpenAI > Anthropic plumbing for both the token jury (`llm-jury.ts`) and the Delphi forecaster (`delphi/probability.ts`). One place for model defaults/timeouts.
+  - **On-chain anchoring**: `delphi/anchoring.ts` quantizes the cycle's decisions (edges in 0.05 buckets, neutrals dropped, sorted), hashes via the shared `computeSubjectHash`/`computeThesisHash` scheme, and publishes through the existing Mantle + Casper adapters (`subjectHash = delphi:competitionGateway`). Thesis-hash dedup persists in the snapshot across pm2 restarts — anchors only fire on meaningful view shifts, never on LLM jitter.
+  - **Calibration ledger**: resolved redemptions feed `forecasts.jsonl` (payout > 0 → win, 0 → loss; expired/failed markets and multi-outcome ambiguity are closed *without* scoring). `packages/conviction-core/src/calibration.ts` computes Brier, log-loss, hit rate, and 10-bin reliability buckets — the yardstick promised by the strategy doc ("calibration, not Sharpe").
+  - **Dashboard surfacing**: `GET /delphi/status` (disk-backed reader in `delphi/status.ts` — the runner is a separate pm2 process) + Vercel proxy allowlist + the `Prediction Arena` card in the `/agent` Proof view (lazy fetch, real data only, honest empty states before the runner's first cycle and before forecasts resolve).
+  - **Go-live is still blocked on Phase 0** (wallet registration + testnet gas + `DELPHI_API_ACCESS_KEY`), then the one-shot smoke test per `docs/DELPHI_AGENT_ARENA.md`. 440 agent tests green.
+- **wallet-score — behavioral conviction scoring as a paid product (`d8486513`)** — `src/lib/wallet-score.ts`, `POST /api/agent/wallet-score`, MCP `score_wallet`, CAP `wallet-score` serviceId. Second SKU: score **any** wallet (win rate, patience tax, archetype, cohort percentile, verifiable keccak256 ledger hash) instead of selling the agent's own picks. $0.05 USDC on the CROO Store; the MCP tool proxies to the web endpoint where the Helius/Zerion fetch infra lives. Buyer-agent gained `--test` / `--test-wallet` modes + `FEEDBACK.md` for CROO Test & Earn testers. Plan + listing copy in `docs/WALLET_SCORE_PLAN.md` / `docs/croo-store-listing-wallet-score.md`; schema at `/schemas/wallet-score-v1.schema.json` (score is a 1-decimal number).
+- **Edge-report integrity fix (`8a9f8fe4`)** — `agent/lib/backtest.ts`. The per-regime `hasEdge` now requires non-negative return *and* a Sharpe beat, same bar as the overall report — a fear segment where conviction loses less than naive no longer masquerades as "edge in fear".
 
 - **Edge report + buyer-agent integration (`8c92520d`, `085dd3c7`, `d501ae95`)** — `agent/lib/backtest.ts` + `examples/buyer-agent/`.
   - `runEdgeReport()` runs the conviction strategy alongside a **naive random-entry baseline** (same risk rules, no scoring) and attributes winning-exit P&L to the leading conviction factor. `hasEdge` requires conviction to beat naive on Sharpe *and* be non-negative in absolute return — a strategy that just loses less isn't edge.
@@ -35,7 +44,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 - **Casper anchor spend fix** — `agent/lib/llm-jury.ts` + `agent/index.ts`. The thesis-hash dedup was effectively dead: the LLM jury digest included raw adjustment floats, so non-deterministic LLM output moved the thesis hash every cycle and forced redundant 50-CSPR Casper anchors. Fixed by quantizing the digest (5-pt adjustment buckets, agreement→sign, drop neutrals, sort by symbol). Also persisted `lastAnchoredThesisHash` across pm2 restarts and lowered the balance gate from 100→30 CSPR. 4 new jury digest tests.
 - **SigNoz observability + demo progressive disclosure** — per-cycle pipeline timing exposed on `/agent` via `AgentObservabilityPanel` + `AgentCommandStrip`. Demo mode (`?demo=1`) refactored to one-act-at-a-time with sticky `DemoActNav` and collapsed secondary panels behind `DisclosureSection`.
 - **LLM conviction jury (7th factor)** — `agent/lib/llm-jury.ts`. After the 6-factor deterministic scoring, an LLM reviews top candidates and adjusts conviction scores ±15. Reasoning digest included in the thesis hash anchored on Casper. Provider priority: OpenRouter (`openrouter/auto`) > OpenAI > Anthropic > template (no key). Live on VPS with OpenRouter — jury delivered real verdicts on first deployed cycle (DAI -4, USDC -4, XRP -8). 21 jury tests + 14 Casper MCP client tests.
-- **Casper ecosystem MCP consumer** — `agent/lib/casper-mcp-client.ts`. Agent consumes CSPR.trade MCP (DEX prices/liquidity) and Casper blockchain MCP (era/validators/stake) as cross-chain context for the LLM jury. Agent is now a bidirectional MCP participant (exposes 6 tools + consumes 2 ecosystem servers). Note: both public MCP endpoints were unreachable at deploy time; code degrades gracefully.
+- **Casper ecosystem MCP consumer** — `agent/lib/casper-mcp-client.ts`. Agent consumes CSPR.trade MCP (DEX prices/liquidity) and Casper blockchain MCP (era/validators/stake) as cross-chain context for the LLM jury. Agent is now a bidirectional MCP participant (exposes 7 tools + consumes 2 ecosystem servers). Note: both public MCP endpoints were unreachable at deploy time; code degrades gracefully.
 - **OpenRouter integration** — OpenRouter wired as primary LLM provider for both jury and market narrative. Default model `openrouter/auto` routes to best available free model. `OPENROUTER_API_KEY` set on VPS.
 - **signals-live/v1.2** — per-cycle `execution` block (entries/exits/skips + `alignment.topRankedEntered`), explicit `provenance.behavioral.status`, AJV schema validation in CI. Schema: `/schemas/signals-live-v1.2.schema.json`. Deployed to VPS + dashboard copy.
 - **CROO Store live** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). **Store Deliverable Schema must stay empty** (field builder rows break CAP delivery). Verified orders include `0990e061-…` (2026-07-17). See `docs/croo-store-listing.md` and `docs/CROO_INTEGRATION.md`.
@@ -67,7 +76,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | File / Module | Purpose |
 |---------------|---------|
 | `agent/index.ts` | Startup, main loop orchestrator (`.env` inline loader, `runCycle()`, `restoreSnapshot()`) |
-| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/edge-report`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
+| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/edge-report`, `/delphi/status`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
 | `agent/src/mcp/` | MCP server + x402 paywall — exposes cross-chain conviction data to AI agents |
 | `agent/src/cap/` | CROO Agent Protocol adapter — reputation services settled in USDC on Base |
 | `agent/src/payment-stats.ts` | Shared A2A payment counters for x402 and CAP |
@@ -90,6 +99,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | `agent/lib/anchors/` | Cross-chain anchoring adapters — `MantleAnchorAdapter` + `CasperAnchorAdapter` |
 | `agent/lib/self-analysis.ts` | Builds the agent's canonical trade ledger and scores its own behavior each cycle via `conviction-core` |
 | `agent/lib/backtest.ts` | Backtest harness + **edge report** — conviction strategy vs naive baseline, factor attribution of winning exits. `runEdgeReport()` answers "does the signal have demonstrable edge?" |
+| `agent/lib/delphi/` | Prediction-market surface (Gensyn Delphi Agent Arena) — `executor.ts` (SDK wrapper, slippage guard, simulator, position lifecycle reads), `probability.ts` (LLM jury estimate + edge gate + Kelly-lite sizing), `lifecycle.ts` (settled→redeem, expired/failed→liquidate sweep), `anchoring.ts` (quantized per-cycle thesis → shared Mantle+Casper adapters, deduped), `runner.ts` (separate pm2 loop `earlynotwrong-delphi`, writes positions.json + forecasts.jsonl under `AGENT_DATA_DIR/delphi/`), `status.ts` (disk-backed reader powering `GET /delphi/status`). Gated by `DELPHI_ENABLED` (runtime env check, not build-time config). See `docs/DELPHI_AGENT_ARENA.md`. Strategy: LMSR probability-vs-price edge, **not** token dip-buying; evidence of edge is calibration/Brier (conviction-core `calibration.ts`), not Sharpe |
 
 ### Module Dependency Graph
 
@@ -130,6 +140,21 @@ src/app/api/analyze/batch/route.ts
 
 src/lib/market.ts
   └─ conviction-core (LedgerEntry, LedgerPosition, BehavioralMetrics)
+
+llm-jury.ts ─────────────┐
+                         ├─ llm-providers.ts (chatCompletion — shared LLM ladder)
+delphi/probability.ts ───┘
+
+delphi/runner.ts
+  ├─ delphi/anchoring.ts → anchors/index.ts (anchorAll) + anchors/hashes.ts
+  ├─ delphi/probability.ts + delphi/lifecycle.ts + delphi/executor.ts
+  └─ conviction-core (ProbabilityForecast)
+
+delphi/status.ts (read by GET /delphi/status)
+  └─ conviction-core (calculateCalibrationMetrics)
+
+src/components/agent/delphi-arena-card.tsx
+  └─ src/lib/agent-client.ts (fetchDelphiStatus → /api/agent/proxy?endpoint=delphi/status)
 ```
 
 ### Trading Loop (8 Steps)
@@ -171,7 +196,8 @@ src/lib/market.ts
 - **Simulator mode**: Auto-detected when `TWAK_ACCESS_ID` is not set. Uses in-memory mock portfolio.
   - **Composite market data**: SoSoValue token prices are preferred (higher refresh rate); CMC fills missing tokens and provides Fear & Greed / funding rates that SoSoValue doesn't offer. CMC's per-token quote pull (a 147-token batch) is deferred — `cycle-runner.fetchMarketData()` only calls `cmcClient.getEligibleTokenQuotes()` as a fallback when SoSoValue returns no prices, so a healthy SoSoValue run spends ~0 CMC credits on token quotes (CMC is still used every cycle for global metrics + derivatives, which SoSoValue lacks).
   - **Holder data (on-chain conviction)**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`, 50 CUs/call) is the primary source; CoinGecko token info (`holders.count`) is the fallback. Results cached in `agent/data/holders.json`; growth computed over 7d lookback after 24h+ of snapshots. Agent pre-scores tokens to target the top 15 candidates, not the full universe. The CoinGecko fallback is rate-limited (`COINGECKO_MIN_INTERVAL_MS = 12s`) with a 10-min per-contract cache in `holders.ts`, so a NodeReal outage can't cascade into a CoinGecko 429 storm.
-- **Shared conviction framework**: Pure ledger types and behavioral scoring live in `packages/conviction-core`. Both the agent self-analysis and the web wallet analyzer consume the same `calculateBehavioralMetrics` / `analyzePosition` / `calculatePatienceTax` functions. Do not duplicate scoring logic in `src/` or `agent/`.
+- **Shared conviction framework**: Pure ledger types and behavioral scoring live in `packages/conviction-core`. Both the agent self-analysis and the web wallet analyzer consume the same `calculateBehavioralMetrics` / `analyzePosition` / `calculatePatienceTax` functions. `calibration.ts` adds the prediction-market yardstick (`brierScore` / `logLoss` / `hitRate` / `reliabilityBuckets` / `calculateCalibrationMetrics`), consumed by the Delphi runner's status reader. Do not duplicate scoring logic in `src/` or `agent/`.
+- **Shared LLM ladder**: all LLM calls (token jury + Delphi forecaster) go through `agent/lib/llm-providers.ts` (`chatCompletion`, OpenRouter > OpenAI > Anthropic). Do not add per-module fetch plumbing for new LLM surfaces — extend the ladder there.
 - **No fabricated fallback data**: Showcase/demo wallets use real public addresses only. Do not add fabricated traders, heatmaps, or percentile defaults to fill empty UI states. Return `null` and show an honest empty state instead.
 - **Cross-chain anchoring**: Same `ConvictionRecord` payload sent to Mantle (EVM, viem) and Casper (casper-js-sdk). Hashes computed once via `conviction-core`'s `computeSubjectHash` / `computeThesisHash` — same hash on every chain.
 - **Telegram dispatch**: 3-message cycle summary with HTML formatting (`<pre>`, `<code>`, `<b>`). Non-blocking `.catch(() => {})` — env-vars-gated startup/cycle/error alerts.
@@ -181,8 +207,8 @@ src/lib/market.ts
 - **Portfolio parser**: Reads `$USD` column from TWAK's column-aligned output. Covered by regression test in `__tests__/twak-executor.test.ts`.
 - **TWAK reliability**: The agent resolves the `twak` binary from common install paths (`~/.local/bin`, `~/.twak/bin`, `/usr/local/bin`) in addition to `PATH`. If TWAK is missing, misconfigured, or the wallet is locked, startup diagnostics print the exact failure and a remediation hint. The cycle still runs: portfolio falls back to the on-chain reader, and trades are skipped rather than crashing the loop.
 - **Agent-to-agent (A2A)**:
-  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 6 tools: `getLatestConviction`, `crossChainLookup`, `getSubjectHistory`, `getByThesis`, `getAgentReputation`, `getJuryDeliberation`. The agent also **consumes** 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain context for the LLM jury — bidirectional MCP participant.
-  - CROO CAP client connects to the CROO network via WebSocket and fulfills five CAP serviceIds (`signals-live` Store-listed; four reputation services MCP-only). Store orders require `CROO_SIGNALS_LIVE_SERVICE_UUID` on the VPS — see `docs/CROO_INTEGRATION.md`.
+  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 7 tools: `get_latest_conviction`, `get_by_thesis`, `get_subject_history`, `get_agent_reputation`, `get_jury_deliberation`, `get_live_signals`, and `score_wallet` (behavioral scoring of any wallet — proxies to the web app's wallet-score endpoint). The agent also **consumes** 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain context for the LLM jury — bidirectional MCP participant.
+  - CROO CAP client connects to the CROO network via WebSocket and fulfills six CAP serviceIds (`signals-live` and `wallet-score` Store-listed; four reputation services MCP-only). Store orders require `CROO_SIGNALS_LIVE_SERVICE_UUID` on the VPS — see `docs/CROO_INTEGRATION.md`.
 
 ### Important Conventions
 
@@ -190,7 +216,7 @@ src/lib/market.ts
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (356 tests across 29 files).
+- Tests live in `agent/__tests__/` — Vitest framework (440 tests across 35 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
 - `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.
@@ -352,6 +378,7 @@ If a step fails, the log includes a `TWAK help:` line with the exact fix. The cy
 | `mantle-conviction-card.tsx` | Mantle anchored conviction card |
 | `casper-wallet-connect.tsx` | In-browser Casper Wallet connect + sign proof (uses `window.CasperWalletProvider` injected by the extension) |
 | `agent/signal-edge-panel.tsx` | Signal Edge panel — conviction vs naive baseline head-to-head + factor attribution (Proof view) |
+| `agent/delphi-arena-card.tsx` | Delphi Prediction Arena card — runner stats, open forecasts, calibration (Brier + reliability diagram), anchor receipt (Proof view) |
 | `agent/llm-jury-card.tsx` | LLM Conviction Jury card — 7th factor verdicts (extracted from agent page) |
 | `agent/buyer-preview-card.tsx` | Buyer preview — public signals-live teaser (guidance + top symbol) |
 | `agent/reputation-api-card.tsx` | MCP · x402 reputation API card — query stats, per-tool pricing, copy-paste curls |
