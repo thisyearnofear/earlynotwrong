@@ -12,7 +12,7 @@
 
 import { serverCache } from '@/lib/server-cache';
 import { ethosClient } from '@/lib/ethos';
-import type { EthosScore, EthosProfile, EthosUserStats } from '@/lib/ethos';
+import type { EthosScore, EthosProfile } from '@/lib/ethos';
 
 /**
  * Cache TTLs optimized for Ethos data characteristics
@@ -128,13 +128,6 @@ export class CachedEthosService {
     );
 
     return new Map(results.map(r => [r.address, r.score]));
-  }
-
-  /**
-   * Calculate reputation weighting (no caching needed - pure calculation)
-   */
-  calculateReputationWeighting(baseScore: number, ethosScore: number | null) {
-    return ethosClient.calculateReputationWeighting(baseScore, ethosScore);
   }
 
   /**

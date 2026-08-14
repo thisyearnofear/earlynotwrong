@@ -135,13 +135,13 @@ export function AlphaTraderCard({ trader, rank }: AlphaTraderCardProps) {
 
         <div
           className="text-right hidden md:block"
-          title="Ranking value: conviction score boosted by Ethos social credibility. The conviction score itself is purely behavioral."
+          title="Behavioral conviction score — how this wallet trades: holds through drawdown, avoids the patience tax, lets winners run. Ethos (social credibility) only gates access to this view; it never reorders it."
         >
           <div className="text-[10px] font-mono uppercase tracking-wider text-foreground-muted">
-            Cred-Weighted
+            Patience Tax
           </div>
-          <div className="text-sm font-mono tabular-nums text-signal">
-            {trader.weightedScore}
+          <div className="text-sm font-mono tabular-nums text-foreground-muted">
+            {trader.patienceTax.toFixed(1)}%
           </div>
         </div>
 

@@ -6,8 +6,9 @@ import { ALPHA_GATE_SCORE } from "@/lib/alpha/constants";
 /**
  * GET /api/alpha/tokens
  *
- * Token conviction heatmap: tokens with the highest concentration of credible
- * high-conviction holders. Gated at Ethos ≥ 1000 (premium).
+ * Cohort holdings: tokens with the highest concentration of high-conviction
+ * (behavioral score ≥ 60) holders. Ethos ≥ 1000 is the access gate (sybil
+ * resistance) only — the cohort filter is behavioral, not social.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

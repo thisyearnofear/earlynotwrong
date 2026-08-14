@@ -61,14 +61,6 @@ export interface FarcasterIdentity {
   };
 }
 
-export interface ReputationWeightedMetrics {
-  baseScore: number;
-  ethosScore: number;
-  reputationMultiplier: number;
-  weightedScore: number;
-  credibilityTier: "Unknown" | "Low" | "Medium" | "High" | "Elite";
-}
-
 /**
  * Unified trust score - normalized across providers
  */
@@ -291,47 +283,6 @@ export class EthosClient {
     }
   }
 
-  /**
-   * Calculate reputation-weighted conviction metrics
-   */
-  calculateReputationWeighting(
-    baseConvictionScore: number,
-    ethosScore: number | null,
-  ): ReputationWeightedMetrics {
-    const score = ethosScore || 0;
-
-    // Reputation multiplier based on Ethos score tiers
-    let reputationMultiplier = 1.0;
-    let credibilityTier: ReputationWeightedMetrics["credibilityTier"] =
-      "Unknown";
-
-    if (score >= 2000) {
-      reputationMultiplier = 1.5;
-      credibilityTier = "Elite";
-    } else if (score >= 1700) {
-      reputationMultiplier = 1.35;
-      credibilityTier = "High";
-    } else if (score >= 1400) {
-      reputationMultiplier = 1.15;
-      credibilityTier = "Medium";
-    } else if (score >= 1000) {
-      reputationMultiplier = 1.05;
-      credibilityTier = "Low";
-    }
-
-    const weightedScore = Math.min(
-      100,
-      baseConvictionScore * reputationMultiplier,
-    );
-
-    return {
-      baseScore: baseConvictionScore,
-      ethosScore: score,
-      reputationMultiplier,
-      weightedScore,
-      credibilityTier,
-    };
-  }
   /**
    * Resolve comprehensive trust score for an address
    */

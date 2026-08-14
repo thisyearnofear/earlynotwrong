@@ -3,7 +3,7 @@
  * Uses Vercel Postgres (Neon) for persistent storage
  */
 
-import { sql, db } from "@vercel/postgres";
+import { sql } from "@vercel/postgres";
 import { ConvictionMetrics } from "../market";
 
 // =============================================================================
@@ -775,30 +775,47 @@ export interface AlphaTrader {
   rankChange: number;
   firstSeenAt: Date;
   lastUpdatedAt: Date;
-  /** Conviction score × Ethos multiplier, used for sorting */
-  weightedScore: number;
 }
 
 /**
- * Ethos-weighted reputation multiplier for conviction score.
- * Matches the README's claim of Elite 1.5x / High 1.3x / Medium 1.15x / Low 1.05x.
+ * Top conviction traders from the alpha_leaderboard table, sorted by
+ * BEHAVIORAL conviction score (patience tax as tiebreaker).
+ *
+ * Deliberate: Ethos is NOT part of the ordering. Social credibility is used
+ * only as an access gate (anti-sybil) on the /api/alpha/* routes — see
+ * ALPHA_GATE_SCORE. Ranking by behavior, not vouches, is the product thesis
+ * ("conviction you can verify"), and mixing a 1.5× social multiplier into
+ * the order contradicted it.
  */
-function ethosMultiplier(ethosScore: number | null): number {
-  const s = ethosScore ?? 0;
-  if (s >= 2000) return 1.5;
-  if (s >= 1700) return 1.3;
-  if (s >= 1400) return 1.15;
-  if (s >= 1000) return 1.05;
-  return 1.0;
+export async function getAlphaTraders(
+  chain?: "solana" | "base",
+  limit: number = 25,
+): Promise<AlphaTrader[]> {
+  try {
+    const result = chain
+      ? await sql`
+          SELECT * FROM alpha_leaderboard
+          WHERE chain = ${chain}
+          ORDER BY conviction_score DESC, patience_tax ASC NULLS LAST
+          LIMIT ${limit}
+        `
+      : await sql`
+          SELECT * FROM alpha_leaderboard
+          ORDER BY conviction_score DESC, patience_tax ASC NULLS LAST
+          LIMIT ${limit}
+        `;
+    return result.rows.map(mapAlphaTrader);
+  } catch (error) {
+    console.warn("Failed to fetch alpha traders:", error);
+    return [];
+  }
 }
-
 function mapAlphaTrader(row: Record<string, unknown>): AlphaTrader {
   const ethos = row.ethos_score != null ? Number(row.ethos_score) : null;
-  const conviction = Number(row.conviction_score);
   return {
     address: row.address as string,
     chain: row.chain as "solana" | "base",
-    convictionScore: conviction,
+    convictionScore: Number(row.conviction_score),
     patienceTax: Number(row.patience_tax ?? 0),
     winRate: Number(row.win_rate ?? 0),
     archetype: (row.archetype as string) ?? null,
@@ -811,52 +828,7 @@ function mapAlphaTrader(row: Record<string, unknown>): AlphaTrader {
     rankChange: Number(row.rank_change ?? 0),
     firstSeenAt: new Date(row.first_seen_at as string),
     lastUpdatedAt: new Date(row.last_updated_at as string),
-    weightedScore: Math.round(conviction * ethosMultiplier(ethos)),
   };
-}
-
-/**
- * Top conviction traders from the alpha_leaderboard table, sorted by
- * conviction score × Ethos multiplier.
- */
-export async function getAlphaTraders(
-  chain?: "solana" | "base",
-  limit: number = 25,
-): Promise<AlphaTrader[]> {
-  try {
-    const result = chain
-      ? await sql`
-          SELECT * FROM alpha_leaderboard
-          WHERE chain = ${chain}
-          ORDER BY (conviction_score * (
-            CASE
-              WHEN ethos_score >= 2000 THEN 1.5
-              WHEN ethos_score >= 1700 THEN 1.3
-              WHEN ethos_score >= 1400 THEN 1.15
-              WHEN ethos_score >= 1000 THEN 1.05
-              ELSE 1.0
-            END
-          )) DESC
-          LIMIT ${limit}
-        `
-      : await sql`
-          SELECT * FROM alpha_leaderboard
-          ORDER BY (conviction_score * (
-            CASE
-              WHEN ethos_score >= 2000 THEN 1.5
-              WHEN ethos_score >= 1700 THEN 1.3
-              WHEN ethos_score >= 1400 THEN 1.15
-              WHEN ethos_score >= 1000 THEN 1.05
-              ELSE 1.0
-            END
-          )) DESC
-          LIMIT ${limit}
-        `;
-    return result.rows.map(mapAlphaTrader);
-  } catch (error) {
-    console.warn("Failed to fetch alpha traders:", error);
-    return [];
-  }
 }
 
 export interface TokenHeatmapEntry {
@@ -872,14 +844,17 @@ export interface TokenHeatmapEntry {
 }
 
 /**
- * Tokens with the highest concentration of credible, high-conviction holders.
- * Pulls from analysis_positions JOIN conviction_analyses, filtered to wallets
- * with Ethos ≥ 1000 (premium) for sybil resistance.
+ * Tokens held by the high-conviction cohort.
+ * Pulls from analysis_positions JOIN conviction_analyses, filtered to
+ * wallets whose BEHAVIORAL conviction score clears `minScore` — the same
+ * yardstick the traders list ranks by. (Previously the cohort was filtered
+ * by Ethos ≥ 1000; social credibility is now access-gating only, matching
+ * the "verify behavior, not vibes" thesis.)
  */
 export async function getTokenHeatmap(
   chain?: "solana" | "base",
   limit: number = 25,
-  minEthos: number = 1000,
+  minScore: number = 60,
 ): Promise<TokenHeatmapEntry[]> {
   try {
     const rows = chain
@@ -898,7 +873,7 @@ export async function getTokenHeatmap(
             AND ap.wallet_address = ca.address
             AND ap.chain = ca.chain
           WHERE ap.chain = ${chain}
-            AND ca.ethos_score >= ${minEthos}
+            AND ca.score >= ${minScore}
             AND ca.analyzed_at > NOW() - INTERVAL '90 days'
           GROUP BY ap.token_address, ap.token_symbol, ap.chain
           HAVING COUNT(DISTINCT ap.wallet_address) >= 1
@@ -919,7 +894,7 @@ export async function getTokenHeatmap(
             ON ap.analysis_id = ca.id
             AND ap.wallet_address = ca.address
             AND ap.chain = ca.chain
-          WHERE ca.ethos_score >= ${minEthos}
+          WHERE ca.score >= ${minScore}
             AND ca.analyzed_at > NOW() - INTERVAL '90 days'
           GROUP BY ap.token_address, ap.token_symbol, ap.chain
           HAVING COUNT(DISTINCT ap.wallet_address) >= 1

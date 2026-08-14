@@ -6,8 +6,9 @@ import { ALPHA_GATE_SCORE } from "@/lib/alpha/constants";
 /**
  * GET /api/alpha/traders
  *
- * Returns top conviction traders sorted by conviction × Ethos multiplier.
- * Gated at Ethos ≥ 1000 (premium).
+ * Returns top conviction traders sorted by BEHAVIORAL conviction score
+ * (patience tax as tiebreaker). Ethos ≥ 1000 is the access gate (sybil
+ * resistance) only — it never affects ordering.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

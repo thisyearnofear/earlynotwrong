@@ -47,8 +47,8 @@ export default function DiscoveryPage() {
   const displayTokens = data.tokens;
 
   const tabs: { key: AlphaTab; label: string; icon: typeof Zap }[] = [
-    { key: "traders", label: "Conviction leaders", icon: TrendingUp },
-    { key: "tokens", label: "Token heatmap", icon: Flame },
+    { key: "traders", label: "Behavioral leaders", icon: TrendingUp },
+    { key: "tokens", label: "Cohort holdings", icon: Flame },
   ];
 
   const chainFilters: { key: ChainFilter; label: string }[] = [
@@ -74,13 +74,15 @@ export default function DiscoveryPage() {
             Conviction discovery
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-            Analyzed wallet patterns
+            Conviction, verified by behavior
           </h1>
           <p className="mt-2 text-sm text-foreground-muted max-w-2xl leading-relaxed">
-            High-conviction wallets and the tokens they hold — aggregated from
-            behavioral scans, ranked with Ethos credibility weighting. For{" "}
-            <span className="text-foreground">live</span> cycle signals, macro
-            gates, and on-chain proof, hire the autonomous agent.
+            Wallets scored on <span className="text-foreground">how they trade</span> —
+            holding through drawdown, dodging the patience tax, letting winners run —
+            ranked by that behavior, never by vouches. Ethos only opens the door
+            (anti-sybil); it doesn&apos;t reorder anyone. For{" "}
+            <span className="text-foreground">live</span> cycle signals, macro gates,
+            and on-chain proof, hire the autonomous agent.
           </p>
         </motion.div>
 
@@ -93,7 +95,7 @@ export default function DiscoveryPage() {
               requiredScore={ALPHA_GATE_SCORE}
               currentScore={data.gate?.score ?? null}
               feature="Conviction Discovery"
-              description="Ethos-gated view of analyzed wallets and token heatmaps. Connect Base (EVM), analyze your wallet to build Ethos — live agent signals stay on MCP and CROO."
+              description="Behaviorally-ranked wallets and cohort token holdings. Ethos gates access (sybil resistance) but never the ranking — behavior does. Connect Base (EVM) and analyze your wallet to enter; live agent signals stay on MCP and CROO."
               actions={
                 <DiscoveryGateActions currentScore={data.gate?.score ?? null} />
               }
@@ -187,11 +189,9 @@ export default function DiscoveryPage() {
                   />
                   <StatStrip
                     icon={<Zap className="w-3.5 h-3.5" />}
-                    label="Top Cred-Weighted"
-                    sub="conviction × Ethos credibility"
-                    value={
-                      displayTraders[0]?.weightedScore ?? 0
-                    }
+                    label="Top Conviction"
+                    sub="ranked by behavior, not vouches"
+                    value={displayTraders[0]?.convictionScore ?? 0}
                   />
                   <StatStrip
                     icon={<Database className="w-3.5 h-3.5" />}
