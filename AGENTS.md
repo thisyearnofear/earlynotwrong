@@ -18,7 +18,7 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-08-14. Live commit on `nuncio-vultr`: `097575a7` (Discovery cohesion fix — behavioral ranking, Ethos demoted to access gate).
+> Last updated: 2026-08-14. Live commit on `nuncio-vultr`: `06cf08be` (Delphi live-market fixes — SDK metadata mapping, multi-outcome, vol direction; Delphi runner live on competition-testnet, hourly cycles).
 
 ### Recently shipped
 

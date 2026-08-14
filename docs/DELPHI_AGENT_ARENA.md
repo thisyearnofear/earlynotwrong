@@ -115,13 +115,13 @@ Env (added to `agent/manifest.json` secrets + `.env.example`):
 | `DELPHI_WALLET_PRIVATE_KEY` | Fresh, competition-only keypair. Never the TWAK or Casper operator key |
 | `VERCEL_AI_GATEWAY_API_KEY` | Free-first inference (zai/glm-5.2) + Exa web search for the Delphi forecaster. Promo window; the paid ladder below stays wired as fallback |
 
-Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode: competition`; chain ID 685685; competition gateway `0x097599c9D966fF496284b892A8F13BF885b258ef`; market statuses `open | awaiting_settlement | settled | expired | failed` — `settled` → `redeemMarket`, `expired`/`failed` → `liquidate`.
+Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode: competition`; chain ID 685685; competition gateway `0x097599c9D966fF496284b892A8F13BF885b258ef`; market statuses `open | awaiting_settlement | settled | expired | failed` — `settled` → `redeemMarket`, `expired`/`failed` → `liquidate`. **`listMarkets` nests `question`/`outcomes` under `market.metadata`** — flat top-level fields exist only in test fakes, which is why `listOpenMarkets` maps through `mapSdkMarket` (the first live cycle produced estimates=0 until this was fixed).
 
 ## Phased plan
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Register wallet on DoraHacks, faucet gas, API key | **in progress (user)** |
+| 0 | Register wallet on DoraHacks, faucet gas, API key | **done (2026-08-14)** — wallet `0x884c…dEa9` registered + 0.05 testnet ETH funded; API key validated live (29 markets); $TST starting bankroll pending the organizer's daily distribution |
 | 1 | `agent/lib/delphi/executor.ts` + config + tests | **landed** — 14 tests, `DelphiExecutor` with lazy SDK import, slippage guard, simulator mode |
 | 2 | Probability estimation: LLM jury for market questions + deterministic edge gate | **landed** — `agent/lib/delphi/probability.ts`, `estimateProbability` (shared `llm-providers` ladder) + `evaluateProbabilitySignal` (edge vs. minEdgeToTrade + slippage) + `normalizeEstimate` invariant |
 | 3 | Standalone runner loop + pm2 process + Telegram reporting | **landed** — `agent/lib/delphi/runner.ts`, `earlynotwrong-delphi` pm2 app, `sendDelphiCycleSummary`, JSONL trade ledger + snapshot under `AGENT_DATA_DIR/delphi/`, gated by `DELPHI_ENABLED` (checked per cycle, not at build) |
@@ -211,6 +211,9 @@ markets where we hold more than one outcome are closed without scoring —
 better no calibration point than a fabricated one.
 
 ### Runbook (once registration completes)
+
+> Status: completed 2026-08-14 — `DELPHI_ENABLED=1` is set on the VPS and the
+> runner cycles hourly. Kept for future restarts/re-provisioning.
 
 ```bash
 # On the VPS — set the three Delphi env vars on the earlynotwrong-delphi process
