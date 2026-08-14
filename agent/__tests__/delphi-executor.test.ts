@@ -164,6 +164,50 @@ describe("DelphiExecutor — live mode with injected client", () => {
     expect(markets[0].id).toBe("0xMarket");
   });
 
+  it("listOpenMarkets maps SDK-style metadata into flat question/outcomes (live API regression)", async () => {
+    // The real Delphi SDK nests question/outcomes under `metadata` — flat
+    // top-level fields exist only in test fakes. Until 2026-08-14 the runner
+    // read `market.question` (undefined on live markets) and silently
+    // skipped every market, producing estimates=0 on the first live cycle.
+    const ex = new DelphiExecutor({
+      apiKey: "test-key",
+      clientFactory: async () =>
+        makeFakeClient({
+          listMarkets: async () => ({
+            markets: [
+              {
+                id: "0xSdkMarket",
+                status: "open",
+                category: "crypto",
+                resolvesAt: "2026-08-16T00:00:00.000Z",
+                metadata: {
+                  question:
+                    "Will Ethereum's daily close on 2026-08-16 UTC be $1,890 or higher?",
+                  outcomes: ["Yes", "No"],
+                },
+              },
+            ] as unknown as DelphiMarket[],
+          }),
+        }),
+    });
+    const markets = await ex.listOpenMarkets();
+    expect(markets).toHaveLength(1);
+    expect(markets[0].question).toBe(
+      "Will Ethereum's daily close on 2026-08-16 UTC be $1,890 or higher?",
+    );
+    expect(markets[0].outcomes).toEqual(["Yes", "No"]);
+    expect(markets[0].resolvesAt).toBe("2026-08-16T00:00:00.000Z");
+    expect((markets[0] as { metadata?: unknown }).metadata).toBeUndefined();
+  });
+
+  it("listOpenMarkets keeps flat question/outcomes from test fakes unchanged", async () => {
+    // mapSdkMarket must be source-agnostic: fake clients already supply flat
+    // fields, and the mapping must not clobber them with metadata lookups.
+    const markets = await executor.listOpenMarkets();
+    expect(markets[0].question).toBe("Will BTC close above $150k on Aug 24?");
+    expect(markets[0].id).toBe("0xMarket");
+  });
+
   it("buyShares applies a slippage guard of maxTokensIn to the quote", async () => {
     const shares = 10n ** 18n; // 1 share
     const result = await executor.buyShares({

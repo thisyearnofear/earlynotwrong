@@ -367,10 +367,13 @@ async function fetchVolBaselineFromSoSoValue(
     threshold: match.threshold,
   });
   if (p === null) return undefined;
+  // p is always P(close ABOVE threshold). For "below"-phrased questions the
+  // Yes outcome is the complement — blend the correct side.
+  const pYes = match.direction === "below" ? 1 - p : p;
   console.log(
-    `  [delphi-vol] ${match.symbol} threshold ${match.threshold.toLocaleString("en-US")} in ${match.daysToExpiry.toFixed(1)}d: vol=${(volDaily * 100).toFixed(2)}%/d spot=${spot.toLocaleString("en-US")} → P=${p.toFixed(3)}`,
+    `  [delphi-vol] ${match.symbol} ${match.direction} ${match.threshold.toLocaleString("en-US")} in ${match.daysToExpiry.toFixed(1)}d: vol=${(volDaily * 100).toFixed(2)}%/d spot=${spot.toLocaleString("en-US")} → P(Yes)=${pYes.toFixed(3)}`,
   );
-  return p;
+  return pYes;
 }
 
 // =============================================================================
@@ -398,9 +401,10 @@ async function buildEstimateInput(
   const question = market.question;
   if (!question) return null;
 
-  // For the scaffold, assume binary (Yes/No). If the market lists outcomes
-  // in its payload we'd use those; for now, probe outcomes 0 and 1.
-  const outcomes = ["Yes", "No"];
+  // Real outcome labels from the market (binary Yes/No is the common case,
+  // but band markets have 4+). Fall back to the binary assumption only when
+  // the market carries no outcome metadata at all.
+  const outcomes = market.outcomes?.length ? market.outcomes : ["Yes", "No"];
   const impliedProbabilities = await executor.getImpliedProbabilities(market.id, outcomes.length);
   if (!impliedProbabilities) return null;
 
@@ -410,6 +414,7 @@ async function buildEstimateInput(
     category: market.category,
     impliedProbabilities,
     outcomes,
+    closesAt: market.resolvesAt ?? undefined,
     webBriefing: ctx.webBriefing,
     volBaselineProbability: ctx.volBaseline,
   };

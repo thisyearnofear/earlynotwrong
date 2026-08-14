@@ -32,10 +32,34 @@ export interface DelphiMarket {
   /** Delphi app UUID (for building market URLs). */
   appMarketId?: string;
   question?: string;
+  /** Outcome labels in market order (binary: ["Yes","No"]; bands can have 4+). */
+  outcomes?: string[];
   category?: string;
   status: "open" | "awaiting_settlement" | "settled" | "expired" | "failed" | string;
   /** Direct link on the Delphi app, if provided by the API. */
   marketUrl?: string;
+  /** Settlement/resolution time (ISO), if the market declares one. */
+  resolvesAt?: string | null;
+}
+
+/**
+ * Raw market shape the Delphi SDK returns (subset we consume). The live API
+ * nests `question`/`outcomes` under `metadata` — the flat top-level fields
+ * only exist in test fakes — so `listOpenMarkets` maps through
+ * `mapSdkMarket` to normalize both.
+ */
+interface SdkMarketLike extends DelphiMarket {
+  metadata?: { question?: string; outcomes?: string[] } | null;
+}
+
+function mapSdkMarket(raw: SdkMarketLike): DelphiMarket {
+  const meta = raw.metadata ?? undefined;
+  const { metadata: _metadata, ...rest } = raw;
+  return {
+    ...rest,
+    question: raw.question ?? meta?.question,
+    outcomes: raw.outcomes ?? meta?.outcomes,
+  };
 }
 
 export interface DelphiQuote {
@@ -285,7 +309,9 @@ export class DelphiExecutor {
           category: params.category,
           limit: params.limit ?? 50,
         });
-        return markets;
+        // The live SDK nests question/outcomes under `metadata`; normalize so
+        // the rest of the pipeline can read flat fields regardless of source.
+        return (markets as SdkMarketLike[]).map(mapSdkMarket);
       },
       { label: "delphi-list-markets", ...this.retryPolicy },
     );

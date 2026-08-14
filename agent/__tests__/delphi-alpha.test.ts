@@ -219,6 +219,32 @@ describe("matchCryptoThresholdMarket", () => {
     expect(matchCryptoThresholdMarket("Will BTC moon on Aug 24?", "crypto", now)).toBeNull();
     expect(matchCryptoThresholdMarket("Will the Fed close above $150,000 on Aug 24?", "crypto", now)).toBeNull();
   });
+
+  it("detects threshold direction — above, below, and ambiguous", () => {
+    // "above" phrasing → blend P(above) directly onto the Yes outcome.
+    expect(
+      matchCryptoThresholdMarket("Will BTC close above $150,000 on Aug 24?", "crypto", now)!
+        .direction,
+    ).toBe("above");
+    // "$1,890 or higher" is the other live phrasing seen in competition markets.
+    expect(
+      matchCryptoThresholdMarket(
+        "Will Ethereum's daily close on 2026-08-16 UTC be $1,890 or higher?",
+        "crypto",
+        now,
+      )!.direction,
+    ).toBe("above");
+    // "at or below" → the Yes outcome is the complement of P(above).
+    expect(
+      matchCryptoThresholdMarket("Will BTC close at or below $62,000 on Aug 17?", "crypto", now)!
+        .direction,
+    ).toBe("below");
+    // Ambiguous wording → no baseline at all. No blend is better than a
+    // flipped one.
+    expect(
+      matchCryptoThresholdMarket("Will BTC end at $150,000 on Aug 24?", "crypto", now),
+    ).toBeNull();
+  });
 });
 
 // =============================================================================

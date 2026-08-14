@@ -198,15 +198,39 @@ export function detectCryptoSymbol(question: string): string | null {
 }
 
 /**
+ * Which side of the threshold the market's Yes outcome asks about.
+ * `cryptoThresholdProbability` always prices the ABOVE side; questions
+ * phrased "at or below $K" need the complement.
+ */
+export type ThresholdDirection = "above" | "below";
+
+/**
+ * Detect whether a threshold question asks about prices ABOVE or BELOW
+ * the parsed level. Returns null when the wording is ambiguous — callers
+ * must then skip the vol blend (no baseline is better than a flipped one).
+ */
+export function detectThresholdDirection(question: string): ThresholdDirection | null {
+  const q = question.toLowerCase();
+  if (/\b(above|higher|or more|at or above|exceeds?|overs?|reach(?:es)?|hits?)\b/.test(q)) {
+    return "above";
+  }
+  if (/\b(below|lower|under|at or below|less than|falls? short)\b/.test(q)) {
+    return "below";
+  }
+  return null;
+}
+
+/**
  * One-call convenience: does this question look like a priceable crypto
- * threshold market? Returns the parsed pieces, or null when any part fails.
+ * threshold market? Returns the parsed pieces (incl. direction), or null
+ * when any part fails — including when the direction can't be detected.
  * `category` gates the whole thing — only crypto-category markets qualify.
  */
 export function matchCryptoThresholdMarket(
   question: string,
   category: string | undefined,
   now: number = Date.now(),
-): { symbol: string; threshold: number; daysToExpiry: number } | null {
+): { symbol: string; threshold: number; daysToExpiry: number; direction: ThresholdDirection } | null {
   if (category && category.toLowerCase() !== "crypto") return null;
   const symbol = detectCryptoSymbol(question);
   if (!symbol) return null;
@@ -214,5 +238,7 @@ export function matchCryptoThresholdMarket(
   if (threshold === null) return null;
   const daysToExpiry = parseDaysToExpiry(question, now);
   if (daysToExpiry === null) return null;
-  return { symbol, threshold, daysToExpiry };
+  const direction = detectThresholdDirection(question);
+  if (direction === null) return null;
+  return { symbol, threshold, daysToExpiry, direction };
 }
