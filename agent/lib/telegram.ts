@@ -488,6 +488,8 @@ export async function sendDelphiCycleSummary(params: {
   tradesPlaced: number;
   redeemsSucceeded: number;
   exits?: { convergence: number; stopped: number };
+  /** Alpha-stack activity this cycle (provenance of the forecasts). */
+  alpha?: { briefings: number; volBaselines: number };
   entries?: Array<{
     question: string;
     outcomeIdx: number;
@@ -495,6 +497,10 @@ export async function sendDelphiCycleSummary(params: {
     estimatedProbability?: number;
     edge: number;
     transactionHash?: string;
+    /** Provenance tags for entry lines. */
+    model?: string;
+    webEvidence?: boolean;
+    volAnchor?: number;
   }>;
 }): Promise<void> {
   if (!isConfigured()) return;
@@ -503,9 +509,13 @@ export async function sendDelphiCycleSummary(params: {
     params.exits && params.exits.convergence + params.exits.stopped > 0
       ? ` · Exits: <code>${params.exits.convergence + params.exits.stopped}</code>`
       : "";
+  const alphaPart =
+    params.alpha && params.alpha.briefings + params.alpha.volBaselines > 0
+      ? `\n   Evidence: <code>${params.alpha.briefings}</code> web briefings · <code>${params.alpha.volBaselines}</code> vol anchors`
+      : "";
   const lines: string[] = [
     `🔮 <b>Delphi cycle #${params.cycle}</b>`,
-    `   Markets: <code>${params.marketsEvaluated}</code> · Estimates: <code>${params.estimatesProduced}</code> · Entries: <code>${params.tradesPlaced}</code> · Redeems: <code>${params.redeemsSucceeded}</code>${exitPart}`,
+    `   Markets: <code>${params.marketsEvaluated}</code> · Estimates: <code>${params.estimatesProduced}</code> · Entries: <code>${params.tradesPlaced}</code> · Redeems: <code>${params.redeemsSucceeded}</code>${exitPart}${alphaPart}`,
   ];
 
   if (params.entries && params.entries.length > 0) {
@@ -515,12 +525,25 @@ export async function sendDelphiCycleSummary(params: {
       .map((e) => {
         const price = e.effectivePrice !== undefined ? e.effectivePrice.toFixed(3) : "?";
         const est = e.estimatedProbability !== undefined ? e.estimatedProbability.toFixed(2) : "?";
-        return `o${e.outcomeIdx} @ ${price} (est ${est}, edge ${e.edge.toFixed(3)})  ${escapeHtml(e.question.slice(0, 48))}`;
+        // Compact provenance tags — the method behind the number.
+        const tags: string[] = [];
+        if (e.webEvidence) tags.push("web");
+        if (e.volAnchor !== undefined) tags.push("vol");
+        if (e.model) tags.push(shortModel(e.model));
+        const tagStr = tags.length > 0 ? ` [${tags.join("·")}]` : "";
+        return `o${e.outcomeIdx} @ ${price} (est ${est}, edge ${e.edge.toFixed(3)})${tagStr}  ${escapeHtml(e.question.slice(0, 48))}`;
       })
       .join("\n")}</pre>`);
   }
 
   await sendMessage(lines.join("\n"));
+}
+
+/** Shorten a model id for Telegram (drop the org prefix + ensemble suffix). */
+function shortModel(model: string): string {
+  return model
+    .replace(/^(zai|openai|anthropic)\//, "")
+    .replace(/ ×\d+ median$/, "");
 }
 
 /**

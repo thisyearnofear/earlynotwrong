@@ -7,10 +7,25 @@
  *     blend, category-aware edge gate, convergence-exit policy
  *   - web-search.ts: source extraction, per-cycle budget, TTL cache
  *
- * Everything here is pure — no network, no gateway key.
+ * Everything here is pure — no network, no gateway key. The ensemble path
+ * of estimateProbability is exercised against a mocked llm-providers ladder
+ * (vi.mock below), so no live inference calls are ever made.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Mock the shared LLM ladder so the ensemble tests never touch the network.
+// DelphiWebSearch's gateway search is injected separately (runSearch), so it
+// does not need this mock. vi.hoisted so the factory (hoisted above imports)
+// can reference the mock function.
+const { mockChatCompletion } = vi.hoisted(() => ({
+  mockChatCompletion: vi.fn(),
+}));
+vi.mock("../lib/llm-providers.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/llm-providers.js")>();
+  return { ...actual, chatCompletion: mockChatCompletion };
+});
+
 import {
   normCdf,
   estimateDailyVolFromCloses,
@@ -542,5 +557,106 @@ describe("DelphiWebSearch — budget + cache", () => {
     await ws.briefing("Q");
     await ws.briefing("Q");
     expect(calls).toBe(2);
+  });
+});
+
+// =============================================================================
+// probability: ensemble + provenance (mocked LLM ladder)
+// =============================================================================
+
+describe("estimateProbability — ensemble + provenance (mocked ladder)", () => {
+  const ensembleInput: MarketEstimateInput = {
+    marketAddress: "0xM",
+    question: "Will BTC close above $150k on Aug 24?",
+    category: "crypto",
+    impliedProbabilities: [0.4, 0.6],
+    outcomes: ["Yes", "No"],
+  };
+
+  /** A mocked chatCompletion reply with the given Yes probability. */
+  const llmReply = (yesProb: number) => ({
+    provider: "vercel-gateway" as const,
+    model: "zai/glm-5.2",
+    content: JSON.stringify({
+      outcomes: [
+        { outcomeIdx: 0, probability: yesProb, reasoning: "s" },
+        { outcomeIdx: 1, probability: 1 - yesProb, reasoning: "" },
+      ],
+    }),
+  });
+
+  beforeEach(() => {
+    mockChatCompletion.mockReset();
+  });
+
+  it("combines 3 samples by median and records full provenance", async () => {
+    mockChatCompletion
+      .mockResolvedValueOnce(llmReply(0.5))
+      .mockResolvedValueOnce(llmReply(0.6))
+      .mockResolvedValueOnce(llmReply(0.95));
+
+    const result = await estimateProbability(
+      { ...ensembleInput, volBaselineProbability: 0.55 },
+      { ensembleSamples: 3, volBaselineWeight: 0.4 },
+    );
+    expect(result).not.toBeNull();
+    expect(mockChatCompletion).toHaveBeenCalledTimes(3);
+    // median(0.5, 0.6, 0.95) = 0.6 → blend 0.6·0.6 + 0.4·0.55 = 0.58
+    expect(result!.outcomes[0].probability).toBeCloseTo(0.58, 9);
+
+    const prov = result!.provenance!;
+    expect(prov.provider).toBe("vercel-gateway");
+    expect(prov.model).toBe("zai/glm-5.2 ×3 median");
+    expect(prov.samples).toBe(3);
+    expect(prov.webEvidence).toBe(false);
+    expect(prov.volAnchor).toBeCloseTo(0.55, 9);
+  });
+
+  it("records webEvidence when a briefing was injected", async () => {
+    mockChatCompletion.mockResolvedValue(llmReply(0.3));
+    const result = await estimateProbability(
+      {
+        ...ensembleInput,
+        webBriefing: { text: "brief", sources: [], cached: false, budgetExhausted: false },
+      },
+      { ensembleSamples: 1, volBaselineWeight: 0 },
+    );
+    expect(result!.provenance!.webEvidence).toBe(true);
+    expect(result!.provenance!.volAnchor).toBeUndefined();
+    // Single sample → no ensemble suffix, samples field omitted.
+    expect(result!.provenance!.samples).toBeUndefined();
+    expect(result!.provenance!.model).toBe("zai/glm-5.2");
+  });
+
+  it("ships a degraded ensemble (with a sample missing) instead of failing", async () => {
+    mockChatCompletion
+      .mockResolvedValueOnce(llmReply(0.5))
+      .mockResolvedValueOnce(llmReply(0.6))
+      .mockRejectedValueOnce(new Error("gateway 429"));
+
+    const result = await estimateProbability(ensembleInput, { ensembleSamples: 3 });
+    expect(result).not.toBeNull();
+    // median(0.5, 0.6) = 0.55 from the 2 surviving samples.
+    expect(result!.outcomes[0].probability).toBeCloseTo(0.55, 9);
+    expect(result!.provenance!.samples).toBe(2);
+    expect(result!.provenance!.model).toBe("zai/glm-5.2 ×2 median");
+  });
+
+  it("returns null when every sample fails", async () => {
+    mockChatCompletion.mockRejectedValue(new Error("down"));
+    expect(await estimateProbability(ensembleInput, { ensembleSamples: 3 })).toBeNull();
+  });
+
+  it("records provenance on the injected-estimator path too", async () => {
+    const result = await estimateProbability(
+      { ...ensembleInput, volBaselineProbability: 0.5 },
+      { estimator: () => sample(0.7, 0.3), volBaselineWeight: 0.4 },
+    );
+    // The sample() fixture carries provider "vercel-gateway" — the injected
+    // path passes it through untouched.
+    expect(result!.provenance!.provider).toBe("vercel-gateway");
+    expect(result!.provenance!.volAnchor).toBeCloseTo(0.5, 9);
+    // blend: 0.6·0.7 + 0.4·0.5 = 0.62
+    expect(result!.outcomes[0].probability).toBeCloseTo(0.62, 9);
   });
 });

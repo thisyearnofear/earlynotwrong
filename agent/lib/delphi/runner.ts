@@ -278,6 +278,12 @@ export interface DelphiOpenPosition {
   tokensIn: string;
   openedAt: number;
   transactionHash?: string;
+  /** Provenance — how the forecast was produced (surfaced on the card).
+   *  Optional: positions persisted before Phase 4c have no provenance. */
+  model?: string;
+  samples?: number;
+  webEvidence?: boolean;
+  volAnchor?: number;
 }
 
 function loadPositions(dir: string): Record<string, DelphiOpenPosition> {
@@ -534,6 +540,9 @@ export class DelphiRunner {
       estimatedProbability?: number;
       edge: number;
       transactionHash?: string;
+      model?: string;
+      webEvidence?: boolean;
+      volAnchor?: number;
     }> = [];
 
     for (const market of markets) {
@@ -612,6 +621,11 @@ export class DelphiRunner {
             tokensIn: trade.tokensIn ?? "0",
             openedAt: Date.now(),
             transactionHash: trade.transactionHash,
+            // Provenance for the dashboard card + audit trail.
+            model: signal.estimate.provenance?.model,
+            samples: signal.estimate.provenance?.samples,
+            webEvidence: signal.estimate.provenance?.webEvidence,
+            volAnchor: signal.estimate.provenance?.volAnchor,
           };
           appendTradeLedger(this.dataDir, {
             type: "entry",
@@ -626,6 +640,7 @@ export class DelphiRunner {
             effectivePrice: trade.effectivePrice,
             transactionHash: trade.transactionHash,
             reason: signal.reason,
+            provenance: signal.estimate.provenance,
           });
           entriesForSummary.push({
             question: signal.question,
@@ -634,6 +649,10 @@ export class DelphiRunner {
             estimatedProbability: signal.estimatedProbability,
             edge: signal.edge,
             transactionHash: trade.transactionHash,
+            // Provenance tags for the Telegram entry line.
+            model: signal.estimate.provenance?.model,
+            webEvidence: signal.estimate.provenance?.webEvidence,
+            volAnchor: signal.estimate.provenance?.volAnchor,
           });
         }
       }
@@ -680,6 +699,7 @@ export class DelphiRunner {
         tradesPlaced: result.tradesPlaced,
         redeemsSucceeded: result.redeemsSucceeded + result.liquidatesSucceeded,
         exits: { convergence: result.exitsConvergence, stopped: result.exitsStopped },
+        alpha: { briefings: result.briefingsFetched, volBaselines: result.volBaselines },
         entries: entriesForSummary,
       });
     }

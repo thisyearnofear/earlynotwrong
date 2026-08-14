@@ -47,6 +47,24 @@ export interface OutcomeEstimate {
   reasoning: string;
 }
 
+/**
+ * How this forecast was produced — the visible epistemology of the system.
+ * Surfaced on the dashboard card and in Telegram so the method (not just
+ * the number) is part of the brand story.
+ */
+export interface ForecastProvenance {
+  /** Which ladder answered ("injected" for estimator/tests). */
+  provider: ForecasterProvider;
+  /** The model that answered; ensembles carry " ×N median". */
+  model: string;
+  /** Ensemble samples combined (undefined when not ensembled). */
+  samples?: number;
+  /** True when an Exa web briefing was injected into the prompt. */
+  webEvidence?: boolean;
+  /** The blended crypto vol-baseline reference (undefined when none). */
+  volAnchor?: number;
+}
+
 /** The jury's estimate for a single binary market. */
 export interface MarketEstimate {
   marketAddress: string;
@@ -60,6 +78,9 @@ export interface MarketEstimate {
   provider: ForecasterProvider;
   model: string;
   estimatedAt: number;
+  /** Provenance for the audit trail + surfacing. Optional so older
+   *  persisted estimates and injected test fixtures stay valid. */
+  provenance?: ForecastProvenance;
 }
 
 /** Everything the estimator sees for one market. */
@@ -492,11 +513,20 @@ export async function estimateProbability(
       if (!raw) return null;
       // Injected estimators may omit category; inherit from the input so the
       // downstream category-aware gate always has it.
-      const estimate: MarketEstimate = { ...raw, category: raw.category ?? input.category };
+      const weight = config.volBaselineWeight ?? AGENT_CONFIG.delphi.volBaselineWeight;
+      const estimate: MarketEstimate = {
+        ...raw,
+        category: raw.category ?? input.category,
+        provenance: raw.provenance ?? {
+          provider: raw.provider,
+          model: raw.model,
+          webEvidence: Boolean(input.webBriefing?.text),
+          volAnchor: weight > 0 ? input.volBaselineProbability : undefined,
+        },
+      };
       // Apply the same mechanical blend to injected estimates so quant +
       // LLM paths share one post-processing pipeline (and so tests can
       // exercise blending without a provider).
-      const weight = config.volBaselineWeight ?? AGENT_CONFIG.delphi.volBaselineWeight;
       return blendVolBaseline(normalizeEstimate(estimate), input.volBaselineProbability, weight);
     } catch (err) {
       console.warn(
@@ -535,7 +565,18 @@ export async function estimateProbability(
       `  [delphi-probability] ensemble degraded: ${estimates.length}/${samples} samples for "${input.question.slice(0, 50)}"`,
     );
   }
-  return blended;
+
+  // Provenance for the audit trail + dashboard/Telegram surfacing.
+  return {
+    ...blended,
+    provenance: {
+      provider: combined.provider,
+      model: combined.model,
+      samples: estimates.length > 1 ? estimates.length : undefined,
+      webEvidence: Boolean(input.webBriefing?.text),
+      volAnchor: weight > 0 ? input.volBaselineProbability : undefined,
+    },
+  };
 }
 
 /**

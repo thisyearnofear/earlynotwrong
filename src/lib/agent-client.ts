@@ -238,6 +238,12 @@ export interface DelphiOpenPosition {
   tokensIn: string;
   openedAt: number;
   transactionHash?: string;
+  /** Provenance — how the forecast was produced (Phase 4c+). Optional for
+   *  positions persisted before the alpha stack shipped. */
+  model?: string;
+  samples?: number;
+  webEvidence?: boolean;
+  volAnchor?: number;
 }
 
 export interface DelphiAnchorResult {

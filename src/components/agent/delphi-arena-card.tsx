@@ -110,9 +110,14 @@ export function DelphiArenaCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[11px] text-foreground-muted leading-relaxed">
-          A second venue: the agent forecasts probabilities on multi-outcome LMSR
-          prediction markets and trades where estimate − implied clears the edge
-          gate. Skill is graded by <span className="text-foreground">calibration</span> (Brier),
+          A second venue: the agent forecasts probabilities on LMSR prediction
+          markets and trades where estimate − implied clears a category-aware
+          edge gate. Every forecast is built from visible evidence — an
+          <span className="text-foreground"> Exa web briefing</span>, a
+          <span className="text-foreground"> median-of-3 model ensemble</span>,
+          and (for crypto thresholds) a
+          <span className="text-foreground"> realized-vol anchor</span>.
+          Skill is graded by <span className="text-foreground">calibration</span> (Brier),
           not Sharpe, and the per-cycle thesis is anchored on-chain with the same
           registries as the token book.
         </p>
@@ -132,10 +137,12 @@ export function DelphiArenaCard() {
           <div className="flex flex-col items-center justify-center py-6 text-foreground-muted">
             <Target className="w-6 h-6 text-foreground-dim mb-2" />
             <p className="text-xs font-mono">No arena activity yet</p>
-            <p className="text-[10px] font-mono text-foreground-dim mt-1 text-center max-w-xs">
+            <p className="text-[10px] font-mono text-foreground-dim mt-1 text-center max-w-sm leading-relaxed">
               The Delphi runner hasn&apos;t completed a cycle
-              {status.enabled ? "" : " (DELPHI_ENABLED is off)"}. Forecasts,
-              calibration, and anchor receipts appear here after the first run.
+              {status.enabled ? "" : " (DELPHI_ENABLED is off)"}. When it does,
+              each market gets an Exa web briefing + a 3-sample median
+              ensemble (crypto thresholds also a realized-vol anchor), and the
+              forecasts, exits, calibration, and anchor receipts appear here.
             </p>
           </div>
         )}
@@ -203,9 +210,41 @@ export function DelphiArenaCard() {
                         {p.edge >= 0 ? "+" : ""}
                         {p.edge.toFixed(2)}
                       </span>
+                      {/* Provenance tags — the evidence behind this forecast. */}
+                      <span className="flex items-center gap-1 shrink-0">
+                        {p.webEvidence && (
+                          <span
+                            className="px-1 py-px rounded bg-[#f59e0b]/10 text-[#f59e0b] text-[8px]"
+                            title="Exa web briefing was injected into the forecaster's context"
+                          >
+                            web
+                          </span>
+                        )}
+                        {p.volAnchor !== undefined && (
+                          <span
+                            className="px-1 py-px rounded bg-patience/10 text-patience text-[8px]"
+                            title={`Driftless log-normal anchor from realized vol: P=${p.volAnchor.toFixed(2)}`}
+                          >
+                            vol
+                          </span>
+                        )}
+                        {p.samples !== undefined && p.samples > 1 && (
+                          <span
+                            className="px-1 py-px rounded bg-foreground-dim/10 text-foreground-dim text-[8px]"
+                            title={`${p.model ?? "model"} — median of ${p.samples} independent samples`}
+                          >
+                            ×{p.samples}
+                          </span>
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
+                <p className="text-[9px] font-mono text-foreground-dim mt-1.5 leading-relaxed">
+                  <span className="text-[#f59e0b]">web</span> = Exa briefing in context ·{" "}
+                  <span className="text-patience">vol</span> = realized-vol anchor blended ·{" "}
+                  <span>×N</span> = median of N model samples
+                </p>
               </div>
             )}
 

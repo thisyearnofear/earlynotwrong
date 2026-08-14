@@ -174,6 +174,23 @@ Config knobs (`AGENT_CONFIG.delphi`): `ensembleSamples`, `volBaselineWeight`,
 `categoryEdgeGates` + `defaultCategoryGate`, `convergenceTolerance`,
 `thesisStopEdge`, `webSearchMaxCallsPerCycle`.
 
+Provenance surfacing: every estimate carries a `ForecastProvenance`
+(provider, model, ensemble size, `webEvidence`, `volAnchor`), persisted on
+each open position in `positions.json` and each entry in `trades.jsonl`.
+The Prediction Arena card renders it as tags next to each forecast
+(`web` · `vol` · `×N`) with a legend, and the Telegram cycle summary
+reports per-cycle evidence counts (`Evidence: 8 web briefings · 2 vol
+anchors`) plus per-entry tags. The method behind the number is part of the
+brand: calibration claims are only credible when the inputs are visible.
+
+Gotcha — pm2 entry-point detection: the runner is its own pm2 process, and
+under pm2 the child's `process.argv[1]` is pm2's launcher container
+(`ProcessContainerFork.js`), not the script, which dynamic-imports it. The
+original `argv[1].endsWith("runner.js")` guard never fired under pm2 and the
+process idled silently (discovered 2026-08-14, before the runner had ever
+completed a cycle). The guard now accepts both the direct-run case and the
+pm2 container case; do not regress it to an argv-only check.
+
 ### Surfacing policy (agreed 2026-08-14)
 
 Three tiers, in order:

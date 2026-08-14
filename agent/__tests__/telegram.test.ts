@@ -334,8 +334,73 @@ describe("Telegram module", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("broadcasts public-safe guidance to operator and subscribers", async () => {
+  // =========================================================================
+  // Flow: sendDelphiCycleSummary — alpha counters + provenance tags
+  // =========================================================================
+
+  it("formats the Delphi cycle summary with evidence counts and provenance tags", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockFetch.mockResolvedValueOnce({ ok: true });
+
+    const { sendDelphiCycleSummary } = await import("../lib/telegram.js");
+    await sendDelphiCycleSummary({
+      cycle: 3,
+      marketsEvaluated: 12,
+      estimatesProduced: 10,
+      tradesPlaced: 1,
+      redeemsSucceeded: 0,
+      exits: { convergence: 1, stopped: 0 },
+      alpha: { briefings: 8, volBaselines: 2 },
+      entries: [
+        {
+          question: "Will BTC close above $150k on Aug 24?",
+          outcomeIdx: 1,
+          effectivePrice: 0.62,
+          estimatedProbability: 0.95,
+          edge: 0.33,
+          transactionHash: "0xentry1",
+          model: "zai/glm-5.2 ×3 median",
+          webEvidence: true,
+          volAnchor: 0.97,
+        },
+      ],
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.text).toContain("Delphi cycle #3");
+    expect(body.text).toContain("Exits: <code>1</code>");
+    expect(body.text).toContain("Evidence: <code>8</code> web briefings");
+    expect(body.text).toContain("<code>2</code> vol anchors");
+    // Entry line carries the provenance tags (model id shortened, ensemble
+    // suffix dropped, org prefix dropped).
+    expect(body.text).toContain("[web·vol·glm-5.2]");
+    expect(body.text).not.toContain("zai/glm-5.2 ×3");
+  });
+
+  it("omits the evidence line when no alpha context was used", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
+    mockFetch.mockResolvedValueOnce({ ok: true });
+
+    const { sendDelphiCycleSummary } = await import("../lib/telegram.js");
+    await sendDelphiCycleSummary({
+      cycle: 1,
+      marketsEvaluated: 5,
+      estimatesProduced: 5,
+      tradesPlaced: 0,
+      redeemsSucceeded: 0,
+      alpha: { briefings: 0, volBaselines: 0 },
+      entries: [{ question: "Q?", outcomeIdx: 0, edge: 0.02 }],
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.text).not.toContain("Evidence:");
+    expect(body.text).not.toContain("Exits:");
+  });
+
+  it("broadcasts public-safe guidance to operator and subscribers", async () => {    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:abc");
     vi.stubEnv("TELEGRAM_CHAT_ID", "-100123456");
     mockGetSubscriberChatIds.mockReturnValue(["999888"]);
     mockFetch.mockResolvedValue({ ok: true });
