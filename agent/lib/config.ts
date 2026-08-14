@@ -284,6 +284,35 @@ export const AGENT_CONFIG = {
     usdcDecimals: 6,
   },
 
+  // Delphi information markets (Gensyn Agent Arena + mainnet later).
+  // Prediction-market execution surface: self-contained under agent/lib/delphi/.
+  // The BSC pipeline does not import it; the runner is a separate pm2 process.
+  // See docs/DELPHI_AGENT_ARENA.md for strategy and phased plan.
+  delphi: {
+    // Enable gate is runtime-checked per cycle (DELPHI_ENABLED) by the runner,
+    // not read from this config object — module-scope env reads are frozen at
+    // import time, which breaks test isolation and requires a rebuild for a
+    // config flip. Keep gates as runtime functions on consumers instead.
+    network: process.env.DELPHI_NETWORK ?? "competition-testnet",
+    chainId: 685685,
+    competitionGateway: "0x097599c9D966fF496284b892A8F13BF885b258ef",
+    appUrl: "https://agent-competition.gensyn.ai",
+    // Slippage tolerance applied top-of-book on LMSR quotes (3%).
+    defaultSlippageBps: 300,
+    // Decision gates for the probability-vs-price strategy. edge = |estimate − implied|;
+    // we only trade when it clears threshold + fees + slippage.
+    minEdgeToTrade: 0.08,
+    // Per-trade caps as a fraction of available bankroll — LMSR shares resolve
+    // 1/0, so a full-size losing entry is a total loss of stake.
+    maxPositionFraction: 0.1,
+    maxMarketFraction: 0.25,
+    // Loop cadence for the standalone Delphi runner (minutes).
+    loopIntervalMinutes: 60,
+    // Competition trading window (UTC). Final leaderboard after settlement.
+    tradingWindowOpens: "2026-08-10T00:00:00Z",
+    tradingWindowCloses: "2026-08-24T00:00:00Z",
+  },
+
   // Anchoring orchestration — which chains we publish conviction records to.
   // Add an entry here + an adapter under `lib/anchors/` to extend to a new chain.
   anchoring: {

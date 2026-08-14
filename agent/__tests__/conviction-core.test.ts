@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateBehavioralMetrics,
+  calculateCalibrationMetrics,
   calculatePatienceTax,
   groupEntriesIntoPositions,
   computeSubjectHash,
   computeThesisHash,
   getArchetype,
+  brierScore,
+  logLoss,
+  hitRate,
+  reliabilityBuckets,
   type LedgerEntry,
+  type ProbabilityForecast,
 } from "conviction-core";
 
 describe("conviction-core", () => {
@@ -189,6 +195,92 @@ describe("conviction-core", () => {
 
     it("defaults to Diamond Hand", () => {
       expect(getArchetype(60, 2000)).toBe("Diamond Hand");
+    });
+  });
+
+  // ===========================================================================
+  // Calibration (prediction-market estimation accuracy)
+  // ===========================================================================
+
+  describe("calibration", () => {
+    const f = (
+      id: string,
+      forecast: number,
+      outcome?: 0 | 1,
+    ): ProbabilityForecast => ({ id, forecast, forecastAt: 0, outcome, resolvedAt: outcome !== undefined ? 1 : undefined });
+
+    it("returns null for every metric when nothing is resolved", () => {
+      expect(brierScore([f("a", 0.7)])).toBeNull();
+      expect(logLoss([f("a", 0.7)])).toBeNull();
+      expect(hitRate([f("a", 0.7)])).toBeNull();
+      const metrics = calculateCalibrationMetrics([f("a", 0.7)]);
+      expect(metrics.resolved).toBe(0);
+      expect(metrics.unresolved).toBe(1);
+      expect(metrics.brierScore).toBeNull();
+      expect(metrics.buckets.every((b) => b.count === 0)).toBe(true);
+    });
+
+    it("scores a perfect forecaster with Brier 0", () => {
+      const forecasts = [f("a", 0.99, 1), f("b", 0.01, 0)];
+      // (0.99−1)² = (0.01−0)² = 0.0001 → mean 0.0001
+      expect(brierScore(forecasts)!).toBeCloseTo(0.0001, 9);
+      expect(hitRate(forecasts)).toBe(1);
+    });
+
+    it("scores an always-50/50 forecaster at Brier 0.25", () => {
+      const forecasts = [f("a", 0.5, 1), f("b", 0.5, 0)];
+      expect(brierScore(forecasts)).toBeCloseTo(0.25, 9);
+      // Exact coin calls claim no edge → count as misses.
+      expect(hitRate(forecasts)).toBe(0);
+    });
+
+    it("penalizes confident wrong forecasts more than hesitant ones", () => {
+      const confidentWrong = brierScore([f("a", 0.95, 0)])!;
+      const hesitantWrong = brierScore([f("a", 0.6, 0)])!;
+      expect(confidentWrong).toBeGreaterThan(hesitantWrong);
+      // Same ordering for log loss.
+      const confLog = logLoss([f("a", 0.95, 0)])!;
+      const hesLog = logLoss([f("a", 0.6, 0)])!;
+      expect(confLog).toBeGreaterThan(hesLog);
+    });
+
+    it("computes the mixed example from first principles", () => {
+      // (0.7−1)² = 0.09; (0.4−0)² = 0.16 → mean 0.125
+      const forecasts = [f("a", 0.7, 1), f("b", 0.4, 0)];
+      expect(brierScore(forecasts)).toBeCloseTo(0.125, 9);
+      expect(hitRate(forecasts)).toBe(1);
+      expect(logLoss(forecasts)).toBeCloseTo(-(Math.log(0.7) + Math.log(0.6)) / 2, 9);
+    });
+
+    it("partitions resolved forecasts into 10 equal-width buckets", () => {
+      const buckets = reliabilityBuckets([f("a", 0.05, 0), f("b", 0.95, 1), f("c", 0.55, 1)]);
+      expect(buckets).toHaveLength(10);
+      expect(buckets[0].count).toBe(1); // 0.05 in [0.0, 0.1)
+      expect(buckets[0].meanOutcome).toBe(0);
+      expect(buckets[5].count).toBe(1); // 0.55 in [0.5, 0.6)
+      expect(buckets[9].count).toBe(1); // 0.95 in [0.9, 1.0]
+      expect(buckets[1].count).toBe(0);
+      expect(buckets[1].meanForecast).toBeNull();
+    });
+
+    it("bucket gap measures per-bin miscalibration", () => {
+      // Two 0.8 forecasts, both miss → meanForecast 0.8, meanOutcome 0, gap 0.8.
+      const buckets = reliabilityBuckets([f("a", 0.8, 0), f("b", 0.82, 0)]);
+      const bin = buckets[8];
+      expect(bin.count).toBe(2);
+      expect(bin.meanForecast).toBeCloseTo(0.81, 9);
+      expect(bin.meanOutcome).toBe(0);
+      expect(bin.gap).toBeCloseTo(0.81, 9);
+    });
+
+    it("calculateCalibrationMetrics aggregates everything", () => {
+      const forecasts = [f("a", 0.9, 1), f("b", 0.2, 1), f("c", 0.6, 0), f("d", 0.45)];
+      const metrics = calculateCalibrationMetrics(forecasts);
+      expect(metrics.resolved).toBe(3);
+      expect(metrics.unresolved).toBe(1);
+      expect(metrics.brierScore).toBeCloseTo(((0.1 ** 2) + (0.8 ** 2) + (0.6 ** 2)) / 3, 9);
+      expect(metrics.hitRate).toBeCloseTo(1 / 3, 9); // only "a" correct side
+      expect(metrics.buckets).toHaveLength(10);
     });
   });
 });

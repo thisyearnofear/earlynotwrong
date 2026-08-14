@@ -23,6 +23,7 @@
 
 import type { ConvictionSignal, MarketRegime } from "./conviction-signal.js";
 import type { TokenQuote } from "./data-providers.js";
+import { chatCompletion, firstAvailableLlmProvider } from "./llm-providers.js";
 
 // =============================================================================
 // Types
@@ -99,26 +100,15 @@ export async function deliberateConviction(
   // removing API keys (e.g. to isolate a 6-factor-only run).
   if (process.env.LLM_JURY_DISABLED === "1") return null;
 
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-
   try {
-    if (openrouterKey) {
-      return await deliberateWithOpenRouter(candidates, regime, newsHeadlines);
-    }
-    if (openaiKey) {
-      return await deliberateWithOpenAI(candidates, regime, newsHeadlines);
-    }
-    if (anthropicKey) {
-      return await deliberateWithAnthropic(candidates, regime, newsHeadlines);
-    }
+    const deliberation = await deliberateWithLlm(candidates, regime, newsHeadlines);
+    if (deliberation) return deliberation;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`  [llm-jury] LLM deliberation failed, falling back to template: ${msg}`);
   }
 
-  // Template fallback — deterministic, no API call.
+  // Template fallback — deterministic, no API call (also used when no key).
   return templateDeliberation(candidates, regime);
 }
 
@@ -171,130 +161,40 @@ export interface JurySignalFields {
 }
 
 // =============================================================================
-// LLM Deliberation — OpenRouter (preferred provider)
+// LLM Deliberation — shared provider ladder (llm-providers.ts)
 // =============================================================================
 //
-// OpenRouter uses the OpenAI-compatible chat completions API, so this is
-// a drop-in with a different base URL and the OpenRouter API key. The
-// default model is openrouter/auto — OpenRouter routes to the best
-// available free model, maximizing reliability across provider outages.
-//
-// Provider priority: OpenRouter > OpenAI > Anthropic > template
+// Provider priority: OpenRouter > OpenAI > Anthropic > template.
+// OpenRouter uses the OpenAI-compatible chat completions API; the default
+// model is openrouter/auto — OpenRouter routes to the best available free
+// model, maximizing reliability across provider outages.
 
-const OPENROUTER_DEFAULT_MODEL = "openrouter/auto";
+const JURY_MODELS = {
+  openrouter: { envVar: "OPENROUTER_JURY_MODEL", defaultModel: "openrouter/auto" },
+  openai: { envVar: "OPENAI_JURY_MODEL", defaultModel: "gpt-4o-mini" },
+  anthropic: { envVar: "ANTHROPIC_JURY_MODEL", defaultModel: "claude-3-haiku-20240307" },
+} as const;
 
-async function deliberateWithOpenRouter(
+/** Returns null when no provider key is configured (caller falls to template). */
+async function deliberateWithLlm(
   candidates: JuryTokenContext[],
   regime: MarketRegime,
   newsHeadlines: string[],
-): Promise<JuryDeliberation> {
-  const prompt = buildJuryPrompt(candidates, regime, newsHeadlines);
-  const model = process.env.OPENROUTER_JURY_MODEL || OPENROUTER_DEFAULT_MODEL;
+): Promise<JuryDeliberation | null> {
+  const provider = firstAvailableLlmProvider(JURY_MODELS);
+  if (!provider) return null;
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      // Optional headers for OpenRouter rankings
-      "HTTP-Referer": "https://earlynotwrong.vercel.app",
-      "X-Title": "Early Not Wrong - Conviction Jury",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: JURY_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      max_tokens: 1200,
-      temperature: 0.4,
-      response_format: { type: "json_object" },
-    }),
-    signal: AbortSignal.timeout(45000), // free tier can be slower
+  const result = await chatCompletion({
+    systemPrompt: JURY_SYSTEM_PROMPT,
+    userPrompt: buildJuryPrompt(candidates, regime, newsHeadlines),
+    models: JURY_MODELS,
+    maxTokens: 1200,
+    temperature: 0.4,
+    timeoutMs: provider === "openrouter" ? 45_000 : 30_000, // free tier can be slower
+    xTitle: "Early Not Wrong - Conviction Jury",
   });
-
-  if (!response.ok) throw new Error(`OpenRouter API error: ${response.status}`);
-
-  const json = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = json.choices?.[0]?.message?.content?.trim() ?? "";
-  return parseJuryResponse(content, candidates, regime, "openrouter", model);
-}
-
-// =============================================================================
-// LLM Deliberation — OpenAI
-// =============================================================================
-
-async function deliberateWithOpenAI(
-  candidates: JuryTokenContext[],
-  regime: MarketRegime,
-  newsHeadlines: string[],
-): Promise<JuryDeliberation> {
-  const prompt = buildJuryPrompt(candidates, regime, newsHeadlines);
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_JURY_MODEL || "gpt-4o-mini",
-      messages: [
-        { role: "system", content: JURY_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      max_tokens: 1200,
-      temperature: 0.4,
-      response_format: { type: "json_object" },
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
-
-  const json = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = json.choices?.[0]?.message?.content?.trim() ?? "";
-  return parseJuryResponse(content, candidates, regime, "openai", process.env.OPENAI_JURY_MODEL || "gpt-4o-mini");
-}
-
-// =============================================================================
-// LLM Deliberation — Anthropic
-// =============================================================================
-
-async function deliberateWithAnthropic(
-  candidates: JuryTokenContext[],
-  regime: MarketRegime,
-  newsHeadlines: string[],
-): Promise<JuryDeliberation> {
-  const prompt = buildJuryPrompt(candidates, regime, newsHeadlines);
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.ANTHROPIC_JURY_MODEL || "claude-3-haiku-20240307",
-      max_tokens: 1200,
-      system: JURY_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: prompt }],
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!response.ok) throw new Error(`Anthropic API error: ${response.status}`);
-
-  const json = (await response.json()) as {
-    content?: Array<{ text?: string }>;
-  };
-  const content = json.content?.[0]?.text?.trim() ?? "";
-  return parseJuryResponse(content, candidates, regime, "anthropic", process.env.ANTHROPIC_JURY_MODEL || "claude-3-haiku-20240307");
+  if (!result) return null;
+  return parseJuryResponse(result.content, candidates, regime, result.provider, result.model);
 }
 
 // =============================================================================

@@ -218,3 +218,93 @@ export async function fetchEdgeReport(): Promise<EdgeReport | null> {
     return null;
   }
 }
+
+// ─── Delphi prediction-market status ────────────────────────────────────────
+//
+// The Delphi runner is a separate pm2 process; the agent's /delphi/status
+// route reads its persisted state (snapshot, positions, calibration ledger)
+// off disk. hasData=false is the honest empty state before the runner's
+// first cycle — the card renders that as "not started yet".
+
+export interface DelphiOpenPosition {
+  id: string;
+  marketAddress: string;
+  outcomeIdx: number;
+  question: string;
+  forecast: number;
+  impliedProbability: number;
+  edge: number;
+  shares: string;
+  tokensIn: string;
+  openedAt: number;
+  transactionHash?: string;
+}
+
+export interface DelphiAnchorResult {
+  adapter: string;
+  status: "success" | "skipped" | "failed";
+  txHash?: string;
+  explorerUrl?: string;
+  error?: string;
+}
+
+export interface DelphiCalibrationBucket {
+  bucket: number;
+  lower: number;
+  upper: number;
+  count: number;
+  meanForecast: number | null;
+  meanOutcome: number | null;
+  gap: number | null;
+}
+
+export interface DelphiStatus {
+  hasData: boolean;
+  enabled: boolean;
+  network: string;
+  competition: {
+    windowOpens: string;
+    windowCloses: string;
+    msRemaining: number;
+  };
+  snapshot: {
+    lastCycleAt: number | null;
+    cyclesRun: number;
+    tradesPlaced: number;
+    marketsSeen: number;
+    lastAnchoredThesisHash: string | null;
+  } | null;
+  lastAnchor: {
+    thesisHash: string;
+    anchoredAt: number;
+    convictionScore: number;
+    results: DelphiAnchorResult[];
+  } | null;
+  openPositions: DelphiOpenPosition[];
+  totalExposureTokens: string;
+  calibration: {
+    resolved: number;
+    unresolved: number;
+    brierScore: number | null;
+    logLoss: number | null;
+    hitRate: number | null;
+    buckets: DelphiCalibrationBucket[];
+    totalForecasts: number;
+  };
+}
+
+/**
+ * Fetch the Delphi runner status via the Vercel proxy (same path as the
+ * other dashboard cards). Returns null when the agent is unreachable.
+ */
+export async function fetchDelphiStatus(): Promise<DelphiStatus | null> {
+  try {
+    const response = await fetch("/api/agent/proxy?endpoint=delphi/status", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}

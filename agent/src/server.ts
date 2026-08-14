@@ -534,6 +534,28 @@ app.get("/edge-report", async (c) => {
 });
 
 // ===========================================================================
+// GET /delphi/status — prediction-market runner observability
+// ===========================================================================
+//
+// The Delphi loop runs in a separate pm2 process and persists its state under
+// AGENT_DATA_DIR/delphi/. This route reads that state off disk (no shared
+// memory) and returns the snapshot, open forecasts, the last on-chain anchor,
+// and the calibration report (Brier / reliability over resolved forecasts).
+// Honest empty state when the runner has never produced data.
+
+import { readDelphiStatus } from "../lib/delphi/status.js";
+
+app.get("/delphi/status", (c) => {
+  const status = readDelphiStatus({
+    windowOpens: AGENT_CONFIG.delphi.tradingWindowOpens,
+    windowCloses: AGENT_CONFIG.delphi.tradingWindowCloses,
+    network: AGENT_CONFIG.delphi.network,
+    enabled: process.env.DELPHI_ENABLED === "1",
+  });
+  return c.json(status);
+});
+
+// ===========================================================================
 // GET /trades
 // ===========================================================================
 

@@ -476,6 +476,49 @@ export async function sendErrorAlert(params: {
 }
 
 /**
+ * Send a Delphi prediction-market cycle summary + entry alerts.
+ *
+ * Compact single message (unlike the 3-message BSC cycle summary) because
+ * the Delphi loop is sparse: a few markets, a few entries per cycle.
+ */
+export async function sendDelphiCycleSummary(params: {
+  cycle: number;
+  marketsEvaluated: number;
+  estimatesProduced: number;
+  tradesPlaced: number;
+  redeemsSucceeded: number;
+  entries?: Array<{
+    question: string;
+    outcomeIdx: number;
+    effectivePrice?: number;
+    estimatedProbability?: number;
+    edge: number;
+    transactionHash?: string;
+  }>;
+}): Promise<void> {
+  if (!isConfigured()) return;
+
+  const lines: string[] = [
+    `🔮 <b>Delphi cycle #${params.cycle}</b>`,
+    `   Markets: <code>${params.marketsEvaluated}</code> · Estimates: <code>${params.estimatesProduced}</code> · Entries: <code>${params.tradesPlaced}</code> · Redeems: <code>${params.redeemsSucceeded}</code>`,
+  ];
+
+  if (params.entries && params.entries.length > 0) {
+    lines.push(``);
+    lines.push(`<pre>${params.entries
+      .slice(0, 5)
+      .map((e) => {
+        const price = e.effectivePrice !== undefined ? e.effectivePrice.toFixed(3) : "?";
+        const est = e.estimatedProbability !== undefined ? e.estimatedProbability.toFixed(2) : "?";
+        return `o${e.outcomeIdx} @ ${price} (est ${est}, edge ${e.edge.toFixed(3)})  ${escapeHtml(e.question.slice(0, 48))}`;
+      })
+      .join("\n")}</pre>`);
+  }
+
+  await sendMessage(lines.join("\n"));
+}
+
+/**
  * Escape HTML special characters for Telegram's parse_mode=HTML.
  */
 function escapeHtml(text: string): string {

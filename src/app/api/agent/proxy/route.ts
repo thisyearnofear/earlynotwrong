@@ -14,6 +14,7 @@ const VALID_GET_ENDPOINTS = [
   "signals/teaser",
   "casper/balance",
   "casper/anchors",
+  "delphi/status",
 ] as const;
 
 /** Endpoints whose first (uncached) call can take minutes — the edge report
