@@ -18,10 +18,11 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-08-14. Live commit on `nuncio-vultr`: `5b3176f9` (regime-conditional edge report + rolling-window rate limiter + kline timestamp normalization).
+> Last updated: 2026-08-14. Live commit on `nuncio-vultr`: `097575a7` (Discovery cohesion fix — behavioral ranking, Ethos demoted to access gate).
 
 ### Recently shipped
 
+- **Discovery cohesion fix (`097575a7`)** — `src/lib/db/postgres.ts`, `src/app/discovery/page.tsx`, `src/components/alpha/alpha-trader-card.tsx`, `src/lib/ethos.ts`, `src/lib/services/ethos-cache.ts`. The one surface that inverted the product thesis: Discovery ranked wallets by conviction × Ethos social multiplier (up to 1.5×) and filtered the token heatmap on Ethos ≥ 1000. Now `getAlphaTraders` orders by behavioral conviction score (patience tax as tiebreaker) and `getTokenHeatmap` filters the cohort on behavioral score ≥ 60 — same yardstick as the trader list. Ethos ≥ 1000 remains the access gate on `/api/alpha/*` (anti-sybil) but never affects ordering; UI copy says so explicitly ("Conviction, verified by behavior"; tabs "Behavioral leaders" / "Cohort holdings"; trader card shows Patience Tax instead of Cred-Weighted). Dead multiplier machinery deleted: `ethosMultiplier`/`weightedScore` (postgres), `calculateReputationWeighting`/`ReputationWeightedMetrics` (ethos.ts) + its zero-caller pass-through (ethos-cache.ts). Leaderboard was already behavioral — no change.
 - **Delphi Agent Arena gap closure (`529c7bbf`)** — `agent/lib/delphi/`, `packages/conviction-core/src/calibration.ts`, `src/components/agent/delphi-arena-card.tsx`. The Gensyn Delphi prediction-market competition entry (trading window 2026-08-10 → 2026-08-24) is code-complete through Phase 4b:
   - **Shared LLM ladder**: `agent/lib/llm-providers.ts` (`chatCompletion`) now owns the OpenRouter > OpenAI > Anthropic plumbing for both the token jury (`llm-jury.ts`) and the Delphi forecaster (`delphi/probability.ts`). One place for model defaults/timeouts.
   - **On-chain anchoring**: `delphi/anchoring.ts` quantizes the cycle's decisions (edges in 0.05 buckets, neutrals dropped, sorted), hashes via the shared `computeSubjectHash`/`computeThesisHash` scheme, and publishes through the existing Mantle + Casper adapters (`subjectHash = delphi:competitionGateway`). Thesis-hash dedup persists in the snapshot across pm2 restarts — anchors only fire on meaningful view shifts, never on LLM jitter.
