@@ -352,7 +352,10 @@ async function callOpenRouter(
   news: NarrativeNewsItem[],
   macroEvents: MacroPauseEvent[],
 ): Promise<MarketNarrative> {
-  const model = process.env.OPENROUTER_NARRATIVE_MODEL || "openrouter/auto";
+  // Explicit `:free` model — the OpenRouter account carries paid credits, so
+  // `openrouter/auto` would silently route to paid models. Free-tier models
+  // require the `:free` suffix (verified against the model catalog 2026-08-14).
+  const model = process.env.OPENROUTER_NARRATIVE_MODEL || "nvidia/nemotron-3-ultra-550b-a55b:free";
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",

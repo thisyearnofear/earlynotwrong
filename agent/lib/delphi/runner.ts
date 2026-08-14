@@ -53,6 +53,7 @@ import {
   evaluateConvergenceExit,
   perTradeBudget,
   sizeSharesBudget,
+  type MarketEstimate,
   type MarketEstimateInput,
   type ProbabilityConfig,
 } from "./probability.js";
@@ -115,6 +116,8 @@ interface DelphiRunnerSnapshot {
   exitsStopped: number;
   briefingsFetched: number;
   volBaselines: number;
+  /** Estimates served from the forecast cache across the process lifetime. */
+  estimatesCached: number;
   /** Dedup guard: last thesis hash we attempted to anchor (persists across
    *  pm2 restarts, same pattern as the BSC loop's `lastAnchoredThesisHash`). */
   lastAnchoredThesisHash: string | null;
@@ -151,6 +154,8 @@ interface CycleResult {
   briefingsFetched: number;
   /** Markets that got a computed crypto vol-baseline reference. */
   volBaselines: number;
+  /** Estimates served from the forecast cache (zero inference cost). */
+  estimatesCached: number;
 }
 
 // =============================================================================
@@ -179,6 +184,7 @@ const EMPTY_SNAPSHOT: DelphiRunnerSnapshot = {
   exitsStopped: 0,
   briefingsFetched: 0,
   volBaselines: 0,
+  estimatesCached: 0,
   lastAnchoredThesisHash: null,
   lastAnchor: null,
 };
@@ -421,6 +427,51 @@ async function buildEstimateInput(
 }
 
 // =============================================================================
+// Forecast cache — inference efficiency between hourly cycles
+// =============================================================================
+
+/** Cheap stable fingerprint of a briefing text (for cache keys). */
+function briefingFingerprint(text: string | undefined): string {
+  if (!text) return "-";
+  // FNV-1a over the text — not cryptographic, just collision-resistant enough
+  // that a genuinely new briefing invalidates the cache.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Bucket an estimate for the forecast cache: market address + implied
+ * probabilities quantized to 2¢ + a fingerprint of the injected briefing.
+ * An estimate stays valid while its inputs are unchanged — same evidence,
+ * same price, same answer. Markets with a vol-baseline anchor bypass the
+ * cache entirely (the blend is baked into the estimate and the anchor moves
+ * with the spot price every cycle).
+ */
+export function forecastCacheKey(
+  marketAddress: string,
+  impliedProbabilities: number[],
+  briefingText?: string,
+): string {
+  const quantized = impliedProbabilities.map((p) => Math.round(p * 100) / 100);
+  return `${marketAddress}:${quantized.join(",")}:${briefingFingerprint(briefingText)}`;
+}
+
+/** Drop cache entries older than ttlMs. Exported for tests. */
+export function pruneForecastCache(
+  cache: Map<string, { estimate: MarketEstimate; fetchedAt: number }>,
+  ttlMs: number,
+  now: number,
+): void {
+  for (const [key, entry] of cache) {
+    if (now - entry.fetchedAt > ttlMs) cache.delete(key);
+  }
+}
+
+// =============================================================================
 // Runner
 // =============================================================================
 
@@ -441,6 +492,15 @@ export class DelphiRunner {
   private readonly clock: () => number;
   private snapshot: DelphiRunnerSnapshot;
   private running = false;
+  /**
+   * In-process forecast cache: market+bucketed-price → ensemble estimate.
+   * Hourly cycles re-see the same markets; when the implied probabilities
+   * haven't moved ≥1¢, the previous estimate is still the correct input and
+   * we reuse it at zero inference cost. Pruned each cycle by TTL. Deliberately
+   * NOT persisted — a restart should re-estimate fresh, and cross-restart
+   * reuse would mask model/provider changes.
+   */
+  private readonly forecastCache = new Map<string, { estimate: MarketEstimate; fetchedAt: number }>();
 
   constructor(config: DelphiRunnerConfig = {}) {
     this.executor = config.executor ?? new DelphiExecutor();
@@ -453,7 +513,12 @@ export class DelphiRunner {
     this.anchorFn = config.anchor;
     this.webSearch =
       config.webSearch ??
-      new DelphiWebSearch({ maxCallsPerCycle: AGENT_CONFIG.delphi.webSearchMaxCallsPerCycle });
+      new DelphiWebSearch({
+        maxCallsPerCycle: AGENT_CONFIG.delphi.webSearchMaxCallsPerCycle,
+        // 12h: competition markets resolve at most daily; a briefing fresher
+        // than half a day is still accurate and halves the Exa call count.
+        cacheTtlMs: 12 * 60 * 60 * 1000,
+      });
     this.fetchVolBaseline = config.fetchVolBaseline ?? fetchVolBaselineFromSoSoValue;
     this.clock = config.now ?? (() => Date.now());
     this.snapshot = loadSnapshot(this.dataDir);
@@ -482,12 +547,21 @@ export class DelphiRunner {
       exitsStopped: 0,
       briefingsFetched: 0,
       volBaselines: 0,
+      estimatesCached: 0,
     };
 
     if (!this.enabledCheck()) {
       console.log("[delphi-runner] DELPHI_ENABLED is off — cycle skipped.");
       return result;
     }
+
+    // Inference efficiency: drop stale forecast-cache entries before the
+    // discovery pass so a long-lived process doesn't grow the map unbounded.
+    pruneForecastCache(
+      this.forecastCache,
+      AGENT_CONFIG.delphi.forecastCacheTtlMinutes * 60_000,
+      this.clock(),
+    );
 
     const health = await this.executor.healthCheck();
     if (!health.available) {
@@ -575,7 +649,29 @@ export class DelphiRunner {
       const input = await buildEstimateInput(market, this.executor, { webBriefing, volBaseline });
       if (!input) continue;
 
-      const estimate = await estimateProbability(input, this.probability);
+      // Forecast cache: an estimate's inputs are the question, the injected
+      // briefing (fingerprinted in the key — its own 6h cache keeps the
+      // fingerprint stable across hourly cycles), and the implied
+      // probabilities (bucketed to 2¢). When nothing moved, the prior
+      // ensemble is still the right answer — reuse it at zero gateway cost.
+      // Markets with a vol-baseline anchor are NEVER cached: the blend is
+      // baked into the estimate and the anchor tracks the live spot price.
+      let estimate: MarketEstimate | null;
+      if (volBaseline !== undefined) {
+        estimate = await estimateProbability(input, this.probability);
+      } else {
+        const cacheKey = forecastCacheKey(input.marketAddress, input.impliedProbabilities, input.webBriefing?.text);
+        const cached = this.forecastCache.get(cacheKey);
+        if (cached) {
+          estimate = { ...cached.estimate, estimatedAt: this.clock() };
+          result.estimatesCached++;
+        } else {
+          estimate = await estimateProbability(input, this.probability);
+          if (estimate) {
+            this.forecastCache.set(cacheKey, { estimate, fetchedAt: this.clock() });
+          }
+        }
+      }
       if (!estimate) continue;
       result.estimatesProduced++;
 
@@ -704,7 +800,7 @@ export class DelphiRunner {
         tradesPlaced: result.tradesPlaced,
         redeemsSucceeded: result.redeemsSucceeded + result.liquidatesSucceeded,
         exits: { convergence: result.exitsConvergence, stopped: result.exitsStopped },
-        alpha: { briefings: result.briefingsFetched, volBaselines: result.volBaselines },
+        alpha: { briefings: result.briefingsFetched, volBaselines: result.volBaselines, cached: result.estimatesCached },
         entries: entriesForSummary,
       });
     }
@@ -720,13 +816,14 @@ export class DelphiRunner {
       exitsStopped: this.snapshot.exitsStopped + result.exitsStopped,
       briefingsFetched: this.snapshot.briefingsFetched + result.briefingsFetched,
       volBaselines: this.snapshot.volBaselines + result.volBaselines,
+      estimatesCached: this.snapshot.estimatesCached + result.estimatesCached,
     };
     saveSnapshot(this.dataDir, this.snapshot);
     saveExposure(this.dataDir, exposure);
     savePositions(this.dataDir, positions);
 
     console.log(
-      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines}`,
+      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines}`,
     );
     return result;
   }

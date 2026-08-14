@@ -458,7 +458,9 @@ describe("LLM Conviction Jury", () => {
 
       expect(result).not.toBeNull();
       expect(result!.provider).toBe("openrouter");
-      expect(result!.model).toBe("openrouter/auto");
+      // Free-pinned default: the OpenRouter account carries paid credits, so
+      // the fallback must be an explicit `:free` model, never openrouter/auto.
+      expect(result!.model).toBe("nvidia/nemotron-3-ultra-550b-a55b:free");
       expect(result!.verdicts[0].adjustment).toBe(8);
       expect(result!.verdicts[0].adjustedScore).toBe(73); // 65 + 8
 

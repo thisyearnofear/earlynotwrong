@@ -50,6 +50,7 @@ export interface DelphiStatus {
     exitsStopped: number;
     briefingsFetched: number;
     volBaselines: number;
+    estimatesCached: number;
     lastAnchoredThesisHash: string | null;
   } | null;
   /** Most recent on-chain anchor attempt (per-adapter results). */
@@ -101,6 +102,7 @@ interface DiskSnapshot {
   exitsStopped?: number;
   briefingsFetched?: number;
   volBaselines?: number;
+  estimatesCached?: number;
   lastAnchoredThesisHash: string | null;
   lastAnchor: DelphiStatus["lastAnchor"];
 }
@@ -139,6 +141,7 @@ export function readDelphiStatus(config: { windowOpens: string; windowCloses: st
           exitsStopped: snapshot.exitsStopped ?? 0,
           briefingsFetched: snapshot.briefingsFetched ?? 0,
           volBaselines: snapshot.volBaselines ?? 0,
+          estimatesCached: snapshot.estimatesCached ?? 0,
           lastAnchoredThesisHash: snapshot.lastAnchoredThesisHash,
         }
       : null,

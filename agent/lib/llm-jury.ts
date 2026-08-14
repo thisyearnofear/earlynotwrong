@@ -166,13 +166,14 @@ export interface JurySignalFields {
 //
 // Provider priority (free-first): Vercel AI Gateway (GLM 5.2, free promo)
 // > OpenRouter > OpenAI > Anthropic > template.
-// OpenRouter uses the OpenAI-compatible chat completions API; the default
-// model is openrouter/auto — OpenRouter routes to the best available free
-// model, maximizing reliability across provider outages.
+// OpenRouter uses the OpenAI-compatible chat completions API; the default is
+// an explicit `:free` model — OpenRouter accounts with credits are NOT
+// free-tier, and `openrouter/auto` on a credited account routes to paid
+// models. The `:free` suffix keeps the fallback zero-cost.
 
 const JURY_MODELS = {
   "vercel-gateway": { envVar: "VERCEL_GATEWAY_JURY_MODEL", defaultModel: "zai/glm-5.2" },
-  openrouter: { envVar: "OPENROUTER_JURY_MODEL", defaultModel: "openrouter/auto" },
+  openrouter: { envVar: "OPENROUTER_JURY_MODEL", defaultModel: "nvidia/nemotron-3-ultra-550b-a55b:free" },
   openai: { envVar: "OPENAI_JURY_MODEL", defaultModel: "gpt-4o-mini" },
   anthropic: { envVar: "ANTHROPIC_JURY_MODEL", defaultModel: "claude-3-haiku-20240307" },
 } as const;

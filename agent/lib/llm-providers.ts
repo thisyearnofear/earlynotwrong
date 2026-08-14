@@ -92,6 +92,38 @@ const VERCEL_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
 const OPENROUTER_REFERER = "https://earlynotwrong.vercel.app";
 
 /**
+ * fetch with bounded backoff retry for rate-limited free tiers.
+ *
+ * Retries ONLY on 429 (rate limit) and 5xx (server-side), once each, with a
+ * growing delay. Other errors (400 bad request, auth) throw immediately —
+ * retrying those just burns quota. The caller's AbortSignal still governs
+ * total wall time. Exported for tests.
+ */
+export async function fetchWithBackoff(
+  url: string,
+  init: RequestInit,
+  opts: { retries?: number; baseDelayMs?: number } = {},
+): Promise<Response> {
+  const retries = opts.retries ?? 2;
+  const baseDelayMs = opts.baseDelayMs ?? 2_000;
+  let lastResponse: Response | undefined;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(url, init);
+    // Retry ONLY explicit rate-limit (429) and server-side (5xx) responses.
+    // `status === undefined` (plain-object test mocks) counts as success —
+    // never retry an ambiguous response.
+    if (!(response.status === 429 || response.status >= 500)) return response;
+    lastResponse = response;
+    if (attempt === retries) break;
+    // Drain the body so the connection can be reused, then back off.
+    await response.arrayBuffer().catch(() => undefined);
+    const delay = baseDelayMs * 2 ** attempt;
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return lastResponse!;
+}
+
+/**
  * Lenient JSON extraction from an LLM response.
  *
  * Models asked for "a JSON object" still frequently wrap it in Markdown code
@@ -164,10 +196,38 @@ export function firstAvailableLlmProvider(
 ): LlmProviderName | null {
   for (const name of PROVIDER_ORDER) {
     if (!process.env[PROVIDER_KEY_ENV[name]]) continue;
+    // Free-promo guard: the gateway only leads the ladder while its promo is
+    // active (see vercelGatewayFreeActive). Afterwards OpenRouter takes over.
+    if (name === "vercel-gateway" && !vercelGatewayFreeActive()) continue;
     if (models && !models[name]) continue;
     return name;
   }
   return null;
+}
+
+/**
+ * Free-promo guard for the Vercel AI Gateway.
+ *
+ * The Aug 2026 promo (GLM 5.2 free through 2026-08-27, Exa search through
+ * 2026-08-31) is why the gateway leads the ladder and powers web briefings.
+ * When it ends the gateway may start billing or rejecting, so we drop it
+ * automatically: the forecaster/jury ladder falls through to OpenRouter
+ * (pinned to an explicit `:free` model — the OpenRouter account has paid
+ * credits, so `openrouter/auto` would silently bill), and web briefings are
+ * skipped (briefing() returns null — the forecaster still works on implied
+ * odds).
+ *
+ * Config: VERCEL_GATEWAY_PROMO_ENDS=YYYY-MM-DD is the first UTC day the
+ * gateway is no longer free (default 2026-08-28 — the day after the GLM
+ * promo ends). Set to "never" to disable the guard entirely. Exported so
+ * web-search.ts applies the same gate to Exa briefings.
+ */
+export function vercelGatewayFreeActive(now: number = Date.now()): boolean {
+  const ends = process.env.VERCEL_GATEWAY_PROMO_ENDS ?? "2026-08-28";
+  if (ends.toLowerCase() === "never") return true;
+  const cutoff = Date.parse(`${ends}T00:00:00Z`);
+  if (!Number.isFinite(cutoff)) return true; // bad date → fail open (gateway key present)
+  return now < cutoff;
 }
 
 /**
@@ -195,7 +255,7 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
       // consume the completion budget and `content` comes back empty — so we
       // always send a reasoning object (default "none" for strict JSON).
       const reasoningEffort = req.reasoningEffort ?? "none";
-      const response = await fetch(VERCEL_GATEWAY_URL, {
+      const response = await fetchWithBackoff(VERCEL_GATEWAY_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.VERCEL_AI_GATEWAY_API_KEY}`,
@@ -224,7 +284,7 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
       };
     }
     case "openrouter": {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetchWithBackoff("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -256,7 +316,7 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
       };
     }
     case "openai": {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const response = await fetchWithBackoff("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -285,7 +345,7 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
       };
     }
     case "anthropic": {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetchWithBackoff("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "x-api-key": process.env.ANTHROPIC_API_KEY!,

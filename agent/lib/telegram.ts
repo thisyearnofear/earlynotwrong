@@ -489,7 +489,7 @@ export async function sendDelphiCycleSummary(params: {
   redeemsSucceeded: number;
   exits?: { convergence: number; stopped: number };
   /** Alpha-stack activity this cycle (provenance of the forecasts). */
-  alpha?: { briefings: number; volBaselines: number };
+  alpha?: { briefings: number; volBaselines: number; cached?: number };
   entries?: Array<{
     question: string;
     outcomeIdx: number;
@@ -511,7 +511,9 @@ export async function sendDelphiCycleSummary(params: {
       : "";
   const alphaPart =
     params.alpha && params.alpha.briefings + params.alpha.volBaselines > 0
-      ? `\n   Evidence: <code>${params.alpha.briefings}</code> web briefings · <code>${params.alpha.volBaselines}</code> vol anchors`
+      ? `\n   Evidence: <code>${params.alpha.briefings}</code> web briefings · <code>${params.alpha.volBaselines}</code> vol anchors${
+          params.alpha.cached ? ` · <code>${params.alpha.cached}</code> cached` : ""
+        }`
       : "";
   const lines: string[] = [
     `🔮 <b>Delphi cycle #${params.cycle}</b>`,

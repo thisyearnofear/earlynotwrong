@@ -10,9 +10,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DelphiRunner } from "../lib/delphi/runner.js";
+import { DelphiRunner, forecastCacheKey, pruneForecastCache } from "../lib/delphi/runner.js";
 import { DelphiExecutor, type DelphiClientLike, type DelphiMarket } from "../lib/delphi/executor.js";
-import type { MarketEstimateInput } from "../lib/delphi/probability.js";
+import type { MarketEstimate, MarketEstimateInput } from "../lib/delphi/probability.js";
 
 // =============================================================================
 // Fakes
@@ -69,6 +69,46 @@ const ENABLED_ENV_SNAPSHOT: Record<string, string | undefined> = {};
  */
 const noopWebSearch = { resetCycleBudget: () => {}, briefing: async () => null };
 const noopVolBaseline = async () => undefined;
+
+describe("forecastCacheKey / pruneForecastCache (pure)", () => {
+  const sampleEstimate = (addr: string): MarketEstimate => ({
+    marketAddress: addr,
+    question: "Q",
+    outcomes: [
+      { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+      { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+    ],
+    provider: "injected",
+    model: "test",
+    estimatedAt: 0,
+  });
+
+  it("quantizes prices to 2¢ buckets (jitter under 0.5¢ is the same key)", () => {
+    expect(forecastCacheKey("0xA", [0.4, 0.6])).toBe(forecastCacheKey("0xA", [0.4, 0.6]));
+    // 0.401 → buckets to 0.4; a full-cent move does not.
+    expect(forecastCacheKey("0xA", [0.401, 0.599])).toBe(forecastCacheKey("0xA", [0.4, 0.6]));
+    expect(forecastCacheKey("0xA", [0.41, 0.59])).not.toBe(forecastCacheKey("0xA", [0.4, 0.6]));
+  });
+
+  it("changes when the briefing text changes", () => {
+    expect(forecastCacheKey("0xA", [0.4, 0.6], "briefing one")).not.toBe(
+      forecastCacheKey("0xA", [0.4, 0.6], "briefing two"),
+    );
+    expect(forecastCacheKey("0xA", [0.4, 0.6])).toBe(
+      forecastCacheKey("0xA", [0.4, 0.6], undefined),
+    );
+  });
+
+  it("prunes only entries older than the TTL", () => {
+    const cache = new Map<string, { estimate: MarketEstimate; fetchedAt: number }>([
+      ["fresh", { estimate: sampleEstimate("0xF"), fetchedAt: 1_000 }],
+      ["stale", { estimate: sampleEstimate("0xS"), fetchedAt: 0 }],
+    ]);
+    pruneForecastCache(cache, 500, 1_000);
+    expect(cache.has("fresh")).toBe(true);
+    expect(cache.has("stale")).toBe(false);
+  });
+});
 
 describe("DelphiRunner", () => {
   let dataDir: string;
@@ -240,5 +280,174 @@ describe("DelphiRunner", () => {
 
     const snapshot = JSON.parse(readFileSync(join(dataDir, "snapshot.json"), "utf-8"));
     expect(snapshot.cyclesRun).toBe(3);
+  });
+
+  it("reuses cached estimates when implied prices are unchanged (inference efficiency)", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let estimatorCalls = 0;
+    const factoryConfig = {
+      apiKey: "k",
+      retry: { maxRetries: 0 as const },
+      clientFactory: async () =>
+        makeFakeClient({
+          markets: [makeMarket("0xFair", "Q")],
+          prices: { "0xFair": [0.5, 0.5] },
+        }),
+    };
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor(factoryConfig),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      probability: {
+        estimator: (input) => {
+          estimatorCalls++;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.5, reasoning: "fair" },
+              { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    const c1 = await runner.runCycle(1);
+    expect(c1.estimatesProduced).toBe(1);
+    expect(c1.estimatesCached).toBe(0);
+    expect(estimatorCalls).toBe(1);
+
+    const c2 = await runner.runCycle(2);
+    expect(c2.estimatesProduced).toBe(1);
+    expect(c2.estimatesCached).toBe(1);
+    // Second cycle served entirely from cache — zero inference.
+    expect(estimatorCalls).toBe(1);
+  });
+
+  it("re-estimates when the implied price moves a full bucket (≥1¢)", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let estimatorCalls = 0;
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({
+            markets: [makeMarket("0xMove", "Q")],
+            prices: { "0xMove": [0.5, 0.5] },
+          }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      probability: {
+        estimator: (input) => {
+          estimatorCalls++;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    await runner.runCycle(1);
+    expect(estimatorCalls).toBe(1);
+
+    // Swap the executor for one quoting a 5¢ move → cache miss.
+    const movedRunner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({
+            markets: [makeMarket("0xMove", "Q")],
+            prices: { "0xMove": [0.55, 0.45] },
+          }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      probability: {
+        estimator: (input) => {
+          estimatorCalls++;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.55, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.45, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+    // Different runner instance = empty cache (deliberate: in-process only).
+    const c2 = await movedRunner.runCycle(2);
+    expect(c2.estimatesProduced).toBe(1);
+    expect(c2.estimatesCached).toBe(0);
+    expect(estimatorCalls).toBe(2);
+  });
+
+  it("never caches vol-anchored markets (the anchor tracks the live spot)", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let estimatorCalls = 0;
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({
+            markets: [makeMarket("0xVol", "Will BTC close above $150k on Aug 24?")],
+            prices: { "0xVol": [0.4, 0.6] },
+          }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: async () => 0.05,
+      probability: {
+        estimator: (input) => {
+          estimatorCalls++;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.1, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.9, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    const c1 = await runner.runCycle(1);
+    expect(c1.volBaselines).toBe(1);
+    const c2 = await runner.runCycle(2);
+    // Both cycles hit the estimator — vol-anchored estimates are never cached.
+    expect(c1.estimatesCached).toBe(0);
+    expect(c2.estimatesCached).toBe(0);
+    expect(estimatorCalls).toBe(2);
   });
 });

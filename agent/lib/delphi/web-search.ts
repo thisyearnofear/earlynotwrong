@@ -23,6 +23,8 @@
  * unless a search actually runs.
  */
 
+import { vercelGatewayFreeActive } from "../llm-providers.js";
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -171,11 +173,15 @@ export class DelphiWebSearch implements WebSearchSource {
   /**
    * Get a sourced briefing for a market question.
    *
-   * Returns null when: no gateway key is configured, the per-cycle budget is
-   * exhausted (and nothing is cached), or the search fails. Never throws.
+   * Returns null when: no gateway key is configured, the gateway's free
+   * promo has expired (see vercelGatewayFreeActive — briefings are an Exa
+   * promo feature, so they switch off with it rather than start billing),
+   * the per-cycle budget is exhausted (and nothing is cached), or the search
+   * fails. Never throws.
    */
   async briefing(question: string): Promise<WebSearchBriefing | null> {
     if (!this.apiKey) return null;
+    if (!vercelGatewayFreeActive()) return null;
     const key = cacheKey(question);
 
     // Cache hit (TTL-agnostic of budget — a cached briefing costs nothing).

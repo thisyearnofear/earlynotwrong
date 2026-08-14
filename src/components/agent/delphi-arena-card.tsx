@@ -177,6 +177,9 @@ export function DelphiArenaCard() {
               <span>
                 vol baselines <span className="text-foreground-muted tabular-nums">{status.snapshot?.volBaselines ?? 0}</span>
               </span>
+              <span title="Ensemble estimates reused from the forecast cache — zero inference cost.">
+                cached <span className="text-foreground-muted tabular-nums">{status.snapshot?.estimatesCached ?? 0}</span>
+              </span>
               <span>
                 exits <span className="text-foreground-muted tabular-nums">{(status.snapshot?.exitsConvergence ?? 0) + (status.snapshot?.exitsStopped ?? 0)}</span>
                 <span className="ml-1">

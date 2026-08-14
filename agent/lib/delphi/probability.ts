@@ -453,10 +453,12 @@ function parseForecasterResponse(
 
 /** Default model per provider for the Delphi forecaster. Free-first: the
  *  Vercel AI Gateway's GLM 5.2 (free during the Aug 2026 promo) leads the
- *  ladder when its key is set. */
+ *  ladder when its key is set. The OpenRouter default is an explicit `:free`
+ *  model — NEVER `openrouter/auto` here: the OpenRouter account carries paid
+ *  credits, and `auto` on a credited account routes to paid models. */
 const FORECASTER_DEFAULT_MODELS = {
   "vercel-gateway": "zai/glm-5.2",
-  openrouter: "openrouter/auto",
+  openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
 } as const;

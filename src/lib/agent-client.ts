@@ -283,6 +283,7 @@ export interface DelphiStatus {
     exitsStopped: number;
     briefingsFetched: number;
     volBaselines: number;
+    estimatesCached: number;
     lastAnchoredThesisHash: string | null;
   } | null;
   lastAnchor: {

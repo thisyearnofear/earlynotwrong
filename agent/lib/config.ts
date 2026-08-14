@@ -331,6 +331,11 @@ export const AGENT_CONFIG = {
     thesisStopEdge: 0.1,
     // Exa web-search briefings per runner cycle (free-tier budget guard).
     webSearchMaxCallsPerCycle: 10,
+    // Forecast cache TTL: reuse an LLM ensemble estimate across hourly
+    // cycles while the market's implied probability hasn't moved (keyed on
+    // 2¢-bucketed prices — see forecastCacheKey in runner.ts). Unchanged
+    // markets then cost zero inference; the TTL caps staleness.
+    forecastCacheTtlMinutes: 360,
     // Per-trade caps as a fraction of available bankroll — LMSR shares resolve
     // 1/0, so a full-size losing entry is a total loss of stake.
     maxPositionFraction: 0.1,
