@@ -436,10 +436,10 @@ working process. `npm run deploy` is an alias. Rollback = `git checkout <prev>`
 on the server.
 
 One-time setup (already done): `git init` + remote + `git checkout -f
-origin/main` on the server, and `agent/ecosystem.config.js` documents the pm2
+origin/main` on the server, and `agent/ecosystem.config.cjs` documents the pm2
 process. The live process is still managed by name (`pm2 reload earlynotwrong`)
 so its injected env vars are preserved — do **not** switch it to start from
-`ecosystem.config.js` unless you also migrate those env vars into the file.
+`ecosystem.config.cjs` unless you also migrate those env vars into the file.
 
 ## TypeDoc Documentation
 

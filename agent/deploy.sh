@@ -52,9 +52,11 @@ ssh "$HOST" bash -s "$REF" <<'EOF'
   pm2 reload earlynotwrong --update-env
 
   # Delphi runner (separate pm2 process). StartOrReload is idempotent: starts
-  # when absent, reloads when present. The process is a no-op until
-  # DELPHI_ENABLED=1 is set in its env (see docs/DELPHI_AGENT_ARENA.md).
-  pm2 startOrReload ecosystem.config.js --only earlynotwrong-delphi --update-env
+  # when absent, reloads when present. The config is .cjs because the agent
+  # package is "type": "module" (pm2's require() would reject a .js CJS file).
+  # The process is a no-op until DELPHI_ENABLED=1 is set in its env
+  # (see docs/DELPHI_AGENT_ARENA.md).
+  pm2 startOrReload ecosystem.config.cjs --only earlynotwrong-delphi --update-env
 EOF
 
 echo "✓ Deploy complete"
