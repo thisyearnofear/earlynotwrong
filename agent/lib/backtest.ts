@@ -1043,6 +1043,12 @@ function computeRegimeEdge(
     naive,
     sharpeEdge: round2(conviction.sharpeRatio - naive.sharpeRatio),
     returnEdge: round2(conviction.totalReturnPercent - naive.totalReturnPercent),
-    hasEdge: conviction.sharpeRatio > naive.sharpeRatio,
+    // Same bar as the overall hasEdge: Sharpe edge AND non-negative return.
+    // A strategy that loses less than naive but still loses money is not edge —
+    // the overall report enforces this, and the regime segment must too, so a
+    // fear-segment "edge" can't be a less-catastrophic loss masquerading as one.
+    hasEdge:
+      conviction.sharpeRatio > naive.sharpeRatio &&
+      conviction.totalReturnPercent >= 0,
   };
 }
