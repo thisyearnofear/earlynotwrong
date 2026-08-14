@@ -877,7 +877,28 @@ export class DelphiRunner {
 // Entry point
 // =============================================================================
 
-if (process.argv[1] && (process.argv[1].endsWith("/delphi/runner.js") || process.argv[1].endsWith("\\delphi\\runner.js"))) {
+// Main-module detection that works under BOTH plain node and pm2.
+//
+// The naive `process.argv[1].endsWith("runner.js")` guard (and even the
+// ESM-standard `import.meta.url === pathToFileURL(argv[1]).href` check)
+// fails under pm2: the child's argv[1] is pm2's launcher container
+// (…/pm2/lib/ProcessContainerFork.js), which dynamic-imports the target
+// script — so argv[1] never names runner.js, the guard never fires, and the
+// runner imports, skips start(), and idles silently. That is exactly what
+// happened on the VPS (process online, zero logs, zero cycles).
+//
+// Under pm2 the ProcessContainerFork dynamic-imports exactly one module —
+// this one — so "argv[1] is the pm2 container" is a valid entry signal.
+// Test runners (vitest) and library imports never fork via that container,
+// so the guard stays false there.
+import { pathToFileURL } from "node:url";
+
+const argv1 = process.argv[1];
+const isDirectRun = argv1 !== undefined && pathToFileURL(argv1).href === import.meta.url;
+const isPm2Run = argv1 !== undefined && argv1.includes("ProcessContainerFork");
+const isMainEntry = isDirectRun || isPm2Run;
+
+if (isMainEntry) {
   const runner = new DelphiRunner();
   runner.start().catch((err) => {
     console.error("[delphi-runner] fatal:", err);
