@@ -23,7 +23,8 @@ export type CapServiceName =
   | "reputation-history"
   | "reputation-cross-chain"
   | "reputation-agent"
-  | "signals-live";
+  | "signals-live"
+  | "wallet-score";
 
 export interface CapPricingEntry {
   serviceId: CapServiceName;
@@ -68,6 +69,15 @@ export const CAP_PRICING: Record<CapServiceName, CapPricingEntry> = {
     // it is purchasable (see docs/CROO_INTEGRATION.md).
     amountUsdcBaseUnits: "50000",
     description: "$0.05 USDC — live conviction signals for the current cycle (the tradeable data)",
+  },
+  "wallet-score": {
+    serviceId: "wallet-score",
+    toolName: "score_wallet",
+    // Behavioral conviction scoring for ANY wallet — the scarce product.
+    // Not gated on the agent's own track record; scores the buyer's (or any)
+    // wallet. See docs/WALLET_SCORE_PLAN.md.
+    amountUsdcBaseUnits: "50000",
+    description: "$0.05 USDC — behavioral conviction score for any wallet (win rate, patience tax, archetype, cohort percentile, verifiable ledger hash)",
   },
 };
 

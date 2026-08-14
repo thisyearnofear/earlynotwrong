@@ -1,0 +1,58 @@
+{
+  "schema": "wallet-score/v1",
+  "generatedAt": 1721296920000,
+  "subject": {
+    "chain": "base",
+    "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    "resolvedName": "vitalik.eth"
+  },
+  "score": 74,
+  "archetype": "Iron Pillar",
+  "metrics": {
+    "winRate": 58.3,
+    "upsideCapture": 67.8,
+    "patienceTaxUsd": 4210.5,
+    "avgHoldingPeriodDays": 21.4,
+    "totalPositions": 24,
+    "convictionWins": 9,
+    "earlyExits": 4
+  },
+  "cohort": {
+    "percentile": 18,
+    "cohortSize": 1842
+  },
+  "positions": [
+    {
+      "tokenAddress": "<TOKEN_CONTRACT_ADDRESS>",
+      "tokenSymbol": "WETH",
+      "tokenName": "Wrapped Ether",
+      "realizedPnlUsd": 1240.3,
+      "realizedPnlPercent": 42.1,
+      "patienceTaxUsd": 310.5,
+      "holdingPeriodDays": 18.2,
+      "isEarlyExit": false,
+      "isActive": false
+    },
+    {
+      "tokenAddress": "<TOKEN_CONTRACT_ADDRESS>",
+      "tokenSymbol": "USDC",
+      "tokenName": "USD Coin",
+      "realizedPnlUsd": -120.0,
+      "realizedPnlPercent": -2.4,
+      "patienceTaxUsd": 0,
+      "holdingPeriodDays": 3.1,
+      "isEarlyExit": true,
+      "isActive": false
+    }
+  ],
+  "proof": {
+    "ledgerHash": "0x7a3b9f2c1e8d4a5b6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c",
+    "positionCount": 24,
+    "entryCount": 31,
+    "exitCount": 22,
+    "computedAt": 1721296920000,
+    "frameworkVersion": "conviction-core@1.0.0",
+    "verifiableAt": "https://earlynotwrong.vercel.app/analyzer?w=0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045&chain=base"
+  },
+  "guidance": "Iron Pillar \u2014 holds through drawdown and captures upside. Score 74/100. Patience tax is $4211 \u2014 money left on the table by exiting before the peak."
+}

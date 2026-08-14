@@ -25,6 +25,7 @@ import {
   getLatestConviction,
   getLiveSignalsV1,
   getSubjectHistory,
+  scoreWallet,
 } from "./tools.js";
 
 /** Zod schema for a 0x-prefixed 32-byte hex string (keccak256 digest). */
@@ -144,6 +145,31 @@ export function buildMcpServer(): McpServer {
       const result = await getLiveSignalsV1({
         settlementRail: "mcp-x402",
         tool: "get_live_signals",
+      });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "score_wallet",
+    {
+      description:
+        "Score ANY wallet's behavioral conviction: win rate, patience tax (USD left on the table by early exits), archetype (Iron Pillar / Profit Phantom / Exit Voyager / Diamond Hand), cohort percentile, and a verifiable ledger hash. Send { address, chain }. This is the scarce product — behavioral scoring of arbitrary wallets, not the agent's own signals. PAID (x402, 0.5 CSPR / $0.05 USDC via CROO).",
+      inputSchema: {
+        address: z.string().min(1).describe("Wallet address (Solana base58 or EVM 0x…)"),
+        chain: z.enum(["solana", "base"]).describe("Which chain the wallet lives on"),
+        resolvedName: z.string().optional().describe("Optional ENS / Farcaster name for display"),
+        timeHorizonDays: z.number().int().positive().optional().describe("Override the default 180-day lookback"),
+        minTradeValue: z.number().positive().optional().describe("Override the default $100 min-trade filter"),
+      },
+    },
+    async (args) => {
+      const result = await scoreWallet({
+        address: args.address,
+        chain: args.chain,
+        resolvedName: args.resolvedName,
+        timeHorizonDays: args.timeHorizonDays,
+        minTradeValue: args.minTradeValue,
       });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },

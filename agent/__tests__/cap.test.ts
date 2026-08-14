@@ -22,10 +22,11 @@ const SERVICE_NAMES: CapServiceName[] = [
   "reputation-cross-chain",
   "reputation-agent",
   "signals-live",
+  "wallet-score",
 ];
 
 describe("CAP pricing config", () => {
-  it("advertises the four reputation services plus live signals", () => {
+  it("advertises the four reputation services plus live signals and wallet-score", () => {
     expect(Object.keys(CAP_PRICING).sort()).toEqual(SERVICE_NAMES.sort());
     expect([...CAP_SERVICE_IDS].sort()).toEqual(SERVICE_NAMES.sort());
   });
@@ -49,6 +50,11 @@ describe("CAP pricing config", () => {
   it("prices signals-live at $0.05 USDC and maps it to get_live_signals", () => {
     expect(CAP_PRICING["signals-live"].amountUsdcBaseUnits).toBe("50000");
     expect(CAP_PRICING["signals-live"].toolName).toBe("get_live_signals");
+  });
+
+  it("prices wallet-score at $0.05 USDC and maps it to score_wallet", () => {
+    expect(CAP_PRICING["wallet-score"].amountUsdcBaseUnits).toBe("50000");
+    expect(CAP_PRICING["wallet-score"].toolName).toBe("score_wallet");
   });
 
   it("maps every serviceId to a unique reputation tool", () => {

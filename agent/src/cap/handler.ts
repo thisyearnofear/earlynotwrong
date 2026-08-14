@@ -14,6 +14,7 @@ import {
   crossChainLookup,
   getAgentReputation,
   getLiveSignalsV1,
+  scoreWallet,
 } from "../mcp/tools.js";
 import { recordCall } from "../payment-stats.js";
 import { pricingForToolName, toolNameForService } from "./pricing.js";
@@ -26,16 +27,38 @@ export interface CapOrderPayload {
 
 /**
  * Parse the `requirements` field from a CAP negotiation/order. Expects a
- * JSON object containing at least `subjectHash`. Returns a safe default on
- * parse failure so the tool returns a clean "no record" response instead of
+ * JSON object containing at least `subjectHash` (for reputation tools) OR
+ * `address` + `chain` (for wallet-score). Returns a safe default on parse
+ * failure so the tool returns a clean "no record" response instead of
  * throwing.
  */
-function parseRequirements(requirements: string | undefined): { subjectHash: `0x${string}` } {
+function parseRequirements(requirements: string | undefined): {
+  subjectHash: `0x${string}`;
+  address?: string;
+  chain?: "solana" | "base";
+  resolvedName?: string | null;
+} {
   try {
     const parsed = JSON.parse(requirements ?? "{}");
+    const result: {
+      subjectHash: `0x${string}`;
+      address?: string;
+      chain?: "solana" | "base";
+      resolvedName?: string | null;
+    } = { subjectHash: "0x" + "0".repeat(64) as `0x${string}` };
     if (typeof parsed.subjectHash === "string") {
-      return { subjectHash: parsed.subjectHash as `0x${string}` };
+      result.subjectHash = parsed.subjectHash as `0x${string}`;
     }
+    if (typeof parsed.address === "string") {
+      result.address = parsed.address;
+    }
+    if (parsed.chain === "solana" || parsed.chain === "base") {
+      result.chain = parsed.chain;
+    }
+    if (typeof parsed.resolvedName === "string" || parsed.resolvedName === null) {
+      result.resolvedName = parsed.resolvedName;
+    }
+    return result;
   } catch {
     // fall through to default
   }
@@ -57,7 +80,7 @@ export async function fulfillCapOrder(
     throw new Error(`CAP service not mapped to a reputation tool: ${serviceId}`);
   }
 
-  const { subjectHash } = parseRequirements(requirements);
+  const { subjectHash, address, chain, resolvedName } = parseRequirements(requirements);
 
   let deliverable: string;
   let deliverReq: { deliverableType: string; deliverableText: string; deliverableSchema?: string };
@@ -88,6 +111,26 @@ export async function fulfillCapOrder(
       // Store Deliverable Schema field-builder rows cause INVALID_DELIVERABLE.
       // Text delivery carries the complete signals-live/v1.2 JSON; integrators
       // validate against the public JSON Schema URL, not the Store listing.
+      deliverReq = {
+        deliverableType: DeliverableType.Text,
+        deliverableText: deliverable,
+      };
+      break;
+    }
+    case "score_wallet": {
+      // wallet-score requires address + chain (not subjectHash). The buyer
+      // supplies the wallet to score in the order requirements.
+      if (!address || !chain) {
+        throw new Error(
+          "wallet-score requires { address, chain } in the order requirements",
+        );
+      }
+      const scorePayload = await scoreWallet({
+        address,
+        chain,
+        resolvedName,
+      });
+      deliverable = JSON.stringify(scorePayload);
       deliverReq = {
         deliverableType: DeliverableType.Text,
         deliverableText: deliverable,

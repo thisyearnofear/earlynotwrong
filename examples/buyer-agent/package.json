@@ -9,6 +9,8 @@
   },
   "scripts": {
     "start": "node index.mjs",
+    "test": "node index.mjs --test",
+    "test-wallet": "node index.mjs --test-wallet",
     "dry-run": "node index.mjs --dry-run",
     "json": "node index.mjs --json",
     "edge": "node index.mjs --edge-report --json",

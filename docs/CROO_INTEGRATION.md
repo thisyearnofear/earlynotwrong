@@ -44,11 +44,12 @@ The agent's job is reduced to: **accept known services, run the matching reputat
 
 ## CAP Services
 
-The agent's CAP client recognizes five serviceIds (`agent/src/cap/pricing.ts`), but only one is registered on the CROO Agent Store — the other four are reachable via MCP only. See the rationale below.
+The agent's CAP client recognizes six serviceIds (`agent/src/cap/pricing.ts`). Two are registered on the CROO Agent Store — `signals-live` (the agent's own picks) and `wallet-score` (behavioral scoring of any wallet). The other four are reachable via MCP only. See the rationale below.
 
 | Service ID | Reputation Tool | USDC Price | Store-listed? |
 |---|---:|---|---|
 | `signals-live` | `get_live_signals` | $0.05 | Yes — the tradeable live-signal product |
+| `wallet-score` | `score_wallet` | $0.05 | Yes — behavioral conviction scoring for any wallet (the scarce product). See [`croo-store-listing-wallet-score.md`](croo-store-listing-wallet-score.md) and [`WALLET_SCORE_PLAN.md`](WALLET_SCORE_PLAN.md). |
 | `reputation-agent` | `get_agent_reputation` | $0 (free) | No — CROO requires a positive price; a free query would contradict its own value prop. Free via MCP instead. |
 | `reputation-latest` | `get_latest_conviction` | $0.005 | No — MCP only |
 | `reputation-history` | `get_subject_history` | $0.01 | No — MCP only |

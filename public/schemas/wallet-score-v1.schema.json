@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://earlynotwrong.vercel.app/schemas/wallet-score-v1.schema.json",
+  "title": "wallet-score/v1",
+  "description": "Behavioral conviction score for any wallet. Send a wallet address + chain, get back the behavioral score (win rate, patience tax, archetype, cohort percentile) with a verifiable ledger hash. Returned by the MCP score_wallet tool and the CROO CAP service wallet-score.",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "subject",
+    "score",
+    "archetype",
+    "metrics",
+    "cohort",
+    "positions",
+    "proof",
+    "guidance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "wallet-score/v1"
+    },
+    "generatedAt": {
+      "type": "integer",
+      "description": "Unix timestamp (ms) when the score was computed."
+    },
+    "subject": {
+      "type": "object",
+      "required": ["chain", "address", "resolvedName"],
+      "additionalProperties": false,
+      "properties": {
+        "chain": { "type": "string", "enum": ["solana", "base"] },
+        "address": { "type": "string" },
+        "resolvedName": {
+          "type": ["string", "null"],
+          "description": "ENS / Farcaster name if resolved, else null."
+        }
+      }
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "0-100 behavioral conviction score (1 decimal). Higher = more conviction (holds through drawdown, captures upside, avoids early exits)."
+    },
+    "archetype": {
+      "type": "string",
+      "enum": ["Iron Pillar", "Profit Phantom", "Exit Voyager", "Diamond Hand"],
+      "description": "Behavioral archetype. Iron Pillar = holds through drawdown + captures upside; Profit Phantom = exits early leaving gains; Exit Voyager = frequent low-conviction exits; Diamond Hand = long holds rarely exits."
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "winRate",
+        "upsideCapture",
+        "patienceTaxUsd",
+        "avgHoldingPeriodDays",
+        "totalPositions",
+        "convictionWins",
+        "earlyExits"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "winRate": {
+          "type": "number",
+          "description": "Percentage of positions with positive realized P&L."
+        },
+        "upsideCapture": {
+          "type": "number",
+          "description": "Percentage of total potential upside actually captured."
+        },
+        "patienceTaxUsd": {
+          "type": "number",
+          "description": "USD left on the table by exiting before the peak."
+        },
+        "avgHoldingPeriodDays": { "type": "number" },
+        "totalPositions": { "type": "integer" },
+        "convictionWins": {
+          "type": "integer",
+          "description": "Positions with >50% realized gain."
+        },
+        "earlyExits": {
+          "type": "integer",
+          "description": "Exits before a subsequent +50% run-up."
+        }
+      }
+    },
+    "cohort": {
+      "type": "object",
+      "required": ["percentile", "cohortSize"],
+      "additionalProperties": false,
+      "properties": {
+        "percentile": {
+          "type": ["integer", "null"],
+          "description": "Top N% of scanned wallets on this chain (lower = better). Null when cohort is too small."
+        },
+        "cohortSize": {
+          "type": ["integer", "null"],
+          "description": "Number of wallets in the comparison cohort."
+        }
+      }
+    },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "tokenAddress",
+          "tokenSymbol",
+          "tokenName",
+          "realizedPnlUsd",
+          "realizedPnlPercent",
+          "patienceTaxUsd",
+          "holdingPeriodDays",
+          "isEarlyExit",
+          "isActive"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "tokenAddress": { "type": "string" },
+          "tokenSymbol": { "type": ["string", "null"] },
+          "tokenName": { "type": ["string", "null"] },
+          "realizedPnlUsd": { "type": "number" },
+          "realizedPnlPercent": { "type": "number" },
+          "patienceTaxUsd": { "type": "number" },
+          "holdingPeriodDays": { "type": "number" },
+          "isEarlyExit": { "type": "boolean" },
+          "isActive": { "type": "boolean" }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "required": [
+        "ledgerHash",
+        "positionCount",
+        "entryCount",
+        "exitCount",
+        "computedAt",
+        "frameworkVersion",
+        "verifiableAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ledgerHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256 of the canonical ledger JSON. A buyer who fetches the same on-chain history and reconstructs the ledger gets the same hash — or doesn't, in which case the score is suspect."
+        },
+        "positionCount": { "type": "integer" },
+        "entryCount": { "type": "integer" },
+        "exitCount": { "type": "integer" },
+        "computedAt": { "type": "integer" },
+        "frameworkVersion": { "type": "string" },
+        "verifiableAt": {
+          "type": "string",
+          "format": "uri",
+          "description": "Web URL where the buyer can independently verify the score (the interactive analyzer)."
+        }
+      }
+    },
+    "guidance": {
+      "type": "string",
+      "description": "One-sentence human-readable summary the buyer can act on."
+    }
+  }
+}

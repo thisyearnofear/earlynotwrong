@@ -41,6 +41,8 @@ const AGENT_SUBJECT_HASH =
 const DRY_RUN = process.argv.includes("--dry-run");
 const JSON_MODE = process.argv.includes("--json");
 const CHECK_EDGE = process.argv.includes("--edge-report");
+const TEST_MODE = process.argv.includes("--test");
+const TEST_WALLET_MODE = process.argv.includes("--test-wallet");
 const ts = () => new Date().toISOString();
 
 function log(tag, msg) {
@@ -427,7 +429,147 @@ function decide(signals) {
 
 // ─── Orchestration ─────────────────────────────────────────────────────────
 
+/**
+ * Test mode — for human CROO Store testers (the Test & Earn initiative).
+ *
+ * Runs ONE paid signals-live order, pretty-prints the delivered JSON, and
+ * prints an inline feedback prompt so the tester knows what to feed back to
+ * the builder. Exits 0 on success. This is the fastest path from "I found
+ * the agent on the CROO Store" to "I have something concrete to say about it."
+ */
+/**
+ * Test-wallet mode — score a famous public wallet via the wallet-score service.
+ *
+ * The second testable product for CROO Test & Earn. Instead of the agent's
+ * own signals (signals-live), this scores an ARBITRARY wallet's behavioral
+ * conviction: win rate, patience tax, archetype, cohort percentile. Uses a
+ * well-known public address by default so a tester gets a consistent,
+ * comparable result. See FEEDBACK.md for the questions.
+ */
+const DEFAULT_TEST_WALLET = {
+  address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", // vitalik.eth
+  chain: "base",
+  name: "vitalik.eth",
+};
+
+async function runTestWalletMode() {
+  // Allow override via CLI args: --wallet=0x... --chain=base --name=...
+  const walletArg = process.argv.find((a) => a.startsWith("--wallet="));
+  const chainArg = process.argv.find((a) => a.startsWith("--chain="));
+  const nameArg = process.argv.find((a) => a.startsWith("--name="));
+  const wallet = walletArg ? walletArg.split("=")[1] : DEFAULT_TEST_WALLET.address;
+  const chain = chainArg ? chainArg.split("=")[1] : DEFAULT_TEST_WALLET.chain;
+  const name = nameArg ? nameArg.split("=")[1] : DEFAULT_TEST_WALLET.name;
+
+  console.log(`\n  🧪 TEST-WALLET MODE — wallet-score service`);
+  console.log(`  ${"─".repeat(50)}`);
+  console.log(`  agent:   ${AGENT_URL}`);
+  console.log(`  service: wallet-score ($0.05 USDC via CROO CAP)`);
+  console.log(`  wallet:  ${name} (${wallet})`);
+  console.log(`  chain:   ${chain}\n`);
+
+  // Call the score_wallet MCP tool (paid via x402 in production; in test mode
+  // we call the tool directly — the CROO order flow is exercised by --test).
+  console.log(`  Calling score_wallet...`);
+  const { status, body } = await mcpCall("tools/call", {
+    name: "score_wallet",
+    arguments: { address: wallet, chain, resolvedName: name },
+  });
+
+  if (status !== 200) {
+    console.log(`     ⚠️  MCP call failed (HTTP ${status})`);
+    console.log(`     ${body.slice(0, 300)}`);
+    console.log(`\n  Note: the score_wallet tool proxies to the web app's /api/agent/wallet-score.`);
+    console.log(`  If the agent is local, ensure the web app is reachable or set WALLET_SCORE_URL.\n`);
+    return;
+  }
+
+  // Parse the MCP response — the tool returns text content with the JSON.
+  let scorePayload;
+  try {
+    const parsed = JSON.parse(body);
+    // MCP tools/call returns { result: { content: [{ type: "text", text: "..." }] } }
+    const textContent = parsed?.result?.content?.[0]?.text ?? parsed?.content?.[0]?.text;
+    scorePayload = textContent ? JSON.parse(textContent) : parsed;
+  } catch {
+    console.log(`     ⚠️  Could not parse MCP response:`);
+    console.log(`     ${body.slice(0, 500)}`);
+    return;
+  }
+
+  // Pretty-print the deliverable.
+  console.log(`\n  1. Delivered JSON (wallet-score/v1):`);
+  console.log(`  ${"─".repeat(50)}`);
+  console.log(JSON.stringify(scorePayload, null, 2));
+  console.log(`  ${"─".repeat(50)}`);
+
+  // Inline feedback prompt — the point of Test & Earn.
+  console.log(`\n  2. What to feed back (see FEEDBACK.md for the full list):`);
+  console.log(`     • Did the score match your intuition for this wallet?`);
+  console.log(`     • Is the archetype (${scorePayload.archetype ?? "?"}) meaningful or just a label?`);
+  console.log(`     • Did the patience tax ($${scorePayload.metrics?.patienceTaxUsd ?? "?"}) feel honest?`);
+  console.log(`     • Could you recompute the ledger hash from on-chain data? (proof.ledgerHash)`);
+  console.log(`     • Was the cohort percentile (${scorePayload.cohort?.percentile ?? "?"}%) useful context?`);
+  console.log(`     • One thing you'd change about the deliverable?\n`);
+  console.log(`  Quote-post on X + submit in Discord per the Test & Earn rules.\n`);
+}
+
+async function runTestMode() {
+  console.log(`\n  🧪 TEST MODE — CROO Store tester flow`);
+  console.log(`  ${"─".repeat(50)}`);
+  console.log(`  agent:   ${AGENT_URL}`);
+  console.log(`  service: signals-live ($0.05 USDC via CROO CAP)\n`);
+
+  // Trust gate first (free) — show the tester what the agent's reputation is.
+  const trust = await trustGate();
+  console.log(`  1. Trust gate (free):`);
+  console.log(`     ${trust.trusted ? "✅ trusted" : "⚠️  untrusted"} — ${trust.reason}`);
+  if (trust.reputation) {
+    console.log(`     anchors=${trust.reputation.totalAnchors} mean=${trust.reputation.meanConvictionScore} dualChain=${trust.reputation.dualChain}`);
+  }
+
+  // One paid order.
+  console.log(`\n  2. Ordering signals-live (paid)...`);
+  const { signals, paid, reason } = await getSignals();
+  if (!signals) {
+    console.log(`     ⚠️  No signals delivered — ${reason}`);
+    console.log(`\n  Feedback prompt: did the agent explain WHY no signals were available?\n`);
+    return;
+  }
+  console.log(`     ${paid ? "✅ paid order delivered" : "⚠️  teaser fallback (not paid)"} — ${reason}`);
+
+  // Pretty-print the deliverable.
+  console.log(`\n  3. Delivered JSON (signals-live/v1.2):`);
+  console.log(`  ${"─".repeat(50)}`);
+  console.log(JSON.stringify(signals, null, 2));
+  console.log(`  ${"─".repeat(50)}`);
+
+  // Inline feedback prompt — the point of Test & Earn.
+  console.log(`\n  4. What to feed back (see FEEDBACK.md for the full list):`);
+  console.log(`     • Was the JSON schema clear? Could you find the top candidate + guidance?`);
+  console.log(`     • Did guidance.recommendedAction (${signals.guidance?.recommendedAction ?? "?"}) match what you'd have done?`);
+  console.log(`     • Was the regime context (fear level ${signals.regime?.fearLevel ?? "?"}) useful?`);
+  console.log(`     • Did the provenance/anchor links resolve?`);
+  console.log(`     • One thing you'd change about the deliverable?\n`);
+  console.log(`  Quote-post on X + submit in Discord per the Test & Earn rules.\n`);
+}
+
 async function main() {
+  // ── Test mode: a single paid order, pretty-printed, with an inline
+  // feedback prompt. Designed for human CROO Store testers, not allocators.
+  // Bypasses the trust gate and edge pre-check so a tester gets straight to
+  // the deliverable they're evaluating. See FEEDBACK.md for the questions.
+  if (TEST_MODE) {
+    return runTestMode();
+  }
+
+  // ── Test-wallet mode: score a famous public wallet via the wallet-score
+  // service. The second testable product for CROO Test & Earn — behavioral
+  // conviction scoring of an arbitrary wallet, not the agent's own signals.
+  if (TEST_WALLET_MODE) {
+    return runTestWalletMode();
+  }
+
   if (!JSON_MODE) {
     console.log(`\n  BUYER AGENT — Allocator Decision Flow`);
     console.log(`  ${"─".repeat(50)}`);

@@ -775,3 +775,72 @@ export async function getJuryDeliberation(): Promise<GetJuryDeliberationResult> 
       : null,
   };
 }
+
+// ─── Tool: score_wallet (PAID) ───────────────────────────────────────────────
+//
+// Behavioral conviction scoring for ANY wallet — the scarce product. Unlike
+// the reputation tools above (which score the agent's OWN anchored theses)
+// and get_live_signals (which returns the agent's current-cycle picks), this
+// scores an arbitrary buyer-supplied wallet: win rate, patience tax, archetype,
+// cohort percentile, with a verifiable ledger hash.
+//
+// The scoring infra (Helius/Zerion position fetch + conviction-core) lives in
+// the web app, not the agent — so this tool is a thin HTTP proxy to the web
+// app's POST /api/agent/wallet-score. The agent stays the MCP/CAP entry point
+// (one URL buyers already know); the heavy lifting stays where the data infra
+// already exists. See docs/WALLET_SCORE_PLAN.md.
+
+/** The web app's wallet-score endpoint. Configurable for local dev. */
+const WALLET_SCORE_URL =
+  process.env.WALLET_SCORE_URL ||
+  "https://earlynotwrong.vercel.app/api/agent/wallet-score";
+
+export interface ScoreWalletInput {
+  /** Wallet address to score (Solana base58 or EVM 0x…). */
+  address: string;
+  /** Which chain the wallet lives on. */
+  chain: "solana" | "base";
+  /** Optional resolved name (ENS / Farcaster) for display. */
+  resolvedName?: string | null;
+  /** Override the default 180-day lookback. */
+  timeHorizonDays?: number;
+  /** Override the default $100 min-trade filter. */
+  minTradeValue?: number;
+}
+
+/** The wallet-score/v1 payload — opaque to the agent (it forwards the web
+ *  app's JSON verbatim). Typed for the MCP tool's return shape. */
+export type ScoreWalletResult = Record<string, unknown> & {
+  schema: "wallet-score/v1";
+  score: number;
+  archetype: string;
+};
+
+/**
+ * Score an arbitrary wallet's behavioral conviction. Proxies to the web app's
+ * /api/agent/wallet-score endpoint (where the Helius/Zerion fetch +
+ * conviction-core scoring live). Returns the wallet-score/v1 payload verbatim.
+ *
+ * Throws on fetch failure or non-OK response — the MCP/CAP caller surfaces
+ * the error to the buyer.
+ */
+export async function scoreWallet(input: ScoreWalletInput): Promise<ScoreWalletResult> {
+  const res = await fetch(WALLET_SCORE_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      address: input.address,
+      chain: input.chain,
+      resolvedName: input.resolvedName ?? null,
+      timeHorizonDays: input.timeHorizonDays,
+      minTradeValue: input.minTradeValue,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `wallet-score endpoint returned ${res.status}: ${text.slice(0, 200)}`,
+    );
+  }
+  return (await res.json()) as ScoreWalletResult;
+}
