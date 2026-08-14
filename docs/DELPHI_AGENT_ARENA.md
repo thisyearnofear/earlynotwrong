@@ -172,7 +172,40 @@ Anthropic) stays wired as fallback when the promo ends.
 
 Config knobs (`AGENT_CONFIG.delphi`): `ensembleSamples`, `volBaselineWeight`,
 `categoryEdgeGates` + `defaultCategoryGate`, `convergenceTolerance`,
-`thesisStopEdge`, `webSearchMaxCallsPerCycle`.
+`thesisStopEdge`, `webSearchMaxCallsPerCycle`, `forecastCacheTtlMinutes`.
+
+### Inference cost & efficiency (audited 2026-08-14, pre-trading)
+
+The entire stack runs on **zero-cost providers** today, with guards so it
+stays that way (or degrades explicitly) after the promos end:
+
+| Surface | Provider | Cost | Guard |
+|---|---|---|---|
+| Forecaster ensemble (3 samples/market) | Vercel AI Gateway · GLM 5.2 | Free through **2026-08-27** | `vercelGatewayFreeActive()` drops it from the ladder on/after `VERCEL_GATEWAY_PROMO_ENDS` (default 2026-08-28) |
+| Web briefings (Exa) | same gateway key | Free through **2026-08-31** | gates off with the promo; forecaster falls back to implied odds alone |
+| Ladder fallback | OpenRouter · `nvidia/nemotron-3-ultra-550b-a55b:free` | Free | pinned `:free` model — the account holds paid credits, and `openrouter/auto` on a credited account routes to **paid** models |
+| Vol baseline | SoSoValue klines + spot (arithmetic) | Free (existing 20 req/min key) | blend skipped on parse failure — never billed, never blocks |
+
+Efficiency mechanisms:
+
+- **Forecast cache** (`forecastCacheKey`): estimate reuse keyed on market +
+  implied probs bucketed to 2¢ + briefing fingerprint, TTL 6h. Unchanged
+  markets cost zero inference across hourly cycles; a 1¢+ price move, a new
+  briefing, or a restart re-estimates. Vol-anchored markets are never cached
+  (the blend is baked in and the anchor tracks live spot).
+- **Briefing cache**: 12h TTL (competition markets resolve at most daily) +
+  10 fresh searches/cycle hard budget.
+- **429/5xx backoff**: `fetchWithBackoff` retries rate-limit and server
+  errors (2s→4s, max 2) across every ladder call; 4xx fail fast.
+- **Reasoning cap**: `reasoning: { effort: "none" }` on every gateway call —
+  GLM 5.2's reasoning tokens otherwise eat the completion budget.
+- **Sequential ensemble sampling**: free tiers punish bursts; 3 × ~3s is a
+  small fraction of the hourly cycle.
+- SoSoValue: rolling-window limiter (20 req/min), circuit breaker (3× 401/
+  403/429 → 15m suspend), jittered snapshot TTLs, disk-persisted cache.
+
+`estimatesCached` is surfaced in the snapshot, `/delphi/status`, the arena
+card, and the Telegram summary.
 
 Provenance surfacing: every estimate carries a `ForecastProvenance`
 (provider, model, ensemble size, `webEvidence`, `volAnchor`), persisted on
