@@ -601,6 +601,12 @@ export class DelphiRunner {
         }
       }
       bankrollTokens = BigInt(await this.executor.getTokenBalance());
+      // Operational visibility: the agent must log its bankroll every cycle —
+      // sizing is the downstream consumer and was previously a blind spot
+      // (production: 25 cycles sized 0 with no way to see the balance read).
+      console.log(
+        `[delphi-runner] bankroll=${(Number(bankrollTokens) / 1e6).toFixed(2)} TST (${bankrollTokens} raw)`,
+      );
     } catch (err) {
       // Lifecycle sweep is best-effort: log and continue to discovery so a
       // buggy liquidation path can't freeze the whole cycle.
@@ -706,6 +712,11 @@ export class DelphiRunner {
         const shares = sizeSharesBudget(budget, price);
         if (shares <= 0n) {
           result.sizingSkips++;
+          // Diagnostic: a skip with bankroll but zero budget means a cap;
+          // a skip with zero bankroll means the balance read failed.
+          console.warn(
+            `  [delphi-sizing] skip "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} price=${price.toFixed(3)} budget=${budget} bankroll=${bankrollTokens}`,
+          );
           continue;
         }
 
