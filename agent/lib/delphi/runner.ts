@@ -221,7 +221,7 @@ function appendTradeLedger(dir: string, record: Record<string, unknown>): void {
 // Exposure ledger (per-market token exposure, for concentration caps)
 // =============================================================================
 
-/** marketAddress → tokens currently at risk (18-dec string). */
+/** marketAddress → TST currently at risk (6-dec token units, string). */
 type ExposureLedger = Record<string, string>;
 
 function loadExposure(dir: string): ExposureLedger {

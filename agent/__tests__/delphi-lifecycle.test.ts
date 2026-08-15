@@ -8,7 +8,8 @@ import { groupOutcomesByMarket, redeemAndLiquidate } from "../lib/delphi/lifecyc
 import { perTradeBudget, sizeSharesBudget } from "../lib/delphi/probability.js";
 import { DelphiExecutor, type DelphiClientLike, type DelphiPosition } from "../lib/delphi/executor.js";
 
-const T = 10n ** 18n; // 1 token, 18-dec
+const T = 10n ** 6n;      // 1 TST, 6-dec — the real competition-token unit
+const SHARE = 10n ** 18n; // 1 outcome share, 18-dec — what the gateway sizes
 
 function baseClient(overrides: Partial<DelphiClientLike>): DelphiClientLike {
   return {
@@ -124,9 +125,17 @@ describe("redeemAndLiquidate", () => {
 });
 
 describe("sizeSharesBudget", () => {
-  it("budget / price → shares with 18-dec precision", () => {
-    // 0.4 token budget at 0.40 price → 1 share.
-    expect(sizeSharesBudget((4n * T) / 10n, 0.4)).toBe(T);
+  it("budget / price → 18-dec shares, bridged across the 6-dec token", () => {
+    // 0.4 TST budget at 0.40 price → exactly 1 share (1e18 raw).
+    expect(sizeSharesBudget((4n * T) / 10n, 0.4)).toBe(SHARE);
+  });
+  it("matches the production incident math: 100 TST at 0.313", () => {
+    // 100 TST / 0.313 ≈ 319.49 shares. Pre-fix this returned 0n (the unit
+    // skew made every buy round down to nothing) — that is what kept 25
+    // funded cycles from placing a single trade.
+    const shares = sizeSharesBudget(100n * T, 0.313);
+    expect(shares).toBeGreaterThan(319n * SHARE);
+    expect(shares).toBeLessThanOrEqual(320n * SHARE);
   });
   it("returns 0 for out-of-bounds price", () => {
     expect(sizeSharesBudget(T, 1.0)).toBe(0n);

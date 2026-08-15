@@ -222,6 +222,37 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
  * retry policy is the differentiator, not the deadline. */
 export const SDK_CALL_TIMEOUT_MS = 60_000;
 
+/**
+ * Unit conventions (verified live on competition-testnet 2026-08-15):
+ *   - The $TST competition token has **6 decimals** — balances, quotes
+ *     (tokensIn/tokensOut), budgets, and exposure are 6-dec raw bigints.
+ *   - Outcome **shares have 18 decimals** — the LMSR gateway's
+ *     quoteBuyExactOut / quoteSellExactIn take share amounts in 18-dec raw.
+ *
+ * Dividing one by the other without the 10^12 bridge skews prices by twelve
+ * orders of magnitude. Production incident: pricePerShare came out ~3e-13
+ * for a 0.31 market, every buy sized to 0 shares, and 25 funded cycles
+ * traded nothing. These constants are the single source for that bridge —
+ * shared with sizeSharesBudget in probability.ts.
+ */
+export const DELPHI_TOKEN_DECIMALS = 6;
+export const SHARE_DECIMALS = 18;
+/** 10^(SHARE_DECIMALS − DELPHI_TOKEN_DECIMALS): the shares↔tokens bridge. */
+export const SHARE_TOKEN_DECIMAL_SCALE = 10n ** BigInt(SHARE_DECIMALS - DELPHI_TOKEN_DECIMALS);
+/** Precision for bigint price ratios (price × 1e6, converted back to float). */
+const PRICE_PRECISION = 1_000_000n;
+
+/**
+ * price = tokensRaw / sharesRaw, bridging the decimal gap via bigint
+ * (tokens are 6-dec, shares 18-dec; Number division of the raw values is
+ * off by 10^12 and overflows-safe-precision alike). Returns price × 1e6 as
+ * bigint, callers divide by 1e6 for the float.
+ */
+function priceRatioScaled(tokensRaw: bigint, sharesRaw: bigint): bigint {
+  if (sharesRaw <= 0n) return 0n;
+  return (tokensRaw * SHARE_TOKEN_DECIMAL_SCALE * PRICE_PRECISION) / sharesRaw;
+}
+
 async function withRetry<T>(
   fn: () => Promise<T>,
   options: { label: string; maxRetries?: number; baseDelayMs?: number },
@@ -381,8 +412,9 @@ export class DelphiExecutor {
   ): Promise<DelphiQuote> {
     if (this.simulator) {
       const price = syntheticPrice ?? 0.5;
-      // 1 share pays 1 token at settlement, so 18-dec shares × 0-1 price = 18-dec tokens.
-      const tokensIn = (sharesOut * BigInt(Math.round(price * 1e6))) / 1_000_000n;
+      // 1 share pays 1 TST at settlement: tokensIn (6-dec) = shares (18-dec)
+      // × price / 10^12.
+      const tokensIn = (sharesOut * BigInt(Math.round(price * 1e6))) / (SHARE_TOKEN_DECIMAL_SCALE * 1_000_000n);
       return {
         marketAddress,
         outcomeIdx,
@@ -397,7 +429,9 @@ export class DelphiExecutor {
       async () => withTimeout(client.quoteBuy({ marketAddress, outcomeIdx, sharesOut }), this.sdkTimeoutMs, "delphi-quote-buy"),
       { label: "delphi-quote-buy", ...this.retryPolicy },
     );
-    const pricePerShare = sharesOut > 0n ? Number(tokensIn) / Number(sharesOut) : 0;
+    // tokensIn is 6-dec TST, sharesOut is 18-dec — bridge the gap or the
+    // price is off by 10^12 (see SHARE_TOKEN_DECIMAL_SCALE).
+    const pricePerShare = Number(priceRatioScaled(tokensIn, sharesOut)) / 1e6;
     return {
       marketAddress,
       outcomeIdx,
@@ -421,7 +455,7 @@ export class DelphiExecutor {
   ): Promise<DelphiQuote> {
     if (this.simulator) {
       const price = syntheticPrice ?? 0.5;
-      const tokensOut = (sharesIn * BigInt(Math.round(price * 1e6))) / 1_000_000n;
+      const tokensOut = (sharesIn * BigInt(Math.round(price * 1e6))) / (SHARE_TOKEN_DECIMAL_SCALE * 1_000_000n);
       return {
         marketAddress,
         outcomeIdx,
@@ -436,7 +470,8 @@ export class DelphiExecutor {
       async () => withTimeout(client.quoteSell({ marketAddress, outcomeIdx, sharesIn }), this.sdkTimeoutMs, "delphi-quote-sell"),
       { label: "delphi-quote-sell", ...this.retryPolicy },
     );
-    const pricePerShare = sharesIn > 0n ? Number(tokensOut) / Number(sharesIn) : 0;
+    // Same 6-dec tokens / 18-dec shares bridge as quoteBuy.
+    const pricePerShare = Number(priceRatioScaled(tokensOut, sharesIn)) / 1e6;
     return {
       marketAddress,
       outcomeIdx,

@@ -26,6 +26,7 @@
 
 // Re-exported so callers don't have to touch the executor for the market type.
 export type { DelphiMarket } from "./executor.js";
+import { SHARE_TOKEN_DECIMAL_SCALE } from "./executor.js";
 
 import { AGENT_CONFIG } from "../config.js";
 import { chatCompletion, parseLenientJson } from "../llm-providers.js";
@@ -657,11 +658,13 @@ export function evaluateProbabilitySignal(
 export function sizeSharesBudget(tokensBudget: bigint, pricePerShare: number): bigint {
   if (tokensBudget <= 0n) return 0n;
   if (pricePerShare <= 0 || pricePerShare >= 1) return 0n;
-  // shares = budget / price; keep 18-dec precision by scaling before dividing.
+  // shares(18-dec) = tokensBudget(6-dec TST) / price, bridged by 10^12:
+  // budget × 1e6 × 10^12 / priceScaled. (Dividing by the scale instead —
+  // the production incident 2026-08-15 — collapses every buy to 0 shares.)
   const scaled = tokensBudget * 1_000_000n;
   const priceScaled = BigInt(Math.round(pricePerShare * 1e6));
   if (priceScaled <= 0n) return 0n;
-  return scaled / priceScaled;
+  return (scaled * SHARE_TOKEN_DECIMAL_SCALE) / priceScaled;
 }
 
 /**

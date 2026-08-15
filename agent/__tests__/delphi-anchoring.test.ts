@@ -195,7 +195,8 @@ function makeMutableFakeClient() {
     getMarket: async ({ id }) => cfg.markets.find((m) => m.id === id) ?? ({} as DelphiMarket),
     quoteBuy: async ({ marketAddress, outcomeIdx, sharesOut }) => {
       const price = (cfg.prices[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
-      return { tokensIn: (sharesOut * BigInt(Math.round(price * 1e6))) / 1_000_000n };
+      // tokensIn is 6-dec TST, sharesOut is 18-dec — live gateway contract.
+      return { tokensIn: (sharesOut * BigInt(Math.round(price * 1e6))) / (10n ** 12n * 1_000_000n) };
     },
     buyShares: async () => ({ transactionHash: "0xentry" }),
     redeemPositions: async ({ marketAddresses }) => ({
@@ -207,12 +208,12 @@ function makeMutableFakeClient() {
       totalTokensOut: 0n,
     }),
     getSigner: async () => ({ address: "0xWallet" }),
-    getErc20Balance: async () => 10n ** 18n * 1000n,
+    getErc20Balance: async () => 1000n * 10n ** 6n, // 1,000 TST, 6-dec
     listPositions: async () => ({ positions: cfg.positions }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {
       const price = (cfg.prices[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
-      return { tokensOut: (sharesIn * BigInt(Math.round(price * 1e6))) / 1_000_000n };
+      return { tokensOut: (sharesIn * BigInt(Math.round(price * 1e6))) / (10n ** 12n * 1_000_000n) };
     },
     sellShares: async () => ({ transactionHash: "0xsell" }),
   };
@@ -343,7 +344,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     // Cycle 2: market settled, redeem pays out → forecast resolved as a win.
     cfg.markets = [];
     cfg.positions = [pos("0xM", 0, "settled")];
-    cfg.redeemTokensOut = { "0xM": 100n * 10n ** 18n };
+    cfg.redeemTokensOut = { "0xM": 100n * 10n ** 6n }; // 100 TST payout, 6-dec
     const r2 = await runner.runCycle(2);
     expect(r2.redeemsSucceeded).toBe(1);
 
@@ -414,7 +415,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
 
     cfg.markets = [];
     cfg.positions = [pos("0xM", 0, "settled"), pos("0xM", 1, "settled")];
-    cfg.redeemTokensOut = { "0xM": 100n * 10n ** 18n };
+    cfg.redeemTokensOut = { "0xM": 100n * 10n ** 6n }; // 100 TST payout, 6-dec
     await runner.runCycle(2);
 
     // Ambiguous attribution → positions closed, but NO forecast scored.

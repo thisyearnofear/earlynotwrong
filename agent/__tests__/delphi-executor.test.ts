@@ -34,8 +34,9 @@ function makeFakeClient(overrides: Partial<DelphiClientLike> = {}): DelphiClient
     listMarkets: async () => ({ markets: [market] }),
     getMarket: async () => market,
     quoteBuy: async ({ marketAddress, outcomeIdx, sharesOut }) => ({
-      // Synthetic LMSR-ish quote: 0.42 per share, 18-decimal units.
-      tokensIn: (sharesOut * 42n) / 100n,
+      // Synthetic LMSR-ish quote: 0.42 TST per share. tokensIn is 6-dec TST,
+      // sharesOut is 18-dec — same unit contract as the live gateway.
+      tokensIn: (sharesOut * 42n) / 100n / 10n ** 12n,
     }),
     buyShares: async () => ({ transactionHash: "0xdeadbeef" }),
     redeemPositions: async ({ marketAddresses }) => ({
@@ -47,12 +48,12 @@ function makeFakeClient(overrides: Partial<DelphiClientLike> = {}): DelphiClient
       totalTokensOut: 1_000_000n,
     }),
     getSigner: async () => ({ address: "0xWallet" }),
-    getErc20Balance: async () => 1_000_000_000_000_000_000n,
+    getErc20Balance: async () => 1_000_000_000n, // 1,000 TST in 6-dec
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ sharesIn }) => ({
-      // Symmetric to the quoteBuy fake: 0.42 per share.
-      tokensOut: (sharesIn * 42n) / 100n,
+      // Symmetric to the quoteBuy fake: 0.42 TST per share, 6-dec out.
+      tokensOut: (sharesIn * 42n) / 100n / 10n ** 12n,
     }),
     sellShares: async () => ({ transactionHash: "0xsell" }),
     ...overrides,
@@ -88,7 +89,8 @@ describe("DelphiExecutor — simulator mode", () => {
     const shares = 10n ** 18n; // 1 share
     const quote = await ex.quoteBuy("0xM", 0, shares, 0.42);
     expect(quote.pricePerShare).toBeCloseTo(0.42, 9);
-    expect(BigInt(quote.tokensIn)).toBe((shares * 42n) / 100n);
+    // 1 share × 0.42 TST in 6-dec token units.
+    expect(BigInt(quote.tokensIn)).toBe(420_000n);
   });
 
   it("records simulated trades in the in-memory log without a chain call", async () => {
@@ -220,8 +222,8 @@ describe("DelphiExecutor — live mode with injected client", () => {
     expect(result.success).toBe(true);
     expect(result.transactionHash).toBe("0xdeadbeef");
     expect(capturedBuy).not.toBeNull();
-    // Fake quote is 0.42 per share => tokensIn = shares * 42 / 100.
-    const quotedTokens = (shares * 42n) / 100n;
+    // Fake quote is 0.42 TST per share => tokensIn (6-dec) = 1e18 × 0.42 / 1e12.
+    const quotedTokens = (shares * 42n) / 100n / 10n ** 12n;
     const expectedMax = (quotedTokens * BigInt(10_000 + 300)) / 10_000n;
     expect(capturedBuy!.maxTokensIn).toBe(expectedMax);
     expect(capturedBuy!.sharesOut).toBe(shares);
@@ -314,7 +316,7 @@ describe("DelphiExecutor — position lifecycle", () => {
 
   it("getTokenBalance returns the ERC-20 balance as a string", async () => {
     const ex = lifecycleExecutor([]);
-    expect(await ex.getTokenBalance()).toBe("1000000000000000000");
+    expect(await ex.getTokenBalance()).toBe("1000000000"); // 1,000 TST in 6-dec
   });
 
   it("liquidate is pass-through in live mode", async () => {

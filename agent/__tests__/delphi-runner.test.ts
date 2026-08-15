@@ -39,8 +39,8 @@ function makeFakeClient(options: {
     },
     quoteBuy: async ({ marketAddress, outcomeIdx, sharesOut }) => {
       const price = (options.prices?.[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
-      // tokensIn = shares × price, scaled to 18-dec.
-      return { tokensIn: (sharesOut * BigInt(Math.round(price * 1e6))) / 1_000_000n };
+      // tokensIn is 6-dec TST, sharesOut is 18-dec: same contract as live.
+      return { tokensIn: (sharesOut * BigInt(Math.round(price * 1e6))) / (10n ** 12n * 1_000_000n) };
     },
     buyShares: async () => ({ transactionHash: "0xhash" }),
     redeemPositions: async ({ marketAddresses }) => ({
@@ -48,12 +48,12 @@ function makeFakeClient(options: {
       totalTokensOut: 0n,
     }),
     getSigner: async () => ({ address: "0xWallet" }),
-    getErc20Balance: async () => options.balanceTokens ?? 1_000_000_000_000_000_000_000n,
+    getErc20Balance: async () => options.balanceTokens ?? 10_000n * 10n ** 6n, // 10,000 TST, 6-dec
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {
       const price = (options.prices?.[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
-      return { tokensOut: (sharesIn * BigInt(Math.round(price * 1e6))) / 1_000_000n };
+      return { tokensOut: (sharesIn * BigInt(Math.round(price * 1e6))) / (10n ** 12n * 1_000_000n) };
     },
     sellShares: async () => ({ transactionHash: "0xsell" }),
   };
