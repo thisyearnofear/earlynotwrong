@@ -50,6 +50,29 @@ describe("fetchWithBackoff", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("honors Retry-After on a 429 instead of the fixed backoff", async () => {
+    // Free-tier endpoints advertise exactly when they re-open via Retry-After;
+    // re-firing on the fixed 2s schedule just earns another 429 (incident
+    // 2026-08-15: OpenRouter :free at ~20 req/min).
+    const retryAfterRes = new Response("{}", {
+      status: 429,
+      headers: { "Retry-After": "3" },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(retryAfterRes)
+      .mockResolvedValueOnce(jsonResponse(200));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const promise = fetchWithBackoff("https://example.test", {}, { baseDelayMs: 100 });
+    // baseDelayMs is 100ms but Retry-After says 3s — advance past the header.
+    await vi.advanceTimersByTimeAsync(3_000);
+    const res = await promise;
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("retries a 429 with backoff then succeeds", async () => {
     const fetchMock = vi
       .fn()

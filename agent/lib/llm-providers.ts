@@ -133,6 +133,11 @@ function tripGatewayCircuit(): void {
  * growing delay. Other errors (400 bad request, auth) throw immediately —
  * retrying those just burns quota. The caller's AbortSignal still governs
  * total wall time. Exported for tests.
+ *
+ * Honors the Retry-After header on 429/503 (free-tier endpoints — e.g.
+ * OpenRouter's `:free` models at ~20 req/min — advertise exactly when they
+ * re-open). Production incident 2026-08-15: the OpenRouter fallback got 429s
+ * and estimates dropped to 6/15 because the fixed 2s backoff re-fired too soon.
  */
 export async function fetchWithBackoff(
   url: string,
@@ -152,7 +157,12 @@ export async function fetchWithBackoff(
     if (attempt === retries) break;
     // Drain the body so the connection can be reused, then back off.
     await response.arrayBuffer().catch(() => undefined);
-    const delay = baseDelayMs * 2 ** attempt;
+    // Retry-After wins over the exponential schedule when present and sane.
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    const delay =
+      Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 120
+        ? retryAfter * 1000
+        : baseDelayMs * 2 ** attempt;
     await new Promise((r) => setTimeout(r, delay));
   }
   return lastResponse!;
