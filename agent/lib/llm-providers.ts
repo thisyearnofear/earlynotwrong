@@ -94,6 +94,18 @@ const VERCEL_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
 const OPENROUTER_REFERER = "https://earlynotwrong.vercel.app";
 
 /**
+ * HTTP header values must be ASCII (ByteString). A non-ASCII character
+ * (e.g. an em dash in an X-Title) makes fetch throw before the request
+ * leaves the process — production incident 2026-08-15: the OpenRouter
+ * fallback died this way while cascading off a 402'd gateway. Strip
+ * anything above 0x7F defensively.
+ */
+function asciiHeader(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[^\x00-\x7F]/g, "");
+}
+
+/**
  * fetch with bounded backoff retry for rate-limited free tiers.
  *
  * Retries ONLY on 429 (rate limit) and 5xx (server-side), once each, with a
@@ -300,7 +312,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
           "Content-Type": "application/json",
           // Optional headers for OpenRouter rankings.
           "HTTP-Referer": OPENROUTER_REFERER,
-          ...(req.xTitle ? { "X-Title": req.xTitle } : {}),
+          ...(req.xTitle ? { "X-Title": asciiHeader(req.xTitle) } : {}),
         },
         body: JSON.stringify({
           model,

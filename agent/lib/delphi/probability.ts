@@ -480,7 +480,7 @@ async function fetchLlmEstimate(
     maxTokens: 1600, // headroom for longer reasoning when web briefing context is injected
     temperature: 0.2, // lower temp than the token jury — calibration, not creativity
     timeoutMs,
-    xTitle: "Early Not Wrong — Delphi Probability Forecaster",
+    xTitle: "Early Not Wrong - Delphi Probability Forecaster",
   });
   if (!result) return null;
   return parseForecasterResponse(result.content, input, result.provider, result.model);

@@ -255,4 +255,24 @@ describe("chatCompletion — provider cascade on error", () => {
     const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
     expect(result).toBeNull();
   });
+
+  it("strips non-ASCII characters from the OpenRouter X-Title header", async () => {
+    // Production incident 2026-08-15: an em dash (U+2014) in xTitle made
+    // fetch throw "Cannot convert argument to a ByteString" before the
+    // request left the process, killing the cascade fallback.
+    process.env.OPENROUTER_API_KEY = "or";
+    const fetchMock = vi.fn().mockResolvedValue(chatResponse("or answer"));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await chatCompletion({
+      systemPrompt: "s",
+      userPrompt: "u",
+      models: { openrouter: models.openrouter },
+      xTitle: "Early Not Wrong — Delphi Forecaster",
+    });
+    expect(result?.provider).toBe("openrouter");
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers["X-Title"]).toBe("Early Not Wrong  Delphi Forecaster");
+    expect(/[^\x00-\x7F]/.test(headers["X-Title"])).toBe(false);
+  });
 });
