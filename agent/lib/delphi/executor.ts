@@ -174,13 +174,53 @@ export interface DelphiExecutorConfig {
   privateKey?: string;
   /** Retry policy; tests should set maxRetries: 0 to keep them fast. */
   retry?: { maxRetries?: number; baseDelayMs?: number };
+  /** Wall-clock timeout (ms) for every SDK call. Default: 60_000. The SDK
+   *  has no timeout of its own; a hung RPC/subgraph request would otherwise
+   *  freeze the runner's loop forever. */
+  sdkTimeoutMs?: number;
   /** Injected client factory — tests use this to avoid network + key material. */
   clientFactory?: () => Promise<DelphiClientLike>;
 }
 
 // =============================================================================
-// Retry Helper (same shape as twak-executor.withRetry)
+// Retry + Timeout Helpers (same shape as twak-executor.withRetry)
 // =============================================================================
+
+/**
+ * Race a promise against a hard wall-clock deadline.
+ *
+ * The Delphi SDK performs HTTP calls with NO timeout of its own (verified
+ * against SDK v2.1.0 source). A hung request — the Alchemy testnet RPC and
+ * the Goldsky subgraph both do this under load — blocks the runner's
+ * single-threaded loop forever, silently freezing the competition agent
+ * (observed in production 2026-08-15: a cycle hung ~13.5h until pm2
+ * restart). Every SDK call in the executor is wrapped here so a hang
+ * becomes a retryable/throwable error instead.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Hard wall-clock cap default for every SDK call. The SDK has no timeout of
+ * its own; this bound turns a hung RPC/subgraph request into a retryable
+ * error instead of an indefinite freeze. Trades and reads share it — the
+ * retry policy is the differentiator, not the deadline. */
+export const SDK_CALL_TIMEOUT_MS = 60_000;
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -216,6 +256,8 @@ export class DelphiExecutor {
   private readonly simulator: boolean;
   private readonly slippageBps: number;
   private readonly retryPolicy: { maxRetries: number; baseDelayMs: number };
+  /** Wall-clock deadline for every SDK call (the SDK has none of its own). */
+  private readonly sdkTimeoutMs: number;
   private readonly clientFactoryOverride?: () => Promise<DelphiClientLike>;
   private client: DelphiClientLike | null = null;
   private readonly tradeLog: DelphiTradeResult[] = [];
@@ -227,6 +269,7 @@ export class DelphiExecutor {
     this.simulator = config.simulator ?? !this.apiKey;
     this.slippageBps = config.slippageBps ?? 300;
     this.retryPolicy = { maxRetries: config.retry?.maxRetries ?? 2, baseDelayMs: config.retry?.baseDelayMs ?? 1000 };
+    this.sdkTimeoutMs = config.sdkTimeoutMs ?? SDK_CALL_TIMEOUT_MS;
     this.clientFactoryOverride = config.clientFactory;
   }
 
@@ -279,7 +322,7 @@ export class DelphiExecutor {
     }
     try {
       const client = await this.getClient();
-      const { status } = await client.health();
+      const { status } = await withTimeout(client.health(), this.sdkTimeoutMs, "delphi-health");
       diagnostics.push(`health=${status}`);
       return { available: status === "ok", network: this.network, mode: "live", diagnostics };
     } catch (err) {
@@ -304,11 +347,15 @@ export class DelphiExecutor {
     const client = await this.getClient();
     return withRetry(
       async () => {
-        const { markets } = await client.listMarkets({
-          status: "open",
-          category: params.category,
-          limit: params.limit ?? 50,
-        });
+        const { markets } = await withTimeout(
+          client.listMarkets({
+            status: "open",
+            category: params.category,
+            limit: params.limit ?? 50,
+          }),
+          this.sdkTimeoutMs,
+          "delphi-list-markets",
+        );
         // The live SDK nests question/outcomes under `metadata`; normalize so
         // the rest of the pipeline can read flat fields regardless of source.
         return (markets as SdkMarketLike[]).map(mapSdkMarket);
@@ -347,7 +394,7 @@ export class DelphiExecutor {
     }
     const client = await this.getClient();
     const { tokensIn } = await withRetry(
-      async () => client.quoteBuy({ marketAddress, outcomeIdx, sharesOut }),
+      async () => withTimeout(client.quoteBuy({ marketAddress, outcomeIdx, sharesOut }), this.sdkTimeoutMs, "delphi-quote-buy"),
       { label: "delphi-quote-buy", ...this.retryPolicy },
     );
     const pricePerShare = sharesOut > 0n ? Number(tokensIn) / Number(sharesOut) : 0;
@@ -386,7 +433,7 @@ export class DelphiExecutor {
     }
     const client = await this.getClient();
     const { tokensOut } = await withRetry(
-      async () => client.quoteSell({ marketAddress, outcomeIdx, sharesIn }),
+      async () => withTimeout(client.quoteSell({ marketAddress, outcomeIdx, sharesIn }), this.sdkTimeoutMs, "delphi-quote-sell"),
       { label: "delphi-quote-sell", ...this.retryPolicy },
     );
     const pricePerShare = sharesIn > 0n ? Number(tokensOut) / Number(sharesIn) : 0;
@@ -447,12 +494,16 @@ export class DelphiExecutor {
       const client = await this.getClient();
       const { transactionHash } = await withRetry(
         async () =>
-          client.sellShares({
-            marketAddress: params.marketAddress,
-            outcomeIdx: params.outcomeIdx,
-            sharesIn: params.sharesIn,
-            minTokensOut,
-          }),
+          withTimeout(
+            client.sellShares({
+              marketAddress: params.marketAddress,
+              outcomeIdx: params.outcomeIdx,
+              sharesIn: params.sharesIn,
+              minTokensOut,
+            }),
+            this.sdkTimeoutMs,
+            "delphi-sell-shares",
+          ),
         { label: "delphi-sell-shares", ...this.retryPolicy },
       );
 
@@ -529,12 +580,16 @@ export class DelphiExecutor {
       const client = await this.getClient();
       const { transactionHash } = await withRetry(
         async () =>
-          client.buyShares({
-            marketAddress: params.marketAddress,
-            outcomeIdx: params.outcomeIdx,
-            sharesOut: params.sharesOut,
-            maxTokensIn,
-          }),
+          withTimeout(
+            client.buyShares({
+              marketAddress: params.marketAddress,
+              outcomeIdx: params.outcomeIdx,
+              sharesOut: params.sharesOut,
+              maxTokensIn,
+            }),
+            this.sdkTimeoutMs,
+            "delphi-buy-shares",
+          ),
         { label: "delphi-buy-shares", ...this.retryPolicy },
       );
 
@@ -581,7 +636,7 @@ export class DelphiExecutor {
     }
     const client = await this.getClient();
     const { results } = await withRetry(
-      async () => client.redeemPositions({ marketAddresses }),
+      async () => withTimeout(client.redeemPositions({ marketAddresses }), this.sdkTimeoutMs, "delphi-redeem"),
       { label: "delphi-redeem", ...this.retryPolicy },
     );
     const redeemed: Array<{ marketAddress: string; tokensOut: string }> = [];
@@ -603,7 +658,7 @@ export class DelphiExecutor {
   /** Signer wallet address. Throws in simulator mode. */
   async getWalletAddress(): Promise<string> {
     const client = await this.getClient();
-    const { address } = await client.getSigner();
+    const { address } = await withTimeout(client.getSigner(), this.sdkTimeoutMs, "delphi-get-signer");
     return address;
   }
 
@@ -611,7 +666,8 @@ export class DelphiExecutor {
   async getTokenBalance(): Promise<string> {
     if (this.simulator) return "0";
     const client = await this.getClient();
-    return (await client.getErc20Balance()).toString();
+    const balance = await withTimeout(client.getErc20Balance(), this.sdkTimeoutMs, "delphi-get-balance");
+    return balance.toString();
   }
 
   /**
@@ -628,7 +684,12 @@ export class DelphiExecutor {
     const client = await this.getClient();
     const wallet = await this.getWalletAddress();
     const { positions } = await withRetry(
-      async () => client.listPositions({ wallet, redeemedOrLiquidated: false }),
+      async () =>
+        withTimeout(
+          client.listPositions({ wallet, redeemedOrLiquidated: false }),
+          this.sdkTimeoutMs,
+          "delphi-list-positions",
+        ),
       { label: "delphi-list-positions", ...this.retryPolicy },
     );
     const list = positions ?? [];
@@ -657,7 +718,7 @@ export class DelphiExecutor {
     }
     const client = await this.getClient();
     return withRetry(
-      async () => client.liquidate(params),
+      async () => withTimeout(client.liquidate(params), this.sdkTimeoutMs, "delphi-liquidate"),
       { label: "delphi-liquidate", ...this.retryPolicy },
     );
   }

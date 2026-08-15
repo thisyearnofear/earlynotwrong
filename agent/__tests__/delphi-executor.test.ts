@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   DelphiExecutor,
+  withTimeout,
   type DelphiClientLike,
   type DelphiMarket,
   type DelphiPosition,
@@ -343,5 +344,72 @@ describe("DelphiExecutor — configuration", () => {
   it("explicit simulator flag wins over an API key", () => {
     const ex = new DelphiExecutor({ apiKey: "test-key", simulator: true });
     expect(ex.isSimulator).toBe(true);
+  });
+});
+
+// =============================================================================
+// SDK call timeouts (production incident 2026-08-15: the SDK has no timeout
+// of its own and a hung request froze the runner's loop for ~13.5h)
+// =============================================================================
+
+const never = <T,>(): Promise<T> => new Promise<T>(() => {}); // hangs forever
+
+describe("withTimeout", () => {
+  it("resolves when the promise wins", async () => {
+    await expect(withTimeout(Promise.resolve(42), 50, "x")).resolves.toBe(42);
+  });
+
+  it("rejects with a labeled error when the deadline wins", async () => {
+    await expect(withTimeout(never<number>(), 10, "delphi-test")).rejects.toThrow(
+      "delphi-test timed out after 10ms",
+    );
+  });
+
+  it("propagates the underlying rejection, not the timeout", async () => {
+    const failing = Promise.reject(new Error("boom"));
+    await expect(withTimeout(failing, 50, "x")).rejects.toThrow("boom");
+  });
+});
+
+describe("DelphiExecutor — SDK call timeouts", () => {
+  it("getTokenBalance rejects (instead of hanging forever) when the SDK hangs", async () => {
+    const ex = new DelphiExecutor({
+      apiKey: "test-key",
+      sdkTimeoutMs: 10,
+      clientFactory: async () =>
+        makeFakeClient({
+          getErc20Balance: () => never<bigint>() as Promise<bigint>,
+        } as unknown as Partial<DelphiClientLike>),
+    });
+    await expect(ex.getTokenBalance()).rejects.toThrow("delphi-get-balance timed out after 10ms");
+  });
+
+  it("listOpenMarkets rejects when listMarkets hangs", async () => {
+    const ex = new DelphiExecutor({
+      apiKey: "test-key",
+      sdkTimeoutMs: 10,
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          listMarkets: () => never<{ markets: DelphiMarket[] }>(),
+        } as unknown as Partial<DelphiClientLike>),
+    });
+    await expect(ex.listOpenMarkets()).rejects.toThrow("delphi-list-markets timed out after 10ms");
+  });
+
+  it("a hung health check surfaces as unavailable (never blocks the cycle)", async () => {
+    const ex = new DelphiExecutor({
+      apiKey: "test-key",
+      sdkTimeoutMs: 10,
+      clientFactory: async () =>
+        makeFakeClient({
+          health: () => never<{ status: string }>(),
+        } as unknown as Partial<DelphiClientLike>),
+    });
+    const health = await ex.healthCheck();
+    expect(health.available).toBe(false);
+    // The specific timeout error lands in diagnostics; help is the static
+    // remediation hint.
+    expect(health.diagnostics.join(" ")).toMatch(/timed out/);
   });
 });

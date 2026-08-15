@@ -49,6 +49,9 @@ async function sendMessage(
     const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Telegram's API is usually fast, but a stalled connection here would
+      // hang the runner's loop — hard cap, non-fatal on abort.
+      signal: AbortSignal.timeout(10_000),
       body: JSON.stringify({
         chat_id: chatId,
         text,

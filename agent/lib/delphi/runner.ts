@@ -40,7 +40,7 @@ import { AGENT_CONFIG } from "../config.js";
 import { sendDelphiCycleSummary, sendErrorAlert } from "../telegram.js";
 import { sosovalueClient } from "../data-providers.js";
 import type { AnchorResult } from "../anchors/types.js";
-import { DelphiExecutor, type DelphiMarket } from "./executor.js";
+import { DelphiExecutor, withTimeout, type DelphiMarket } from "./executor.js";
 import { redeemAndLiquidate } from "./lifecycle.js";
 import {
   anchorDelphiCycle,
@@ -474,6 +474,15 @@ export function pruneForecastCache(
 // =============================================================================
 // Runner
 // =============================================================================
+
+/**
+ * Hard wall-clock cap for an entire cycle (belt and braces over the
+ * per-call SDK timeouts in the executor). Generous on purpose: a cold cycle
+ * after restart that re-estimates every market on a slow free tier is the
+ * realistic upper bound; anything longer is a hang and the hourly loop must
+ * move on without it.
+ */
+const CYCLE_WATCHDOG_MS = 50 * 60_000;
 
 export class DelphiRunner {
   private readonly executor: DelphiExecutor;
@@ -980,7 +989,13 @@ export class DelphiRunner {
       }
       cycle++;
       try {
-        await this.runCycle(cycle);
+        // Cycle watchdog: every SDK call has its own timeout, but if some
+        // unforeseen await still hangs, the hourly loop must not die with it
+        // (production incident 2026-08-15: one hung SDK call froze the
+        // runner for ~13.5h). A timed-out cycle is abandoned (it keeps
+        // unwinding in the background, bounded by its own per-call timeouts)
+        // and the loop moves on.
+        await withTimeout(this.runCycle(cycle), CYCLE_WATCHDOG_MS, `delphi cycle #${cycle}`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[delphi-runner] cycle #${cycle} failed: ${message}`);
