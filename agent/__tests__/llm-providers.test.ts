@@ -73,19 +73,31 @@ describe("fetchWithBackoff", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("retries a 429 with backoff then succeeds", async () => {
+  it("retries a transient 429 (with Retry-After) with backoff then succeeds", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(429))
+      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "1" } }))
       .mockResolvedValueOnce(jsonResponse(200));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const promise = fetchWithBackoff("https://example.test", {}, { baseDelayMs: 100 });
-    await vi.advanceTimersByTimeAsync(150); // first backoff 100ms
+    // Retry-After (1s) wins over the 100ms base delay.
+    await vi.advanceTimersByTimeAsync(1_000);
     const res = await promise;
 
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails fast on a 429 WITHOUT Retry-After — quota exhaustion, not throttling", async () => {
+    // OpenRouter's 50/day free cap returns 429 with no Retry-After (reset is
+    // hours away). Retrying inside fetchWithBackoff cannot succeed and burns
+    // the wall-clock budget the next cascade rung needs.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(429));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const res = await fetchWithBackoff("https://example.test", {});
+    expect(res.status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no retries
   });
 
   it("retries 5xx and gives up after the retry budget", async () => {
@@ -224,8 +236,8 @@ describe("chatCompletion — provider cascade on error", () => {
       delete process.env[k];
     }
     process.env.VERCEL_GATEWAY_PROMO_ENDS = "never"; // keep the gateway eligible
-    // Reset the gateway circuit breaker between tests (it lives on globalThis).
-    delete (globalThis as Record<string, unknown>)["__vercelGatewayBreakerOpenUntil"];
+    // Reset the provider circuit breakers between tests (they live on globalThis).
+    delete (globalThis as Record<string, unknown>)["__llmProviderBreakerOpenUntil"];
   });
 
   afterEach(() => {
@@ -310,28 +322,24 @@ describe("chatCompletion — provider cascade on error", () => {
 
   it("falls through an exhausted OpenRouter daily quota to the keyless HF endpoint", async () => {
     // Production 2026-08-15: OpenRouter :free is 50 req/day. When the quota
-    // hits 0, every remaining call 429s — the keyless Qwen3.8-27B HF
-    // endpoint is the next rung (verified live, clean JSON at ~0.7s TTFT).
+    // hits 0, every call 429s with no near-term Retry-After — fail fast (no
+    // retries to burn the budget) and cascade to the keyless Qwen3.8-27B HF
+    // endpoint (verified live, clean JSON). The 429 does NOT trip a breaker:
+    // transient throttles self-heal, so quota-dead providers cost one cheap
+    // failed request per call until the ladder moves on.
     process.env.OPENROUTER_API_KEY = "or";
     process.env.HF_QWEN_API_KEY = "none";
-    vi.useFakeTimers();
     const fetchMock = vi
       .fn()
-      // OpenRouter 429s all three attempts (initial + 2 backoff retries),
-      // then the cascade reaches hf-qwen and succeeds.
-      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "3600" } }))
-      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "3600" } }))
-      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "3600" } }))
+      .mockResolvedValueOnce(new Response("{}", { status: 429 })) // OpenRouter: quota exhausted
       .mockImplementation(() => chatResponse("hf answer")) as unknown as typeof fetch;
     globalThis.fetch = fetchMock;
 
-    const promise = chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
-    // Retry-After 3600 exceeds the 120s cap → fixed backoff (2s + 4s).
-    await vi.advanceTimersByTimeAsync(10_000);
-    const result = await promise;
-
+    const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
     expect(result?.provider).toBe("hf-qwen");
     expect(result?.content).toBe("hf answer");
+    // One failed OpenRouter request, then HF — no retry storm.
+    expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
   });
 
   it("falls through the HF endpoint to OrcaRouter when the community deployment is retired", async () => {

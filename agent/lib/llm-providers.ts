@@ -146,24 +146,39 @@ function asciiHeader(value: string): string {
 }
 
 /**
- * Temporary circuit breaker for the Vercel AI Gateway.
+ * Temporary per-provider circuit breaker.
  *
- * The gateway's free promo credit can run dry before the promo end date
- * (observed 2026-08-15: every request 402s with "credit balance required").
- * While the breaker is open we skip the gateway entirely instead of paying
- * one failing round-trip per LLM call — cascade behavior is unchanged,
- * just cheaper. State is process-local; a pm2 restart retries the gateway.
+ * Free tiers die in two ways observed in production (2026-08-15): the
+ * Vercel gateway's promo credit ran dry (every request 402s), and
+ * OpenRouter's `:free` daily quota hit 0 (every request 429s, no
+ * Retry-After). Without a breaker the cascade pays one failing round-trip
+ * per call — and worse, the retry backoffs eat the wall-clock budget the
+ * next provider needs. While a provider's breaker is open we skip it
+ * entirely. State is process-local; a pm2 restart retries everything.
  */
-const GATEWAY_BREAKER_OPEN_UNTIL_KEY = "__vercelGatewayBreakerOpenUntil";
-const GATEWAY_BREAKER_MS = 30 * 60 * 1000; // 30 minutes
+const BREAKER_MAP_KEY = "__llmProviderBreakerOpenUntil";
+const PROVIDER_BREAKER_MS = 30 * 60 * 1000; // 30 minutes
 
-function gatewayCircuitOpen(): boolean {
-  const until = Number((globalThis as Record<string, unknown>)[GATEWAY_BREAKER_OPEN_UNTIL_KEY] ?? 0);
-  return Date.now() < until;
+function breakerMap(): Record<string, number> {
+  const g = globalThis as Record<string, unknown>;
+  if (!g[BREAKER_MAP_KEY] || typeof g[BREAKER_MAP_KEY] !== "object") {
+    g[BREAKER_MAP_KEY] = {};
+  }
+  return g[BREAKER_MAP_KEY] as Record<string, number>;
 }
 
-function tripGatewayCircuit(): void {
-  (globalThis as Record<string, unknown>)[GATEWAY_BREAKER_OPEN_UNTIL_KEY] = Date.now() + GATEWAY_BREAKER_MS;
+export function providerCircuitOpen(provider: LlmProviderName, now: number = Date.now()): boolean {
+  return now < (breakerMap()[provider] ?? 0);
+}
+
+export function tripProviderCircuit(provider: LlmProviderName, now: number = Date.now()): void {
+  breakerMap()[provider] = now + PROVIDER_BREAKER_MS;
+}
+
+/** Extract an HTTP status from our standardized provider error messages. */
+function errorStatus(message: string): number | null {
+  const m = message.match(/error: (\d{3})/);
+  return m ? Number(m[1]) : null;
 }
 
 /**
@@ -178,17 +193,35 @@ function tripGatewayCircuit(): void {
  * OpenRouter's `:free` models at ~20 req/min — advertise exactly when they
  * re-open). Production incident 2026-08-15: the OpenRouter fallback got 429s
  * and estimates dropped to 6/15 because the fixed 2s backoff re-fired too soon.
+ *
+ * `opts.attemptTimeoutMs` gives EVERY attempt its own timeout. Without it, a
+ * caller-supplied `init.signal` spans all attempts + backoff waits, so a
+ * provider that burns the budget on retries starves the next rung of the
+ * cascade (the exact failure that aborted hf-qwen after OpenRouter's 429
+ * retries). When set, each attempt runs against
+ * `AbortSignal.any([callerSignal, freshTimeout])`.
  */
 export async function fetchWithBackoff(
   url: string,
   init: RequestInit,
-  opts: { retries?: number; baseDelayMs?: number } = {},
+  opts: { retries?: number; baseDelayMs?: number; attemptTimeoutMs?: number } = {},
 ): Promise<Response> {
   const retries = opts.retries ?? 2;
   const baseDelayMs = opts.baseDelayMs ?? 2_000;
   let lastResponse: Response | undefined;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const response = await fetch(url, init);
+    const attemptInit =
+      opts.attemptTimeoutMs !== undefined
+        ? {
+            ...init,
+            signal: AbortSignal.any(
+              [init.signal, AbortSignal.timeout(opts.attemptTimeoutMs)].filter(
+                (s): s is AbortSignal => Boolean(s),
+              ),
+            ),
+          }
+        : init;
+    const response = await fetch(url, attemptInit);
     // Retry ONLY explicit rate-limit (429) and server-side (5xx) responses.
     // `status === undefined` (plain-object test mocks) counts as success —
     // never retry an ambiguous response.
@@ -199,10 +232,14 @@ export async function fetchWithBackoff(
     await response.arrayBuffer().catch(() => undefined);
     // Retry-After wins over the exponential schedule when present and sane.
     const retryAfter = Number(response.headers.get("Retry-After"));
-    const delay =
-      Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 120
-        ? retryAfter * 1000
-        : baseDelayMs * 2 ** attempt;
+    const retryAfterUsable = Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 120;
+    // A 429 with NO near-term Retry-After is quota exhaustion (e.g.
+    // OpenRouter's 50/day free cap — reset is hours away), not transient
+    // throttling. Retrying within this window cannot succeed; fail fast so
+    // the cascade reaches the next rung, and the breaker skips this
+    // provider for subsequent calls.
+    if (response.status === 429 && !retryAfterUsable) break;
+    const delay = retryAfterUsable ? retryAfter * 1000 : baseDelayMs * 2 ** attempt;
     await new Promise((r) => setTimeout(r, delay));
   }
   return lastResponse!;
@@ -296,9 +333,9 @@ export function availableLlmProviders(
     // Free-promo guard: the gateway only leads the ladder while its promo is
     // active (see vercelGatewayFreeActive). Afterwards OpenRouter takes over.
     if (name === "vercel-gateway" && !vercelGatewayFreeActive()) continue;
-    // Credit-exhaustion guard: while the breaker is open (gateway 402s),
-    // skip the gateway entirely instead of paying a failing round-trip.
-    if (name === "vercel-gateway" && gatewayCircuitOpen()) continue;
+    // Quota-exhaustion guard: while a provider's breaker is open (persistent
+    // 402/429), skip it entirely instead of paying failing round-trips.
+    if (providerCircuitOpen(name)) continue;
     if (models && !models[name]) continue;
     out.push(name);
   }
@@ -556,9 +593,15 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
     } catch (err) {
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
-      // A 402 from the gateway means its credit ran dry — trip the breaker
-      // so the rest of the cycle (and the next 30 minutes) skip it outright.
-      if (provider === "vercel-gateway" && msg.includes("402")) tripGatewayCircuit();
+      // 402 = billing/credit exhaustion — permanent until topped up, so trip
+      // a 30-min breaker per provider (observed: Vercel gateway promo credit
+      // running dry mid-promo). 429s do NOT trip it: transient throttles
+      // (hf-qwen's 30 req/min) self-heal via Retry-After retries, and quota
+      // exhaustion (OpenRouter's daily cap, no Retry-After) already fails
+      // fast inside fetchWithBackoff without burning the budget — one cheap
+      // failed request per call is better than falsely disabling a provider
+      // that may recover within the hour.
+      if (errorStatus(msg) === 402) tripProviderCircuit(provider);
       if (i < providers.length - 1) {
         console.warn(
           `  [llm-providers] ${provider} failed (${msg}) — falling through to ${providers[i + 1]}`,
