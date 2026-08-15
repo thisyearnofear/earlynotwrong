@@ -115,7 +115,7 @@ Env (added to `agent/manifest.json` secrets + `.env.example`):
 | `DELPHI_WALLET_PRIVATE_KEY` | Fresh, competition-only keypair. Never the TWAK or Casper operator key |
 | `VERCEL_AI_GATEWAY_API_KEY` | Free-first inference (zai/glm-5.2) + Exa web search for the Delphi forecaster. Promo window; the paid ladder below stays wired as fallback |
 
-Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode: competition`; chain ID 685685; competition gateway `0x097599c9D966fF496284b892A8F13BF885b258ef`; market statuses `open | awaiting_settlement | settled | expired | failed` — `settled` → `redeemMarket`, `expired`/`failed` → `liquidate`. **`listMarkets` nests `question`/`outcomes` under `market.metadata`** — flat top-level fields exist only in test fakes, which is why `listOpenMarkets` maps through `mapSdkMarket` (the first live cycle produced estimates=0 until this was fixed).
+Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode: competition`; chain ID 685685; competition gateway `0x097599c9D966fF496284b892A8F13BF885b258ef`; market statuses `open | awaiting_settlement | settled | expired | failed` — `settled` → `redeemMarket`, `expired`/`failed` → `liquidate`. **`listMarkets` nests `question`/`outcomes` under `market.metadata`** — flat top-level fields exist only in test fakes, which is why `listOpenMarkets` maps through `mapSdkMarket` (the first live cycle produced estimates=0 until this was fixed). **The SDK has no HTTP timeout of its own** — every executor call is therefore wrapped in `withTimeout` (`sdkTimeoutMs`, default 60s) and the runner loop has a 50-minute cycle watchdog; without these a single hung RPC/subgraph request froze the runner for 13.5h in production (2026-08-15).
 
 ## Phased plan
 
