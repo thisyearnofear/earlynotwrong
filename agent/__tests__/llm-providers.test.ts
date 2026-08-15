@@ -12,6 +12,7 @@ import {
   fetchWithBackoff,
   vercelGatewayFreeActive,
   firstAvailableLlmProvider,
+  chatCompletion,
 } from "../lib/llm-providers.js";
 
 function jsonResponse(status: number): Response {
@@ -170,5 +171,88 @@ describe("firstAvailableLlmProvider", () => {
   it("skips providers without a model selection even when keyed", () => {
     process.env.VERCEL_AI_GATEWAY_API_KEY = "gw";
     expect(firstAvailableLlmProvider({ openrouter: models.openrouter })).toBeNull();
+  });
+});
+
+describe("chatCompletion — provider cascade on error", () => {
+  const originalFetch = globalThis.fetch;
+  const KEYS = [
+    "VERCEL_AI_GATEWAY_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  const models = {
+    "vercel-gateway": { envVar: "X", defaultModel: "gw-model" },
+    openrouter: { envVar: "Y", defaultModel: "or-model" },
+  } as const;
+
+  beforeEach(() => {
+    for (const k of KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+    process.env.VERCEL_GATEWAY_PROMO_ENDS = "never"; // keep the gateway eligible
+  });
+
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    delete process.env.VERCEL_GATEWAY_PROMO_ENDS;
+    globalThis.fetch = originalFetch;
+  });
+
+  function chatResponse(providerContent: string): Response {
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: providerContent } }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  it("falls through to the next provider when the gateway 402s", async () => {
+    // Production incident 2026-08-15: a free-tier 402 on the gateway killed
+    // every estimate because the ladder did not cascade.
+    process.env.VERCEL_AI_GATEWAY_API_KEY = "gw";
+    process.env.OPENROUTER_API_KEY = "or";
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 402 })) // gateway: payment required
+      .mockResolvedValueOnce(chatResponse("openrouter answer")) as unknown as typeof fetch;
+
+    const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(result?.provider).toBe("openrouter");
+    expect(result?.content).toBe("openrouter answer");
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the first provider's answer when it succeeds (no extra calls)", async () => {
+    process.env.VERCEL_AI_GATEWAY_API_KEY = "gw";
+    process.env.OPENROUTER_API_KEY = "or";
+    globalThis.fetch = vi.fn().mockResolvedValue(chatResponse("gw answer")) as unknown as typeof fetch;
+
+    const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(result?.provider).toBe("vercel-gateway");
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws the last error when every provider fails", async () => {
+    process.env.VERCEL_AI_GATEWAY_API_KEY = "gw";
+    process.env.OPENROUTER_API_KEY = "or";
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 402 })) as unknown as typeof fetch;
+
+    await expect(
+      chatCompletion({ systemPrompt: "s", userPrompt: "u", models }),
+    ).rejects.toThrow(/OpenRouter API error: 402/);
+  });
+
+  it("returns null when no provider is configured", async () => {
+    const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(result).toBeNull();
   });
 });

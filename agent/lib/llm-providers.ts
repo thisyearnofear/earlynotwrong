@@ -8,13 +8,15 @@
  * callers only supply the prompt + decoding parameters and parse the
  * response themselves.
  *
- * Semantics (matching the pre-consolidation behavior of both callers):
- *   - The FIRST provider with an API key configured is used — no cascade
- *     on error. Callers decide their own fallback (template mode for the
- *     jury, null for the Delphi forecaster).
+ * Semantics:
+ *   - Providers are tried in ladder order. On any error (HTTP status,
+ *     network, timeout) the NEXT configured provider is tried — a free-tier
+ *     402/429 blip on the gateway must not kill the whole ensemble
+ *     (production incident 2026-08-15: gateway 402s dropped cycle
+ *     estimates from 13 to 2 because the ladder did not cascade).
  *   - Returns null when no provider key is set at all.
- *   - Throws on HTTP / network / timeout errors so callers can log + fall
- *     back.
+ *   - Throws the LAST provider's error when every configured provider
+ *     fails, so callers can log + apply their own fallback policy.
  *
  * Free-first policy: the Vercel AI Gateway sits at the TOP of the ladder.
  * During the Aug 2026 promo `zai/glm-5.2` is free on it; the paid provider
@@ -194,15 +196,27 @@ export function parseLenientJson<T = unknown>(content: string): T | null {
 export function firstAvailableLlmProvider(
   models?: Partial<Record<LlmProviderName, LlmModelSelection>>,
 ): LlmProviderName | null {
+  return availableLlmProviders(models)[0] ?? null;
+}
+
+/**
+ * Every provider (in ladder order) eligible for this request: key set,
+ * promo gate passed, and a model selection present. The cascade in
+ * chatCompletion walks this list in order.
+ */
+export function availableLlmProviders(
+  models?: Partial<Record<LlmProviderName, LlmModelSelection>>,
+): LlmProviderName[] {
+  const out: LlmProviderName[] = [];
   for (const name of PROVIDER_ORDER) {
     if (!process.env[PROVIDER_KEY_ENV[name]]) continue;
     // Free-promo guard: the gateway only leads the ladder while its promo is
     // active (see vercelGatewayFreeActive). Afterwards OpenRouter takes over.
     if (name === "vercel-gateway" && !vercelGatewayFreeActive()) continue;
     if (models && !models[name]) continue;
-    return name;
+    out.push(name);
   }
-  return null;
+  return out;
 }
 
 /**
@@ -231,15 +245,10 @@ export function vercelGatewayFreeActive(now: number = Date.now()): boolean {
 }
 
 /**
- * Send one chat completion to the first available provider in the ladder.
- *
- * Returns null when no provider is configured; throws on transport or API
- * errors (callers catch and apply their own fallback policy).
+ * Chat completion against ONE provider (no cascade). Throws on transport or
+ * API errors; the cascade in chatCompletion() walks providers in order.
  */
-export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult | null> {
-  const provider = firstAvailableLlmProvider(req.models);
-  if (!provider) return null;
-
+async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Promise<LlmChatResult> {
   const selection = req.models[provider]!;
   const model = process.env[selection.envVar] || selection.defaultModel;
   const maxTokens = req.maxTokens ?? 1200;
@@ -371,4 +380,35 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
       };
     }
   }
+}
+
+/**
+ * Send one chat completion, cascading through the ladder on error.
+ *
+ * Returns null when no provider is configured. When a provider fails
+ * (HTTP status, network, timeout) the next eligible provider is tried —
+ * a free-tier 402/429 blip on the gateway must not kill the whole
+ * ensemble. Throws the last provider's error when every eligible provider
+ * fails, so callers can log + apply their own fallback policy.
+ */
+export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult | null> {
+  const providers = availableLlmProviders(req.models);
+  if (providers.length === 0) return null;
+
+  let lastError: unknown = null;
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i];
+    try {
+      return await callProvider(provider, req);
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i < providers.length - 1) {
+        console.warn(
+          `  [llm-providers] ${provider} failed (${msg}) — falling through to ${providers[i + 1]}`,
+        );
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
