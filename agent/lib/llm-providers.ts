@@ -106,6 +106,27 @@ function asciiHeader(value: string): string {
 }
 
 /**
+ * Temporary circuit breaker for the Vercel AI Gateway.
+ *
+ * The gateway's free promo credit can run dry before the promo end date
+ * (observed 2026-08-15: every request 402s with "credit balance required").
+ * While the breaker is open we skip the gateway entirely instead of paying
+ * one failing round-trip per LLM call — cascade behavior is unchanged,
+ * just cheaper. State is process-local; a pm2 restart retries the gateway.
+ */
+const GATEWAY_BREAKER_OPEN_UNTIL_KEY = "__vercelGatewayBreakerOpenUntil";
+const GATEWAY_BREAKER_MS = 30 * 60 * 1000; // 30 minutes
+
+function gatewayCircuitOpen(): boolean {
+  const until = Number((globalThis as Record<string, unknown>)[GATEWAY_BREAKER_OPEN_UNTIL_KEY] ?? 0);
+  return Date.now() < until;
+}
+
+function tripGatewayCircuit(): void {
+  (globalThis as Record<string, unknown>)[GATEWAY_BREAKER_OPEN_UNTIL_KEY] = Date.now() + GATEWAY_BREAKER_MS;
+}
+
+/**
  * fetch with bounded backoff retry for rate-limited free tiers.
  *
  * Retries ONLY on 429 (rate limit) and 5xx (server-side), once each, with a
@@ -225,6 +246,9 @@ export function availableLlmProviders(
     // Free-promo guard: the gateway only leads the ladder while its promo is
     // active (see vercelGatewayFreeActive). Afterwards OpenRouter takes over.
     if (name === "vercel-gateway" && !vercelGatewayFreeActive()) continue;
+    // Credit-exhaustion guard: while the breaker is open (gateway 402s),
+    // skip the gateway entirely instead of paying a failing round-trip.
+    if (name === "vercel-gateway" && gatewayCircuitOpen()) continue;
     if (models && !models[name]) continue;
     out.push(name);
   }
@@ -415,6 +439,9 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
     } catch (err) {
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
+      // A 402 from the gateway means its credit ran dry — trip the breaker
+      // so the rest of the cycle (and the next 30 minutes) skip it outright.
+      if (provider === "vercel-gateway" && msg.includes("402")) tripGatewayCircuit();
       if (i < providers.length - 1) {
         console.warn(
           `  [llm-providers] ${provider} failed (${msg}) — falling through to ${providers[i + 1]}`,

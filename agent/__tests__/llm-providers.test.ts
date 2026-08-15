@@ -195,6 +195,8 @@ describe("chatCompletion — provider cascade on error", () => {
       delete process.env[k];
     }
     process.env.VERCEL_GATEWAY_PROMO_ENDS = "never"; // keep the gateway eligible
+    // Reset the gateway circuit breaker between tests (it lives on globalThis).
+    delete (globalThis as Record<string, unknown>)["__vercelGatewayBreakerOpenUntil"];
   });
 
   afterEach(() => {
@@ -249,6 +251,31 @@ describe("chatCompletion — provider cascade on error", () => {
     await expect(
       chatCompletion({ systemPrompt: "s", userPrompt: "u", models }),
     ).rejects.toThrow(/OpenRouter API error: 402/);
+  });
+
+  it("trips a 30-min circuit breaker on a gateway 402 so later calls skip it", async () => {
+    // The gateway's free credit can run dry mid-promo (observed 2026-08-15);
+    // paying one failing round-trip per LLM call is pure waste.
+    process.env.VERCEL_AI_GATEWAY_API_KEY = "gw";
+    process.env.OPENROUTER_API_KEY = "or";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 402 })) // gateway fails
+      // Fresh Response per call — a body can only be read once.
+      .mockImplementation(() => chatResponse("or")) as unknown as typeof fetch; // openrouter succeeds
+    globalThis.fetch = fetchMock;
+
+    const first = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(first?.provider).toBe("openrouter");
+    // First call: gateway attempt (402) + OpenRouter fallthrough = 2 fetches.
+    const callsAfterFirst = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(callsAfterFirst).toBe(2);
+
+    // Second call: the gateway is skipped outright — exactly one more fetch
+    // (direct to OpenRouter), not two.
+    const second = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(second?.provider).toBe("openrouter");
+    expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterFirst + 1);
   });
 
   it("returns null when no provider is configured", async () => {
