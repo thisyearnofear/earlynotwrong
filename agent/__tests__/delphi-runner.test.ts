@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DelphiRunner, forecastCacheKey, pruneForecastCache } from "../lib/delphi/runner.js";
@@ -214,6 +214,73 @@ describe("DelphiRunner", () => {
     expect(snapshot.cyclesRun).toBe(1);
     expect(snapshot.tradesPlaced).toBe(1);
     expect(snapshot.marketsSeen).toBe(2);
+  });
+
+  it("never adds a second thesis to a market with a tracked position", async () => {
+    // Regression (production incident 2026-08-15): the Typhoon market was
+    // bought YES in cycle #27 and NO in cycle #29 — opposite forecasts in
+    // the same market, capital hedging itself into a guaranteed loss. The
+    // guard must skip re-entry regardless of which outcome the new edge
+    // favors.
+    process.env.DELPHI_ENABLED = "1";
+    // Seed a tracked YES position in the market the cycle will re-see.
+    writeFileSync(
+      join(dataDir, "positions.json"),
+      JSON.stringify({
+        "0xM:0": {
+          id: "0xM:0",
+          marketAddress: "0xM",
+          outcomeIdx: 0,
+          question: "Q?",
+          forecast: 0.55,
+          impliedProbability: 0.4,
+          edge: 0.15,
+          shares: (10n ** 18n).toString(),
+          tokensIn: (4n * 10n ** 5n).toString(), // 0.4 TST, 6-dec
+          openedAt: 1000,
+        },
+      }),
+    );
+
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          markets: [makeMarket("0xM", "Q?")],
+          prices: { "0xM": [0.4, 0.6] },
+        }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      probability: {
+        minEdgeToTrade: 0.08,
+        // NO now looks underpriced (edge +0.15) — the guard must still hold.
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.45, reasoning: "" },
+            { outcomeIdx: 1, probability: 0.55, reasoning: "flipped view" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+
+    const result = await runner.runCycle(1);
+    expect(result.tradesPlaced).toBe(0);
+    expect(result.sizingSkips).toBe(0); // skipped by the guard, not sizing
+
+    // The seeded position survives untouched.
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    expect(Object.keys(positions)).toEqual(["0xM:0"]);
   });
 
   it("places no trades when every market is fairly priced", async () => {

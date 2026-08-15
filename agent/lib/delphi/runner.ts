@@ -217,6 +217,30 @@ function appendTradeLedger(dir: string, record: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Read the trade ledger (JSONL, tolerant of malformed lines). Used by chain
+ * reconciliation to recover entry metadata for orphan positions.
+ */
+function readTradeLedger(dir: string): Array<Record<string, unknown>> {
+  try {
+    const path = join(dir, "trades.jsonl");
+    if (!existsSync(path)) return [];
+    return readFileSync(path, "utf-8")
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => {
+        try {
+          return JSON.parse(l) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter((r): r is Record<string, unknown> => r !== null);
+  } catch {
+    return [];
+  }
+}
+
 // =============================================================================
 // Exposure ledger (per-market token exposure, for concentration caps)
 // =============================================================================
@@ -273,8 +297,11 @@ export interface DelphiOpenPosition {
   marketAddress: string;
   outcomeIdx: number;
   question: string;
-  /** Estimated true probability at entry (the forecast being scored). */
-  forecast: number;
+  /** Estimated true probability at entry (the forecast being scored).
+   *  Optional: positions adopted by chain reconciliation may have no entry
+   *  metadata (ledger lost too) — they're managed + redeemed but never
+   *  scored for calibration. */
+  forecast?: number;
   /** Market-implied probability at entry. */
   impliedProbability: number;
   edge: number;
@@ -585,6 +612,10 @@ export class DelphiRunner {
     let bankrollTokens = 0n;
     const exposure = loadExposure(this.dataDir);
     const positions = loadPositions(this.dataDir);
+    // Chain is the source of truth: adopt any on-chain position the tracked
+    // ledger lost (e.g. a pm2 reload between trade and persistence). Runs
+    // before the sweep so adopted positions are eligible for redemption.
+    await this.reconcileWithChain(positions, exposure);
     try {
       const sweep = await redeemAndLiquidate(this.executor);
       result.redeemsAttempted = sweep.redeemAttempted;
@@ -627,6 +658,10 @@ export class DelphiRunner {
     const markets = await this.executor.listOpenMarkets({ limit: 25 });
     result.marketsEvaluated = markets.length;
     const decisions: DelphiDecisionRecord[] = [];
+    // Markets entered this cycle — combined with tracked positions, this is
+    // the one-thesis-per-market guard: never hold both sides (or add to an
+    // existing thesis) of the same market.
+    const marketsEnteredThisCycle = new Set<string>();
     const entriesForSummary: Array<{
       question: string;
       outcomeIdx: number;
@@ -700,6 +735,22 @@ export class DelphiRunner {
         });
         if (signal.decision !== "buy") continue;
 
+        // One thesis per market. Production incident 2026-08-15: the same
+        // Typhoon market was bought YES in cycle #27 (edge 0.64) and NO in
+        // cycle #29 (edge 0.24) — opposite forecasts 1.5h apart, 193 TST of
+        // locked capital hedging itself to a guaranteed loss minus fees.
+        // Skip when we already track a position in this market or entered
+        // it earlier this cycle.
+        const heldHere = Object.values(positions).some(
+          (p) => p.marketAddress === signal.marketAddress,
+        );
+        if (heldHere || marketsEnteredThisCycle.has(signal.marketAddress)) {
+          console.log(
+            `  [delphi-signal] skip "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} — already hold a thesis in this market`,
+          );
+          continue;
+        }
+
         // ── Sizing: bankroll fraction → shares, with concentration caps ──
         const budget = perTradeBudget({
           bankrollTokens,
@@ -728,6 +779,7 @@ export class DelphiRunner {
         });
         if (trade.success) {
           result.tradesPlaced++;
+          marketsEnteredThisCycle.add(signal.marketAddress);
           addExposure(exposure, signal.marketAddress, BigInt(trade.tokensIn ?? "0"));
           // Track the open forecast so redemption resolves it for calibration.
           positions[forecastId(signal.marketAddress, signal.outcomeIdx)] = {
@@ -748,6 +800,13 @@ export class DelphiRunner {
             webEvidence: signal.estimate.provenance?.webEvidence,
             volAnchor: signal.estimate.provenance?.volAnchor,
           };
+          // Persist IMMEDIATELY after each buy — not at cycle end. A pm2
+          // reload mid-cycle (production incident 2026-08-15) can otherwise
+          // land the trade on-chain but lose the tracked position, leaving
+          // an orphan that reconciliation must later adopt. The append-only
+          // ledger already survives; now the mutable ledgers do too.
+          savePositions(this.dataDir, positions);
+          saveExposure(this.dataDir, exposure);
           appendTradeLedger(this.dataDir, {
             type: "entry",
             marketAddress: signal.marketAddress,
@@ -896,6 +955,10 @@ export class DelphiRunner {
         delete positions[position.id];
         continue;
       }
+      // Adopted orphans (chain reconciliation found shares but no entry
+      // record) have no forecast to converge toward or stop against —
+      // hold them to settlement, where redemption cashes them out.
+      if (position.forecast === undefined) continue;
       try {
         let quote;
         try {
@@ -988,18 +1051,110 @@ export class DelphiRunner {
 
     if (kind === "redeem" && inMarket.length === 1) {
       const p = inMarket[0];
-      const payout = BigInt(tokensOut ?? "0");
-      appendCalibration(this.dataDir, {
-        id: p.id,
-        forecast: p.forecast,
-        forecastAt: p.openedAt,
-        outcome: payout > 0n ? 1 : 0,
-        resolvedAt: Date.now(),
-        marketAddress,
-        outcomeIdx: p.outcomeIdx,
-      });
+      // Adopted-orphan guard: a position reconciled from the chain without
+      // entry metadata has no forecast to score — close it, don't fabricate
+      // a calibration point.
+      if (p.forecast !== undefined) {
+        const payout = BigInt(tokensOut ?? "0");
+        appendCalibration(this.dataDir, {
+          id: p.id,
+          forecast: p.forecast,
+          forecastAt: p.openedAt,
+          outcome: payout > 0n ? 1 : 0,
+          resolvedAt: Date.now(),
+          marketAddress,
+          outcomeIdx: p.outcomeIdx,
+        });
+      }
     }
     for (const p of inMarket) delete positions[p.id];
+  }
+
+  /**
+   * Reconcile the tracked-position ledger against the chain (source of truth).
+   *
+   * The chain is the only ledger that never lies: a pm2 reload mid-cycle
+   * (production incident 2026-08-15) can land a buy on-chain and in the
+   * append-only trade ledger, then kill the process before positions.json /
+   * exposure.json are written. The next cycle would then re-size the market
+   * as if nothing were at risk — and forget the orphan entirely.
+   *
+   * For every open on-chain position we don't track: adopt it. Entry
+   * metadata (forecast, edge, price, timestamp, tx) is recovered from the
+   * trade ledger when an `entry` record matches; otherwise the position is
+   * tracked without a forecast (managed + redeemed, never scored — see
+   * resolvePositions). Exposure is corrected to the sum of adopted stakes.
+   *
+   * Failures are non-fatal: reconciliation is a safety net, and a broken
+   * listPositions must not block the discovery pass.
+   */
+  private async reconcileWithChain(
+    positions: Record<string, DelphiOpenPosition>,
+    exposure: ExposureLedger,
+  ): Promise<void> {
+    let onChain;
+    try {
+      onChain = await this.executor.getOpenPositions();
+    } catch (err) {
+      console.warn(`[delphi-runner] reconcile: chain read failed (${err instanceof Error ? err.message : String(err)})`);
+      return;
+    }
+
+    const ledger = readTradeLedger(this.dataDir);
+    let adopted = 0;
+    for (const chainPos of onChain.open) {
+      const id = forecastId(chainPos.marketProxy, Number(chainPos.outcomeIdx));
+      if (positions[id]) continue; // already tracked
+
+      // Recover entry metadata from the trade ledger (last matching entry).
+      const entry = [...ledger]
+        .reverse()
+        .find(
+          (r) =>
+            r.type === "entry" &&
+            r.marketAddress === chainPos.marketProxy &&
+            Number(r.outcomeIdx) === Number(chainPos.outcomeIdx),
+        );
+
+      positions[id] = {
+        id,
+        marketAddress: chainPos.marketProxy,
+        outcomeIdx: Number(chainPos.outcomeIdx),
+        question: typeof entry?.question === "string" ? entry.question : "unknown (reconciled from chain)",
+        forecast: typeof entry?.estimatedProbability === "number" ? entry.estimatedProbability : undefined,
+        impliedProbability: typeof entry?.impliedProbability === "number" ? entry.impliedProbability : 0,
+        edge: typeof entry?.edge === "number" ? entry.edge : 0,
+        shares: chainPos.shares,
+        tokensIn: typeof entry?.tokensIn === "string" ? entry.tokensIn : "0",
+        openedAt: typeof entry?.timestamp === "number" ? entry.timestamp : Date.now(),
+        transactionHash: typeof entry?.transactionHash === "string" ? entry.transactionHash : undefined,
+      };
+      adopted++;
+    }
+
+    // Deliberately adopt-only: we never DROP a tracked position merely
+    // because the subgraph doesn't list it — subgraph lag could delete a
+    // live holding and free its exposure for a double entry. Settled
+    // markets are cleaned up by the redeem sweep (resolvePositions), and
+    // exposure is recomputed conservatively below (a stale tracked
+    // position over-estimates exposure, shrinking sizing — the safe side).
+    const openIds = new Set(onChain.open.map((p) => forecastId(p.marketProxy, Number(p.outcomeIdx))));
+
+    // Recompute exposure from the tracked ledger: adoption may have added
+    // stakes. Only shrink — tracked positions the subgraph doesn't (yet)
+    // list keep their exposure counted (see adopt-only note above).
+    for (const market of Object.keys(exposure)) delete exposure[market];
+    for (const p of Object.values(positions)) {
+      addExposure(exposure, p.marketAddress, BigInt(p.tokensIn ?? "0"));
+    }
+
+    if (adopted > 0) {
+      console.warn(
+        `[delphi-runner] reconcile: adopted ${adopted} orphan position(s) from the chain (tracked=${Object.keys(positions).length}, open on-chain: ${openIds.size})`,
+      );
+      savePositions(this.dataDir, positions);
+      saveExposure(this.dataDir, exposure);
+    }
   }
 
   /** Start the loop. Exits when the trading window closes. */

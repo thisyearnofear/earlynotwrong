@@ -75,9 +75,13 @@ export function quantizeEdge(edge: number): number {
  * keeps small jitter from moving the hash.
  */
 export function computeDelphiDigest(input: DelphiAnchorInput): string {
+  // NOTE: input.tradesPlaced is deliberately NOT hashed. The thesis is the
+  // forecaster's VIEW (estimates vs implied prices); execution count is a
+  // downstream consequence. With the one-thesis-per-market guard, cycle N+1
+  // re-derives an identical view but executes 0 trades (position already
+  // held) — that must dedupe, not re-anchor (production fix 2026-08-15).
   const compact = {
     m: input.marketsEvaluated,
-    t: input.tradesPlaced,
     d: input.decisions
       .map((d) => ({
         mk: d.marketAddress,

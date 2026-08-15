@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -389,35 +389,44 @@ describe("DelphiRunner anchoring + calibration integration", () => {
   });
 
   it("does not score markets with multiple tracked outcomes (ambiguous payout)", async () => {
-    // An overround market (implied sums to < 1) can produce a positive edge on
-    // BOTH outcomes — the only way the runner holds two forecasts in one
-    // market. A single redeem payout can't be attributed between them, so we
-    // close them out without scoring either.
+    // A redeem payout for a market where we tracked TWO outcomes cannot be
+    // attributed between them — close them without scoring either. Since the
+    // one-thesis-per-market guard (2026-08-15) prevents new double entries,
+    // seed the tracked ledger directly instead of trading both sides.
     const { cfg, client } = makeMutableFakeClient();
     const factory = { apiKey: "k", retry: { maxRetries: 0 as const }, clientFactory: async () => client };
+
+    const tracked = (outcomeIdx: number) => ({
+      id: `0xM:${outcomeIdx}`,
+      marketAddress: "0xM",
+      outcomeIdx,
+      question: "Q?",
+      forecast: 0.5,
+      impliedProbability: 0.35,
+      edge: 0.15,
+      shares: (10n ** 18n).toString(),
+      tokensIn: (35n * 10n ** 4n).toString(), // 0.35 TST, 6-dec
+      openedAt: 1000,
+    });
+    writeFileSync(
+      join(dataDir, "positions.json"),
+      JSON.stringify({ "0xM:0": tracked(0), "0xM:1": tracked(1) }),
+    );
+
     const runner = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
-      // est [0.5, 0.5] vs implied [0.35, 0.35] → edge +0.15 on both outcomes.
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.5) },
       anchor: async () => [],
     });
 
-    cfg.markets = [makeMarket("0xM", "Q?")];
-    cfg.prices = { "0xM": [0.35, 0.35] };
-    const r1 = await runner.runCycle(1);
-    expect(r1.tradesPlaced).toBe(2);
-
-    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
-    expect(Object.keys(positions)).toHaveLength(2);
-
     cfg.markets = [];
     cfg.positions = [pos("0xM", 0, "settled"), pos("0xM", 1, "settled")];
     cfg.redeemTokensOut = { "0xM": 100n * 10n ** 6n }; // 100 TST payout, 6-dec
-    await runner.runCycle(2);
+    await runner.runCycle(1);
 
     // Ambiguous attribution → positions closed, but NO forecast scored.
     expect(existsSync(join(dataDir, "forecasts.jsonl"))).toBe(false);
