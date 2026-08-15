@@ -25,7 +25,13 @@
  * enforced by the system prompt instead.
  */
 
-export type LlmProviderName = "vercel-gateway" | "openrouter" | "openai" | "anthropic";
+export type LlmProviderName =
+  | "vercel-gateway"
+  | "openrouter"
+  | "hf-qwen"
+  | "orcarouter"
+  | "openai"
+  | "anthropic";
 
 /** Per-provider model selection: an env override + a default model. */
 export interface LlmModelSelection {
@@ -78,18 +84,52 @@ export interface LlmChatResult {
   content: string;
 }
 
-/** Provider priority — free-first: Vercel AI Gateway > OpenRouter > OpenAI > Anthropic. */
-const PROVIDER_ORDER: LlmProviderName[] = ["vercel-gateway", "openrouter", "openai", "anthropic"];
+/**
+ * Provider priority — free-first:
+ *   1. vercel-gateway (promo credit; circuit-breaker skips it when 402s)
+ *   2. openrouter (`:free`-pinned model; 50 req/day free quota, resets 00:00 UTC)
+ *   3. hf-qwen — public keyless HF Inference endpoint for Qwen3.8-27B
+ *      (~30 req/min per IP, fast). The key env var accepts any value,
+ *      including "none" — its presence is an explicit opt-in because the
+ *      community endpoint is temporary ("retired after the launch buzz").
+ *   4. orcarouter — $0 self-hosted Qwen3.8-27B on OrcaRouter infra
+ *      (rate-limited, slow: ~10s TTFT, ~18% error rate observed 2026-08-15,
+ *      so it sits behind the faster endpoint).
+ *   5-6. paid keys (openai, anthropic) — last resort.
+ */
+const PROVIDER_ORDER: LlmProviderName[] = [
+  "vercel-gateway",
+  "openrouter",
+  "hf-qwen",
+  "orcarouter",
+  "openai",
+  "anthropic",
+];
 
 const PROVIDER_KEY_ENV: Record<LlmProviderName, string> = {
   "vercel-gateway": "VERCEL_AI_GATEWAY_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  "hf-qwen": "HF_QWEN_API_KEY",
+  orcarouter: "ORCAROUTER_API_KEY",
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
 };
 
 /** OpenAI-compatible base URL for the Vercel AI Gateway. */
 const VERCEL_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
+
+/** Public keyless HF Inference endpoint (Qwen3.8-27B, community deployment).
+ * Resolved lazily: HF_QWEN_ENDPOINT_URL override is read at call time, not
+ * module load (env-bootstrap may land after the import). */
+function hfQwenUrl(): string {
+  return (
+    process.env.HF_QWEN_ENDPOINT_URL ??
+    "https://g9hnto0u7lvbu837.us-east-2.aws.endpoints.huggingface.cloud/v1/chat/completions"
+  );
+}
+
+/** OrcaRouter's OpenAI-compatible base URL ($0 free-tier models). */
+const ORCAROUTER_URL = "https://api.orcarouter.ai/v1/chat/completions";
 
 const OPENROUTER_REFERER = "https://earlynotwrong.vercel.app";
 
@@ -395,6 +435,73 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
       };
       return {
         provider: "openai",
+        model,
+        content: json.choices?.[0]?.message?.content?.trim() ?? "",
+      };
+    }
+    case "hf-qwen": {
+      // Keyless community endpoint — any string works as the bearer. The
+      // model id is the Hub id, not a routing slug. Thinking is ON by
+      // default and eats the completion budget, so reasoning_effort is
+      // always sent (verified 2026-08-15: "none" → clean JSON content).
+      const response = await fetchWithBackoff(hfQwenUrl(), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.HF_QWEN_API_KEY || "none"}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: req.systemPrompt },
+            { role: "user", content: req.userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature,
+          reasoning_effort: req.reasoningEffort ?? "none",
+          ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) throw new Error(`HF Qwen endpoint error: ${response.status}`);
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return {
+        provider: "hf-qwen",
+        model,
+        content: json.choices?.[0]?.message?.content?.trim() ?? "",
+      };
+    }
+    case "orcarouter": {
+      // OpenRouter-shaped free tier ($0, rate-limited). Verified 2026-08-15:
+      // `include_reasoning: false` hung; `reasoning_effort: "none"` returns
+      // clean content fast. response_format is not in their verified param
+      // list — JSON is enforced by the system prompt (same as the gateway).
+      const response = await fetchWithBackoff(ORCAROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.ORCAROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: req.systemPrompt },
+            { role: "user", content: req.userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature,
+          reasoning_effort: req.reasoningEffort ?? "none",
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) throw new Error(`OrcaRouter error: ${response.status}`);
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return {
+        provider: "orcarouter",
         model,
         content: json.choices?.[0]?.message?.content?.trim() ?? "",
       };

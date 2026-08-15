@@ -148,6 +148,8 @@ describe("firstAvailableLlmProvider", () => {
   const KEYS = [
     "VERCEL_AI_GATEWAY_API_KEY",
     "OPENROUTER_API_KEY",
+    "HF_QWEN_API_KEY",
+    "ORCAROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
   ] as const;
@@ -202,6 +204,8 @@ describe("chatCompletion — provider cascade on error", () => {
   const KEYS = [
     "VERCEL_AI_GATEWAY_API_KEY",
     "OPENROUTER_API_KEY",
+    "HF_QWEN_API_KEY",
+    "ORCAROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
   ] as const;
@@ -210,6 +214,8 @@ describe("chatCompletion — provider cascade on error", () => {
   const models = {
     "vercel-gateway": { envVar: "X", defaultModel: "gw-model" },
     openrouter: { envVar: "Y", defaultModel: "or-model" },
+    "hf-qwen": { envVar: "HF_QWEN_DELPHI_MODEL", defaultModel: "Qwen/Qwen3.8-27B" },
+    orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: "qwen/qwen3.8-27b-free" },
   } as const;
 
   beforeEach(() => {
@@ -229,6 +235,7 @@ describe("chatCompletion — provider cascade on error", () => {
     }
     delete process.env.VERCEL_GATEWAY_PROMO_ENDS;
     globalThis.fetch = originalFetch;
+    vi.useRealTimers();
   });
 
   function chatResponse(providerContent: string): Response {
@@ -299,6 +306,49 @@ describe("chatCompletion — provider cascade on error", () => {
     const second = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
     expect(second?.provider).toBe("openrouter");
     expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterFirst + 1);
+  });
+
+  it("falls through an exhausted OpenRouter daily quota to the keyless HF endpoint", async () => {
+    // Production 2026-08-15: OpenRouter :free is 50 req/day. When the quota
+    // hits 0, every remaining call 429s — the keyless Qwen3.8-27B HF
+    // endpoint is the next rung (verified live, clean JSON at ~0.7s TTFT).
+    process.env.OPENROUTER_API_KEY = "or";
+    process.env.HF_QWEN_API_KEY = "none";
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      // OpenRouter 429s all three attempts (initial + 2 backoff retries),
+      // then the cascade reaches hf-qwen and succeeds.
+      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "3600" } }))
+      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "3600" } }))
+      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "3600" } }))
+      .mockImplementation(() => chatResponse("hf answer")) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    const promise = chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    // Retry-After 3600 exceeds the 120s cap → fixed backoff (2s + 4s).
+    await vi.advanceTimersByTimeAsync(10_000);
+    const result = await promise;
+
+    expect(result?.provider).toBe("hf-qwen");
+    expect(result?.content).toBe("hf answer");
+  });
+
+  it("falls through the HF endpoint to OrcaRouter when the community deployment is retired", async () => {
+    // The HF community endpoint is temporary by its own docs ("retired after
+    // the launch buzz") — a retired endpoint 404s, and OrcaRouter's $0
+    // self-hosted Qwen is the safety net.
+    process.env.HF_QWEN_API_KEY = "none";
+    process.env.ORCAROUTER_API_KEY = "orca";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 404 }))
+      .mockImplementation(() => chatResponse("orca answer")) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(result?.provider).toBe("orcarouter");
+    expect(result?.content).toBe("orca answer");
   });
 
   it("returns null when no provider is configured", async () => {

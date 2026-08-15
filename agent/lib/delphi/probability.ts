@@ -36,7 +36,7 @@ import type { WebSearchBriefing } from "./web-search.js";
 // Types
 // =============================================================================
 
-export type ForecasterProvider = "vercel-gateway" | "openrouter" | "openai" | "anthropic" | "injected";
+export type ForecasterProvider = "vercel-gateway" | "openrouter" | "hf-qwen" | "orcarouter" | "openai" | "anthropic" | "injected";
 
 /** Per-outcome probability estimate from the jury. */
 export interface OutcomeEstimate {
@@ -456,10 +456,14 @@ function parseForecasterResponse(
  *  Vercel AI Gateway's GLM 5.2 (free during the Aug 2026 promo) leads the
  *  ladder when its key is set. The OpenRouter default is an explicit `:free`
  *  model — NEVER `openrouter/auto` here: the OpenRouter account carries paid
- *  credits, and `auto` on a credited account routes to paid models. */
+ *  credits, and `auto` on a credited account routes to paid models.
+ *  hf-qwen and orcarouter are $0 Qwen3.8-27B endpoints (verified live
+ *  2026-08-15) that carry the load when the quota-limited tiers run dry. */
 const FORECASTER_DEFAULT_MODELS = {
   "vercel-gateway": "zai/glm-5.2",
   openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "hf-qwen": "Qwen/Qwen3.8-27B",
+  orcarouter: "qwen/qwen3.8-27b-free",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
 } as const;
@@ -474,6 +478,8 @@ async function fetchLlmEstimate(
     models: {
       "vercel-gateway": { envVar: "VERCEL_GATEWAY_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS["vercel-gateway"] },
       openrouter: { envVar: "OPENROUTER_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.openrouter },
+      "hf-qwen": { envVar: "HF_QWEN_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS["hf-qwen"] },
+      orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.orcarouter },
       openai: { envVar: "OPENAI_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.openai },
       anthropic: { envVar: "ANTHROPIC_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.anthropic },
     },

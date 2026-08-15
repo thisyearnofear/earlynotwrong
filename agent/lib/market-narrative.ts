@@ -292,8 +292,12 @@ export async function generateLLMNarrative(
   const openrouterKey = process.env.OPENROUTER_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  // Free keyless Qwen3.8-27B endpoint (shared with the LLM ladder in
+  // llm-providers.ts). Any non-empty value of HF_QWEN_API_KEY opts in —
+  // the endpoint itself needs no auth.
+  const hfQwenKey = process.env.HF_QWEN_API_KEY;
 
-  if (!openrouterKey && !openaiKey && !anthropicKey) return null;
+  if (!openrouterKey && !openaiKey && !anthropicKey && !hfQwenKey) return null;
 
   const [news, macroEvents] = await Promise.all([
     fetchNewsHeadlines(),
@@ -303,6 +307,9 @@ export async function generateLLMNarrative(
   const prompt = buildLLMPrompt(context, news, macroEvents);
 
   try {
+    if (hfQwenKey) {
+      return await callHfQwen(prompt, news, macroEvents);
+    }
     if (openrouterKey) {
       return await callOpenRouter(prompt, news, macroEvents);
     }
@@ -341,6 +348,54 @@ function buildLLMPrompt(
     "",
     "Write a natural, insight-driven narrative that explains what's happening in markets right now.",
   ].join("\n");
+}
+
+/**
+ * Call the free keyless HF Inference endpoint (Qwen3.8-27B). Same base URL
+ * + model as the `hf-qwen` tier in llm-providers.ts — kept in sync by the
+ * shared HF_QWEN_ENDPOINT_URL override.
+ */
+async function callHfQwen(
+  prompt: string,
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
+): Promise<MarketNarrative> {
+  const url =
+    process.env.HF_QWEN_ENDPOINT_URL ??
+    "https://g9hnto0u7lvbu837.us-east-2.aws.endpoints.huggingface.cloud/v1/chat/completions";
+  const model = process.env.HF_QWEN_NARRATIVE_MODEL || "Qwen/Qwen3.8-27B";
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.HF_QWEN_API_KEY || "none"}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300,
+      temperature: 0.7,
+      // Thinking is on by default and eats the budget — narratives need none.
+      reasoning_effort: "none",
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+
+  if (!response.ok) throw new Error(`HF Qwen endpoint error: ${response.status}`);
+
+  const json = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content?.trim() ?? "";
+
+  return {
+    summary: content,
+    headline: news[0]?.title ?? null,
+    newsCount: news.length,
+    macroEventCount: macroEvents.length,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 /**
