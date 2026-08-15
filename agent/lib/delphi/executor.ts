@@ -131,6 +131,16 @@ export interface DelphiClientLike {
   getSigner(): Promise<{ address: string }>;
   /** ERC-20 token balance of the signer (competition token on Delphi). */
   getErc20Balance(): Promise<bigint>;
+  /**
+   * Ensure the gateway is approved to spend TST for this market. The SDK's
+   * buyShares does NOT call this itself — a fresh wallet has zero allowance
+   * and the pre-send simulation reverts. Must be called before every buy.
+   */
+  ensureTokenApproval(params: {
+    marketAddress: `0x${string}`;
+    minimumAmount: bigint;
+    approveAmount?: bigint;
+  }): Promise<{ approvalNeeded: boolean; allowance: bigint; transactionHash?: string }>;
   /** Positions for the signer wallet (open + settled + liquidatable). */
   listPositions(params: {
     wallet: string;
@@ -613,6 +623,23 @@ export class DelphiExecutor {
       const maxTokensIn = (tokensInBig * BigInt(10_000 + this.slippageBps)) / 10_000n;
 
       const client = await this.getClient();
+
+      // The SDK's buyShares does not call ensureTokenApproval; a fresh
+      // wallet has zero allowance and the on-chain simulation reverts.
+      // Approve the gateway for at least maxTokensIn before buying.
+      await withRetry(
+        async () =>
+          withTimeout(
+            client.ensureTokenApproval({
+              marketAddress: params.marketAddress as `0x${string}`,
+              minimumAmount: maxTokensIn,
+            }),
+            this.sdkTimeoutMs,
+            "delphi-ensure-approval",
+          ),
+        { label: "delphi-ensure-approval", ...this.retryPolicy },
+      );
+
       const { transactionHash } = await withRetry(
         async () =>
           withTimeout(

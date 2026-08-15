@@ -49,6 +49,7 @@ function makeFakeClient(overrides: Partial<DelphiClientLike> = {}): DelphiClient
     }),
     getSigner: async () => ({ address: "0xWallet" }),
     getErc20Balance: async () => 1_000_000_000n, // 1,000 TST in 6-dec
+    ensureTokenApproval: async () => ({ approvalNeeded: false, allowance: 0n }),
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ sharesIn }) => ({
@@ -227,6 +228,37 @@ describe("DelphiExecutor — live mode with injected client", () => {
     const expectedMax = (quotedTokens * BigInt(10_000 + 300)) / 10_000n;
     expect(capturedBuy!.maxTokensIn).toBe(expectedMax);
     expect(capturedBuy!.sharesOut).toBe(shares);
+  });
+
+  it("ensures token approval before the buy and passes the slippage-adjusted amount", async () => {
+    // Regression: the SDK's buyShares does not approve the gateway itself,
+    // and a fresh wallet has zero allowance (production incident 2026-08-15:
+    // first live buy reverted on the simulation for exactly this reason).
+    let approved: { marketAddress: string; minimumAmount: bigint } | null = null;
+    const ex = new DelphiExecutor({
+      apiKey: "test-key",
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          ensureTokenApproval: async (p) => {
+            approved = p;
+            return { approvalNeeded: true, allowance: p.minimumAmount };
+          },
+        }),
+    });
+    const result = await ex.buyShares({
+      marketAddress: "0xMarket",
+      outcomeIdx: 0,
+      sharesOut: 10n ** 18n,
+      estimatedProbability: 0.5,
+    });
+    expect(result.success).toBe(true);
+    expect(approved).not.toBeNull();
+    expect(approved!.marketAddress).toBe("0xMarket");
+    // 1 share × 0.42 TST = 420_000 (6-dec), plus 300bps slippage.
+    const quoted = (10n ** 18n * 42n) / 100n / 10n ** 12n;
+    const expected = (quoted * 10_300n) / 10_000n;
+    expect(approved!.minimumAmount).toBe(expected);
   });
 
   it("returns success=false and logs the trade when the chain call fails", async () => {

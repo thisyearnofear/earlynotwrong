@@ -21,6 +21,7 @@ function baseClient(overrides: Partial<DelphiClientLike>): DelphiClientLike {
     redeemPositions: async () => ({ results: [], totalTokensOut: 0n }),
     getSigner: async () => ({ address: "0xW" }),
     getErc20Balance: async () => 0n,
+    ensureTokenApproval: async () => ({ approvalNeeded: false, allowance: 0n }),
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0x" }),
     ...overrides,

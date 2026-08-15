@@ -209,6 +209,7 @@ function makeMutableFakeClient() {
     }),
     getSigner: async () => ({ address: "0xWallet" }),
     getErc20Balance: async () => 1000n * 10n ** 6n, // 1,000 TST, 6-dec
+    ensureTokenApproval: async () => ({ approvalNeeded: false, allowance: 0n }),
     listPositions: async () => ({ positions: cfg.positions }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {

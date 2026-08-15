@@ -775,6 +775,23 @@ export class DelphiRunner {
             webEvidence: signal.estimate.provenance?.webEvidence,
             volAnchor: signal.estimate.provenance?.volAnchor,
           });
+        } else {
+          // Never swallow a trade failure: on-chain reverts (allowance,
+          // gas, slippage) must be visible in the pm2 logs, not just in
+          // the executor's in-memory tradeLog.
+          console.warn(
+            `  [delphi-trade] BUY FAILED "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} shares=${shares} price=${price.toFixed(3)}: ${trade.error}`,
+          );
+          appendTradeLedger(this.dataDir, {
+            type: "entry-failed",
+            marketAddress: signal.marketAddress,
+            outcomeIdx: signal.outcomeIdx,
+            question: signal.question,
+            estimatedProbability: signal.estimatedProbability,
+            impliedProbability: signal.impliedProbability,
+            edge: signal.edge,
+            error: trade.error,
+          });
         }
       }
     }

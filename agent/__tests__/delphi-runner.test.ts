@@ -49,6 +49,7 @@ function makeFakeClient(options: {
     }),
     getSigner: async () => ({ address: "0xWallet" }),
     getErc20Balance: async () => options.balanceTokens ?? 10_000n * 10n ** 6n, // 10,000 TST, 6-dec
+    ensureTokenApproval: async () => ({ approvalNeeded: false, allowance: 0n }),
     listPositions: async () => ({ positions: [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {
