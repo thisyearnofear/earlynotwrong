@@ -62,7 +62,7 @@ import {
   cryptoThresholdProbability,
   matchCryptoThresholdMarket,
 } from "./vol-baseline.js";
-import { DelphiWebSearch, type WebSearchBriefing, type WebSearchSource } from "./web-search.js";
+import { DelphiWebSearch, type BriefingSource, type WebSearchBriefing, type WebSearchSource } from "./web-search.js";
 import type { ProbabilityForecast } from "conviction-core";
 
 // =============================================================================
@@ -417,6 +417,8 @@ export interface DelphiOpenPosition {
   model?: string;
   samples?: number;
   webEvidence?: boolean;
+  /** Which search rung supplied the briefing (firecrawl/parallel/exa). */
+  webSource?: BriefingSource;
   volAnchor?: number;
 }
 
@@ -792,6 +794,7 @@ export class DelphiRunner {
       transactionHash?: string;
       model?: string;
       webEvidence?: boolean;
+      webSource?: BriefingSource;
       volAnchor?: number;
     }> = [];
 
@@ -943,6 +946,7 @@ export class DelphiRunner {
             model: signal.estimate.provenance?.model,
             samples: signal.estimate.provenance?.samples,
             webEvidence: signal.estimate.provenance?.webEvidence,
+            webSource: signal.estimate.provenance?.webSource,
             volAnchor: signal.estimate.provenance?.volAnchor,
           };
           // Persist IMMEDIATELY after each buy — not at cycle end. A pm2
@@ -977,6 +981,7 @@ export class DelphiRunner {
             // Provenance tags for the Telegram entry line.
             model: signal.estimate.provenance?.model,
             webEvidence: signal.estimate.provenance?.webEvidence,
+            webSource: signal.estimate.provenance?.webSource,
             volAnchor: signal.estimate.provenance?.volAnchor,
           });
         } else {

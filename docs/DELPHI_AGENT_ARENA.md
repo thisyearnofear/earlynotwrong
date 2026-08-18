@@ -139,12 +139,19 @@ Exa search free through 2026-08-31). The paid ladder (OpenRouter > OpenAI >
 Anthropic) stays wired as fallback when the promo ends.
 
 1. **Context injection** (`web-search.ts` → prompt). Markets about *current*
-   events are where a model's training cutoff costs the most calibration. One
-   gateway `generateText` call gives GLM the `exa_search` tool; it searches,
-   reads, and returns a short sourced briefing that is injected into the
-   forecaster prompt as evidence. Live verification: on "BTC above $150k on
-   Aug 24?" the uninformed estimate was ~0.35 (stale priors); with the Exa
-   briefing (BTC at ~$63k) it dropped to ~0.02 — the whole trade.
+   events are where a model's training cutoff costs the most calibration.
+   `briefing()` walks a three-rung search ladder — **firecrawl** (keyless
+   `POST /v2/search`, highlights on by default, no synthesis LLM) >
+   **parallel** (free anonymous Parallel Search MCP, objective-based with
+   LLM-excerpted passages) > **exa-gateway** (the original Exa/via-gateway
+   design; needs the gateway promo credit, so it sits last) — and the first
+   rung that answers wins. Each rung has its own circuit breaker on the
+   shared provider map (quota-exhaustion errors get a daily-reset window,
+   explicit 429s a 5-min one, anything else 30 min). Verified live
+   2026-08-18: on "BTC above $150k on Aug 24?" the uninformed estimate was
+   ~0.35 (stale priors); with a sourced briefing (BTC at ~$63k) it dropped
+   to ~0.02 — the whole trade. Provenance records which rung supplied the
+   evidence (`webSource`: firecrawl/parallel/exa).
 2. **Crypto vol baseline** (`vol-baseline.ts` → blend). For threshold markets
    ("Will X close above $K on date D?") we compute
    P(close > K) = Φ(ln(S₀/K)/(σ√T)) from realized daily vol (SoSoValue
@@ -182,7 +189,9 @@ stays that way (or degrades explicitly) after the promos end:
 | Surface | Provider | Cost | Guard |
 |---|---|---|---|
 | Forecaster ensemble (3 samples/market) | Vercel AI Gateway · GLM 5.2 | Free through **2026-08-27** | `vercelGatewayFreeActive()` drops it from the ladder on/after `VERCEL_GATEWAY_PROMO_ENDS` (default 2026-08-28) |
-| Web briefings (Exa) | same gateway key | Free through **2026-08-31** | gates off with the promo; forecaster falls back to implied odds alone |
+| Web briefings — rung 1 | Firecrawl `/v2/search` (keyless) | Free (keyless tier; optional `FIRECRAWL_API_KEY` raises limits) | per-rung breaker; budget counts network calls |
+| Web briefings — rung 2 | Parallel Search MCP (anonymous) | Free (no key; optional `PARALLEL_API_KEY` raises limits) | per-rung breaker; daily-reset window on quota errors |
+| Web briefings — rung 3 | Exa via the same gateway key | Free through **2026-08-31** | gates off with the promo; forecaster falls back to implied odds alone |
 | Ladder fallback | OpenRouter · `nvidia/nemotron-3-ultra-550b-a55b:free` | Free | pinned `:free` model — the account holds paid credits, and `openrouter/auto` on a credited account routes to **paid** models |
 | Vol baseline | SoSoValue klines + spot (arithmetic) | Free (existing 20 req/min key) | blend skipped on parse failure — never billed, never blocks |
 

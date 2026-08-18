@@ -503,6 +503,8 @@ export async function sendDelphiCycleSummary(params: {
     /** Provenance tags for entry lines. */
     model?: string;
     webEvidence?: boolean;
+    /** Which search rung supplied the briefing (firecrawl/parallel/exa). */
+    webSource?: string;
     volAnchor?: number;
   }>;
 }): Promise<void> {
@@ -532,7 +534,7 @@ export async function sendDelphiCycleSummary(params: {
         const est = e.estimatedProbability !== undefined ? e.estimatedProbability.toFixed(2) : "?";
         // Compact provenance tags — the method behind the number.
         const tags: string[] = [];
-        if (e.webEvidence) tags.push("web");
+        if (e.webEvidence) tags.push(e.webSource ? `web:${e.webSource}` : "web");
         if (e.volAnchor !== undefined) tags.push("vol");
         if (e.model) tags.push(shortModel(e.model));
         const tagStr = tags.length > 0 ? ` [${tags.join("·")}]` : "";

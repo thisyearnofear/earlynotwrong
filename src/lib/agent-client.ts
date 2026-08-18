@@ -243,6 +243,8 @@ export interface DelphiOpenPosition {
   model?: string;
   samples?: number;
   webEvidence?: boolean;
+  /** Which search rung supplied the briefing (firecrawl/parallel/exa). */
+  webSource?: string;
   volAnchor?: number;
 }
 

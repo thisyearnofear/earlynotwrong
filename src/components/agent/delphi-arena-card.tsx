@@ -112,8 +112,8 @@ export function DelphiArenaCard() {
         <p className="text-[11px] text-foreground-muted leading-relaxed">
           A second venue: the agent forecasts probabilities on LMSR prediction
           markets and trades where estimate − implied clears a category-aware
-          edge gate. Every forecast is built from visible evidence — an
-          <span className="text-foreground"> Exa web briefing</span>, a
+          edge gate. Every forecast is built from visible evidence — a
+          <span className="text-foreground"> sourced web briefing</span>, a
           <span className="text-foreground"> median-of-3 model ensemble</span>,
           and (for crypto thresholds) a
           <span className="text-foreground"> realized-vol anchor</span>.
@@ -218,9 +218,9 @@ export function DelphiArenaCard() {
                         {p.webEvidence && (
                           <span
                             className="px-1 py-px rounded bg-[#f59e0b]/10 text-[#f59e0b] text-[8px]"
-                            title="Exa web briefing was injected into the forecaster's context"
+                            title={`Web briefing (${p.webSource ?? "exa"}) was injected into the forecaster's context`}
                           >
-                            web
+                            web{p.webSource ? `:${p.webSource}` : ""}
                           </span>
                         )}
                         {p.volAnchor !== undefined && (
@@ -244,7 +244,7 @@ export function DelphiArenaCard() {
                   ))}
                 </div>
                 <p className="text-[9px] font-mono text-foreground-dim mt-1.5 leading-relaxed">
-                  <span className="text-[#f59e0b]">web</span> = Exa briefing in context ·{" "}
+                  <span className="text-[#f59e0b]">web</span> = web briefing in context (firecrawl/parallel/exa rung) ·{" "}
                   <span className="text-patience">vol</span> = realized-vol anchor blended ·{" "}
                   <span>×N</span> = median of N model samples
                 </p>

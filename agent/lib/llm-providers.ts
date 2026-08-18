@@ -167,11 +167,11 @@ function breakerMap(): Record<string, number> {
   return g[BREAKER_MAP_KEY] as Record<string, number>;
 }
 
-export function providerCircuitOpen(provider: LlmProviderName, now: number = Date.now()): boolean {
+export function providerCircuitOpen(provider: string, now: number = Date.now()): boolean {
   return now < (breakerMap()[provider] ?? 0);
 }
 
-export function tripProviderCircuit(provider: LlmProviderName, now: number = Date.now(), windowMs: number = PROVIDER_BREAKER_MS): void {
+export function tripProviderCircuit(provider: string, now: number = Date.now(), windowMs: number = PROVIDER_BREAKER_MS): void {
   breakerMap()[provider] = now + windowMs;
 }
 

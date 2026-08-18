@@ -45,7 +45,14 @@ import {
   type MarketEstimate,
   type MarketEstimateInput,
 } from "../lib/delphi/probability.js";
-import { extractSourceUrls, DelphiWebSearch } from "../lib/delphi/web-search.js";
+import {
+  extractSourceUrls,
+  DelphiWebSearch,
+  firecrawlResultsToBriefing,
+  parallelResultsToBriefing,
+  parseMcpTextResult,
+  isQuotaExhaustionError,
+} from "../lib/delphi/web-search.js";
 import { providerCircuitOpen, tripProviderCircuit } from "../lib/llm-providers.js";
 
 // =============================================================================
@@ -512,12 +519,24 @@ describe("DelphiWebSearch — budget + cache", () => {
     delete (globalThis as Record<string, unknown>)["__llmProviderBreakerOpenUntil"];
   });
 
-  it("returns null when no gateway key is configured", async () => {
+  it("still serves briefings with NO keys at all (firecrawl/parallel rungs are keyless)", async () => {
+    // Contract change 2026-08-18: briefings no longer depend on the gateway
+    // key. Only the Exa rung needs it — the two search APIs above are
+    // keyless, which is why they exist in the ladder.
     const saved = process.env.VERCEL_AI_GATEWAY_API_KEY;
     delete process.env.VERCEL_AI_GATEWAY_API_KEY;
     try {
-      const noKey = new DelphiWebSearch();
-      expect(await noKey.briefing("Q")).toBeNull();
+      let exaCalls = 0;
+      const ws = new DelphiWebSearch({
+        runFirecrawlSearch: async () => ({
+          text: "keyless brief", sources: [], cached: false, budgetExhausted: false, source: "firecrawl",
+        }),
+        runParallelSearch: async () => null,
+        runGatewaySearch: async () => { exaCalls++; return { text: "exa", sources: [], cached: false, budgetExhausted: false, source: "exa" }; },
+      });
+      const briefing = await ws.briefing("Q");
+      expect(briefing?.text).toBe("keyless brief");
+      expect(exaCalls).toBe(0); // the Exa rung is ineligible without the key
     } finally {
       if (saved === undefined) delete process.env.VERCEL_AI_GATEWAY_API_KEY;
       else process.env.VERCEL_AI_GATEWAY_API_KEY = saved;
@@ -590,65 +609,170 @@ describe("DelphiWebSearch — budget + cache", () => {
     expect(calls).toBe(2);
   });
 
-  it("a credit-exhaustion 402 failure trips the shared gateway breaker and skips later searches", async () => {
+  it("a credit-exhaustion failure trips the rung's breaker and skips later searches", async () => {
     // Production incident 2026-08-18: the Vercel gateway's promo credit ran
-    // dry mid-promo. The LLM ladder fell through, but briefing() — which has
-    // its own date-only gate — kept burning the 10-call/cycle budget on
-    // doomed searches (~150/day). The credit-balance 402 must trip the same
-    // breaker the forecaster ladder uses.
+    // dry mid-promo. The briefing budget kept burning 10 calls/cycle on
+    // doomed searches (~150/day). Any rung's quota/credit death must trip
+    // its breaker so the cost is one discovery call, not one per market.
     const ws = new DelphiWebSearch({
-      apiKey: "k",
-      runSearch: async () => {
+      runFirecrawlSearch: async () => {
         throw new Error(
           "A positive credit balance is required for all requests, including BYOK",
         );
       },
+      // Stub the downstream rungs so the cascade never touches the network.
+      runParallelSearch: async () => null,
+      runGatewaySearch: async () => null,
     });
-    expect(providerCircuitOpen("vercel-gateway")).toBe(false);
-    expect(await ws.briefing("Q1")).toBeNull(); // first failure trips the breaker
-    expect(providerCircuitOpen("vercel-gateway")).toBe(true);
-    // Subsequent fresh searches skip the gateway entirely — no budget burned.
+    expect(providerCircuitOpen("firecrawl")).toBe(false);
+    expect(await ws.briefing("Q1")).toBeNull(); // firecrawl dies → cascade finds nothing else
+    expect(providerCircuitOpen("firecrawl")).toBe(true);
+    // Q1 burned 3 calls: firecrawl (throws) + parallel (null) + gateway (null).
+    expect(ws.cycleCalls).toBe(3);
+    // Subsequent fresh searches skip the dead rung entirely — Q2 costs only
+    // the two healthy rungs, not three.
     expect(await ws.briefing("Q2")).toBeNull();
-    expect(ws.cycleCalls).toBe(1);
+    expect(ws.cycleCalls).toBe(5);
+  });
+
+  it("falls through the ladder when the first rung fails", async () => {
+    // Redundancy: a dead Firecrawl tier must hand off to Parallel, then the
+    // gateway Exa rung — the same cascade principle as the LLM ladder.
+    let parallelCalls = 0;
+    const ws = new DelphiWebSearch({
+      apiKey: "k",
+      runFirecrawlSearch: async () => {
+        throw new Error("Firecrawl search error: 429");
+      },
+      runParallelSearch: async () => {
+        parallelCalls++;
+        return { text: "parallel brief", sources: ["https://p.test/1"], cached: false, budgetExhausted: false, source: "parallel" };
+      },
+    });
+    const briefing = await ws.briefing("Q");
+    expect(briefing?.text).toBe("parallel brief");
+    expect(briefing?.source).toBe("parallel");
+    expect(parallelCalls).toBe(1);
+    expect(ws.cycleCalls).toBe(2); // firecrawl attempt + parallel attempt
+  });
+
+  it("falls through a null rung (no relevant results) without tripping a breaker", async () => {
+    const ws = new DelphiWebSearch({
+      apiKey: "k",
+      runFirecrawlSearch: async () => null, // answered, but nothing relevant
+      runParallelSearch: async () => ({
+        text: "parallel brief", sources: [], cached: false, budgetExhausted: false, source: "parallel",
+      }),
+    });
+    const briefing = await ws.briefing("Q");
+    expect(briefing?.source).toBe("parallel");
+    expect(providerCircuitOpen("firecrawl")).toBe(false); // null ≠ unhealthy
   });
 
   it("serves cached briefings while the breaker is open (cache costs nothing)", async () => {
-    tripProviderCircuit("vercel-gateway");
     let calls = 0;
     const ws = new DelphiWebSearch({
-      apiKey: "k",
       cacheTtlMs: 60_000,
-      runSearch: async () => {
+      runFirecrawlSearch: async () => {
         calls++;
-        return { text: "cached brief", sources: [], cached: false, budgetExhausted: false };
+        return { text: "cached brief", sources: [], cached: false, budgetExhausted: false, source: "firecrawl" };
       },
     });
     // Prime the cache BEFORE the breaker opens.
-    const breakerMap = (globalThis as Record<string, unknown>)["__llmProviderBreakerOpenUntil"] as Record<string, number>;
-    delete breakerMap["vercel-gateway"];
     await ws.briefing("Q");
     expect(calls).toBe(1);
 
-    tripProviderCircuit("vercel-gateway");
+    tripProviderCircuit("firecrawl");
     const hit = await ws.briefing("Q");
     expect(hit?.text).toBe("cached brief");
     expect(hit?.cached).toBe(true);
     expect(calls).toBe(1); // cache hit — no network call while the breaker is open
   });
 
-  it("skips fresh searches while the breaker is open (miss → null, no budget spent)", async () => {
+  it("skips fresh searches when every rung's breaker is open (miss → null, no budget spent)", async () => {
+    tripProviderCircuit("firecrawl");
+    tripProviderCircuit("parallel");
     tripProviderCircuit("vercel-gateway");
     let calls = 0;
     const ws = new DelphiWebSearch({
       apiKey: "k",
-      runSearch: async () => {
-        calls++;
-        return { text: "brief", sources: [], cached: false, budgetExhausted: false };
-      },
+      runFirecrawlSearch: async () => { calls++; return { text: "x", sources: [], cached: false, budgetExhausted: false, source: "firecrawl" }; },
+      runParallelSearch: async () => { calls++; return { text: "y", sources: [], cached: false, budgetExhausted: false, source: "parallel" }; },
+      runGatewaySearch: async () => { calls++; return { text: "z", sources: [], cached: false, budgetExhausted: false, source: "exa" }; },
     });
     expect(await ws.briefing("never-cached")).toBeNull();
     expect(calls).toBe(0);
     expect(ws.cycleCalls).toBe(0);
+  });
+
+  it("the legacy runSearch injection replaces the whole ladder (single rung)", async () => {
+    // Older tests/configs inject one runner — it must stay first-class.
+    let calls = 0;
+    const ws = new DelphiWebSearch({
+      runSearch: async () => {
+        calls++;
+        return { text: "legacy brief", sources: [], cached: false, budgetExhausted: false };
+      },
+    });
+    const briefing = await ws.briefing("Q");
+    expect(briefing?.text).toBe("legacy brief");
+    expect(calls).toBe(1);
+  });
+});
+
+describe("web-search composition helpers (pure)", () => {
+  it("firecrawlResultsToBriefing merges web + news with cited URLs", () => {
+    const out = firecrawlResultsToBriefing(
+      [
+        { url: "https://a.test/1", title: "A", description: "Dolphin is very strong per JMA." },
+        { url: "https://a.test/2", title: "B", description: "" }, // empty passage dropped
+        { url: "https://a.test/3", title: "C", description: "Warnings issued for Kyushu." },
+      ],
+      [{ url: "https://news.test/1", title: "N", snippet: "Typhoon approaching." }],
+    );
+    expect(out?.text).toContain("Dolphin is very strong per JMA.");
+    expect(out?.text).toContain("(https://a.test/1)");
+    expect(out?.text).toContain("[news] Typhoon approaching.");
+    expect(out?.text).not.toContain("a.test/2");
+    expect(out?.sources).toEqual(["https://a.test/1", "https://a.test/3", "https://news.test/1"]);
+  });
+
+  it("firecrawlResultsToBriefing returns null when nothing has a passage", () => {
+    expect(firecrawlResultsToBriefing([{ url: "u", description: "" }], [])).toBeNull();
+    expect(firecrawlResultsToBriefing([], [])).toBeNull();
+  });
+
+  it("parallelResultsToBriefing joins excerpts and cites URLs", () => {
+    const out = parallelResultsToBriefing([
+      { url: "https://p.test/1", title: "P", excerpts: ["Excerpt one.", "Excerpt two."] },
+      { url: "https://p.test/2", title: "Q", excerpts: [] }, // no excerpts dropped
+    ]);
+    expect(out?.text).toContain("Excerpt one. Excerpt two.");
+    expect(out?.text).toContain("(https://p.test/1)");
+    expect(out?.sources).toEqual(["https://p.test/1"]);
+  });
+
+  it("parseMcpTextResult handles plain JSON and SSE-framed bodies", () => {
+    const json = JSON.stringify({ result: { content: [{ type: "text", text: "{\"results\":[]}" }] } });
+    expect(parseMcpTextResult(json)).toBe("{\"results\":[]}");
+    const sse = `event: message\ndata: ${json}\n\n`;
+    expect(parseMcpTextResult(sse)).toBe("{\"results\":[]}");
+  });
+
+  it("parseMcpTextResult surfaces MCP errors and tolerates junk", () => {
+    expect(() =>
+      parseMcpTextResult(JSON.stringify({ error: { message: "rate limited" } })),
+    ).toThrow(/rate limited/);
+    expect(parseMcpTextResult("")).toBeNull();
+    expect(parseMcpTextResult("<html>not json</html>")).toBeNull();
+  });
+
+  it("isQuotaExhaustionError matches credit/quota language, not plain faults", () => {
+    expect(isQuotaExhaustionError(new Error("A positive credit balance is required"))).toBe(true);
+    expect(isQuotaExhaustionError(new Error("insufficient credits for this request"))).toBe(true);
+    expect(isQuotaExhaustionError(new Error("Firecrawl search error: 402"))).toBe(true);
+    expect(isQuotaExhaustionError(new Error("Firecrawl search error: 429"))).toBe(false);
+    expect(isQuotaExhaustionError(new Error("The operation was aborted due to timeout"))).toBe(false);
   });
 });
 
@@ -709,11 +833,12 @@ describe("estimateProbability — ensemble + provenance (mocked ladder)", () => 
     const result = await estimateProbability(
       {
         ...ensembleInput,
-        webBriefing: { text: "brief", sources: [], cached: false, budgetExhausted: false },
+        webBriefing: { text: "brief", sources: [], cached: false, budgetExhausted: false, source: "firecrawl" },
       },
       { ensembleSamples: 1, volBaselineWeight: 0 },
     );
     expect(result!.provenance!.webEvidence).toBe(true);
+    expect(result!.provenance!.webSource).toBe("firecrawl");
     expect(result!.provenance!.volAnchor).toBeUndefined();
     // Single sample → no ensemble suffix, samples field omitted.
     expect(result!.provenance!.samples).toBeUndefined();

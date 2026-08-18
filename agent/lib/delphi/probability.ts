@@ -30,7 +30,7 @@ import { SHARE_TOKEN_DECIMAL_SCALE } from "./executor.js";
 
 import { AGENT_CONFIG } from "../config.js";
 import { chatCompletion, parseLenientJson } from "../llm-providers.js";
-import type { WebSearchBriefing } from "./web-search.js";
+import type { WebSearchBriefing, BriefingSource } from "./web-search.js";
 
 // =============================================================================
 // Types
@@ -60,8 +60,10 @@ export interface ForecastProvenance {
   model: string;
   /** Ensemble samples combined (undefined when not ensembled). */
   samples?: number;
-  /** True when an Exa web briefing was injected into the prompt. */
+  /** True when a web briefing was injected into the prompt. */
   webEvidence?: boolean;
+  /** Which search rung produced the briefing (firecrawl/parallel/exa). */
+  webSource?: BriefingSource;
   /** The blended crypto vol-baseline reference (undefined when none). */
   volAnchor?: number;
 }
@@ -531,6 +533,7 @@ export async function estimateProbability(
           provider: raw.provider,
           model: raw.model,
           webEvidence: Boolean(input.webBriefing?.text),
+          webSource: input.webBriefing?.source,
           volAnchor: weight > 0 ? input.volBaselineProbability : undefined,
         },
       };
@@ -584,6 +587,7 @@ export async function estimateProbability(
       model: combined.model,
       samples: estimates.length > 1 ? estimates.length : undefined,
       webEvidence: Boolean(input.webBriefing?.text),
+      webSource: input.webBriefing?.source,
       volAnchor: weight > 0 ? input.volBaselineProbability : undefined,
     },
   };
