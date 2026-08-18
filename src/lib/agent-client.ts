@@ -245,6 +245,14 @@ export interface DelphiOpenPosition {
   webEvidence?: boolean;
   /** Which search rung supplied the briefing (firecrawl/parallel/exa). */
   webSource?: string;
+  /** A second search rung deterministically corroborated the briefing. */
+  corroborated?: boolean;
+  /** The resolution-authority verifier that answered this market. */
+  factAuthority?: string;
+  /** The adversarial verifier reviewed this entry pre-trade. */
+  verified?: boolean;
+  /** Which model ran the adversarial verification. */
+  verifierModel?: string;
   volAnchor?: number;
 }
 
@@ -286,6 +294,9 @@ export interface DelphiStatus {
     briefingsFetched: number;
     volBaselines: number;
     estimatesCached: number;
+    factChecks: number;
+    verificationsRun: number;
+    verificationBlocks: number;
     lastAnchoredThesisHash: string | null;
   } | null;
   lastAnchor: {

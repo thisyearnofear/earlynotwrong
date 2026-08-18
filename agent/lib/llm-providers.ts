@@ -73,6 +73,15 @@ export interface LlmChatRequest {
    * for strict-JSON outputs; callers wanting deliberation can raise it.
    */
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high";
+  /**
+   * Override the cascade order for THIS call. Default: PROVIDER_ORDER
+   * (free-first). Callers that want a different family first — e.g. the
+   * Delphi adversarial verifier, which should cross-examine the Qwen
+   * forecaster with a non-Qwen model when one is keyed — pass their own
+   * order. Only providers that are ALSO present in `models` and otherwise
+   * eligible run.
+   */
+  providerOrder?: LlmProviderName[];
 }
 
 export interface LlmChatResult {
@@ -356,11 +365,17 @@ export function firstAvailableLlmProvider(
  * Every provider (in ladder order) eligible for this request: key set,
  * promo gate passed, and a model selection present. The cascade in
  * chatCompletion walks this list in order.
+ *
+ * `order` optionally overrides the ladder order for one call (see
+ * LlmChatRequest.providerOrder). Providers absent from `order` are still
+ * appended in default order so a partial override can't starve the
+ * cascade; if nothing eligible results, the override is ignored.
  */
 export function availableLlmProviders(
   models?: Partial<Record<LlmProviderName, LlmModelSelection>>,
+  order?: LlmProviderName[],
 ): LlmProviderName[] {
-  const out: LlmProviderName[] = [];
+  const eligible = new Set<LlmProviderName>();
   for (const name of PROVIDER_ORDER) {
     if (!process.env[PROVIDER_KEY_ENV[name]]) continue;
     // Free-promo guard: the gateway only leads the ladder while its promo is
@@ -370,7 +385,15 @@ export function availableLlmProviders(
     // 402/429), skip it entirely instead of paying failing round-trips.
     if (providerCircuitOpen(name)) continue;
     if (models && !models[name]) continue;
-    out.push(name);
+    eligible.add(name);
+  }
+  if (!order || order.length === 0) return [...eligible];
+  const out: LlmProviderName[] = [];
+  for (const name of order) {
+    if (eligible.has(name) && !out.includes(name)) out.push(name);
+  }
+  for (const name of PROVIDER_ORDER) {
+    if (eligible.has(name) && !out.includes(name)) out.push(name);
   }
   return out;
 }
@@ -615,7 +638,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
  * fails, so callers can log + apply their own fallback policy.
  */
 export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult | null> {
-  const providers = availableLlmProviders(req.models);
+  const providers = availableLlmProviders(req.models, req.providerOrder);
   if (providers.length === 0) return null;
 
   let lastError: unknown = null;

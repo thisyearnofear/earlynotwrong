@@ -648,12 +648,18 @@ describe("DelphiWebSearch — budget + cache", () => {
         parallelCalls++;
         return { text: "parallel brief", sources: ["https://p.test/1"], cached: false, budgetExhausted: false, source: "parallel" };
       },
+      // Tier 3 corroboration queries the next rung (gateway) after the
+      // primary answers — stub it so the test never touches the network.
+      runGatewaySearch: async () => null,
     });
     const briefing = await ws.briefing("Q");
     expect(briefing?.text).toBe("parallel brief");
     expect(briefing?.source).toBe("parallel");
     expect(parallelCalls).toBe(1);
-    expect(ws.cycleCalls).toBe(2); // firecrawl attempt + parallel attempt
+    expect(ws.cycleCalls).toBe(3); // firecrawl attempt + parallel + cross-check
+    // The cross-check rung answered nothing → corroborated stays undefined
+    // (unattempted), never false.
+    expect(briefing?.corroborated).toBeUndefined();
   });
 
   it("falls through a null rung (no relevant results) without tripping a breaker", async () => {
@@ -663,6 +669,8 @@ describe("DelphiWebSearch — budget + cache", () => {
       runParallelSearch: async () => ({
         text: "parallel brief", sources: [], cached: false, budgetExhausted: false, source: "parallel",
       }),
+      // Tier 3 corroboration reaches the gateway rung next — stub it.
+      runGatewaySearch: async () => null,
     });
     const briefing = await ws.briefing("Q");
     expect(briefing?.source).toBe("parallel");
@@ -677,6 +685,10 @@ describe("DelphiWebSearch — budget + cache", () => {
         calls++;
         return { text: "cached brief", sources: [], cached: false, budgetExhausted: false, source: "firecrawl" };
       },
+      // Tier 3 corroboration reaches the parallel rung after the primary —
+      // stub it so the test never touches the network.
+      runParallelSearch: async () => null,
+      runGatewaySearch: async () => null,
     });
     // Prime the cache BEFORE the breaker opens.
     await ws.briefing("Q");

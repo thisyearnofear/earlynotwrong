@@ -64,6 +64,16 @@ export interface ForecastProvenance {
   webEvidence?: boolean;
   /** Which search rung produced the briefing (firecrawl/parallel/exa). */
   webSource?: BriefingSource;
+  /** True when a second, independent search rung corroborated the briefing
+   *  (deterministic URL/token overlap — Tier 3, no LLM). */
+  corroborated?: boolean;
+  /** Resolution-authority verifier that answered (Tier 1), when one matched. */
+  factAuthority?: string;
+  /** True when the pre-entry adversarial verifier reviewed this forecast
+   *  (Tier 4) and did not discount it away. */
+  verified?: boolean;
+  /** The model that performed the Tier-4 verification, when it ran. */
+  verifierModel?: string;
   /** The blended crypto vol-baseline reference (undefined when none). */
   volAnchor?: number;
 }
@@ -110,6 +120,16 @@ export interface MarketEstimateInput {
    * final estimate mechanically after sampling.
    */
   volBaselineProbability?: number;
+  /**
+   * Facts from a deterministic resolution authority (fact-check.ts, Tier 1)
+   * when the authority matched the question but its data does NOT yet cover
+   * the resolution window. Injected into the prompt with a stronger label
+   * than web evidence — it comes from the market's source of record, not a
+   * search engine. Undefined when no authority matched.
+   */
+  authorityFacts?: string;
+  /** Name of the authority that produced `authorityFacts` (provenance). */
+  factAuthority?: string;
 }
 
 /** A caller-provided estimator (tests, quantitative models). */
@@ -198,6 +218,15 @@ function buildForecasterPrompt(input: MarketEstimateInput): string {
   // evidence, not instruction — the model must still reconcile it with the
   // market-implied odds. Vol baseline is deliberately NOT shown here: it
   // blends mechanically after sampling so the LLM samples stay independent.
+  //
+  // Authority facts (Tier 1) come first and carry a stronger label: they're
+  // fetched from the market's resolution source of record, not a search
+  // engine. When present they should dominate the model's reasoning.
+  if (input.authorityFacts) {
+    lines.push("");
+    lines.push("AUTHORITY DATA (fetched directly from the market's source of record — highest weight):");
+    lines.push(input.authorityFacts);
+  }
   if (input.webBriefing?.text) {
     lines.push("");
     lines.push("Recent evidence (web search — cite only when relevant):");
@@ -257,6 +286,57 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Build a deterministic estimate straight from a Tier-1 resolution authority
+ * (fact-check.ts) that returned a direct probability for outcome 0 — e.g.
+ * the Wikimedia pageview count for a COMPLETED day vs the market's threshold.
+ *
+ * Zero inference cost and no opinion: the authority's number IS the answer.
+ * The estimate carries `provider: "injected"` semantics (no LLM ran) plus a
+ * `factAuthority` provenance so the card/Telegram can show why the number is
+ * near-certain. Binary markets only (multi-outcome authorities aren't in the
+ * registry yet). Exported for tests.
+ */
+export function factAuthorityEstimate(
+  input: MarketEstimateInput,
+  authorityProbability: number,
+  authority: string,
+  facts: string,
+  now: number = Date.now(),
+): MarketEstimate | null {
+  if (input.outcomes.length !== 2) return null;
+  const p0 = Math.min(0.99, Math.max(0.01, authorityProbability));
+  const p1 = Math.min(0.99, Math.max(0.01, 1 - p0));
+  return {
+    marketAddress: input.marketAddress,
+    question: input.question,
+    category: input.category,
+    outcomes: [
+      {
+        outcomeIdx: 0,
+        probability: p0,
+        reasoning: `resolution authority (${authority}): ${facts}`,
+      },
+      {
+        outcomeIdx: 1,
+        probability: p1,
+        reasoning: `complement of the authority's outcome-0 probability`,
+      },
+    ],
+    provider: "injected",
+    model: `authority:${authority}`,
+    estimatedAt: now,
+    provenance: {
+      provider: "injected",
+      model: `authority:${authority}`,
+      webEvidence: Boolean(input.webBriefing?.text),
+      webSource: input.webBriefing?.source,
+      corroborated: input.webBriefing?.corroborated,
+      factAuthority: authority,
+    },
+  };
 }
 
 /**
@@ -534,6 +614,8 @@ export async function estimateProbability(
           model: raw.model,
           webEvidence: Boolean(input.webBriefing?.text),
           webSource: input.webBriefing?.source,
+          corroborated: input.webBriefing?.corroborated,
+          factAuthority: input.factAuthority,
           volAnchor: weight > 0 ? input.volBaselineProbability : undefined,
         },
       };
@@ -588,6 +670,8 @@ export async function estimateProbability(
       samples: estimates.length > 1 ? estimates.length : undefined,
       webEvidence: Boolean(input.webBriefing?.text),
       webSource: input.webBriefing?.source,
+      corroborated: input.webBriefing?.corroborated,
+      factAuthority: input.factAuthority,
       volAnchor: weight > 0 ? input.volBaselineProbability : undefined,
     },
   };

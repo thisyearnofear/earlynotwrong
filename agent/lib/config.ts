@@ -339,6 +339,22 @@ export const AGENT_CONFIG = {
     stopReentryCooldownHours: 12,
     // Exa web-search briefings per runner cycle (free-tier budget guard).
     webSearchMaxCallsPerCycle: 10,
+    // Tier 3 — two-source corroboration: after the primary search rung
+    // answers, query the next eligible rung for the same question and mark
+    // the briefing corroborated on deterministic overlap (one extra network
+    // call from the shared budget above; pure string arithmetic, no LLM).
+    webCorroborationEnabled: true,
+    // Tier 4 — pre-entry adversarial verification. Fires ONLY when a buy
+    // signal has already cleared the edge gate (rare), so the cost is one
+    // extra LLM call per candidate entry, never per market per cycle.
+    verificationEnabled: true,
+    // How much weight the verifier's probability gets when it disagrees
+    // with the estimate (see verification.ts applyVerificationToProbability):
+    // adjusted = (1−w)·estimate + w·verifier, then the edge gate re-runs.
+    verificationWeight: 0.5,
+    // Minimum disagreement (|est − verifier|) before the discount applies.
+    // Below this the verifier merely confirms — no adjustment.
+    verificationDisagreementThreshold: 0.15,
     // Forecast cache TTL: reuse an LLM ensemble estimate across hourly
     // cycles while the market's implied probability hasn't moved (keyed on
     // 2¢-bucketed prices — see forecastCacheKey in runner.ts). Unchanged

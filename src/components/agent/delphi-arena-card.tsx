@@ -180,6 +180,15 @@ export function DelphiArenaCard() {
               <span title="Ensemble estimates reused from the forecast cache — zero inference cost.">
                 cached <span className="text-foreground-muted tabular-nums">{status.snapshot?.estimatesCached ?? 0}</span>
               </span>
+              <span title="Markets answered by a deterministic resolution authority (no LLM).">
+                fact checks <span className="text-foreground-muted tabular-nums">{status.snapshot?.factChecks ?? 0}</span>
+              </span>
+              <span title="Candidate entries the adversarial cross-family verifier reviewed.">
+                verified <span className="text-foreground-muted tabular-nums">{status.snapshot?.verificationsRun ?? 0}</span>
+                {(status.snapshot?.verificationBlocks ?? 0) > 0 && (
+                  <span className="ml-1 text-impatience">({status.snapshot?.verificationBlocks} blocked)</span>
+                )}
+              </span>
               <span>
                 exits <span className="text-foreground-muted tabular-nums">{(status.snapshot?.exitsConvergence ?? 0) + (status.snapshot?.exitsStopped ?? 0)}</span>
                 <span className="ml-1">
@@ -215,12 +224,36 @@ export function DelphiArenaCard() {
                       </span>
                       {/* Provenance tags — the evidence behind this forecast. */}
                       <span className="flex items-center gap-1 shrink-0">
+                        {p.factAuthority && (
+                          <span
+                            className="px-1 py-px rounded bg-[#22c55e]/10 text-[#22c55e] text-[8px]"
+                            title={`Answered by a deterministic resolution authority (${p.factAuthority}) — no LLM guess`}
+                          >
+                            auth
+                          </span>
+                        )}
                         {p.webEvidence && (
                           <span
                             className="px-1 py-px rounded bg-[#f59e0b]/10 text-[#f59e0b] text-[8px]"
                             title={`Web briefing (${p.webSource ?? "exa"}) was injected into the forecaster's context`}
                           >
                             web{p.webSource ? `:${p.webSource}` : ""}
+                          </span>
+                        )}
+                        {p.corroborated && (
+                          <span
+                            className="px-1 py-px rounded bg-[#3b82f6]/10 text-[#3b82f6] text-[8px]"
+                            title="A second, independent search rung corroborated the briefing (shared source/content)"
+                          >
+                            2-src
+                          </span>
+                        )}
+                        {p.verified && (
+                          <span
+                            className="px-1 py-px rounded bg-[#a855f7]/10 text-[#a855f7] text-[8px]"
+                            title={`Adversarial cross-family verifier reviewed this entry${p.verifierModel ? ` (${p.verifierModel})` : ""}`}
+                          >
+                            verified
                           </span>
                         )}
                         {p.volAnchor !== undefined && (
@@ -244,9 +277,12 @@ export function DelphiArenaCard() {
                   ))}
                 </div>
                 <p className="text-[9px] font-mono text-foreground-dim mt-1.5 leading-relaxed">
-                  <span className="text-[#f59e0b]">web</span> = web briefing in context (firecrawl/parallel/exa rung) ·{" "}
-                  <span className="text-patience">vol</span> = realized-vol anchor blended ·{" "}
-                  <span>×N</span> = median of N model samples
+                  <span className="text-[#22c55e]">auth</span> = resolution authority (deterministic) ·{" "}
+                  <span className="text-[#f59e0b]">web</span> = web briefing in context ·{" "}
+                  <span className="text-[#3b82f6]">2-src</span> = corroborated by a second source ·{" "}
+                  <span className="text-[#a855f7]">verified</span> = adversarial check ·{" "}
+                  <span className="text-patience">vol</span> = realized-vol anchor ·{" "}
+                  <span>×N</span> = median of N samples
                 </p>
               </div>
             )}

@@ -128,6 +128,7 @@ Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode:
 | 4 | Position lifecycle, redemption scanner, bankroll-aware sizing | **landed** — `agent/lib/delphi/lifecycle.ts` (settled→redeem / expired+failed→liquidate sweep, per-market failure isolation), executor extended with `listPositions`/`liquidate`/`getErc20Balance`/`getOpenPositions`, `sizeSharesBudget` + `perTradeBudget` (Kelly-lite: `maxPositionFraction`/`maxMarketFraction` caps), per-market exposure ledger (`exposure.json`) |
 | 4b | On-chain anchoring + calibration ledger + dashboard surfacing | **landed** — `delphi/anchoring.ts` publishes a quantized per-cycle thesis via the shared Mantle + Casper adapters (thesis-hash dedup persisted across restarts); resolved redemptions feed `forecasts.jsonl`; `packages/conviction-core/src/calibration.ts` computes Brier / log-loss / hit-rate / reliability buckets; `GET /delphi/status` + the dashboard's Prediction Arena card (Proof view) surface it live |
 | 4c | Alpha stack: context injection, vol pricing, category gates, ensemble, sell-into-convergence | **landed** — free-first inference (Vercel AI Gateway, GLM 5.2) at the top of the shared ladder; Exa web briefings (`web-search.ts`, 10/cycle budget + 6h cache); driftless log-normal vol baseline (`vol-baseline.ts`) blended into crypto threshold estimates at w=0.35; category-aware edge gates (crypto 0.08 → culture 0.14); 3-sample median ensemble; executor `quoteSell`/`sellShares` + the runner's convergence-exit pass (take profit at forecast−2¢, stop at entry−10¢). See below |
+| 4d | Evidence-validation stack: fact authorities, plausibility filter, two-source corroboration, adversarial pre-entry verification | **landed** — `fact-check.ts` (verifier registry + Wikimedia pageviews authority: completed day → direct probability, open window → evidence-only), `evidence-filter.ts` (deterministic stale-year stripping), `web-search.ts` Tier 3 cross-check (`corroborationOverlap` — shared domain / ≥3 significant tokens, one extra rung call from the shared budget), `verification.ts` (cross-family-first red-team verifier, discount policy, re-gated edge), `llm-providers.ts` `providerOrder` override. Full provenance (`factAuthority`/`corroborated`/`verified`) through positions, Telegram, and the arena card. See below |
 | 5 | Post-mortem: run the calibration report over `forecasts.jsonl`; decide graduate-or-archive | after 08-24 |
 | 6 | If graduate: `DELPHI_NETWORK=mainnet`, MCP tool `getPredictionSignals`, CAP serviceId `predictions-live` | later |
 
@@ -179,7 +180,65 @@ Anthropic) stays wired as fallback when the promo ends.
 
 Config knobs (`AGENT_CONFIG.delphi`): `ensembleSamples`, `volBaselineWeight`,
 `categoryEdgeGates` + `defaultCategoryGate`, `convergenceTolerance`,
-`thesisStopEdge`, `webSearchMaxCallsPerCycle`, `forecastCacheTtlMinutes`.
+`thesisStopEdge`, `webSearchMaxCallsPerCycle`, `webCorroborationEnabled`,
+`verificationEnabled`, `verificationWeight`,
+`verificationDisagreementThreshold`, `forecastCacheTtlMinutes`.
+
+### Evidence-validation stack (4 tiers, shipped 2026-08-18)
+
+The ensemble's failure mode is **correlated overconfidence**: three samples of
+one model family fed one briefing agree with each other and with the
+briefing's blind spots (Typhoon YES estimated 0.95, settled NO). Four tiers
+intercept that before money moves, cheapest-first:
+
+1. **Deterministic fact verifiers** (`fact-check.ts`) — registry of
+   resolution authorities. When a market question matches one
+   (`wikimedia-pageviews` ships by default; new authorities register without
+   runner changes), the exact number the market resolves against is fetched
+   keyless (~0.3s). Two regimes: completed resolution day → direct
+   probability (clamped [0.01, 0.99] — a data error must never become
+   certainty) and the estimate is built deterministically, **no LLM runs at
+   all** (`factAuthorityEstimate`); open window → facts only, injected with a
+   "source of record" label that outranks web evidence in the prompt.
+   Ground truth beats opinion: authority-direct estimates are exempt from
+   Tier 4 (an LLM cannot veto the market's own resolution source).
+2. **Deterministic plausibility filter** (`evidence-filter.ts`) — stale-year
+   passage stripping before prompt injection (the WTI-1986 incident: a 1986
+   price table was served as fresh evidence for a 2026 crude market).
+   Passages whose only 4-digit years are all ≥2 years from the question's
+   anchor year are dropped; dateless prose passes through; an emptied
+   briefing injects nothing. Pure string arithmetic, zero inference.
+3. **Two-source corroboration** (`web-search.ts`, Tier 3) — after the
+   primary search rung answers, the NEXT eligible rung is asked the same
+   question (one extra network call from the shared budget) and the two
+   answers are compared deterministically: shared source domain OR ≥3 shared
+   significant tokens (numbers/5+-letter words minus stopwords). The result
+   is a `corroborated` boolean on the briefing — never an LLM judgment, never
+   a gate on the primary. Corroboration failure/absence leaves the flag
+   undefined (unattempted ≠ uncorroborated).
+4. **Adversarial pre-entry verification** (`verification.ts`) — fires only
+   after a signal cleared edge + one-thesis + stop-cooldown gates, so the
+   cost is one LLM call per candidate ENTRY, not per market. A red-team
+   prompt attacks the thesis (base rates, timing, evidence quality, market
+   wisdom) and returns its own calibrated probability + verdict. The
+   verifier runs **cross-family-first**: `providerOrder` on the shared
+   ladder is rearranged so a Qwen estimate is verified by GLM/GPT/Claude and
+   vice versa (same family = same blind spots); `DELPHI_VERIFIER_PROVIDER`
+   dedicates one keyed provider to this role. Discount policy
+   (`applyVerificationToProbability`, pure): only flagged
+   over/under-confidence beyond `verificationDisagreementThreshold` (0.15)
+   moves the estimate, by `verificationWeight` (0.5) toward the verifier;
+   the edge gate then re-runs and a collapsed edge blocks the entry
+   (ledgared as `verification-blocked` with the verifier's attack). A
+   verification that can't run never blocks — quality gate, not availability
+   gate.
+
+Provenance for all four tiers surfaces end-to-end: `ForecastProvenance`
+(`factAuthority`, `corroborated`, `verified`, `verifierModel`) →
+`positions.json` → Telegram entry tags (`auth:…`, `2-src`, `verified`) →
+arena-card badges + snapshot counters (`factChecks`, `verificationsRun`,
+`verificationBlocks`). The traded forecast is always the POST-verification
+probability — the calibration ledger scores the view we actually paid for.
 
 ### Inference cost & efficiency (audited 2026-08-14, pre-trading)
 

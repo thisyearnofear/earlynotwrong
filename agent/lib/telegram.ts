@@ -492,7 +492,14 @@ export async function sendDelphiCycleSummary(params: {
   redeemsSucceeded: number;
   exits?: { convergence: number; stopped: number };
   /** Alpha-stack activity this cycle (provenance of the forecasts). */
-  alpha?: { briefings: number; volBaselines: number; cached?: number };
+  alpha?: {
+    briefings: number;
+    volBaselines: number;
+    cached?: number;
+    factChecks?: number;
+    verifications?: number;
+    verificationBlocks?: number;
+  };
   entries?: Array<{
     question: string;
     outcomeIdx: number;
@@ -505,6 +512,12 @@ export async function sendDelphiCycleSummary(params: {
     webEvidence?: boolean;
     /** Which search rung supplied the briefing (firecrawl/parallel/exa). */
     webSource?: string;
+    /** Tier 3 — second rung corroborated the briefing. */
+    corroborated?: boolean;
+    /** Tier 1 — resolution authority answered this market. */
+    factAuthority?: string;
+    /** Tier 4 — adversarial verifier reviewed the entry. */
+    verified?: boolean;
     volAnchor?: number;
   }>;
 }): Promise<void> {
@@ -514,12 +527,23 @@ export async function sendDelphiCycleSummary(params: {
     params.exits && params.exits.convergence + params.exits.stopped > 0
       ? ` · Exits: <code>${params.exits.convergence + params.exits.stopped}</code>`
       : "";
-  const alphaPart =
-    params.alpha && params.alpha.briefings + params.alpha.volBaselines > 0
-      ? `\n   Evidence: <code>${params.alpha.briefings}</code> web briefings · <code>${params.alpha.volBaselines}</code> vol anchors${
-          params.alpha.cached ? ` · <code>${params.alpha.cached}</code> cached` : ""
-        }`
-      : "";
+  const alphaBits: string[] = [];
+  if (params.alpha) {
+    const a = params.alpha;
+    if (a.briefings + a.volBaselines > 0) {
+      alphaBits.push(
+        `<code>${a.briefings}</code> web briefings · <code>${a.volBaselines}</code> vol anchors`,
+      );
+    }
+    if (a.cached) alphaBits.push(`<code>${a.cached}</code> cached`);
+    if (a.factChecks) alphaBits.push(`<code>${a.factChecks}</code> fact checks`);
+    if (a.verifications) {
+      alphaBits.push(
+        `<code>${a.verifications}</code> verified${a.verificationBlocks ? ` (<code>${a.verificationBlocks}</code> blocked)` : ""}`,
+      );
+    }
+  }
+  const alphaPart = alphaBits.length > 0 ? `\n   Evidence: ${alphaBits.join(" · ")}` : "";
   const lines: string[] = [
     `🔮 <b>Delphi cycle #${params.cycle}</b>`,
     `   Markets: <code>${params.marketsEvaluated}</code> · Estimates: <code>${params.estimatesProduced}</code> · Entries: <code>${params.tradesPlaced}</code> · Redeems: <code>${params.redeemsSucceeded}</code>${exitPart}${alphaPart}`,
@@ -535,6 +559,9 @@ export async function sendDelphiCycleSummary(params: {
         // Compact provenance tags — the method behind the number.
         const tags: string[] = [];
         if (e.webEvidence) tags.push(e.webSource ? `web:${e.webSource}` : "web");
+        if (e.corroborated) tags.push("2-src");
+        if (e.factAuthority) tags.push(`auth:${e.factAuthority}`);
+        if (e.verified) tags.push("verified");
         if (e.volAnchor !== undefined) tags.push("vol");
         if (e.model) tags.push(shortModel(e.model));
         const tagStr = tags.length > 0 ? ` [${tags.join("·")}]` : "";

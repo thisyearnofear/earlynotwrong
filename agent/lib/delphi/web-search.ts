@@ -64,6 +64,18 @@ export interface WebSearchBriefing {
   budgetExhausted: boolean;
   /** Which rung produced this briefing (undefined on legacy cached records). */
   source?: BriefingSource;
+  /**
+   * Tier 3 — two-source corroboration. True when a SECOND, independent rung
+   * was queried for the same question and deterministically agreed (shared
+   * source domain OR shared significant content tokens). No LLM involved —
+   * pure overlap arithmetic. Undefined when corroboration wasn't attempted
+   * (budget exhausted, only one rung eligible, corroboration disabled).
+   * The forecaster treats an uncorroborated briefing as ordinary evidence;
+   * corroborated evidence gets labeled stronger in the prompt.
+   */
+  corroborated?: boolean;
+  /** Which rung supplied the cross-check (when corroborated was attempted). */
+  corroboratedBy?: BriefingSource;
 }
 
 export interface DelphiWebSearchConfig {
@@ -85,6 +97,13 @@ export interface DelphiWebSearchConfig {
   numResults?: number;
   /** Timeout per search call (ms). Default: 60_000. */
   timeoutMs?: number;
+  /**
+   * Tier 3 — when the primary rung answers, query the NEXT eligible rung for
+   * the same question and mark the briefing `corroborated` on deterministic
+   * overlap (costs one extra network call from the shared budget). Default:
+   * true. Disable in tests / budget-poor environments.
+   */
+  corroborate?: boolean;
   /** Injectable Firecrawl runner (tests). */
   runFirecrawlSearch?: SearchRunner;
   /** Injectable Parallel runner (tests). */
@@ -142,6 +161,103 @@ export function extractSourceUrls(text: string): string[] {
 const MAX_BRIEFING_CHARS = 2_500;
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+// =============================================================================
+// Tier 3 — deterministic two-source corroboration (no LLM)
+// =============================================================================
+//
+// A single search rung can serve a plausible-looking fabrication. Before a
+// briefing gets the "corroborated" label, a SECOND independent rung is asked
+// the same question and the two answers are compared with pure string/URL
+// arithmetic:
+//   - Shared source domain (e.g. both cite reuters.com) — different indexes
+//     converging on the same primary source.
+//   - Shared significant content tokens (numbers + 5+-letter words),
+//     Jaccard-ish overlap above a small threshold.
+// Zero inference cost; the result is a boolean the forecaster can weigh.
+
+/** The registrable-ish domain of a URL: strip protocol/www/path, keep the
+ *  last two labels. Returns null on anything that doesn't parse. */
+export function urlDomain(url: string): string | null {
+  try {
+    const host = url.toLowerCase().replace(/^https?:\/\//, "").split(/[/?#]/)[0];
+    const labels = host.replace(/^www\./, "").split(".").filter(Boolean);
+    if (labels.length < 2) return null;
+    return labels.slice(-2).join(".");
+  } catch {
+    return null;
+  }
+}
+
+/** Common English stopwords too generic to corroborate anything. */
+const STOPWORDS = new Set([
+  "about", "after", "again", "their", "there", "these", "those", "which",
+  "while", "would", "could", "should", "before", "being", "between",
+  "through", "during", "against", "because", "million", "billion", "percent",
+  "reported", "according", "including", "since", "still", "where", "other",
+  "market", "markets", "price", "prices", "latest", "update", "updated",
+  "following", "continued", "announced", "announces", "expected", "expects",
+  "source", "sources", "article", "articles", "prediction", "predictions",
+  "question", "resolution", "resolves", "forecast", "forecasts",
+]);
+
+/**
+ * Significant content tokens for overlap comparison: numbers of 3+ digits
+ * (thresholds, dates, counts) and lower-cased words of 5+ letters minus
+ * stopwords. Deliberately narrow — a few shared significant tokens between
+ * two independent retrieval stacks is real agreement; shared "the/and/of"
+ * is noise.
+ */
+export function significantTokens(text: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const m of text.toLowerCase().match(/\b\d{3,}\b|\b[a-z]{5,}\b/g) ?? []) {
+    if (STOPWORDS.has(m)) continue;
+    tokens.add(m);
+  }
+  return tokens;
+}
+
+/** Minimum shared significant tokens for content corroboration. */
+const MIN_SHARED_TOKENS = 3;
+
+export interface CorroborationResult {
+  corroborated: boolean;
+  /** "domain" | "content" | "domain+content" — how the two agreed. */
+  basis?: string;
+}
+
+/**
+ * Deterministic overlap test between two briefings of the SAME question.
+ * Pure function — exported for tests.
+ */
+export function corroborationOverlap(
+  primary: Pick<WebSearchBriefing, "text" | "sources">,
+  cross: Pick<WebSearchBriefing, "text" | "sources">,
+): CorroborationResult {
+  // Domain agreement: both briefings cite at least one common source domain.
+  const domainsA = new Set(primary.sources.map(urlDomain).filter((d): d is string => d !== null));
+  let domainMatch = false;
+  for (const url of cross.sources) {
+    const d = urlDomain(url);
+    if (d && domainsA.has(d)) {
+      domainMatch = true;
+      break;
+    }
+  }
+  // Content agreement: ≥ MIN_SHARED_TOKENS shared significant tokens.
+  const tokensA = significantTokens(primary.text);
+  const tokensB = significantTokens(cross.text);
+  let shared = 0;
+  for (const t of tokensB) {
+    if (tokensA.has(t) && ++shared >= MIN_SHARED_TOKENS) break;
+  }
+  const contentMatch = shared >= MIN_SHARED_TOKENS;
+
+  if (domainMatch && contentMatch) return { corroborated: true, basis: "domain+content" };
+  if (domainMatch) return { corroborated: true, basis: "domain" };
+  if (contentMatch) return { corroborated: true, basis: "content" };
+  return { corroborated: false };
 }
 
 /**
@@ -430,6 +546,7 @@ export class DelphiWebSearch implements WebSearchSource {
   private readonly cacheTtlMs: number;
   private readonly numResults: number;
   private readonly timeoutMs: number;
+  private readonly corroborate: boolean;
   private readonly rungs: SearchRung[];
   private readonly cache = new Map<string, CacheEntry>();
   private callsThisCycle = 0;
@@ -443,6 +560,7 @@ export class DelphiWebSearch implements WebSearchSource {
     this.cacheTtlMs = config.cacheTtlMs ?? 6 * 60 * 60 * 1000;
     this.numResults = config.numResults ?? 5;
     this.timeoutMs = config.timeoutMs ?? 60_000;
+    this.corroborate = config.corroborate ?? true;
 
     const searchCfg = () => ({ model: this.model, numResults: this.numResults, timeoutMs: this.timeoutMs });
 
@@ -505,7 +623,8 @@ export class DelphiWebSearch implements WebSearchSource {
       return { ...hit.briefing, cached: true, budgetExhausted: false };
     }
 
-    for (const rung of this.rungs) {
+    for (let i = 0; i < this.rungs.length; i++) {
+      const rung = this.rungs[i];
       if (rung.eligible && !rung.eligible()) continue;
       if (providerCircuitOpen(rung.breaker)) continue;
       // Budget counts NETWORK CALLS, not briefing attempts: a cascade through
@@ -521,6 +640,17 @@ export class DelphiWebSearch implements WebSearchSource {
           timeoutMs: this.timeoutMs,
         });
         if (briefing) {
+          // Tier 3 — two-source corroboration (best-effort, budget-permitting):
+          // ask the next eligible rung the same question and compare the two
+          // answers with pure overlap arithmetic. Never gates the primary —
+          // corroborated=undefined means the check wasn't attempted.
+          if (this.corroborate) {
+            const cross = await this.crossCheckRung(question, i + 1, briefing);
+            if (cross) {
+              briefing.corroborated = cross.corroborated;
+              if (cross.corroborated) briefing.corroboratedBy = cross.by;
+            }
+          }
           this.cache.set(key, { briefing, fetchedAt: Date.now() });
           return briefing;
         }
@@ -531,6 +661,52 @@ export class DelphiWebSearch implements WebSearchSource {
         console.warn(
           `  [delphi-search] ${rung.source} search failed for "${question.slice(0, 60)}": ${msg}`,
         );
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Tier 3 cross-check: query the next eligible rung (from `startIdx` onward)
+   * for the SAME question and deterministically compare answers
+   * (`corroborationOverlap` — shared source domain or shared significant
+   * tokens, no LLM). Costs one network call from the shared budget.
+   *
+   * Returns null when no cross-check ran (no eligible rung, budget out,
+   * cross rung produced nothing, or it errored) — the caller leaves
+   * `corroborated` undefined in that case. A failed cross rung trips its own
+   * breaker but NEVER blocks the primary briefing.
+   */
+  private async crossCheckRung(
+    question: string,
+    startIdx: number,
+    primary: WebSearchBriefing,
+  ): Promise<{ corroborated: boolean; by: BriefingSource } | null> {
+    for (let i = startIdx; i < this.rungs.length; i++) {
+      const rung = this.rungs[i];
+      if (rung.eligible && !rung.eligible()) continue;
+      if (providerCircuitOpen(rung.breaker)) continue;
+      if (this.callsThisCycle >= this.maxCallsPerCycle) return null;
+      this.callsThisCycle++;
+      try {
+        const cross = await rung.run(question, {
+          model: this.model,
+          numResults: this.numResults,
+          timeoutMs: this.timeoutMs,
+        });
+        if (!cross) return null; // cross-check answered nothing
+        const overlap = corroborationOverlap(primary, cross);
+        console.log(
+          `  [delphi-search] corroboration (${primary.source ?? "?"} vs ${rung.source}): ` +
+            `${overlap.corroborated ? `AGREED (${overlap.basis})` : "no overlap"}`,
+        );
+        return { corroborated: overlap.corroborated, by: rung.source };
+      } catch (err) {
+        tripRungBreaker(rung.source, err, rung.breaker);
+        console.warn(
+          `  [delphi-search] corroboration via ${rung.source} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return null;
       }
     }
     return null;

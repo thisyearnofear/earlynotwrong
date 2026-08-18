@@ -51,8 +51,10 @@ import {
   estimateProbability,
   evaluateProbabilitySignal,
   evaluateConvergenceExit,
+  factAuthorityEstimate,
   perTradeBudget,
   sizeSharesBudget,
+  type ForecastProvenance,
   type MarketEstimate,
   type MarketEstimateInput,
   type ProbabilityConfig,
@@ -63,6 +65,14 @@ import {
   matchCryptoThresholdMarket,
 } from "./vol-baseline.js";
 import { DelphiWebSearch, type BriefingSource, type WebSearchBriefing, type WebSearchSource } from "./web-search.js";
+import { runFactCheck, type FactCheck } from "./fact-check.js";
+import { filterEvidencePlausibility } from "./evidence-filter.js";
+import {
+  applyVerificationToProbability,
+  runAdversarialVerification,
+  type VerificationInput,
+  type VerificationResult,
+} from "./verification.js";
 import type { ProbabilityForecast } from "conviction-core";
 
 // =============================================================================
@@ -102,6 +112,18 @@ export interface DelphiRunnerConfig {
    * isn't in the catalog or vol can't be estimated).
    */
   fetchVolBaseline?: (question: string, category: string | undefined, now: number) => Promise<number | undefined>;
+  /**
+   * Tier 1 — resolution-authority fact check (fact-check.ts). Inject a fake
+   * in tests; omit for the registry (Wikimedia verifier registered by default).
+   */
+  factCheck?: (question: string, now: number) => Promise<FactCheck | null>;
+  /**
+   * Tier 4 — adversarial pre-entry verification (verification.ts). Inject a
+   * fake in tests; omit for the real cross-family LLM verifier.
+   */
+  verify?: (input: VerificationInput) => Promise<VerificationResult>;
+  /** Disable Tier 4 verification (kill switch). Default: AGENT_CONFIG. */
+  verificationEnabled?: boolean;
   /** Injectable clock (tests). */
   now?: () => number;
 }
@@ -118,6 +140,12 @@ interface DelphiRunnerSnapshot {
   volBaselines: number;
   /** Estimates served from the forecast cache across the process lifetime. */
   estimatesCached: number;
+  /** Tier 1 — markets where a resolution authority produced facts/probability. */
+  factChecks: number;
+  /** Tier 4 — candidate entries the adversarial verifier reviewed. */
+  verificationsRun: number;
+  /** Tier 4 — candidate entries the verifier blocked (edge collapsed). */
+  verificationBlocks: number;
   /** Dedup guard: last thesis hash we attempted to anchor (persists across
    *  pm2 restarts, same pattern as the BSC loop's `lastAnchoredThesisHash`). */
   lastAnchoredThesisHash: string | null;
@@ -159,6 +187,12 @@ interface CycleResult {
   volBaselines: number;
   /** Estimates served from the forecast cache (zero inference cost). */
   estimatesCached: number;
+  /** Tier 1 — markets where a resolution authority produced facts/probability. */
+  factChecks: number;
+  /** Tier 4 — candidate entries the adversarial verifier reviewed this cycle. */
+  verificationsRun: number;
+  /** Tier 4 — candidate entries blocked this cycle by verifier disagreement. */
+  verificationBlocks: number;
 }
 
 // =============================================================================
@@ -188,6 +222,9 @@ const EMPTY_SNAPSHOT: DelphiRunnerSnapshot = {
   briefingsFetched: 0,
   volBaselines: 0,
   estimatesCached: 0,
+  factChecks: 0,
+  verificationsRun: 0,
+  verificationBlocks: 0,
   lastAnchoredThesisHash: null,
   lastAnchor: null,
 };
@@ -419,6 +456,14 @@ export interface DelphiOpenPosition {
   webEvidence?: boolean;
   /** Which search rung supplied the briefing (firecrawl/parallel/exa). */
   webSource?: BriefingSource;
+  /** Tier 3 — a second search rung deterministically corroborated the briefing. */
+  corroborated?: boolean;
+  /** Tier 1 — the resolution-authority verifier that answered this market. */
+  factAuthority?: string;
+  /** Tier 4 — the adversarial verifier reviewed this entry pre-trade. */
+  verified?: boolean;
+  /** Tier 4 — which model ran the adversarial verification. */
+  verifierModel?: string;
   volAnchor?: number;
 }
 
@@ -532,7 +577,12 @@ async function fetchVolBaselineFromSoSoValue(
 async function buildEstimateInput(
   market: DelphiMarket,
   executor: DelphiExecutor,
-  ctx: { webBriefing?: WebSearchBriefing; volBaseline?: number },
+  ctx: {
+    webBriefing?: WebSearchBriefing;
+    volBaseline?: number;
+    authorityFacts?: string;
+    factAuthority?: string;
+  },
 ): Promise<MarketEstimateInput | null> {
   const question = market.question;
   if (!question) return null;
@@ -553,6 +603,8 @@ async function buildEstimateInput(
     closesAt: market.resolvesAt ?? undefined,
     webBriefing: ctx.webBriefing,
     volBaselineProbability: ctx.volBaseline,
+    authorityFacts: ctx.authorityFacts,
+    factAuthority: ctx.factAuthority,
   };
 }
 
@@ -628,6 +680,9 @@ export class DelphiRunner {
     category: string | undefined,
     now: number,
   ) => Promise<number | undefined>;
+  private readonly factCheck: (question: string, now: number) => Promise<FactCheck | null>;
+  private readonly verify: (input: VerificationInput) => Promise<VerificationResult>;
+  private readonly verificationEnabled: boolean;
   private readonly clock: () => number;
   private snapshot: DelphiRunnerSnapshot;
   private running = false;
@@ -657,8 +712,12 @@ export class DelphiRunner {
         // 12h: competition markets resolve at most daily; a briefing fresher
         // than half a day is still accurate and halves the Exa call count.
         cacheTtlMs: 12 * 60 * 60 * 1000,
+        corroborate: AGENT_CONFIG.delphi.webCorroborationEnabled,
       });
     this.fetchVolBaseline = config.fetchVolBaseline ?? fetchVolBaselineFromSoSoValue;
+    this.factCheck = config.factCheck ?? runFactCheck;
+    this.verify = config.verify ?? runAdversarialVerification;
+    this.verificationEnabled = config.verificationEnabled ?? AGENT_CONFIG.delphi.verificationEnabled;
     this.clock = config.now ?? (() => Date.now());
     this.snapshot = loadSnapshot(this.dataDir);
   }
@@ -688,6 +747,9 @@ export class DelphiRunner {
       briefingsFetched: 0,
       volBaselines: 0,
       estimatesCached: 0,
+      factChecks: 0,
+      verificationsRun: 0,
+      verificationBlocks: 0,
     };
 
     if (!this.enabledCheck()) {
@@ -795,22 +857,52 @@ export class DelphiRunner {
       model?: string;
       webEvidence?: boolean;
       webSource?: BriefingSource;
+      corroborated?: boolean;
+      factAuthority?: string;
+      verified?: boolean;
       volAnchor?: number;
     }> = [];
 
     for (const market of markets) {
+      // ── Tier 1: deterministic resolution authorities (fact-check.ts) ──
+      // Runs FIRST: when a matched authority's data already covers the
+      // resolution window it returns a direct probability and the market
+      // needs neither the search budget nor an LLM sample. Evidence-only
+      // facts (window still open) get injected into the estimate instead.
+      let fact: FactCheck | null = null;
+      try {
+        fact = await this.factCheck(market.question ?? "", this.clock());
+        if (fact) result.factChecks++;
+      } catch (err) {
+        console.warn(`  [delphi-fact] check error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
       // Alpha context: web briefing (capped, cached) + vol baseline (crypto
       // threshold markets only). Both are best-effort — a failure degrades
-      // to the plain LLM estimate, never blocks the market.
+      // to the plain LLM estimate, never blocks the market. An authority
+      // DIRECT answer skips the briefing: ground truth already won, and
+      // spending search budget can't improve it.
       let webBriefing: WebSearchBriefing | undefined;
-      try {
-        const briefing = await this.webSearch.briefing(market.question ?? "");
-        if (briefing) {
-          webBriefing = briefing;
-          if (!briefing.cached) result.briefingsFetched++;
+      if (fact?.probability === undefined) {
+        try {
+          const briefing = await this.webSearch.briefing(market.question ?? "");
+          if (briefing?.text) {
+            // ── Tier 2: deterministic plausibility filter (evidence-filter.ts)
+            // Stale passages (e.g. a 1986 price table in a 2026 crude-oil
+            // market) are stripped BEFORE prompt injection. An emptied
+            // briefing means "inject nothing".
+            const filtered = filterEvidencePlausibility(market.question ?? "", briefing.text, this.clock());
+            if (filtered.dropped > 0) {
+              console.log(
+                `  [delphi-evidence] dropped ${filtered.dropped} implausible passage(s) for "${(market.question ?? "").slice(0, 50)}"`,
+              );
+            }
+            webBriefing = filtered.empty ? undefined : { ...briefing, text: filtered.text };
+            if (webBriefing && !briefing.cached) result.briefingsFetched++;
+          }
+        } catch (err) {
+          console.warn(`  [delphi-search] briefing error: ${err instanceof Error ? err.message : String(err)}`);
         }
-      } catch (err) {
-        console.warn(`  [delphi-search] briefing error: ${err instanceof Error ? err.message : String(err)}`);
       }
       let volBaseline: number | undefined;
       try {
@@ -820,20 +912,34 @@ export class DelphiRunner {
         console.warn(`  [delphi-vol] baseline error: ${err instanceof Error ? err.message : String(err)}`);
       }
 
-      const input = await buildEstimateInput(market, this.executor, { webBriefing, volBaseline });
+      const input = await buildEstimateInput(market, this.executor, {
+        webBriefing,
+        volBaseline,
+        authorityFacts: fact?.facts,
+        factAuthority: fact?.authority,
+      });
       if (!input) continue;
 
-      // Forecast cache: an estimate's inputs are the question, the injected
-      // briefing (fingerprinted in the key — its own 6h cache keeps the
-      // fingerprint stable across hourly cycles), and the implied
-      // probabilities (bucketed to 2¢). When nothing moved, the prior
-      // ensemble is still the right answer — reuse it at zero gateway cost.
-      // Markets with a vol-baseline anchor are NEVER cached: the blend is
-      // baked into the estimate and the anchor tracks the live spot price.
+      // Estimate selection:
+      //   1. Authority direct probability → deterministic estimate, zero
+      //      inference (Tier 1).
+      //   2. Vol-anchored or authority-evidence markets bypass the forecast
+      //      cache — their inputs move with live data (spot / trailing days).
+      //   3. Everything else: cache or fresh LLM ensemble.
       let estimate: MarketEstimate | null;
-      if (volBaseline !== undefined) {
+      if (fact?.probability !== undefined) {
+        estimate = factAuthorityEstimate(input, fact.probability, fact.authority, fact.facts, this.clock());
+        console.log(
+          `  [delphi-fact] "${(market.question ?? "").slice(0, 50)}" → direct probability ${fact.probability.toFixed(2)} from ${fact.authority}`,
+        );
+      } else if (volBaseline !== undefined || fact) {
         estimate = await estimateProbability(input, this.probability);
       } else {
+        // Forecast cache: an estimate's inputs are the question, the injected
+        // briefing (fingerprinted in the key — its own 6h cache keeps the
+        // fingerprint stable across hourly cycles), and the implied
+        // probabilities (bucketed to 2¢). When nothing moved, the prior
+        // ensemble is still the right answer — reuse it at zero gateway cost.
         const cacheKey = forecastCacheKey(input.marketAddress, input.impliedProbabilities, input.webBriefing?.text);
         const cached = this.forecastCache.get(cacheKey);
         if (cached) {
@@ -851,12 +957,17 @@ export class DelphiRunner {
 
       const signals = evaluateProbabilitySignal(estimate, input.impliedProbabilities, this.probability);
       for (const signal of signals) {
-        decisions.push({
+        // Record the decision for the on-chain thesis anchor up front — the
+        // anchor hash quantizes ALL gated decisions this cycle. A Tier-4
+        // block mutates this record in place (buy → skip) before the anchor
+        // step runs, so the anchored view is the view we actually held.
+        const decisionRecord: DelphiDecisionRecord = {
           marketAddress: signal.marketAddress,
           outcomeIdx: signal.outcomeIdx,
           decision: signal.decision,
           edge: signal.edge,
-        });
+        };
+        decisions.push(decisionRecord);
         if (signal.decision !== "buy") continue;
 
         // One thesis per market. Production incident 2026-08-15: the same
@@ -899,6 +1010,92 @@ export class DelphiRunner {
           );
         }
 
+        // ── Tier 4: adversarial pre-entry verification (verification.ts) ──
+        // Fires only for signals that cleared EVERY other gate — the cost is
+        // one LLM call per candidate entry, not per market. A cross-family
+        // verifier attacks the thesis; when it flags overconfidence beyond
+        // the disagreement threshold, the estimate is discounted toward the
+        // verifier's number and the edge gate re-runs. If the edge collapses
+        // → skip + ledger. Verification that can't run ({ran:false}) never
+        // blocks: it's a quality gate, not an availability gate.
+        let verifiedProb = signal.estimatedProbability;
+        let verification: VerificationResult | undefined;
+        let finalSignal = signal;
+        // Ground truth trumps opinion: when a Tier-1 authority already
+        // produced a direct probability (its data covers the resolution
+        // window), an LLM verifier must not be able to veto or dilute it.
+        if (this.verificationEnabled && fact?.probability === undefined) {
+          verification = await this.verify({
+            question: signal.question,
+            category: estimate.category,
+            closesAt: market.resolvesAt ?? undefined,
+            outcomeIdx: signal.outcomeIdx,
+            outcomeLabel: input.outcomes[signal.outcomeIdx] ?? String(signal.outcomeIdx),
+            estimatedProbability: signal.estimatedProbability,
+            impliedProbability: signal.impliedProbability,
+            webEvidenceText: input.webBriefing?.text,
+            authorityFacts: fact?.facts,
+            estimateProvider: estimate.provider,
+          });
+          result.verificationsRun++;
+          const adjustment = applyVerificationToProbability(signal.estimatedProbability, verification);
+          if (adjustment.adjusted) {
+            verifiedProb = adjustment.probability;
+            // Re-run the exact gate logic with the adjusted probability.
+            const adjustedEstimate: MarketEstimate = {
+              ...estimate,
+              outcomes: estimate.outcomes.map((o) =>
+                o.outcomeIdx === signal.outcomeIdx
+                  ? { ...o, probability: verifiedProb, reasoning: `${o.reasoning} [verifier: ${adjustment.reason}]` }
+                  : o,
+              ),
+              provenance: {
+                ...estimate.provenance,
+                // Provenance may be absent (injected fixtures) — rebuild
+                // the required provider/model fields from the estimate.
+                provider: estimate.provenance?.provider ?? estimate.provider,
+                model: estimate.provenance?.model ?? estimate.model,
+                verified: verification.ran,
+                verifierModel: verification.model,
+              },
+            };
+            const reGated = evaluateProbabilitySignal(adjustedEstimate, input.impliedProbabilities, this.probability);
+            const gated = reGated.find((s) => s.outcomeIdx === signal.outcomeIdx);
+            if (!gated || gated.decision !== "buy") {
+              result.verificationBlocks++;
+              // Mutate the anchored record: the thesis we publish is the one
+              // we actually held after verification, not the pre-check view.
+              decisionRecord.decision = "skip";
+              decisionRecord.edge = gated?.edge ?? verifiedProb - signal.impliedProbability;
+              appendTradeLedger(this.dataDir, {
+                type: "verification-blocked",
+                marketAddress: signal.marketAddress,
+                outcomeIdx: signal.outcomeIdx,
+                question: signal.question,
+                estimatedProbability: signal.estimatedProbability,
+                adjustedProbability: verifiedProb,
+                impliedProbability: signal.impliedProbability,
+                edge: gated?.edge ?? verifiedProb - signal.impliedProbability,
+                verdict: verification.verdict,
+                verifierModel: verification.model,
+                verifierReasoning: verification.reasoning,
+                reason: adjustment.reason,
+              });
+              console.log(
+                `  [delphi-verify] BLOCKED "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx}: ${adjustment.reason}`,
+              );
+              continue;
+            }
+            finalSignal = gated;
+            console.log(
+              `  [delphi-verify] "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx}: ${adjustment.reason}`,
+            );
+          }
+        }
+        // Record the buy decision's post-verification edge in the anchored
+        // thesis (the record itself was pushed before the gate loop).
+        decisionRecord.edge = finalSignal.edge;
+
         // ── Sizing: bankroll fraction → shares, with concentration caps ──
         const budget = perTradeBudget({
           bankrollTokens,
@@ -907,47 +1104,66 @@ export class DelphiRunner {
           maxPositionFraction: AGENT_CONFIG.delphi.maxPositionFraction,
           maxMarketFraction: AGENT_CONFIG.delphi.maxMarketFraction,
         });
-        const price = signal.impliedProbability;
+        const price = finalSignal.impliedProbability;
         const shares = sizeSharesBudget(budget, price);
         if (shares <= 0n) {
           result.sizingSkips++;
           // Diagnostic: a skip with bankroll but zero budget means a cap;
           // a skip with zero bankroll means the balance read failed.
           console.warn(
-            `  [delphi-sizing] skip "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} price=${price.toFixed(3)} budget=${budget} bankroll=${bankrollTokens}`,
+            `  [delphi-sizing] skip "${finalSignal.question.slice(0, 50)}" outcome=${finalSignal.outcomeIdx} price=${price.toFixed(3)} budget=${budget} bankroll=${bankrollTokens}`,
           );
           continue;
         }
 
         const trade = await this.executor.buyShares({
-          marketAddress: signal.marketAddress,
-          outcomeIdx: signal.outcomeIdx,
+          marketAddress: finalSignal.marketAddress,
+          outcomeIdx: finalSignal.outcomeIdx,
           sharesOut: shares,
-          estimatedProbability: signal.estimatedProbability,
+          estimatedProbability: verifiedProb,
         });
         if (trade.success) {
           result.tradesPlaced++;
-          marketsEnteredThisCycle.add(signal.marketAddress);
-          addExposure(exposure, signal.marketAddress, BigInt(trade.tokensIn ?? "0"));
+          marketsEnteredThisCycle.add(finalSignal.marketAddress);
+          addExposure(exposure, finalSignal.marketAddress, BigInt(trade.tokensIn ?? "0"));
+          // Merge the verification outcome into the entry's provenance —
+          // both the adjusted path (verifierModel on the adjusted estimate)
+          // and the confirm path (ran=true, verdict agree) must surface it.
+          // Explicit provider/model AFTER the spread: provenance may omit
+          // them (older persisted estimates), and the entry's provenance
+          // requires them.
+          const entryProvenance: ForecastProvenance = {
+            ...finalSignal.estimate.provenance,
+            provider: finalSignal.estimate.provenance?.provider ?? finalSignal.estimate.provider,
+            model: finalSignal.estimate.provenance?.model ?? finalSignal.estimate.model,
+            verified: verification?.ran,
+            verifierModel: verification?.model,
+          };
           // Track the open forecast so redemption resolves it for calibration.
-          positions[forecastId(signal.marketAddress, signal.outcomeIdx)] = {
-            id: forecastId(signal.marketAddress, signal.outcomeIdx),
-            marketAddress: signal.marketAddress,
-            outcomeIdx: signal.outcomeIdx,
-            question: signal.question,
-            forecast: signal.estimatedProbability,
-            impliedProbability: signal.impliedProbability,
-            edge: signal.edge,
+          // The forecast being scored is the POST-verification probability —
+          // the view we actually paid for.
+          positions[forecastId(finalSignal.marketAddress, finalSignal.outcomeIdx)] = {
+            id: forecastId(finalSignal.marketAddress, finalSignal.outcomeIdx),
+            marketAddress: finalSignal.marketAddress,
+            outcomeIdx: finalSignal.outcomeIdx,
+            question: finalSignal.question,
+            forecast: verifiedProb,
+            impliedProbability: finalSignal.impliedProbability,
+            edge: finalSignal.edge,
             shares: trade.sharesOut ?? "0",
             tokensIn: trade.tokensIn ?? "0",
             openedAt: Date.now(),
             transactionHash: trade.transactionHash,
             // Provenance for the dashboard card + audit trail.
-            model: signal.estimate.provenance?.model,
-            samples: signal.estimate.provenance?.samples,
-            webEvidence: signal.estimate.provenance?.webEvidence,
-            webSource: signal.estimate.provenance?.webSource,
-            volAnchor: signal.estimate.provenance?.volAnchor,
+            model: entryProvenance.model,
+            samples: entryProvenance.samples,
+            webEvidence: entryProvenance.webEvidence,
+            webSource: entryProvenance.webSource,
+            corroborated: entryProvenance.corroborated,
+            factAuthority: entryProvenance.factAuthority,
+            verified: entryProvenance.verified,
+            verifierModel: entryProvenance.verifierModel,
+            volAnchor: entryProvenance.volAnchor,
           };
           // Persist IMMEDIATELY after each buy — not at cycle end. A pm2
           // reload mid-cycle (production incident 2026-08-15) can otherwise
@@ -958,47 +1174,60 @@ export class DelphiRunner {
           saveExposure(this.dataDir, exposure);
           appendTradeLedger(this.dataDir, {
             type: "entry",
-            marketAddress: signal.marketAddress,
-            outcomeIdx: signal.outcomeIdx,
-            question: signal.question,
-            estimatedProbability: signal.estimatedProbability,
-            impliedProbability: signal.impliedProbability,
-            edge: signal.edge,
+            marketAddress: finalSignal.marketAddress,
+            outcomeIdx: finalSignal.outcomeIdx,
+            question: finalSignal.question,
+            estimatedProbability: verifiedProb,
+            impliedProbability: finalSignal.impliedProbability,
+            edge: finalSignal.edge,
             shares: trade.sharesOut,
             tokensIn: trade.tokensIn,
             effectivePrice: trade.effectivePrice,
             transactionHash: trade.transactionHash,
-            reason: signal.reason,
-            provenance: signal.estimate.provenance,
+            reason: finalSignal.reason,
+            provenance: entryProvenance,
+            verification: verification?.ran
+              ? {
+                  verdict: verification.verdict,
+                  verifierProbability: verification.verifierProbability,
+                  crossFamily: verification.crossFamily,
+                  provider: verification.provider,
+                  model: verification.model,
+                  reasoning: verification.reasoning,
+                }
+              : undefined,
           });
           entriesForSummary.push({
-            question: signal.question,
-            outcomeIdx: signal.outcomeIdx,
+            question: finalSignal.question,
+            outcomeIdx: finalSignal.outcomeIdx,
             effectivePrice: trade.effectivePrice,
-            estimatedProbability: signal.estimatedProbability,
-            edge: signal.edge,
+            estimatedProbability: verifiedProb,
+            edge: finalSignal.edge,
             transactionHash: trade.transactionHash,
             // Provenance tags for the Telegram entry line.
-            model: signal.estimate.provenance?.model,
-            webEvidence: signal.estimate.provenance?.webEvidence,
-            webSource: signal.estimate.provenance?.webSource,
-            volAnchor: signal.estimate.provenance?.volAnchor,
+            model: entryProvenance.model,
+            webEvidence: entryProvenance.webEvidence,
+            webSource: entryProvenance.webSource,
+            corroborated: entryProvenance.corroborated,
+            factAuthority: entryProvenance.factAuthority,
+            verified: entryProvenance.verified,
+            volAnchor: entryProvenance.volAnchor,
           });
         } else {
           // Never swallow a trade failure: on-chain reverts (allowance,
           // gas, slippage) must be visible in the pm2 logs, not just in
           // the executor's in-memory tradeLog.
           console.warn(
-            `  [delphi-trade] BUY FAILED "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} shares=${shares} price=${price.toFixed(3)}: ${trade.error}`,
+            `  [delphi-trade] BUY FAILED "${finalSignal.question.slice(0, 50)}" outcome=${finalSignal.outcomeIdx} shares=${shares} price=${price.toFixed(3)}: ${trade.error}`,
           );
           appendTradeLedger(this.dataDir, {
             type: "entry-failed",
-            marketAddress: signal.marketAddress,
-            outcomeIdx: signal.outcomeIdx,
-            question: signal.question,
-            estimatedProbability: signal.estimatedProbability,
-            impliedProbability: signal.impliedProbability,
-            edge: signal.edge,
+            marketAddress: finalSignal.marketAddress,
+            outcomeIdx: finalSignal.outcomeIdx,
+            question: finalSignal.question,
+            estimatedProbability: verifiedProb,
+            impliedProbability: finalSignal.impliedProbability,
+            edge: finalSignal.edge,
             error: trade.error,
           });
         }
@@ -1046,7 +1275,14 @@ export class DelphiRunner {
         tradesPlaced: result.tradesPlaced,
         redeemsSucceeded: result.redeemsSucceeded + result.liquidatesSucceeded,
         exits: { convergence: result.exitsConvergence, stopped: result.exitsStopped },
-        alpha: { briefings: result.briefingsFetched, volBaselines: result.volBaselines, cached: result.estimatesCached },
+        alpha: {
+          briefings: result.briefingsFetched,
+          volBaselines: result.volBaselines,
+          cached: result.estimatesCached,
+          factChecks: result.factChecks,
+          verifications: result.verificationsRun,
+          verificationBlocks: result.verificationBlocks,
+        },
         entries: entriesForSummary,
       });
     }
@@ -1063,13 +1299,16 @@ export class DelphiRunner {
       briefingsFetched: this.snapshot.briefingsFetched + result.briefingsFetched,
       volBaselines: this.snapshot.volBaselines + result.volBaselines,
       estimatesCached: this.snapshot.estimatesCached + result.estimatesCached,
+      factChecks: this.snapshot.factChecks + result.factChecks,
+      verificationsRun: this.snapshot.verificationsRun + result.verificationsRun,
+      verificationBlocks: this.snapshot.verificationBlocks + result.verificationBlocks,
     };
     saveSnapshot(this.dataDir, this.snapshot);
     saveExposure(this.dataDir, exposure);
     savePositions(this.dataDir, positions);
 
     console.log(
-      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} lostClosed=${result.redeemsLostClosed} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines}`,
+      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} lostClosed=${result.redeemsLostClosed} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines} factChecks=${result.factChecks} verifications=${result.verificationsRun} blocked=${result.verificationBlocks}`,
     );
     return result;
   }

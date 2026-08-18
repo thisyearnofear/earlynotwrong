@@ -284,6 +284,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor,
     });
@@ -298,6 +299,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor,
     });
@@ -313,6 +315,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.75) },
       anchor,
     });
@@ -331,6 +334,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor: async () => [],
     });
@@ -370,6 +374,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor: async () => [],
     });
@@ -419,6 +424,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.5) },
       anchor: async () => [],
     });
@@ -443,6 +449,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: { minEdgeToTrade: 0.08, estimator: estimatorWithEdge(0.55) },
       anchor: async () => [],
     });

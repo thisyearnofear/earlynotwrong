@@ -19,6 +19,8 @@ import {
 } from "../lib/delphi/runner.js";
 import { DelphiExecutor, type DelphiClientLike, type DelphiMarket } from "../lib/delphi/executor.js";
 import type { MarketEstimate, MarketEstimateInput } from "../lib/delphi/probability.js";
+import type { FactCheck } from "../lib/delphi/fact-check.js";
+import type { VerificationInput, VerificationResult } from "../lib/delphi/verification.js";
 
 // =============================================================================
 // Fakes
@@ -76,6 +78,9 @@ const ENABLED_ENV_SNAPSHOT: Record<string, string | undefined> = {};
  */
 const noopWebSearch = { resetCycleBudget: () => {}, briefing: async () => null };
 const noopVolBaseline = async () => undefined;
+/** Tier 1/4 defaults: no authority matches, verification never runs. */
+const noopFactCheck = async () => null;
+const noopVerify = async () => ({ ran: false }) as VerificationResult;
 
 describe("latestStopsByMarket (pure)", () => {
   it("picks the latest exit-stop per market with its edge", () => {
@@ -247,6 +252,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: {
         minEdgeToTrade: 0.08,
         estimator: (input: MarketEstimateInput) => ({
@@ -329,6 +335,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: {
         minEdgeToTrade: 0.08,
         // NO now looks underpriced (edge +0.15) — the guard must still hold.
@@ -372,6 +379,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: {
         estimator: (input) => ({
           marketAddress: input.marketAddress,
@@ -405,6 +413,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
     });
     await first.runCycle(1);
     await first.runCycle(2);
@@ -415,6 +424,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
     });
     await second.runCycle(3);
 
@@ -440,6 +450,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: {
         estimator: (input) => {
           estimatorCalls++;
@@ -487,6 +498,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: {
         estimator: (input) => {
           estimatorCalls++;
@@ -523,6 +535,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       probability: {
         estimator: (input) => {
           estimatorCalls++;
@@ -564,6 +577,9 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: async () => 0.05,
+      verificationEnabled: false,
+      factCheck: noopFactCheck,
+      verify: noopVerify,
       probability: {
         estimator: (input) => {
           estimatorCalls++;
@@ -635,6 +651,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
     });
     const result = await runner.runCycle(1);
     expect(result.redeemsLostClosed).toBe(1);
@@ -702,6 +719,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       now: () => now,
       probability: { minEdgeToTrade: 0.08, estimator: underpricedEstimator(0.15) },
     });
@@ -721,10 +739,426 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
       now: () => now,
       probability: { minEdgeToTrade: 0.08, estimator: underpricedEstimator(0.3) },
     });
     const allowed = await allowedRunner.runCycle(2);
     expect(allowed.tradesPlaced).toBe(1);
+  });
+
+  it("Tier 1: a direct authority probability produces a deterministic estimate (no LLM)", async () => {
+    // When a resolution authority's data covers the window, the estimate is
+    // arithmetic from the ground truth — the forecaster LLM never runs, and
+    // the entry trades on the authority number with `factAuthority` provenance.
+    process.env.DELPHI_ENABLED = "1";
+    let estimatorCalls = 0;
+    const authority: FactCheck = {
+      authority: "test-authority",
+      question: "Q?",
+      facts: "source of record: threshold exceeded, day complete",
+      probability: 0.99,
+      fetchedAt: 1000,
+    };
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xAuth", "Q?")], prices: { "0xAuth": [0.6, 0.4] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      factCheck: async () => authority,
+      probability: {
+        minEdgeToTrade: 0.08,
+        // If the LLM path ever runs, this estimator would be called.
+        estimator: (input: MarketEstimateInput) => {
+          estimatorCalls++;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    const result = await runner.runCycle(1);
+    expect(result.factChecks).toBe(1);
+    expect(estimatorCalls).toBe(0); // ground truth — the forecaster was skipped
+    expect(result.tradesPlaced).toBe(1); // edge 0.99 − 0.60 = 0.39 clears the gate
+
+    // The position records the authority provenance + the authority forecast.
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    const pos = positions["0xAuth:0"];
+    expect(pos).toBeDefined();
+    expect(pos.factAuthority).toBe("test-authority");
+    expect(pos.forecast).toBeCloseTo(0.99, 9);
+    expect(pos.model).toBe("authority:test-authority");
+
+    // The ledger entry carries the same provenance.
+    const ledger = readFileSync(join(dataDir, "trades.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    const entry = ledger.find((r) => r.type === "entry");
+    expect(entry.estimatedProbability).toBeCloseTo(0.99, 9);
+    expect(entry.provenance.factAuthority).toBe("test-authority");
+  });
+
+  it("Tier 1: evidence-only facts are injected into the estimate input (no probability override)", async () => {
+    // Open resolution window → the authority supplies facts, not a number;
+    // the ordinary estimate path runs with authorityFacts in its input.
+    process.env.DELPHI_ENABLED = "1";
+    const authority: FactCheck = {
+      authority: "test-authority",
+      question: "Q?",
+      facts: "trailing 7 days: 2426; 1900; 2600",
+      // no probability → evidence-only mode
+      fetchedAt: 1000,
+    };
+    let sawAuthorityFacts: string | undefined;
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xOpen", "Q?")], prices: { "0xOpen": [0.5, 0.5] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      factCheck: async () => authority,
+      probability: {
+        minEdgeToTrade: 0.08,
+        estimator: (input: MarketEstimateInput) => {
+          sawAuthorityFacts = input.authorityFacts;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    await runner.runCycle(1);
+    expect(sawAuthorityFacts).toBe("trailing 7 days: 2426; 1900; 2600");
+  });
+
+  it("Tier 2: stale-year briefing passages are dropped before reaching the estimator", async () => {
+    // The WTI-1986 incident: a briefing mixing a 1986 price table into a
+    // 2026 question must arrive at the forecaster without the stale passage.
+    process.env.DELPHI_ENABLED = "1";
+    let sawBriefingText: string | undefined;
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xOil", "Will WTI crude oil close above $95 on 2026-08-22 UTC?")], prices: { "0xOil": [0.5, 0.5] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: {
+        resetCycleBudget: () => {},
+        briefing: async () => ({
+          text:
+            "- In 1986 WTI crude collapsed to $10 (history.com)\n" +
+            "- Crude futures settled $91.40 in August 2026 (reuters.com)",
+          sources: ["https://reuters.com/a"],
+          cached: false,
+          budgetExhausted: false,
+          source: "firecrawl",
+        }),
+      },
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      factCheck: noopFactCheck,
+      probability: {
+        estimator: (input: MarketEstimateInput) => {
+          sawBriefingText = input.webBriefing?.text;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    await runner.runCycle(1);
+    expect(sawBriefingText).toBeDefined();
+    expect(sawBriefingText).toContain("91.40");
+    expect(sawBriefingText).not.toContain("1986"); // stale passage stripped
+  });
+
+  it("Tier 2: a fully-stale briefing injects nothing (empty → undefined)", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let sawBriefing: unknown = "sentinel";
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xOil2", "Will WTI crude oil close above $95 on 2026-08-22 UTC?")], prices: { "0xOil2": [0.5, 0.5] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: {
+        resetCycleBudget: () => {},
+        briefing: async () => ({
+          text: "- In 1999 analysts predicted a collapse (old.com)",
+          sources: [],
+          cached: false,
+          budgetExhausted: false,
+          source: "firecrawl",
+        }),
+      },
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      factCheck: noopFactCheck,
+      probability: {
+        estimator: (input: MarketEstimateInput) => {
+          sawBriefing = input.webBriefing;
+          return {
+            marketAddress: input.marketAddress,
+            question: input.question,
+            outcomes: [
+              { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+              { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+            ],
+            provider: "injected",
+            model: "test",
+            estimatedAt: Date.now(),
+          };
+        },
+      },
+    });
+
+    await runner.runCycle(1);
+    expect(sawBriefing).toBeUndefined(); // nothing plausible survived
+  });
+
+  it("Tier 4: verifier agreement passes the entry through unchanged", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let verifyCalls = 0;
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xV1", "Q?")], prices: { "0xV1": [0.4, 0.6] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      factCheck: noopFactCheck,
+      verify: async () => {
+        verifyCalls++;
+        return { ran: true, verdict: "agree", verifierProbability: 0.53, crossFamily: true, provider: "openai", model: "gpt-4o-mini" };
+      },
+      probability: {
+        minEdgeToTrade: 0.08,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.55, reasoning: "underpriced" },
+            { outcomeIdx: 1, probability: 0.45, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+
+    const result = await runner.runCycle(1);
+    expect(verifyCalls).toBe(1);
+    expect(result.verificationsRun).toBe(1);
+    expect(result.verificationBlocks).toBe(0);
+    expect(result.tradesPlaced).toBe(1); // agree → original forecast stands
+
+    // Position carries verified provenance + the UNCHANGED forecast.
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    expect(positions["0xV1:0"].verified).toBe(true);
+    expect(positions["0xV1:0"].verifierModel).toBe("gpt-4o-mini");
+    expect(positions["0xV1:0"].forecast).toBeCloseTo(0.55, 9);
+  });
+
+  it("Tier 4: flagged overconfidence discounts the estimate and blocks a collapsed edge", async () => {
+    // est 0.55 vs implied 0.40 → edge 0.15 clears the 0.08 gate. The
+    // verifier says 0.42 (gap 0.13 < threshold 0.15 → NOT adjusted). To
+    // exercise a BLOCK, use a larger gap: verifier 0.40.
+    // adjusted = 0.5·0.55 + 0.5·0.40 = 0.475 → edge 0.075 < 0.08 → blocked.
+    process.env.DELPHI_ENABLED = "1";
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xV2", "Q?")], prices: { "0xV2": [0.4, 0.6] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      factCheck: noopFactCheck,
+      verify: async () => ({
+        ran: true,
+        verdict: "overconfident",
+        verifierProbability: 0.4, // gap 0.15 ≥ threshold → adjusted to 0.475
+        crossFamily: true,
+        provider: "openai",
+        model: "gpt-4o-mini",
+        reasoning: "base rates say this resolves no",
+      }),
+      probability: {
+        minEdgeToTrade: 0.08,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.55, reasoning: "underpriced" },
+            { outcomeIdx: 1, probability: 0.45, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+
+    const result = await runner.runCycle(1);
+    expect(result.verificationsRun).toBe(1);
+    expect(result.verificationBlocks).toBe(1);
+    expect(result.tradesPlaced).toBe(0); // edge collapsed below the gate
+
+    // The block is ledgared with the verifier's attack for the audit trail.
+    const ledger = readFileSync(join(dataDir, "trades.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    const blocked = ledger.find((r) => r.type === "verification-blocked");
+    expect(blocked).toBeDefined();
+    expect(blocked.adjustedProbability).toBeCloseTo(0.475, 9);
+    expect(blocked.verdict).toBe("overconfident");
+    expect(blocked.verifierReasoning).toBe("base rates say this resolves no");
+    // No entry record exists.
+    expect(ledger.some((r) => r.type === "entry")).toBe(false);
+  });
+
+  it("Tier 4: a non-ran verification never blocks the entry", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xV3", "Q?")], prices: { "0xV3": [0.4, 0.6] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      factCheck: noopFactCheck,
+      verify: async () => ({ ran: false }), // no LLM available — degrade, don't block
+      probability: {
+        minEdgeToTrade: 0.08,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.55, reasoning: "underpriced" },
+            { outcomeIdx: 1, probability: 0.45, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+
+    const result = await runner.runCycle(1);
+    expect(result.verificationsRun).toBe(1);
+    expect(result.verificationBlocks).toBe(0);
+    expect(result.tradesPlaced).toBe(1); // unverified ≠ blocked
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    expect(positions["0xV3:0"].verified).toBe(false);
+  });
+
+  it("Tier 4 receives the estimate's evidence + provider for cross-family verification", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let received: VerificationInput | undefined;
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xV4", "Will it happen?")], prices: { "0xV4": [0.4, 0.6] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: {
+        resetCycleBudget: () => {},
+        briefing: async () => ({
+          text: "- fresh evidence from today (news.com)",
+          sources: [],
+          cached: false,
+          budgetExhausted: false,
+          source: "firecrawl",
+        }),
+      },
+      fetchVolBaseline: noopVolBaseline,
+      factCheck: noopFactCheck,
+      verify: async (input: VerificationInput) => {
+        received = input;
+        return { ran: true, verdict: "agree", verifierProbability: 0.5 };
+      },
+      probability: {
+        minEdgeToTrade: 0.08,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.55, reasoning: "" },
+            { outcomeIdx: 1, probability: 0.45, reasoning: "" },
+          ],
+          provider: "hf-qwen",
+          model: "Qwen/Qwen3.8-27B",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+
+    await runner.runCycle(1);
+    expect(received).toBeDefined();
+    expect(received!.question).toBe("Will it happen?");
+    expect(received!.outcomeIdx).toBe(0);
+    expect(received!.outcomeLabel).toBe("Yes");
+    expect(received!.estimatedProbability).toBeCloseTo(0.55, 9);
+    expect(received!.impliedProbability).toBeCloseTo(0.4, 9);
+    expect(received!.webEvidenceText).toContain("fresh evidence");
+    expect(received!.estimateProvider).toBe("hf-qwen"); // for cross-family exclusion
   });
 });
