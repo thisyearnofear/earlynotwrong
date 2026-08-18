@@ -23,6 +23,10 @@ export interface LifecycleSweepResult {
   redeemAttempted: number;
   /** Settled markets that redeemed successfully. */
   redeemSucceeded: number;
+  /** Settled markets closed as a known loss via their resolution (the redeem
+   * can never succeed — we held only losing outcomes — so the sweep stops
+   * retrying it; see the redeem-lost event). */
+  redeemLostClosed: number;
   /** Expired/failed markets we attempted to liquidate. */
   liquidateAttempted: number;
   /** Expired/failed markets that liquidated successfully. */
@@ -34,11 +38,13 @@ export interface LifecycleSweepResult {
 }
 
 export interface LifecycleEvent {
-  kind: "redeem" | "liquidate";
+  kind: "redeem" | "liquidate" | "redeem-lost";
   marketAddress: string;
   success: boolean;
   tokensOut?: string;
   error?: string;
+  /** Set on redeem-lost: the outcome index the market resolved to. */
+  winningOutcomeIdx?: number;
   timestamp: number;
 }
 
@@ -73,6 +79,7 @@ export async function redeemAndLiquidate(executor: DelphiExecutor): Promise<Life
   const result: LifecycleSweepResult = {
     redeemAttempted: 0,
     redeemSucceeded: 0,
+    redeemLostClosed: 0,
     liquidateAttempted: 0,
     liquidateSucceeded: 0,
     stillOpen: 0,
@@ -85,7 +92,8 @@ export async function redeemAndLiquidate(executor: DelphiExecutor): Promise<Life
 
   // Redeem settled markets (batch across all, per-market failures captured).
   if (settled.length > 0) {
-    const markets = [...new Set(settled.map((p) => p.marketProxy))];
+    const heldByMarket = groupOutcomesByMarket(settled);
+    const markets = [...heldByMarket.keys()];
     result.redeemAttempted = markets.length;
     const { redeemed, failed } = await executor.redeemPositions(markets);
     result.redeemSucceeded = redeemed.length;
@@ -93,8 +101,32 @@ export async function redeemAndLiquidate(executor: DelphiExecutor): Promise<Life
     for (const r of redeemed) {
       result.events.push({ kind: "redeem", marketAddress: r.marketAddress, success: true, tokensOut: r.tokensOut, timestamp: ts });
     }
+    // A failed redeem has two root causes:
+    //   (a) We hold only LOSING outcomes — redeem() reverts for them by
+    //       design and can never succeed. Without the resolution we would
+    //       retry this hourly forever (production incident 2026-08-18: 50
+    //       doomed redeems of the Typhoon market over ~36h). Query the
+    //       winning outcome; when it contradicts everything we hold, close
+    //       the position as a known loss (scored) and stop retrying.
+    //   (b) We hold a WINNING outcome but the redeem still reverted (gas,
+    //       RPC, subgraph lag) — money is owed, keep retrying next cycle.
     for (const f of failed) {
-      result.events.push({ kind: "redeem", marketAddress: f.marketAddress, success: false, error: f.error, timestamp: ts });
+      const held = heldByMarket.get(f.marketAddress) ?? [];
+      const winner = held.length > 0 ? await executor.getWinningOutcomeIdx(f.marketAddress) : null;
+      const heldLoserOnly = winner !== null && held.every((idx) => idx !== winner);
+      if (heldLoserOnly) {
+        result.redeemLostClosed++;
+        result.events.push({
+          kind: "redeem-lost",
+          marketAddress: f.marketAddress,
+          success: true,
+          winningOutcomeIdx: winner ?? undefined,
+          error: f.error,
+          timestamp: ts,
+        });
+      } else {
+        result.events.push({ kind: "redeem", marketAddress: f.marketAddress, success: false, error: f.error, timestamp: ts });
+      }
     }
   }
 

@@ -13,6 +13,8 @@ import {
   vercelGatewayFreeActive,
   firstAvailableLlmProvider,
   chatCompletion,
+  providerCircuitOpen,
+  nextMidnightUtc,
 } from "../lib/llm-providers.js";
 
 function jsonResponse(status: number): Response {
@@ -153,6 +155,21 @@ describe("vercelGatewayFreeActive", () => {
   it("fails open on an unparsable date (gateway key is configured → use it)", () => {
     process.env.VERCEL_GATEWAY_PROMO_ENDS = "not-a-date";
     expect(vercelGatewayFreeActive(afterPromo)).toBe(true);
+  });
+});
+
+describe("nextMidnightUtc", () => {
+  it("returns the next 00:00 UTC regardless of local timezone", () => {
+    // Mid-day UTC → same calendar day's midnight is next.
+    const midday = Date.parse("2026-08-18T12:34:56Z");
+    expect(nextMidnightUtc(midday)).toBe(Date.parse("2026-08-19T00:00:00Z"));
+    // Exactly at midnight → the FOLLOWING midnight (a reset that just
+    // happened already granted today's quota).
+    const midnight = Date.parse("2026-08-19T00:00:00Z");
+    expect(nextMidnightUtc(midnight)).toBe(Date.parse("2026-08-20T00:00:00Z"));
+    // Month boundary.
+    const endOfMonth = Date.parse("2026-08-31T23:00:00Z");
+    expect(nextMidnightUtc(endOfMonth)).toBe(Date.parse("2026-09-01T00:00:00Z"));
   });
 });
 
@@ -324,9 +341,7 @@ describe("chatCompletion — provider cascade on error", () => {
     // Production 2026-08-15: OpenRouter :free is 50 req/day. When the quota
     // hits 0, every call 429s with no near-term Retry-After — fail fast (no
     // retries to burn the budget) and cascade to the keyless Qwen3.8-27B HF
-    // endpoint (verified live, clean JSON). The 429 does NOT trip a breaker:
-    // transient throttles self-heal, so quota-dead providers cost one cheap
-    // failed request per call until the ladder moves on.
+    // endpoint (verified live, clean JSON).
     process.env.OPENROUTER_API_KEY = "or";
     process.env.HF_QWEN_API_KEY = "none";
     const fetchMock = vi
@@ -340,6 +355,60 @@ describe("chatCompletion — provider cascade on error", () => {
     expect(result?.content).toBe("hf answer");
     // One failed OpenRouter request, then HF — no retry storm.
     expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+    // A Retry-After-less 429 is daily-quota exhaustion: the breaker now
+    // opens until the next 00:00 UTC reset (see the dedicated test below).
+    expect(providerCircuitOpen("openrouter")).toBe(true);
+  });
+
+  it("trips a daily-quota breaker on a Retry-After-less 429, sized to the next 00:00 UTC", async () => {
+    // OpenRouter's 50 req/day free cap can't self-heal before the reset;
+    // without a breaker every ensemble sample pays one doomed round-trip
+    // (~270 wasted requests/day observed on the VPS, 2026-08-18).
+    process.env.OPENROUTER_API_KEY = "or";
+    process.env.HF_QWEN_API_KEY = "none";
+    const subset = { openrouter: models.openrouter, "hf-qwen": models["hf-qwen"] } as const;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 429 })) // quota exhausted
+      .mockImplementation(() => chatResponse("hf answer")) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    const first = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models: subset });
+    expect(first?.provider).toBe("hf-qwen");
+    expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+    expect(providerCircuitOpen("openrouter")).toBe(true);
+
+    // Second call: OpenRouter is skipped outright — one fetch, straight to HF.
+    const second = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models: subset });
+    expect(second?.provider).toBe("hf-qwen");
+    expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3);
+
+    // Breaker closes again just past the next UTC midnight (quota reset).
+    const now = Date.now();
+    expect(providerCircuitOpen("openrouter", now)).toBe(true);
+    expect(providerCircuitOpen("openrouter", nextMidnightUtc(now) + 1)).toBe(false);
+  });
+
+  it("does NOT trip the breaker on a transient 429 that carries Retry-After", async () => {
+    // Per-minute throttles advertise their re-open window and self-heal —
+    // fetchWithBackoff honors Retry-After and the provider must stay eligible.
+    process.env.OPENROUTER_API_KEY = "or";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 429, headers: { "Retry-After": "1" } }))
+      .mockResolvedValueOnce(chatResponse("or answer")) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    vi.useFakeTimers();
+    try {
+      const promise = chatCompletion({ systemPrompt: "s", userPrompt: "u", models: { openrouter: models.openrouter } });
+      await vi.advanceTimersByTimeAsync(1_000);
+      const result = await promise;
+      expect(result?.provider).toBe("openrouter");
+      expect(providerCircuitOpen("openrouter")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("falls through the HF endpoint to OrcaRouter when the community deployment is retired", async () => {

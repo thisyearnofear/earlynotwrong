@@ -40,6 +40,12 @@ export interface DelphiMarket {
   marketUrl?: string;
   /** Settlement/resolution time (ISO), if the market declares one. */
   resolvesAt?: string | null;
+  /**
+   * Winning outcome index once the market settles (REST API field, string
+   * on the wire). Null/absent while unsettled — used by the lifecycle sweep
+   * to close out losing redemptions without retrying them forever.
+   */
+  winningOutcomeIdx?: string | number | null;
 }
 
 /**
@@ -403,6 +409,41 @@ export class DelphiExecutor {
       },
       { label: "delphi-list-markets", ...this.retryPolicy },
     );
+  }
+
+  /**
+   * The winning outcome index of a settled market, or null when unknown
+   * (not settled yet, REST index lag, or simulator mode).
+   *
+   * The lifecycle sweep uses this to break a stuck redeem loop: redeem()
+   * reverts for losing shares, and retrying it every cycle burns a
+   * transaction attempt forever. With the resolution known, a losing
+   * position can be closed + scored without another redeem attempt
+   * (production incident 2026-08-18: the Typhoon market resolved NO while
+   * we held YES, and the sweep retried the doomed redeem 50 times over
+   * ~36h, pinning 103 TST of exposure the whole while).
+   */
+  async getWinningOutcomeIdx(marketAddress: string): Promise<number | null> {
+    if (this.simulator) return null;
+    const client = await this.getClient();
+    try {
+      const market = await withRetry(
+        async () =>
+          withTimeout(
+            client.getMarket({ id: marketAddress }) as Promise<DelphiMarket>,
+            this.sdkTimeoutMs,
+            "delphi-get-market",
+          ),
+        { label: "delphi-get-market", ...this.retryPolicy },
+      );
+      const idx = market.winningOutcomeIdx;
+      if (idx === null || idx === undefined || idx === "") return null;
+      const parsed = typeof idx === "number" ? idx : parseInt(idx, 10);
+      return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+    } catch {
+      // REST index unavailable — the sweep keeps retrying redeem as before.
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------

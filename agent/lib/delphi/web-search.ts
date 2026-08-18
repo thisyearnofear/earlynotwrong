@@ -23,7 +23,11 @@
  * unless a search actually runs.
  */
 
-import { vercelGatewayFreeActive } from "../llm-providers.js";
+import {
+  providerCircuitOpen,
+  tripProviderCircuit,
+  vercelGatewayFreeActive,
+} from "../llm-providers.js";
 
 // =============================================================================
 // Types
@@ -176,19 +180,33 @@ export class DelphiWebSearch implements WebSearchSource {
    * Returns null when: no gateway key is configured, the gateway's free
    * promo has expired (see vercelGatewayFreeActive — briefings are an Exa
    * promo feature, so they switch off with it rather than start billing),
-   * the per-cycle budget is exhausted (and nothing is cached), or the search
-   * fails. Never throws.
+   * the gateway's circuit breaker is open (credit exhaustion — every
+   * request 402s, so a cache miss would just pay a doomed round-trip),
+   * the per-cycle budget is exhausted (and nothing is cached), or the
+   * search fails. Never throws.
+   *
+   * A failed search carrying the gateway's 402 "credit balance" message
+   * trips the shared vercel-gateway breaker (30 min): the same dead credit
+   * that kills the forecaster ladder kills Exa too, and without this gate
+   * we would burn the whole 10-call/cycle budget on it (observed
+   * 2026-08-18: 150 dead search calls/day while the LLM ladder had long
+   * since fallen through to the free Qwen rungs).
    */
   async briefing(question: string): Promise<WebSearchBriefing | null> {
     if (!this.apiKey) return null;
     if (!vercelGatewayFreeActive()) return null;
     const key = cacheKey(question);
 
-    // Cache hit (TTL-agnostic of budget — a cached briefing costs nothing).
+    // Cache hit (TTL-agnostic of budget — a cached briefing costs nothing,
+    // and we still serve it while the breaker is open).
     const hit = this.cache.get(key);
     if (hit && Date.now() - hit.fetchedAt < this.cacheTtlMs) {
       return { ...hit.briefing, cached: true, budgetExhausted: false };
     }
+
+    // Circuit breaker: the gateway's credit is dead for now — skip fresh
+    // searches until the breaker resets (same gate as the LLM ladder).
+    if (providerCircuitOpen("vercel-gateway")) return null;
 
     if (this.callsThisCycle >= this.maxCallsPerCycle) {
       return null;
@@ -205,8 +223,16 @@ export class DelphiWebSearch implements WebSearchSource {
       }
       return briefing;
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // The gateway's credit-exhaustion 402 arrives here as the AI SDK's
+      // error text ("A positive credit balance is required…"); a plain
+      // `error: 402` message is the fallback shape. Either way, the shared
+      // breaker stops the forecaster ladder AND the briefing budget at once.
+      if (msg.includes("credit balance") || /error: 402/i.test(msg)) {
+        tripProviderCircuit("vercel-gateway");
+      }
       console.warn(
-        `  [delphi-search] web search failed for "${question.slice(0, 60)}": ${err instanceof Error ? err.message : String(err)}`,
+        `  [delphi-search] web search failed for "${question.slice(0, 60)}": ${msg}`,
       );
       return null;
     }

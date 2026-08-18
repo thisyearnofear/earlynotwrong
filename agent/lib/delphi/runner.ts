@@ -136,6 +136,9 @@ interface CycleResult {
   tradesPlaced: number;
   redeemsAttempted: number;
   redeemsSucceeded: number;
+  /** Settled markets closed as a known loss (resolution contradicted every
+   * held outcome; redeem can never succeed, so retries stop). */
+  redeemsLostClosed: number;
   liquidatesAttempted: number;
   liquidatesSucceeded: number;
   /** Entries skipped by the concentration/bankroll caps this cycle. */
@@ -239,6 +242,104 @@ function readTradeLedger(dir: string): Array<Record<string, unknown>> {
   } catch {
     return [];
   }
+}
+
+// =============================================================================
+// Thesis-stop re-entry cooldown (serial re-entry guard)
+// =============================================================================
+//
+// Production incident 2026-08-15..18: the Chess-pageviews market was
+// stopped out twice in four days and re-bought within hours each time — the
+// one-thesis-per-market guard only applies while a position is TRACKED, and
+// an exit frees the market for the very next cycle. Same thesis, same
+// "underpriced" edge, four entries, net −89 TST. After a thesis stop the
+// market needs time (or a strictly better signal) before we trust the same
+// view again.
+
+/** The most recent thesis stop on a market, recovered from the trade ledger. */
+export interface MarketStopRecord {
+  timestamp: number;
+  /** Entry-time edge of the stopped thesis (drives the "edge improved" gate). */
+  edge: number;
+}
+
+/**
+ * Latest `exit-stop` per market from the trade ledger, with the stopped
+ * thesis's entry edge attached.
+ *
+ * Edge resolution order: the stop record's own `edge` field → the most
+ * recent matching `entry` record's edge → Infinity. Infinity is the
+ * fail-closed choice for legacy stops with no edge anywhere: the new signal
+ * can never beat it, so only the full cooldown (never an "improved edge")
+ * re-opens the market. The ledger is append-only and survives restarts, so
+ * this needs no extra state file.
+ */
+export function latestStopsByMarket(
+  ledger: Array<Record<string, unknown>>,
+): Map<string, MarketStopRecord> {
+  // Latest entry edge per market — the fallback source for legacy stops.
+  const entryEdge = new Map<string, { timestamp: number; edge: number }>();
+  for (const r of ledger) {
+    if (r.type !== "entry") continue;
+    const market = typeof r.marketAddress === "string" ? r.marketAddress : null;
+    const ts = typeof r.timestamp === "number" ? r.timestamp : null;
+    const edge = typeof r.edge === "number" ? r.edge : null;
+    if (!market || ts === null || edge === null) continue;
+    const prev = entryEdge.get(market);
+    if (!prev || ts >= prev.timestamp) entryEdge.set(market, { timestamp: ts, edge });
+  }
+
+  const stops = new Map<string, MarketStopRecord>();
+  for (const r of ledger) {
+    if (r.type !== "exit-stop") continue;
+    const market = typeof r.marketAddress === "string" ? r.marketAddress : null;
+    const ts = typeof r.timestamp === "number" ? r.timestamp : null;
+    if (!market || ts === null) continue;
+    const prev = stops.get(market);
+    if (prev && ts < prev.timestamp) continue; // keep only the latest stop
+    const edge =
+      typeof r.edge === "number"
+        ? r.edge
+        : (entryEdge.get(market)?.edge ?? Number.POSITIVE_INFINITY);
+    stops.set(market, { timestamp: ts, edge });
+  }
+  return stops;
+}
+
+/**
+ * Should a new buy signal be allowed on a market that carries a thesis stop?
+ *
+ * Allow when the cooldown has elapsed OR the new signal's edge strictly
+ * beats the stopped thesis's edge (a meaningfully stronger view, not LLM
+ * jitter). Pure function — the runner supplies config + clock.
+ */
+export function evaluateStopReentryGate(params: {
+  stoppedAt: number;
+  stoppedEdge: number;
+  newEdge: number;
+  now: number;
+  cooldownMs: number;
+}): { allow: boolean; reason: string } {
+  const { stoppedAt, stoppedEdge, newEdge, now, cooldownMs } = params;
+  const ageMs = now - stoppedAt;
+  if (ageMs >= cooldownMs) {
+    return { allow: true, reason: "stop cooldown elapsed" };
+  }
+  // Strictly better, above float jitter (0.4 + 0.15 − 0.4 is
+  // 0.15000000000000002 in IEEE754 — jitter must not count as an improved
+  // thesis; the market needs a genuinely stronger signal to re-open early).
+  const EDGE_EPS = 1e-9;
+  if (newEdge > stoppedEdge + EDGE_EPS) {
+    return {
+      allow: true,
+      reason: `edge improved ${stoppedEdge.toFixed(2)} → ${newEdge.toFixed(2)} within cooldown`,
+    };
+  }
+  const remainH = ((cooldownMs - ageMs) / 3_600_000).toFixed(1);
+  return {
+    allow: false,
+    reason: `thesis stopped ${(ageMs / 3_600_000).toFixed(1)}h ago (edge ${stoppedEdge === Number.POSITIVE_INFINITY ? "unknown" : stoppedEdge.toFixed(2)}, new ${newEdge.toFixed(2)}) — cooldown ${remainH}h remaining`,
+  };
 }
 
 // =============================================================================
@@ -573,6 +674,7 @@ export class DelphiRunner {
       tradesPlaced: 0,
       redeemsAttempted: 0,
       redeemsSucceeded: 0,
+      redeemsLostClosed: 0,
       liquidatesAttempted: 0,
       liquidatesSucceeded: 0,
       sizingSkips: 0,
@@ -620,15 +722,31 @@ export class DelphiRunner {
       const sweep = await redeemAndLiquidate(this.executor);
       result.redeemsAttempted = sweep.redeemAttempted;
       result.redeemsSucceeded = sweep.redeemSucceeded;
+      result.redeemsLostClosed = sweep.redeemLostClosed;
       result.liquidatesAttempted = sweep.liquidateAttempted;
       result.liquidatesSucceeded = sweep.liquidateSucceeded;
       for (const ev of sweep.events) {
-        appendTradeLedger(this.dataDir, { type: ev.kind, marketAddress: ev.marketAddress, success: ev.success, tokensOut: ev.tokensOut, error: ev.error });
+        appendTradeLedger(this.dataDir, {
+          type: ev.kind,
+          marketAddress: ev.marketAddress,
+          success: ev.success,
+          tokensOut: ev.tokensOut,
+          error: ev.error,
+          ...(ev.winningOutcomeIdx !== undefined ? { winningOutcomeIdx: ev.winningOutcomeIdx } : {}),
+        });
         // Clear exposure for markets we exited successfully.
         if (ev.success) delete exposure[ev.marketAddress];
-        // Resolve tracked forecasts for this market.
+        // Resolve tracked forecasts for this market. A redeem-lost close is
+        // a redeem resolution with zero payout: the held outcome lost.
         if (ev.success) {
-          this.resolvePositions(positions, ev.marketAddress, ev.kind, ev.tokensOut);
+          const resolveKind = ev.kind === "redeem-lost" ? "redeem" : ev.kind;
+          const tokensOut = ev.kind === "redeem-lost" ? "0" : ev.tokensOut;
+          this.resolvePositions(positions, ev.marketAddress, resolveKind, tokensOut);
+          if (ev.kind === "redeem-lost") {
+            console.warn(
+              `  [delphi-redeem] ${ev.marketAddress} resolved against us (winner=${ev.winningOutcomeIdx}) — closed as a loss, stopped retrying the redeem`,
+            );
+          }
         }
       }
       bankrollTokens = BigInt(await this.executor.getTokenBalance());
@@ -658,6 +776,9 @@ export class DelphiRunner {
     const markets = await this.executor.listOpenMarkets({ limit: 25 });
     result.marketsEvaluated = markets.length;
     const decisions: DelphiDecisionRecord[] = [];
+    // Thesis-stop re-entry guard, derived from the ledger once per cycle
+    // (append-only, restart-safe — no extra state file).
+    const stopMap = latestStopsByMarket(readTradeLedger(this.dataDir));
     // Markets entered this cycle — combined with tracked positions, this is
     // the one-thesis-per-market guard: never hold both sides (or add to an
     // existing thesis) of the same market.
@@ -749,6 +870,30 @@ export class DelphiRunner {
             `  [delphi-signal] skip "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} — already hold a thesis in this market`,
           );
           continue;
+        }
+
+        // Thesis-stop cooldown: a market stopped out recently needs time (or
+        // a strictly stronger signal) before we re-buy it — see
+        // latestStopsByMarket/evaluateStopReentryGate and the Chess-market
+        // serial re-entry incident (4 entries in 4 days, net −89 TST).
+        const stop = stopMap.get(signal.marketAddress);
+        if (stop) {
+          const gate = evaluateStopReentryGate({
+            stoppedAt: stop.timestamp,
+            stoppedEdge: stop.edge,
+            newEdge: signal.edge,
+            now: this.clock(),
+            cooldownMs: AGENT_CONFIG.delphi.stopReentryCooldownHours * 3_600_000,
+          });
+          if (!gate.allow) {
+            console.log(
+              `  [delphi-signal] skip "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} — ${gate.reason}`,
+            );
+            continue;
+          }
+          console.log(
+            `  [delphi-signal] re-entry allowed on "${signal.question.slice(0, 50)}": ${gate.reason}`,
+          );
         }
 
         // ── Sizing: bankroll fraction → shares, with concentration caps ──
@@ -919,7 +1064,7 @@ export class DelphiRunner {
     savePositions(this.dataDir, positions);
 
     console.log(
-      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines}`,
+      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} lostClosed=${result.redeemsLostClosed} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines}`,
     );
     return result;
   }
@@ -1011,6 +1156,10 @@ export class DelphiRunner {
           outcomeIdx: position.outcomeIdx,
           question: position.question,
           forecast: position.forecast,
+          // Entry-time edge of the exited thesis — the stop re-entry gate
+          // (latestStopsByMarket) compares a new signal against it to decide
+          // whether a stronger view justifies re-entering before the cooldown.
+          edge: position.edge,
           entryPrice: position.impliedProbability,
           exitPrice: quote.pricePerShare,
           shares: position.shares,

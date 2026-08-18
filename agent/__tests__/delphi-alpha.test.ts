@@ -46,6 +46,7 @@ import {
   type MarketEstimateInput,
 } from "../lib/delphi/probability.js";
 import { extractSourceUrls, DelphiWebSearch } from "../lib/delphi/web-search.js";
+import { providerCircuitOpen, tripProviderCircuit } from "../lib/llm-providers.js";
 
 // =============================================================================
 // vol-baseline: math
@@ -500,11 +501,15 @@ describe("DelphiWebSearch — budget + cache", () => {
   beforeEach(() => {
     savedKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
     process.env.VERCEL_AI_GATEWAY_API_KEY = "test-key";
+    // The gateway breaker lives on globalThis — reset it so a tripped breaker
+    // from another test (or the trip in this block) can't leak across tests.
+    delete (globalThis as Record<string, unknown>)["__llmProviderBreakerOpenUntil"];
   });
 
   afterEach(() => {
     if (savedKey === undefined) delete process.env.VERCEL_AI_GATEWAY_API_KEY;
     else process.env.VERCEL_AI_GATEWAY_API_KEY = savedKey;
+    delete (globalThis as Record<string, unknown>)["__llmProviderBreakerOpenUntil"];
   });
 
   it("returns null when no gateway key is configured", async () => {
@@ -583,6 +588,67 @@ describe("DelphiWebSearch — budget + cache", () => {
     await ws.briefing("Q");
     await ws.briefing("Q");
     expect(calls).toBe(2);
+  });
+
+  it("a credit-exhaustion 402 failure trips the shared gateway breaker and skips later searches", async () => {
+    // Production incident 2026-08-18: the Vercel gateway's promo credit ran
+    // dry mid-promo. The LLM ladder fell through, but briefing() — which has
+    // its own date-only gate — kept burning the 10-call/cycle budget on
+    // doomed searches (~150/day). The credit-balance 402 must trip the same
+    // breaker the forecaster ladder uses.
+    const ws = new DelphiWebSearch({
+      apiKey: "k",
+      runSearch: async () => {
+        throw new Error(
+          "A positive credit balance is required for all requests, including BYOK",
+        );
+      },
+    });
+    expect(providerCircuitOpen("vercel-gateway")).toBe(false);
+    expect(await ws.briefing("Q1")).toBeNull(); // first failure trips the breaker
+    expect(providerCircuitOpen("vercel-gateway")).toBe(true);
+    // Subsequent fresh searches skip the gateway entirely — no budget burned.
+    expect(await ws.briefing("Q2")).toBeNull();
+    expect(ws.cycleCalls).toBe(1);
+  });
+
+  it("serves cached briefings while the breaker is open (cache costs nothing)", async () => {
+    tripProviderCircuit("vercel-gateway");
+    let calls = 0;
+    const ws = new DelphiWebSearch({
+      apiKey: "k",
+      cacheTtlMs: 60_000,
+      runSearch: async () => {
+        calls++;
+        return { text: "cached brief", sources: [], cached: false, budgetExhausted: false };
+      },
+    });
+    // Prime the cache BEFORE the breaker opens.
+    const breakerMap = (globalThis as Record<string, unknown>)["__llmProviderBreakerOpenUntil"] as Record<string, number>;
+    delete breakerMap["vercel-gateway"];
+    await ws.briefing("Q");
+    expect(calls).toBe(1);
+
+    tripProviderCircuit("vercel-gateway");
+    const hit = await ws.briefing("Q");
+    expect(hit?.text).toBe("cached brief");
+    expect(hit?.cached).toBe(true);
+    expect(calls).toBe(1); // cache hit — no network call while the breaker is open
+  });
+
+  it("skips fresh searches while the breaker is open (miss → null, no budget spent)", async () => {
+    tripProviderCircuit("vercel-gateway");
+    let calls = 0;
+    const ws = new DelphiWebSearch({
+      apiKey: "k",
+      runSearch: async () => {
+        calls++;
+        return { text: "brief", sources: [], cached: false, budgetExhausted: false };
+      },
+    });
+    expect(await ws.briefing("never-cached")).toBeNull();
+    expect(calls).toBe(0);
+    expect(ws.cycleCalls).toBe(0);
   });
 });
 

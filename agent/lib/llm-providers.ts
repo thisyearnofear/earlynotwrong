@@ -171,14 +171,47 @@ export function providerCircuitOpen(provider: LlmProviderName, now: number = Dat
   return now < (breakerMap()[provider] ?? 0);
 }
 
-export function tripProviderCircuit(provider: LlmProviderName, now: number = Date.now()): void {
-  breakerMap()[provider] = now + PROVIDER_BREAKER_MS;
+export function tripProviderCircuit(provider: LlmProviderName, now: number = Date.now(), windowMs: number = PROVIDER_BREAKER_MS): void {
+  breakerMap()[provider] = now + windowMs;
+}
+
+/**
+ * Next 00:00 UTC as epoch ms — the reset point for daily free quotas
+ * (OpenRouter's 50 req/day cap). Exported for tests.
+ */
+export function nextMidnightUtc(now: number = Date.now()): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+}
+
+/**
+ * Duration until the next daily-quota reset. Used to size the breaker window
+ * for a Retry-After-less 429 (quota exhaustion can't self-heal before then).
+ */
+function dailyQuotaBreakerMs(now: number = Date.now()): number {
+  return Math.max(nextMidnightUtc(now) - now, 60_000);
 }
 
 /** Extract an HTTP status from our standardized provider error messages. */
 function errorStatus(message: string): number | null {
   const m = message.match(/error: (\d{3})/);
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * Build our standardized provider error (`"<Label> error: <status>"`) while
+ * preserving whether the response advertised a usable Retry-After window.
+ * The cascade uses that flag to tell daily-quota exhaustion (no Retry-After,
+ * can't self-heal before 00:00 UTC) apart from per-minute throttling
+ * (Retry-After present, heals within minutes).
+ */
+function providerHttpError(label: string, response: Response): Error {
+  const retryAfter = Number(response.headers.get("Retry-After"));
+  const err = new Error(`${label} error: ${response.status}`) as Error & {
+    retryAfterUsable?: boolean;
+  };
+  err.retryAfterUsable = Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 120;
+  return err;
 }
 
 /**
@@ -405,7 +438,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`Vercel AI Gateway error: ${response.status}`);
+      if (!response.ok) throw providerHttpError("Vercel AI Gateway", response);
       const json = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
@@ -437,7 +470,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`OpenRouter API error: ${response.status}`);
+      if (!response.ok) throw providerHttpError("OpenRouter API", response);
       const json = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
@@ -466,7 +499,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
+      if (!response.ok) throw providerHttpError("OpenAI API", response);
       const json = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
@@ -500,7 +533,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`HF Qwen endpoint error: ${response.status}`);
+      if (!response.ok) throw providerHttpError("HF Qwen endpoint", response);
       const json = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
@@ -533,7 +566,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`OrcaRouter error: ${response.status}`);
+      if (!response.ok) throw providerHttpError("OrcaRouter", response);
       const json = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
@@ -559,7 +592,7 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`Anthropic API error: ${response.status}`);
+      if (!response.ok) throw providerHttpError("Anthropic API", response);
       const json = (await response.json()) as {
         content?: Array<{ text?: string }>;
       };
@@ -595,13 +628,22 @@ export async function chatCompletion(req: LlmChatRequest): Promise<LlmChatResult
       const msg = err instanceof Error ? err.message : String(err);
       // 402 = billing/credit exhaustion — permanent until topped up, so trip
       // a 30-min breaker per provider (observed: Vercel gateway promo credit
-      // running dry mid-promo). 429s do NOT trip it: transient throttles
-      // (hf-qwen's 30 req/min) self-heal via Retry-After retries, and quota
-      // exhaustion (OpenRouter's daily cap, no Retry-After) already fails
-      // fast inside fetchWithBackoff without burning the budget — one cheap
-      // failed request per call is better than falsely disabling a provider
-      // that may recover within the hour.
-      if (errorStatus(msg) === 402) tripProviderCircuit(provider);
+      // running dry mid-promo).
+      //
+      // 429 = two distinct cases (observed 2026-08-15/18):
+      //   (a) Retry-After present → per-minute throttle; self-heals within
+      //       minutes, so do NOT breaker it — fetchWithBackoff already
+      //       honored the header on the way in.
+      //   (b) No usable Retry-After → daily-quota exhaustion (OpenRouter's
+      //       50 req/day free cap). Cannot self-heal before the next 00:00
+      //       UTC reset, so trip a breaker sized to that reset — otherwise
+      //       every ensemble sample pays one doomed round-trip (~270 wasted
+      //       requests/day observed on the VPS).
+      if (errorStatus(msg) === 402) {
+        tripProviderCircuit(provider);
+      } else if (errorStatus(msg) === 429 && !(err as { retryAfterUsable?: boolean }).retryAfterUsable) {
+        tripProviderCircuit(provider, Date.now(), dailyQuotaBreakerMs());
+      }
       if (i < providers.length - 1) {
         console.warn(
           `  [llm-providers] ${provider} failed (${msg}) — falling through to ${providers[i + 1]}`,

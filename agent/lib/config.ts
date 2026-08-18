@@ -329,6 +329,14 @@ export const AGENT_CONFIG = {
     // entry estimate; cut the position when price moves `stopEdge` against us.
     convergenceTolerance: 0.02,
     thesisStopEdge: 0.1,
+    // Stop-out re-entry cooldown (hours): after a thesis stop on a market,
+    // don't re-enter it for this long unless the new signal's edge beats the
+    // stopped entry's edge. Serial re-entry into the same losing thesis is
+    // how the Chess market got bought 4× in 4 days (net −89 TST, 2026-08):
+    // each stop freed the exposure and the hourly cycle re-bought the same
+    // "underpriced" outcome at nearly the same price. Derived from the
+    // trade ledger (no extra state file), so it survives restarts.
+    stopReentryCooldownHours: 12,
     // Exa web-search briefings per runner cycle (free-tier budget guard).
     webSearchMaxCallsPerCycle: 10,
     // Forecast cache TTL: reuse an LLM ensemble estimate across hourly

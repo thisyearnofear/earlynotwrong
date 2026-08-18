@@ -10,7 +10,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DelphiRunner, forecastCacheKey, pruneForecastCache } from "../lib/delphi/runner.js";
+import {
+  DelphiRunner,
+  forecastCacheKey,
+  pruneForecastCache,
+  latestStopsByMarket,
+  evaluateStopReentryGate,
+} from "../lib/delphi/runner.js";
 import { DelphiExecutor, type DelphiClientLike, type DelphiMarket } from "../lib/delphi/executor.js";
 import type { MarketEstimate, MarketEstimateInput } from "../lib/delphi/probability.js";
 
@@ -70,6 +76,72 @@ const ENABLED_ENV_SNAPSHOT: Record<string, string | undefined> = {};
  */
 const noopWebSearch = { resetCycleBudget: () => {}, briefing: async () => null };
 const noopVolBaseline = async () => undefined;
+
+describe("latestStopsByMarket (pure)", () => {
+  it("picks the latest exit-stop per market with its edge", () => {
+    const stops = latestStopsByMarket([
+      { type: "exit-stop", marketAddress: "0xA", timestamp: 100, edge: 0.15 },
+      { type: "exit-stop", marketAddress: "0xA", timestamp: 300, edge: 0.20 },
+      { type: "exit-stop", marketAddress: "0xB", timestamp: 200, edge: 0.10 },
+      { type: "entry", marketAddress: "0xA", timestamp: 50, edge: 0.99 }, // noise
+    ]);
+    expect(stops.get("0xA")).toEqual({ timestamp: 300, edge: 0.2 });
+    expect(stops.get("0xB")).toEqual({ timestamp: 200, edge: 0.1 });
+  });
+
+  it("falls back to the matching entry edge for legacy stops without an edge", () => {
+    const stops = latestStopsByMarket([
+      { type: "entry", marketAddress: "0xA", timestamp: 100, edge: 0.147 },
+      { type: "exit-stop", marketAddress: "0xA", timestamp: 200 }, // pre-fix record
+    ]);
+    expect(stops.get("0xA")).toEqual({ timestamp: 200, edge: 0.147 });
+  });
+
+  it("fail-closes to Infinity edge when no edge is recoverable", () => {
+    const stops = latestStopsByMarket([
+      { type: "exit-stop", marketAddress: "0xA", timestamp: 200 },
+    ]);
+    expect(stops.get("0xA")?.edge).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("ignores non-stop ledger records", () => {
+    const stops = latestStopsByMarket([
+      { type: "entry", marketAddress: "0xA", timestamp: 100, edge: 0.2 },
+      { type: "exit-convergence", marketAddress: "0xA", timestamp: 300, edge: 0.2 },
+      { type: "redeem", marketAddress: "0xA", timestamp: 400, success: true },
+    ]);
+    expect(stops.size).toBe(0);
+  });
+});
+
+describe("evaluateStopReentryGate (pure)", () => {
+  const H = 3_600_000;
+  const cooldownMs = 12 * H;
+
+  it("blocks re-entry inside the cooldown for a same-or-weaker edge", () => {
+    const stoppedAt = 0;
+    const gate = evaluateStopReentryGate({ stoppedAt, stoppedEdge: 0.15, newEdge: 0.15, now: 6 * H, cooldownMs });
+    expect(gate.allow).toBe(false);
+    const weaker = evaluateStopReentryGate({ stoppedAt, stoppedEdge: 0.15, newEdge: 0.10, now: 6 * H, cooldownMs });
+    expect(weaker.allow).toBe(false);
+  });
+
+  it("allows re-entry once the cooldown has elapsed", () => {
+    const gate = evaluateStopReentryGate({ stoppedAt: 0, stoppedEdge: 0.15, newEdge: 0.10, now: 12 * H + 1, cooldownMs });
+    expect(gate.allow).toBe(true);
+  });
+
+  it("allows re-entry inside the cooldown when the edge strictly improved", () => {
+    const gate = evaluateStopReentryGate({ stoppedAt: 0, stoppedEdge: 0.15, newEdge: 0.3, now: H, cooldownMs });
+    expect(gate.allow).toBe(true);
+    expect(gate.reason).toMatch(/edge improved/);
+  });
+
+  it("never lets a jitter-equal edge through inside the cooldown", () => {
+    const gate = evaluateStopReentryGate({ stoppedAt: 0, stoppedEdge: 0.147, newEdge: 0.147, now: H, cooldownMs });
+    expect(gate.allow).toBe(false);
+  });
+});
 
 describe("forecastCacheKey / pruneForecastCache (pure)", () => {
   const sampleEstimate = (addr: string): MarketEstimate => ({
@@ -517,5 +589,142 @@ describe("DelphiRunner", () => {
     expect(c1.estimatesCached).toBe(0);
     expect(c2.estimatesCached).toBe(0);
     expect(estimatorCalls).toBe(2);
+  });
+
+  it("closes a stuck losing redeem via its resolution and scores the forecast", async () => {
+    // Regression (production incident 2026-08-18): the Typhoon market
+    // resolved NO while we held YES; redeem() reverts for losing shares, so
+    // the sweep retried it every hour (~50 times) and pinned the exposure.
+    // With the resolution known the sweep must: score the forecast (loss),
+    // free the exposure, and stop retrying.
+    process.env.DELPHI_ENABLED = "1";
+    writeFileSync(
+      join(dataDir, "positions.json"),
+      JSON.stringify({
+        "0xLose:0": {
+          id: "0xLose:0",
+          marketAddress: "0xLose",
+          outcomeIdx: 0,
+          question: "Will the typhoon hit?",
+          forecast: 0.95,
+          impliedProbability: 0.31,
+          edge: 0.64,
+          shares: (325n * 10n ** 18n).toString(),
+          tokensIn: (103n * 10n ** 6n).toString(),
+          openedAt: 1000,
+        },
+      }),
+    );
+    writeFileSync(join(dataDir, "exposure.json"), JSON.stringify({ "0xLose": (103n * 10n ** 6n).toString() }));
+
+    // Narrow fake: settled losing position, redeem always reverts, API knows
+    // the winner.
+    const client = makeFakeClient({ markets: [] });
+    client.listPositions = async () => ({
+      positions: [{ marketProxy: "0xLose", outcomeIdx: "0", shares: "1000", marketStatus: "settled", redeemedOrLiquidated: false }],
+    });
+    client.redeemPositions = async ({ marketAddresses }) => ({
+      results: marketAddresses.map((m) => ({ marketAddress: m, success: false, error: "revert 0x50cd9791" })),
+      totalTokensOut: 0n,
+    });
+    client.getMarket = async ({ id }) => ({ id, question: "Will the typhoon hit?", status: "settled", winningOutcomeIdx: "1" });
+
+    const runner = new DelphiRunner({
+      executor: new DelphiExecutor({ apiKey: "k", retry: { maxRetries: 0 }, clientFactory: async () => client }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+    });
+    const result = await runner.runCycle(1);
+    expect(result.redeemsLostClosed).toBe(1);
+
+    // Position closed, exposure freed.
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    expect(positions["0xLose:0"]).toBeUndefined();
+    const exposure = JSON.parse(readFileSync(join(dataDir, "exposure.json"), "utf-8"));
+    expect(exposure["0xLose"]).toBeUndefined();
+
+    // Forecast scored as a loss (payout 0) in the calibration ledger.
+    const forecasts = readFileSync(join(dataDir, "forecasts.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(forecasts).toHaveLength(1);
+    expect(forecasts[0].outcome).toBe(0);
+    expect(forecasts[0].forecast).toBe(0.95);
+
+    // Trade ledger records the close with the winning outcome.
+    const ledger = readFileSync(join(dataDir, "trades.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    const lost = ledger.find((r) => r.type === "redeem-lost");
+    expect(lost).toBeDefined();
+    expect(lost.winningOutcomeIdx).toBe(1);
+    // No plain failed-redeem event lingers to seed another retry cycle.
+    expect(ledger.some((r) => r.type === "redeem" && r.success === false)).toBe(false);
+  });
+
+  it("blocks re-entry into a recently stopped market until the edge improves", async () => {
+    // Regression (Chess-market incident, 2026-08-15..18): after a thesis
+    // stop, the hourly cycle re-bought the same "underpriced" outcome within
+    // hours — 4 entries in 4 days, net −89 TST. A 12h cooldown (overridable
+    // only by a strictly stronger edge) must gate re-entry.
+    process.env.DELPHI_ENABLED = "1";
+    const now = Date.now();
+    const entryTs = now - 6 * 3_600_000;
+    const stopTs = now - 1 * 3_600_000; // stopped 1h ago
+    writeFileSync(
+      join(dataDir, "trades.jsonl"),
+      [
+        JSON.stringify({ type: "entry", marketAddress: "0xChess", outcomeIdx: 0, question: "Q?", edge: 0.15, tokensIn: "1000000", timestamp: entryTs }),
+        JSON.stringify({ type: "exit-stop", marketAddress: "0xChess", outcomeIdx: 0, question: "Q?", edge: 0.15, tokensOut: "500000", timestamp: stopTs }),
+      ].join("\n") + "\n",
+    );
+
+    const underpricedEstimator = (boost: number) => (input: MarketEstimateInput): MarketEstimate => ({
+      marketAddress: input.marketAddress,
+      question: input.question,
+      outcomes: [
+        { outcomeIdx: 0, probability: 0.4 + boost, reasoning: "underpriced" },
+        { outcomeIdx: 1, probability: 0.6 - boost, reasoning: "" },
+      ],
+      provider: "injected",
+      model: "test",
+      estimatedAt: now,
+    });
+
+    // Edge 0.15 (est 0.55 vs implied 0.40 — exactly the stopped thesis's
+    // edge, not strictly better) → blocked by the cooldown.
+    const blockedRunner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xChess", "Q?")], prices: { "0xChess": [0.4, 0.6] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      now: () => now,
+      probability: { minEdgeToTrade: 0.08, estimator: underpricedEstimator(0.15) },
+    });
+    const blocked = await blockedRunner.runCycle(1);
+    expect(blocked.tradesPlaced).toBe(0);
+
+    // A strictly improved edge (est 0.70 vs implied 0.40 → 0.30 > stopped
+    // 0.15) justifies re-entering before the cooldown elapses.
+    const allowedRunner = new DelphiRunner({
+      executor: new DelphiExecutor({
+        apiKey: "k",
+        retry: { maxRetries: 0 },
+        clientFactory: async () =>
+          makeFakeClient({ markets: [makeMarket("0xChess", "Q?")], prices: { "0xChess": [0.4, 0.6] } }),
+      }),
+      dataDir,
+      telegramEnabled: false,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      now: () => now,
+      probability: { minEdgeToTrade: 0.08, estimator: underpricedEstimator(0.3) },
+    });
+    const allowed = await allowedRunner.runCycle(2);
+    expect(allowed.tradesPlaced).toBe(1);
   });
 });

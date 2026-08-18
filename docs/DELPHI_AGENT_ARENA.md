@@ -197,6 +197,15 @@ Efficiency mechanisms:
   10 fresh searches/cycle hard budget.
 - **429/5xx backoff**: `fetchWithBackoff` retries rate-limit and server
   errors (2s→4s, max 2) across every ladder call; 4xx fail fast.
+- **Provider circuit breakers** (generalized per provider, 2026-08-18):
+  402 credit exhaustion trips a 30-min breaker; a Retry-After-less 429
+  (daily-quota exhaustion — OpenRouter's 50/day cap can't self-heal before
+  its 00:00 UTC reset) trips a breaker sized to that reset. Transient 429s
+  that carry Retry-After do NOT trip one. The breakers gate BOTH the LLM
+  ladder and the Exa briefing budget (`web-search.ts` shares the
+  `vercel-gateway` breaker), so a dead provider costs at most one discovery
+  round-trip, not one per call (~270/day and ~150/day observed wasted
+  before this).
 - **Reasoning cap**: `reasoning: { effort: "none" }` on every gateway call —
   GLM 5.2's reasoning tokens otherwise eat the completion budget.
 - **Sequential ensemble sampling**: free tiers punish bursts; 3 × ~3s is a
@@ -242,6 +251,20 @@ forecast (payout > 0 → the held outcome happened; 0 → it didn't). Expired or
 failed markets are liquidated without resolution (no ground truth), and
 markets where we hold more than one outcome are closed without scoring —
 better no calibration point than a fabricated one.
+
+**Stuck redeems (2026-08-18):** `redeem()` reverts for LOSING shares by
+design — a settled market that resolved against us can never redeem. The
+sweep detects this via the API's `winningOutcomeIdx`: when the resolution
+contradicts every held outcome, it closes the position as a known loss
+(forecast scored 0, exposure freed) under a `redeem-lost` ledger event and
+stops retrying. A failed redeem where we hold the WINNING outcome stays in
+the retry queue (money is owed; the revert is gas/RPC/index lag).
+
+**Thesis-stop re-entry cooldown (2026-08-18):** after an `exit-stop`, the
+same market is gated for `stopReentryCooldownHours` (default 12) unless the
+new signal's edge strictly beats the stopped thesis's edge. Recovered from
+the append-only trade ledger — no extra state file. Prevents the Chess-market
+serial re-entry (4 buys in 4 days, net −89 TST).
 
 ### Runbook (once registration completes)
 

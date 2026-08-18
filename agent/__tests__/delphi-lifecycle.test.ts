@@ -106,6 +106,68 @@ describe("redeemAndLiquidate", () => {
     expect(failed?.error).toBe("revert");
   });
 
+  it("closes a losing redemption as redeem-lost instead of retrying forever", async () => {
+    // Production incident 2026-08-18: the Typhoon market resolved NO while we
+    // held YES; redeem() reverts for losing shares and the sweep retried it
+    // hourly (~50 times over 36h), pinning 103 TST of exposure. Once the
+    // resolution contradicts everything we hold, close as a known loss.
+    const client = baseClient({
+      listPositions: async () => ({ positions: [pos("0xLoser", "0", "settled")] }), // held outcome 0
+      redeemPositions: async ({ marketAddresses }) => ({
+        results: marketAddresses.map((m) => ({ marketAddress: m, success: false, error: "revert 0x50cd9791" })),
+        totalTokensOut: 0n,
+      }),
+      getMarket: async ({ id }) => ({ id, question: "Q", status: "settled", winningOutcomeIdx: "1" }),
+    });
+    const executor = new DelphiExecutor({ apiKey: "k", retry: { maxRetries: 0 }, clientFactory: async () => client });
+    const result = await redeemAndLiquidate(executor);
+    expect(result.redeemAttempted).toBe(1);
+    expect(result.redeemSucceeded).toBe(0);
+    expect(result.redeemLostClosed).toBe(1);
+    const ev = result.events[0];
+    expect(ev.kind).toBe("redeem-lost");
+    expect(ev.success).toBe(true); // closed cleanly — stops the retry loop
+    expect(ev.winningOutcomeIdx).toBe(1);
+  });
+
+  it("keeps retrying a failed redeem when we hold the WINNING outcome", async () => {
+    // Money is owed (we hold the winner) — a revert here is gas/RPC/index
+    // lag, not a losing position. Stay on the ordinary failed-redeem path so
+    // the next cycle retries.
+    const client = baseClient({
+      listPositions: async () => ({ positions: [pos("0xWinner", "1", "settled")] }), // held outcome 1
+      redeemPositions: async ({ marketAddresses }) => ({
+        results: marketAddresses.map((m) => ({ marketAddress: m, success: false, error: "gas" })),
+        totalTokensOut: 0n,
+      }),
+      getMarket: async ({ id }) => ({ id, question: "Q", status: "settled", winningOutcomeIdx: "1" }),
+    });
+    const executor = new DelphiExecutor({ apiKey: "k", retry: { maxRetries: 0 }, clientFactory: async () => client });
+    const result = await redeemAndLiquidate(executor);
+    expect(result.redeemLostClosed).toBe(0);
+    expect(result.events[0].kind).toBe("redeem");
+    expect(result.events[0].success).toBe(false);
+  });
+
+  it("falls back to retrying when the resolution lookup is unavailable", async () => {
+    // REST index lag or a getMarket failure → winningOutcomeIdx unknown;
+    // don't guess, keep the failed redeem in the retry queue.
+    const client = baseClient({
+      listPositions: async () => ({ positions: [pos("0xUnknown", "0", "settled")] }),
+      redeemPositions: async ({ marketAddresses }) => ({
+        results: marketAddresses.map((m) => ({ marketAddress: m, success: false, error: "revert" })),
+        totalTokensOut: 0n,
+      }),
+      getMarket: async () => { throw new Error("index down"); },
+    });
+    const executor = new DelphiExecutor({ apiKey: "k", retry: { maxRetries: 0 }, clientFactory: async () => client });
+    const result = await redeemAndLiquidate(executor);
+    expect(result.redeemLostClosed).toBe(0);
+    expect(result.events[0].kind).toBe("redeem");
+    expect(result.events[0].success).toBe(false);
+  });
+
+
   it("liquidation failure is captured per-market", async () => {
     const client = baseClient({
       listPositions: async () => ({ positions: [pos("0xE", "0", "expired")] }),
