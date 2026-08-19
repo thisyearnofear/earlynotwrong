@@ -1383,10 +1383,15 @@ export class DelphiRunner {
         } catch (err) {
           // Stale-subgraph guard (part 2): the SDK's subgraph may not yet
           // report the market as settled, so quoteSellExactIn reverts with
-          // MarketNotOpen(). The full error output is String(err), which
-          // includes the decoded error name (e.g. "Error: MarketNotOpen()")
-          // — err.message only has the first line. Check the full string.
-          if (String(err).toLowerCase().includes("marketnotopen")) {
+          // MarketNotOpen(). Viem wraps contract errors in a way that
+          // String(err) is "[Object object]" — we must JSON.stringify to
+          // surface the decoded error name. When this happens the market
+          // IS settled — drop the position from tracking so the lifecycle
+          // sweep can redeem it.
+          const errStr = err instanceof Error
+            ? JSON.stringify({ msg: err.message, ...err }, null, 0)
+            : String(err);
+          if (errStr.toLowerCase().includes("marketnotopen")) {
             console.log(
               `  [delphi-exit] market ${position.id} settled (MarketNotOpen) — dropping from tracking for redemption`,
             );
