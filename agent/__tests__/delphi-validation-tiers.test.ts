@@ -494,12 +494,12 @@ describe("crossFamilyOrder", () => {
     delete process.env.DELPHI_VERIFIER_PROVIDER;
   });
 
-  it("pushes the estimator's own family to the back (Qwen estimate → GLM first)", () => {
-    const order = crossFamilyOrder("hf-qwen"); // qwen family
-    expect(order[0]).not.toBe("hf-qwen");
+  it("pushes the estimator's own family to the back (DeepSeek estimate → GLM first)", () => {
+    const order = crossFamilyOrder("b-ai"); // deepseek family
+    expect(order[0]).not.toBe("b-ai");
     expect(order[0]).not.toBe("orcarouter");
-    expect(order.indexOf("hf-qwen")).toBeGreaterThan(order.indexOf("openrouter"));
-    expect(order.indexOf("orcarouter")).toBe(order.length - 1); // qwen family both last
+    expect(order.indexOf("b-ai")).toBeGreaterThan(order.indexOf("openrouter"));
+    expect(order.indexOf("orcarouter")).toBe(order.length - 1); // deepseek family both last
   });
 
   it("leaves the default order when the estimator family is unknown", () => {
@@ -510,13 +510,13 @@ describe("crossFamilyOrder", () => {
 
   it("promotes the dedicated verifier provider when it is cross-family", () => {
     process.env.DELPHI_VERIFIER_PROVIDER = "openai";
-    const order = crossFamilyOrder("hf-qwen");
+    const order = crossFamilyOrder("b-ai");
     expect(order[0]).toBe("openai");
   });
 
   it("does NOT promote a dedicated provider from the estimator's own family", () => {
-    process.env.DELPHI_VERIFIER_PROVIDER = "orcarouter"; // qwen family
-    const order = crossFamilyOrder("hf-qwen"); // qwen estimate
+    process.env.DELPHI_VERIFIER_PROVIDER = "orcarouter"; // deepseek family
+    const order = crossFamilyOrder("b-ai"); // deepseek estimate
     expect(order[0]).not.toBe("orcarouter");
   });
 

@@ -101,8 +101,8 @@ interface RawVerificationResponse {
 const PROVIDER_FAMILY: Record<LlmProviderName, string> = {
   "vercel-gateway": "glm",
   openrouter: "router",
-  "hf-qwen": "qwen",
-  orcarouter: "qwen",
+  "b-ai": "deepseek",
+  orcarouter: "deepseek",
   openai: "gpt",
   anthropic: "claude",
 };
@@ -125,7 +125,7 @@ export function dedicatedVerifierProvider(): LlmProviderName | null {
   const known: LlmProviderName[] = [
     "vercel-gateway",
     "openrouter",
-    "hf-qwen",
+    "b-ai",
     "orcarouter",
     "openai",
     "anthropic",
@@ -146,7 +146,7 @@ export function crossFamilyOrder(estimateProvider?: ForecasterProvider): LlmProv
   const all: LlmProviderName[] = [
     "vercel-gateway",
     "openrouter",
-    "hf-qwen",
+    "b-ai",
     "orcarouter",
     "openai",
     "anthropic",
@@ -222,8 +222,8 @@ function buildVerifierPrompt(input: VerificationInput): string {
 const VERIFIER_DEFAULT_MODELS = {
   "vercel-gateway": "zai/glm-5.2",
   openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "hf-qwen": "Qwen/Qwen3.8-27B",
-  orcarouter: "qwen/qwen3.8-27b-free",
+  "b-ai": "deepseek-v4-flash",
+  orcarouter: "deepseek/deepseek-v4-flash-free",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
 } as const;
@@ -243,7 +243,7 @@ export async function runAdversarialVerification(
       models: {
         "vercel-gateway": { envVar: "VERCEL_GATEWAY_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS["vercel-gateway"] },
         openrouter: { envVar: "OPENROUTER_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.openrouter },
-        "hf-qwen": { envVar: "HF_QWEN_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS["hf-qwen"] },
+        "b-ai": { envVar: "BAI_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS["b-ai"] },
         orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.orcarouter },
         openai: { envVar: "OPENAI_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.openai },
         anthropic: { envVar: "ANTHROPIC_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.anthropic },

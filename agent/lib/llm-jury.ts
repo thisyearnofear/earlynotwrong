@@ -29,7 +29,7 @@ import { chatCompletion, firstAvailableLlmProvider, parseLenientJson } from "./l
 // Types
 // =============================================================================
 
-export type JuryProvider = "vercel-gateway" | "openrouter" | "hf-qwen" | "orcarouter" | "openai" | "anthropic" | "template";
+export type JuryProvider = "vercel-gateway" | "openrouter" | "b-ai" | "orcarouter" | "openai" | "anthropic" | "template";
 
 export type JuryAgreement =
   | "strong-agree"
@@ -174,8 +174,8 @@ export interface JurySignalFields {
 const JURY_MODELS = {
   "vercel-gateway": { envVar: "VERCEL_GATEWAY_JURY_MODEL", defaultModel: "zai/glm-5.2" },
   openrouter: { envVar: "OPENROUTER_JURY_MODEL", defaultModel: "nvidia/nemotron-3-ultra-550b-a55b:free" },
-  "hf-qwen": { envVar: "HF_QWEN_JURY_MODEL", defaultModel: "Qwen/Qwen3.8-27B" },
-  orcarouter: { envVar: "ORCAROUTER_JURY_MODEL", defaultModel: "qwen/qwen3.8-27b-free" },
+  "b-ai": { envVar: "BAI_JURY_MODEL", defaultModel: "deepseek-v4-flash" },
+  orcarouter: { envVar: "ORCAROUTER_JURY_MODEL", defaultModel: "deepseek/deepseek-v4-flash-free" },
   openai: { envVar: "OPENAI_JURY_MODEL", defaultModel: "gpt-4o-mini" },
   anthropic: { envVar: "ANTHROPIC_JURY_MODEL", defaultModel: "claude-3-haiku-20240307" },
 } as const;

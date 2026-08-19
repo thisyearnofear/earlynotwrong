@@ -177,7 +177,7 @@ describe("firstAvailableLlmProvider", () => {
   const KEYS = [
     "VERCEL_AI_GATEWAY_API_KEY",
     "OPENROUTER_API_KEY",
-    "HF_QWEN_API_KEY",
+    "BAI_API_KEY",
     "ORCAROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
@@ -233,7 +233,7 @@ describe("chatCompletion — provider cascade on error", () => {
   const KEYS = [
     "VERCEL_AI_GATEWAY_API_KEY",
     "OPENROUTER_API_KEY",
-    "HF_QWEN_API_KEY",
+    "BAI_API_KEY",
     "ORCAROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
@@ -243,8 +243,8 @@ describe("chatCompletion — provider cascade on error", () => {
   const models = {
     "vercel-gateway": { envVar: "X", defaultModel: "gw-model" },
     openrouter: { envVar: "Y", defaultModel: "or-model" },
-    "hf-qwen": { envVar: "HF_QWEN_DELPHI_MODEL", defaultModel: "Qwen/Qwen3.8-27B" },
-    orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: "qwen/qwen3.8-27b-free" },
+    "b-ai": { envVar: "BAI_DELPHI_MODEL", defaultModel: "deepseek-v4-flash" },
+    orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: "deepseek/deepseek-v4-flash-free" },
   } as const;
 
   beforeEach(() => {
@@ -337,23 +337,22 @@ describe("chatCompletion — provider cascade on error", () => {
     expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterFirst + 1);
   });
 
-  it("falls through an exhausted OpenRouter daily quota to the keyless HF endpoint", async () => {
+  it("falls through an exhausted OpenRouter daily quota to the B.AI free tier", async () => {
     // Production 2026-08-15: OpenRouter :free is 50 req/day. When the quota
     // hits 0, every call 429s with no near-term Retry-After — fail fast (no
-    // retries to burn the budget) and cascade to the keyless Qwen3.8-27B HF
-    // endpoint (verified live, clean JSON).
+    // retries to burn the budget) and cascade to B.AI's free DeepSeek tier.
     process.env.OPENROUTER_API_KEY = "or";
-    process.env.HF_QWEN_API_KEY = "none";
+    process.env.BAI_API_KEY = "bai";
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("{}", { status: 429 })) // OpenRouter: quota exhausted
-      .mockImplementation(() => chatResponse("hf answer")) as unknown as typeof fetch;
+      .mockImplementation(() => chatResponse("b-ai answer")) as unknown as typeof fetch;
     globalThis.fetch = fetchMock;
 
     const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
-    expect(result?.provider).toBe("hf-qwen");
-    expect(result?.content).toBe("hf answer");
-    // One failed OpenRouter request, then HF — no retry storm.
+    expect(result?.provider).toBe("b-ai");
+    expect(result?.content).toBe("b-ai answer");
+    // One failed OpenRouter request, then B.AI — no retry storm.
     expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
     // A Retry-After-less 429 is daily-quota exhaustion: the breaker now
     // opens until the next 00:00 UTC reset (see the dedicated test below).
@@ -365,22 +364,22 @@ describe("chatCompletion — provider cascade on error", () => {
     // without a breaker every ensemble sample pays one doomed round-trip
     // (~270 wasted requests/day observed on the VPS, 2026-08-18).
     process.env.OPENROUTER_API_KEY = "or";
-    process.env.HF_QWEN_API_KEY = "none";
-    const subset = { openrouter: models.openrouter, "hf-qwen": models["hf-qwen"] } as const;
+    process.env.BAI_API_KEY = "bai";
+    const subset = { openrouter: models.openrouter, "b-ai": models["b-ai"] } as const;
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("{}", { status: 429 })) // quota exhausted
-      .mockImplementation(() => chatResponse("hf answer")) as unknown as typeof fetch;
+      .mockImplementation(() => chatResponse("b-ai answer")) as unknown as typeof fetch;
     globalThis.fetch = fetchMock;
 
     const first = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models: subset });
-    expect(first?.provider).toBe("hf-qwen");
+    expect(first?.provider).toBe("b-ai");
     expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
     expect(providerCircuitOpen("openrouter")).toBe(true);
 
-    // Second call: OpenRouter is skipped outright — one fetch, straight to HF.
+    // Second call: OpenRouter is skipped outright — one fetch, straight to B.AI.
     const second = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models: subset });
-    expect(second?.provider).toBe("hf-qwen");
+    expect(second?.provider).toBe("b-ai");
     expect((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3);
 
     // Breaker closes again just past the next UTC midnight (quota reset).
@@ -411,11 +410,10 @@ describe("chatCompletion — provider cascade on error", () => {
     }
   });
 
-  it("falls through the HF endpoint to OrcaRouter when the community deployment is retired", async () => {
-    // The HF community endpoint is temporary by its own docs ("retired after
-    // the launch buzz") — a retired endpoint 404s, and OrcaRouter's $0
-    // self-hosted Qwen is the safety net.
-    process.env.HF_QWEN_API_KEY = "none";
+  it("falls through B.AI to OrcaRouter when the free tier is down", async () => {
+    // B.AI's free DeepSeek promo can degrade without warning; OrcaRouter's
+    // free tier is the safety net behind it.
+    process.env.BAI_API_KEY = "bai";
     process.env.ORCAROUTER_API_KEY = "orca";
     const fetchMock = vi
       .fn()

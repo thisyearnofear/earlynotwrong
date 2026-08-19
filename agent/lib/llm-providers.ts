@@ -28,7 +28,7 @@
 export type LlmProviderName =
   | "vercel-gateway"
   | "openrouter"
-  | "hf-qwen"
+  | "b-ai"
   | "orcarouter"
   | "openai"
   | "anthropic";
@@ -97,19 +97,21 @@ export interface LlmChatResult {
  * Provider priority — free-first:
  *   1. vercel-gateway (promo credit; circuit-breaker skips it when 402s)
  *   2. openrouter (`:free`-pinned model; 50 req/day free quota, resets 00:00 UTC)
- *   3. hf-qwen — public keyless HF Inference endpoint for Qwen3.8-27B
- *      (~30 req/min per IP, fast). The key env var accepts any value,
- *      including "none" — its presence is an explicit opt-in because the
- *      community endpoint is temporary ("retired after the launch buzz").
- *   4. orcarouter — $0 self-hosted Qwen3.8-27B on OrcaRouter infra
- *      (rate-limited, slow: ~10s TTFT, ~18% error rate observed 2026-08-15,
- *      so it sits behind the faster endpoint).
+ *   3. b-ai — B.AI's free DeepSeek-V4-Flash tier (keyed, unlimited during
+ *      the promo window; OpenAI-compatible, verified live 2026-08-19).
+ *   4. orcarouter — $0 free-tier models on OrcaRouter infra (rate-limited,
+ *      slow: ~10s TTFT, ~18% error rate observed 2026-08-15, so it sits
+ *      behind the faster endpoints).
  *   5-6. paid keys (openai, anthropic) — last resort.
+ *
+ * Retired: the keyless hf-qwen community endpoint was removed 2026-08-19 —
+ * the deployment was retired as its docs warned ("retired after the launch
+ * buzz"), and every call had started returning 404.
  */
 const PROVIDER_ORDER: LlmProviderName[] = [
   "vercel-gateway",
   "openrouter",
-  "hf-qwen",
+  "b-ai",
   "orcarouter",
   "openai",
   "anthropic",
@@ -118,7 +120,7 @@ const PROVIDER_ORDER: LlmProviderName[] = [
 const PROVIDER_KEY_ENV: Record<LlmProviderName, string> = {
   "vercel-gateway": "VERCEL_AI_GATEWAY_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
-  "hf-qwen": "HF_QWEN_API_KEY",
+  "b-ai": "BAI_API_KEY",
   orcarouter: "ORCAROUTER_API_KEY",
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
@@ -127,14 +129,12 @@ const PROVIDER_KEY_ENV: Record<LlmProviderName, string> = {
 /** OpenAI-compatible base URL for the Vercel AI Gateway. */
 const VERCEL_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
 
-/** Public keyless HF Inference endpoint (Qwen3.8-27B, community deployment).
- * Resolved lazily: HF_QWEN_ENDPOINT_URL override is read at call time, not
- * module load (env-bootstrap may land after the import). */
-function hfQwenUrl(): string {
-  return (
-    process.env.HF_QWEN_ENDPOINT_URL ??
-    "https://g9hnto0u7lvbu837.us-east-2.aws.endpoints.huggingface.cloud/v1/chat/completions"
-  );
+/** B.AI's OpenAI-compatible base URL (free DeepSeek-V4-Flash promo).
+ *  Resolved lazily: BAI_API_BASE override is read at call time, not module
+ *  load (env-bootstrap may land after the import). */
+function bAiUrl(): string {
+  const base = process.env.BAI_API_BASE ?? "https://api.b.ai";
+  return `${base.replace(/\/+$/, "")}/v1/chat/completions`;
 }
 
 /** OrcaRouter's OpenAI-compatible base URL ($0 free-tier models). */
@@ -532,15 +532,16 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
         content: json.choices?.[0]?.message?.content?.trim() ?? "",
       };
     }
-    case "hf-qwen": {
-      // Keyless community endpoint — any string works as the bearer. The
-      // model id is the Hub id, not a routing slug. Thinking is ON by
-      // default and eats the completion budget, so reasoning_effort is
-      // always sent (verified 2026-08-15: "none" → clean JSON content).
-      const response = await fetchWithBackoff(hfQwenUrl(), {
+    case "b-ai": {
+      // B.AI's free DeepSeek-V4-Flash tier (promo, unlimited "for a limited
+      // time" per their 2026-08 announcement). OpenAI-compatible endpoint.
+      // Verified live 2026-08-19: standard chat.completions shape, no
+      // response_format (JSON enforced by the system prompt, lenient-parsed).
+      // Keyed: BAI_API_KEY required.
+      const response = await fetchWithBackoff(bAiUrl(), {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.HF_QWEN_API_KEY || "none"}`,
+          Authorization: `Bearer ${process.env.BAI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -551,17 +552,16 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
           ],
           max_tokens: maxTokens,
           temperature,
-          reasoning_effort: req.reasoningEffort ?? "none",
-          ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+          stream: false,
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw providerHttpError("HF Qwen endpoint", response);
+      if (!response.ok) throw providerHttpError("B.AI", response);
       const json = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
       return {
-        provider: "hf-qwen",
+        provider: "b-ai",
         model,
         content: json.choices?.[0]?.message?.content?.trim() ?? "",
       };

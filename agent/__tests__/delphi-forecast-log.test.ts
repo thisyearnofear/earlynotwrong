@@ -25,10 +25,10 @@ function makeEstimate(overrides: Partial<MarketEstimate> = {}): MarketEstimate {
       { outcomeIdx: 0, probability: 0.3, reasoning: "No is more likely" },
       { outcomeIdx: 1, probability: 0.7, reasoning: "Yes is more likely" },
     ],
-    provider: "hf-qwen",
-    model: "Qwen/Qwen3.8-27B ×3 median",
+    provider: "b-ai",
+    model: "deepseek-v4-flash ×3 median",
     estimatedAt: 1_755_000_000_000,
-    provenance: { provider: "hf-qwen", model: "Qwen/Qwen3.8-27B ×3 median", samples: 3, webEvidence: true },
+    provenance: { provider: "b-ai", model: "deepseek-v4-flash ×3 median", samples: 3, webEvidence: true },
     ...overrides,
   };
 }

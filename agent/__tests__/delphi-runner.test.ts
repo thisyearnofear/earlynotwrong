@@ -1144,8 +1144,8 @@ describe("DelphiRunner", () => {
             { outcomeIdx: 0, probability: 0.55, reasoning: "" },
             { outcomeIdx: 1, probability: 0.45, reasoning: "" },
           ],
-          provider: "hf-qwen",
-          model: "Qwen/Qwen3.8-27B",
+          provider: "b-ai",
+          model: "deepseek-v4-flash",
           estimatedAt: Date.now(),
         }),
       },
@@ -1159,6 +1159,6 @@ describe("DelphiRunner", () => {
     expect(received!.estimatedProbability).toBeCloseTo(0.55, 9);
     expect(received!.impliedProbability).toBeCloseTo(0.4, 9);
     expect(received!.webEvidenceText).toContain("fresh evidence");
-    expect(received!.estimateProvider).toBe("hf-qwen"); // for cross-family exclusion
+    expect(received!.estimateProvider).toBe("b-ai"); // for cross-family exclusion
   });
 });
