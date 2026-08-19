@@ -1394,9 +1394,9 @@ export class DelphiRunner {
             const e = err as any;
             // Check this error and its cause chain
             const toCheck = [e];
-            if (e.cause instanceof Error) toCheck.push(e.cause);
-            if (e.cause?.cause instanceof Error) toCheck.push(e.cause.cause);
-            if (e.cause?.cause?.cause instanceof Error) toCheck.push(e.cause.cause.cause);
+            if (e.cause) toCheck.push(e.cause);
+            if (e.cause?.cause) toCheck.push(e.cause.cause);
+            if (e.cause?.cause?.cause) toCheck.push(e.cause.cause.cause);
             for (const candidate of toCheck) {
               const c = candidate as any;
               const fields = [
@@ -1414,6 +1414,22 @@ export class DelphiRunner {
                 }
               }
               if (isMarketNotOpen) break;
+            }
+            // DEBUG: print all enumerable property values for diagnostic
+            if (!isMarketNotOpen) {
+              const allProps = Object.keys(e)
+                .map((k) => `${k}=${e[k]}`)
+                .slice(0, 10)
+                .join("; ");
+              const causeProps = e.cause
+                ? Object.keys(e.cause)
+                    .map((k) => `cause.${k}=${e.cause[k]}`)
+                    .slice(0, 10)
+                    .join("; ")
+                : "none";
+              console.warn(
+                `  [delphi-exit] DEBUG MARKETNOTOPEN check: props=[${allProps}] causeProps=[${causeProps}]`,
+              );
             }
           }
           if (isMarketNotOpen) {
