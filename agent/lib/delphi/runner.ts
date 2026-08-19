@@ -1383,22 +1383,13 @@ export class DelphiRunner {
         } catch (err) {
           // Stale-subgraph guard (part 2): the SDK's subgraph may not yet
           // report the market as settled, so quoteSellExactIn reverts with
-          // MarketNotOpen(). We stringify the entire error (which captures
-          // the viem ContractFunctionExecutionError → cause → ContractFunctionRevertedError
-          // chain) and check for the decoded error name. When this happens
-          // the market IS settled — drop from tracking for redemption.
-          const errStr = JSON.stringify(err, (key, value) => {
-            // Safely handle circular refs and non-serializable values
-            if (value && typeof value === 'object') {
-              try {
-                return JSON.stringify(value);
-              } catch {
-                return '[object Object]';
-              }
-            }
-            return value;
-          }, 0).toLowerCase();
-          if (errStr.includes("marketnotopen")) {
+          // MarketNotOpen(). Viem errors have a `.walk()` method that
+          // traverses the cause chain — use it to find the decoded error.
+          const isMarketNotOpen = (err as any).walk?.((e: any) =>
+            e?.shortMessage?.toLowerCase().includes("marketnotopen") ||
+            e?.decoded?.name?.toLowerCase().includes("marketnotopen"),
+          ) ?? false;
+          if (isMarketNotOpen) {
             console.log(
               `  [delphi-exit] market ${position.id} settled (MarketNotOpen) — dropping from tracking for redemption`,
             );
@@ -1430,6 +1421,20 @@ export class DelphiRunner {
           continue;
         }
         if (!trade.success) {
+          // sellExactIn reverted — check if it's because the market is settled
+          // (the subgraph hasn't caught up yet). Use the same walk helper.
+          const isMarketNotOpenSell = (err as any).walk?.(
+            (e: any) =>
+              e?.shortMessage?.toLowerCase().includes("marketnotopen") ||
+              e?.message?.toLowerCase().includes("marketnotopen"),
+          ) ?? false;
+          if (isMarketNotOpenSell) {
+            console.log(
+              `  [delphi-exit] market ${position.id} settled on sell (MarketNotOpen) — dropping from tracking for redemption`,
+            );
+            delete positions[position.id];
+            continue;
+          }
           console.warn(`  [delphi-exit] sell failed for ${position.id}: ${trade.error}`);
           continue;
         }
