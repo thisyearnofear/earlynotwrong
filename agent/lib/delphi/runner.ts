@@ -1383,17 +1383,10 @@ export class DelphiRunner {
         } catch (err) {
           // Stale-subgraph guard (part 2): the SDK's subgraph may not yet
           // report the market as settled, so quoteSellExactIn reverts with
-          // MarketNotOpen(). The full error spans multiple lines (viem
-          // wraps it), so we check both the message and any additional
-          // error properties the SDK exposes. When this happens the market
-          // IS settled — drop the position from tracking so the lifecycle
-          // sweep can redeem it.
-          const fullErr = [
-            err instanceof Error ? err.message : String(err),
-            err instanceof Error && typeof (err as any).details === "string" ? (err as any).details : undefined,
-            err instanceof Error && typeof (err as any).shortMessage === "string" ? (err as any).shortMessage : undefined,
-          ].filter((s) => s).join("\n");
-          if (fullErr.toLowerCase().includes("marketnotopen")) {
+          // MarketNotOpen(). The full error output is String(err), which
+          // includes the decoded error name (e.g. "Error: MarketNotOpen()")
+          // — err.message only has the first line. Check the full string.
+          if (String(err).toLowerCase().includes("marketnotopen")) {
             console.log(
               `  [delphi-exit] market ${position.id} settled (MarketNotOpen) — dropping from tracking for redemption`,
             );
