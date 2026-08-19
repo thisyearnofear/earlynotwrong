@@ -1383,19 +1383,32 @@ export class DelphiRunner {
         } catch (err) {
           // Stale-subgraph guard (part 2): the SDK's subgraph may not yet
           // report the market as settled, so quoteSellExactIn reverts with
-          // MarketNotOpen(). Viem wraps contract errors with non-enumerable
-          // properties, so JSON.stringify({ ..., err }) misses them. We
-          // check the most common viem error property names directly.
+          // MarketNotOpen(). Viem wraps contract errors: the immediate error
+          // is ContractFunctionExecutionError which wraps
+          // ContractFunctionRevertedError in its `cause` property. We check
+          // all levels of the chain. When this happens the market IS settled
+          // — drop the position from tracking so the lifecycle sweep can
+          // redeem it.
           let isMarketNotOpen = false;
           if (err instanceof Error) {
             const e = err as any;
-            if (
-              e.shortMessage?.toLowerCase().includes("marketnotopen") ||
-              e.message?.toLowerCase().includes("marketnotopen") ||
-              e.reason?.toLowerCase().includes("marketnotopen") ||
-              e.name?.toLowerCase().includes("marketnotopen")
-            ) {
-              isMarketNotOpen = true;
+            // Check this error and its cause chain
+            const toCheck = [e];
+            if (e.cause instanceof Error) toCheck.push(e.cause);
+            if (e.cause?.cause instanceof Error) toCheck.push(e.cause.cause);
+            if (e.cause?.cause?.cause instanceof Error) toCheck.push(e.cause.cause.cause);
+            for (const candidate of toCheck) {
+              const c = candidate as any;
+              if (
+                c.shortMessage?.toLowerCase().includes("marketnotopen") ||
+                c.message?.toLowerCase().includes("marketnotopen") ||
+                c.reason?.toLowerCase().includes("marketnotopen") ||
+                c.name?.toLowerCase().includes("marketnotopen") ||
+                c.decoded?.name?.toLowerCase().includes("marketnotopen")
+              ) {
+                isMarketNotOpen = true;
+                break;
+              }
             }
           }
           if (isMarketNotOpen) {
