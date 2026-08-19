@@ -1381,10 +1381,23 @@ export class DelphiRunner {
         try {
           quote = await this.executor.quoteSell(position.marketAddress, position.outcomeIdx, shares);
         } catch (err) {
-          // Quote failed (e.g. market paused, client without sell support).
+          const errMsg = err instanceof Error ? err.message : String(err);
+          // Stale-subgraph guard (part 2): the SDK's subgraph may not yet
+          // report the market as settled, so quoteSellExactIn will revert
+          // with MarketNotOpen(). When this happens the market IS settled —
+          // drop the position from tracking so the lifecycle sweep can
+          // redeem it. Check the error message rather than trusting the
+          // subgraph status.
+          if (errMsg.includes("MarketNotOpen") || errMsg.includes("marketNotOpen")) {
+            console.log(
+              `  [delphi-exit] market ${position.id} settled (quoteSell reverted MarketNotOpen) — dropping from tracking for redemption`,
+            );
+            delete positions[position.id];
+            continue;
+          }
           // Hold the position — re-evaluate next cycle. Never sell blind.
           console.warn(
-            `  [delphi-exit] sell quote failed for ${position.id}, holding: ${err instanceof Error ? err.message : String(err)}`,
+            `  [delphi-exit] sell quote failed for ${position.id}, holding: ${errMsg}`,
           );
           continue;
         }
