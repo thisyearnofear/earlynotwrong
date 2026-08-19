@@ -1349,6 +1349,34 @@ export class DelphiRunner {
       // hold them to settlement, where redemption cashes them out.
       if (position.forecast === undefined) continue;
       try {
+        // ── Stale-subgraph guard: check if market is still open ──────
+        // If resolvesAt has passed, the market is settled and sellExactIn
+        // will revert. We must drop the position from tracking so the
+        // lifecycle sweep can redeem it when the subgraph updates.
+        let marketIsOpen = true;
+        try {
+          const market = await this.executor.getMarket(position.marketAddress);
+          if (market.resolvesAt) {
+            const resolvesAtTime = new Date(market.resolvesAt).getTime();
+            if (resolvesAtTime > 0 && Date.now() > resolvesAtTime + 30_000) {
+              // Market has passed its resolution time — treat as settled.
+              // Drop from tracking; the lifecycle sweep will redeem it.
+              console.log(
+                `  [delphi-exit] market ${position.id} resolved at ${market.resolvesAt} — dropping from tracking for redemption`,
+              );
+              delete positions[position.id];
+              marketIsOpen = false;
+            }
+          }
+        } catch (err) {
+          // If the market fetch fails (subgraph lag, API down), hold the
+          // position — don't drop a live position because a read failed.
+          console.warn(
+            `  [delphi-exit] market status check failed for ${position.id}, holding: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        if (!marketIsOpen) continue;
+
         let quote;
         try {
           quote = await this.executor.quoteSell(position.marketAddress, position.outcomeIdx, shares);

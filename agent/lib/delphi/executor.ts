@@ -412,6 +412,36 @@ export class DelphiExecutor {
   }
 
   /**
+   * Fetch a single market's details (used for maturity checks on tracked
+   * positions — if `resolvesAt` has passed, the market is settled and the
+   * lifecycle sweep must redeem, not the convergence sell path). Returns
+   * the market shape normalized by `mapSdkMarket`.
+   */
+  async getMarket(marketAddress: string): Promise<DelphiMarket> {
+    if (this.simulator) {
+      // Return a synthetic open market in simulator mode so callers can
+      // parse resolvesAt without crashing. Tests set it explicitly.
+      return {
+        id: marketAddress,
+        question: "(simulator market)",
+        outcomes: ["Yes", "No"],
+        status: "open",
+        resolvesAt: null,
+      };
+    }
+    const client = await this.getClient();
+    return withRetry(
+      async () =>
+        withTimeout(
+          (client.getMarket({ id: marketAddress }) as Promise<DelphiMarket>).then(mapSdkMarket),
+          this.sdkTimeoutMs,
+          "delphi-get-market-status",
+        ),
+      { label: "delphi-get-market-status", ...this.retryPolicy },
+    );
+  }
+
+  /**
    * The winning outcome index of a settled market, or null when unknown
    * (not settled yet, REST index lag, or simulator mode).
    *
