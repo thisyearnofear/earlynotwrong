@@ -316,6 +316,20 @@ export interface DelphiStatus {
     buckets: DelphiCalibrationBucket[];
     totalForecasts: number;
   };
+  /** Calibration over EVERY estimate (traded or not) — the unbiased
+   *  forecaster record, scored at settlement from forecasts-all.jsonl. */
+  allForecasts: {
+    resolved: number;
+    unresolved: number;
+    brierScore: number | null;
+    logLoss: number | null;
+    hitRate: number | null;
+    buckets: DelphiCalibrationBucket[];
+    totalForecasts: number;
+    totalEstimates: number;
+    scoredMarkets: number;
+    droppedMarkets: number;
+  };
 }
 
 /**

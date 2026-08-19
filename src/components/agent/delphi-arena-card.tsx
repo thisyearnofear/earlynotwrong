@@ -79,6 +79,9 @@ export function DelphiArenaCard() {
   const anchorOk = status?.lastAnchor?.results.some((r) => r.status === "success");
   const buckets = status?.calibration.buckets ?? [];
   const maxCount = Math.max(...buckets.map((b) => b.count), 1);
+  /** Post-mortem mode: the competition window closed — the card freezes into
+   *  its final record instead of implying live activity. */
+  const arenaClosed = (status?.competition.msRemaining ?? 1) <= 0;
 
   return (
     <Card className="bg-surface/30 border-border/50 border-[#f59e0b]/20">
@@ -91,7 +94,7 @@ export function DelphiArenaCard() {
           </span>
           {status && (
             <span className="ml-auto text-[9px] font-mono text-foreground-dim normal-case tracking-normal">
-              {fmtCountdown(status.competition.msRemaining)} · {status.network}
+              {arenaClosed ? "closed · final record" : fmtCountdown(status.competition.msRemaining)} · {status.network}
             </span>
           )}
           <button
@@ -109,18 +112,30 @@ export function DelphiArenaCard() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-[11px] text-foreground-muted leading-relaxed">
-          A second venue: the agent forecasts probabilities on LMSR prediction
-          markets and trades where estimate − implied clears a category-aware
-          edge gate. Every forecast is built from visible evidence — a
-          <span className="text-foreground"> sourced web briefing</span>, a
-          <span className="text-foreground"> median-of-3 model ensemble</span>,
-          and (for crypto thresholds) a
-          <span className="text-foreground"> realized-vol anchor</span>.
-          Skill is graded by <span className="text-foreground">calibration</span> (Brier),
-          not Sharpe, and the per-cycle thesis is anchored on-chain with the same
-          registries as the token book.
-        </p>
+        {/* Intro copy — live thesis in the open window, final record after */}
+        {status && arenaClosed ? (
+          <p className="text-[11px] text-foreground-muted leading-relaxed">
+            The Gensyn Delphi Agent Arena closed on 2026-08-24. What follows is
+            the runner&apos;s <span className="text-foreground">final record</span>:
+            the open forecasts held at close, cumulative run stats, and
+            calibration — including the unbiased score over
+            <span className="text-foreground"> every estimate made</span>, not just
+            traded positions.
+          </p>
+        ) : (
+          <p className="text-[11px] text-foreground-muted leading-relaxed">
+            A second venue: the agent forecasts probabilities on LMSR prediction
+            markets and trades where estimate − implied clears a category-aware
+            edge gate. Every forecast is built from visible evidence — a
+            <span className="text-foreground"> sourced web briefing</span>, a
+            <span className="text-foreground"> median-of-3 model ensemble</span>,
+            and (for crypto thresholds) a
+            <span className="text-foreground"> realized-vol anchor</span>.
+            Skill is graded by <span className="text-foreground">calibration</span> (Brier),
+            not Sharpe, and the per-cycle thesis is anchored on-chain with the same
+            registries as the token book.
+          </p>
+        )}
 
         {/* Unreachable / fetch failed */}
         {loaded && !status && (
@@ -343,6 +358,40 @@ export function DelphiArenaCard() {
                     (said ≈ happened); <span className="text-impatience">red</span> bins are over/underconfident.
                   </p>
                 </>
+              )}
+
+              {/* All-forecasts calibration — the unbiased record. The traded
+                  block above only scores markets we entered (edge + sizing),
+                  which selection-biases it. This block scores EVERY estimate
+                  at settlement, including markets we declined to trade. */}
+              {status.allForecasts.totalForecasts > 0 && (
+                <div className="mt-2.5 rounded-lg border border-[#f59e0b]/20 bg-surface/20 px-2.5 py-2">
+                  <p className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim mb-1.5">
+                    All forecasts · {status.allForecasts.resolved} scored views / {status.allForecasts.scoredMarkets} settled markets
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-sm font-mono text-[#f59e0b] tabular-nums">{fmtProb(status.allForecasts.brierScore, 3)}</p>
+                      <p className="text-[8px] font-mono uppercase tracking-wider text-foreground-dim mt-0.5">Brier</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-mono text-foreground tabular-nums">{fmtProb(status.allForecasts.logLoss, 3)}</p>
+                      <p className="text-[8px] font-mono uppercase tracking-wider text-foreground-dim mt-0.5">Log loss</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-mono text-foreground tabular-nums">
+                        {status.allForecasts.hitRate === null ? "—" : `${Math.round(status.allForecasts.hitRate * 100)}%`}
+                      </p>
+                      <p className="text-[8px] font-mono uppercase tracking-wider text-foreground-dim mt-0.5">Hit rate</p>
+                    </div>
+                  </div>
+                  <p className="text-[8px] font-mono text-foreground-dim mt-1.5 leading-relaxed">
+                    Scores every market we estimated — traded or not — from{" "}
+                    <span className="tabular-nums">{status.allForecasts.totalEstimates}</span> logged observations
+                    ({status.allForecasts.droppedMarkets} markets dropped without resolution).
+                    This is the number a signal buyer should care about.
+                  </p>
+                </div>
               )}
             </div>
 

@@ -121,4 +121,46 @@ describe("readDelphiStatus", () => {
     expect(status.hasData).toBe(false);
     expect(status.calibration.resolved).toBe(0);
   });
+
+  it("surfaces the all-forecasts calibration alongside the traded one", () => {
+    const dir = join(baseDir, "delphi");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "snapshot.json"),
+      JSON.stringify({ lastCycleAt: 1755100000000, cyclesRun: 1, tradesPlaced: 0, marketsSeen: 5, lastAnchoredThesisHash: null, lastAnchor: null }),
+    );
+    // Raw estimate observations (2 markets × 2 outcomes).
+    writeFileSync(
+      join(dir, "estimates.jsonl"),
+      [
+        JSON.stringify({ marketAddress: "0xA", outcomeIdx: 0, question: "A?", forecast: 0.8, estimatedAt: 1 }),
+        JSON.stringify({ marketAddress: "0xA", outcomeIdx: 1, question: "A?", forecast: 0.2, estimatedAt: 1 }),
+        JSON.stringify({ marketAddress: "0xB", outcomeIdx: 0, question: "B?", forecast: 0.9, estimatedAt: 1 }),
+        JSON.stringify({ marketAddress: "0xB", outcomeIdx: 1, question: "B?", forecast: 0.1, estimatedAt: 1 }),
+      ].join("\n"),
+    );
+    // Scored at settlement: 0xA winner idx1, 0xB winner idx0 — both correct.
+    writeFileSync(
+      join(dir, "forecasts-all.jsonl"),
+      [
+        JSON.stringify({ id: "0xA:0", forecast: 0.8, forecastAt: 1, outcome: 0, resolvedAt: 2, marketAddress: "0xA", outcomeIdx: 0, observations: 1 }),
+        JSON.stringify({ id: "0xA:1", forecast: 0.2, forecastAt: 1, outcome: 1, resolvedAt: 2, marketAddress: "0xA", outcomeIdx: 1, observations: 1 }),
+        JSON.stringify({ id: "0xB:0", forecast: 0.9, forecastAt: 1, outcome: 1, resolvedAt: 2, marketAddress: "0xB", outcomeIdx: 0, observations: 1 }),
+        JSON.stringify({ id: "0xB:1", forecast: 0.1, forecastAt: 1, outcome: 0, resolvedAt: 2, marketAddress: "0xB", outcomeIdx: 1, observations: 1 }),
+      ].join("\n"),
+    );
+    writeFileSync(join(dir, "forecasts-dropped.jsonl"), JSON.stringify({ marketAddress: "0xX", status: "expired", droppedAt: 1 }));
+
+    const status = readDelphiStatus(CONFIG);
+    expect(status.allForecasts.totalForecasts).toBe(4);
+    expect(status.allForecasts.resolved).toBe(4);
+    expect(status.allForecasts.totalEstimates).toBe(4);
+    expect(status.allForecasts.scoredMarkets).toBe(2);
+    expect(status.allForecasts.droppedMarkets).toBe(1);
+    // Brier = (0.8² + 0.8² + 0.1² + 0.1²)/4 = 0.325.
+    expect(status.allForecasts.brierScore).toBeCloseTo(0.325, 9);
+    // 0xA's winner (idx1) was forecast 0.2 (<0.5 → miss both rows); 0xB is a
+    // clean hit on both. Hit rate = 2/4 = 0.5.
+    expect(status.allForecasts.hitRate).toBe(0.5);
+  });
 });

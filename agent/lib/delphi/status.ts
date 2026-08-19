@@ -29,6 +29,11 @@ interface ResolvedForecast {
   outcomeIdx: number;
 }
 
+/** Scored row from forecasts-all.jsonl — same fields + observation count. */
+interface ResolvedAllForecast extends ResolvedForecast {
+  observations: number;
+}
+
 export interface DelphiStatus {
   /** Whether the runner has ever produced data (snapshot exists). */
   hasData: boolean;
@@ -69,6 +74,16 @@ export interface DelphiStatus {
   totalExposureTokens: string;
   /** Calibration metrics over every resolved forecast. */
   calibration: CalibrationMetrics & { totalForecasts: number };
+  /**
+   * Calibration over EVERY estimate the runner made (traded or not), scored
+   * from forecasts-all.jsonl once markets settle. The unbiased forecaster
+   * record — the traded-only `calibration` above only covers markets where
+   * edge + sizing let us enter, so it can't answer "how good is the
+   * forecaster overall". totalEstimates counts raw observations in
+   * estimates.jsonl (the time series behind the scored rows). Zeroed when
+   * the runner has produced no estimates yet.
+   */
+  allForecasts: CalibrationMetrics & { totalForecasts: number; totalEstimates: number; scoredMarkets: number; droppedMarkets: number };
 }
 
 function getDelphiDataDir(): string {
@@ -123,9 +138,15 @@ export function readDelphiStatus(config: { windowOpens: string; windowCloses: st
   const positions = readJsonOrNull<Record<string, DelphiOpenPosition>>(join(dir, "positions.json")) ?? {};
   const exposure = readJsonOrNull<Record<string, string>>(join(dir, "exposure.json")) ?? {};
   const resolved = readJsonl<ResolvedForecast>(join(dir, "forecasts.jsonl"));
+  const allResolved = readJsonl<ResolvedAllForecast>(join(dir, "forecasts-all.jsonl"));
+  const estimatesLog = readJsonl<unknown>(join(dir, "estimates.jsonl"));
+  const droppedMarkets = readJsonl<unknown>(join(dir, "forecasts-dropped.jsonl"));
 
   const totalExposure = Object.values(exposure).reduce((acc, v) => acc + BigInt(v ?? "0"), 0n);
   const metrics = calculateCalibrationMetrics(resolved);
+
+  const allMetrics = calculateCalibrationMetrics(allResolved);
+  const uniqueScoredMarkets = new Set(allResolved.map((r) => r.marketAddress)).size;
 
   return {
     hasData: snapshot !== null,
@@ -158,5 +179,12 @@ export function readDelphiStatus(config: { windowOpens: string; windowCloses: st
     openPositions: Object.values(positions).sort((a, b) => b.openedAt - a.openedAt),
     totalExposureTokens: totalExposure.toString(),
     calibration: { ...metrics, totalForecasts: resolved.length },
+    allForecasts: {
+      ...allMetrics,
+      totalForecasts: allResolved.length,
+      totalEstimates: estimatesLog.length,
+      scoredMarkets: uniqueScoredMarkets,
+      droppedMarkets: droppedMarkets.length,
+    },
   };
 }

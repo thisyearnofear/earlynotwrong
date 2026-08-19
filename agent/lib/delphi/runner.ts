@@ -73,6 +73,7 @@ import {
   type VerificationInput,
   type VerificationResult,
 } from "./verification.js";
+import { appendForecastLog, resolveForecastLog } from "./forecast-log.js";
 import type { ProbabilityForecast } from "conviction-core";
 
 // =============================================================================
@@ -826,6 +827,21 @@ export class DelphiRunner {
       console.warn(`[delphi-runner] lifecycle sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    // ── 1a. Resolve the all-forecasts log (traded + untraded estimates) ──
+    // The traded-ledger calibration (forecasts.jsonl) only scores markets we
+    // entered — selection-biased. The all-forecasts log (estimates.jsonl)
+    // scores every estimate once its market settles, giving the honest
+    // forecaster-level calibration report.
+    try {
+      await resolveForecastLog(this.dataDir, {
+        getMarketDetails: (addr) => this.executor.getMarket(addr),
+        clock: this.clock,
+        log: (msg) => console.log(msg),
+      });
+    } catch (err) {
+      console.warn(`[delphi-runner] forecast-log resolution failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // ── 1b. Sell-into-convergence exit pass over tracked open positions ────
     //
     // Markets that resolved were already closed by the redeem sweep above;
@@ -954,6 +970,11 @@ export class DelphiRunner {
       }
       if (!estimate) continue;
       result.estimatesProduced++;
+      // All-forecasts ledger: log EVERY estimate (traded or not) so the
+      // calibration report isn't selection-biased toward markets where the
+      // edge gate + sizing let us enter. Resolved at settlement by
+      // resolveForecastLog() — the scored row is the last view we held.
+      appendForecastLog(this.dataDir, estimate, input.impliedProbabilities);
 
       const signals = evaluateProbabilitySignal(estimate, input.impliedProbabilities, this.probability);
       for (const signal of signals) {
