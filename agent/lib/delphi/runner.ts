@@ -1410,6 +1410,7 @@ export class DelphiRunner {
         if (exit.action === "hold") continue;
 
         let trade;
+        let tradeError: unknown;
         try {
           trade = await this.executor.sellShares({
             marketAddress: position.marketAddress,
@@ -1417,13 +1418,14 @@ export class DelphiRunner {
             sharesIn: shares,
           });
         } catch (err) {
+          tradeError = err;
           console.warn(`  [delphi-exit] sell threw for ${position.id}: ${err instanceof Error ? err.message : String(err)}`);
           continue;
         }
         if (!trade.success) {
           // sellExactIn reverted — check if it's because the market is settled
           // (the subgraph hasn't caught up yet). Use the same walk helper.
-          const isMarketNotOpenSell = (err as any).walk?.(
+          const isMarketNotOpenSell = (tradeError as any).walk?.(
             (e: any) =>
               e?.shortMessage?.toLowerCase().includes("marketnotopen") ||
               e?.message?.toLowerCase().includes("marketnotopen"),
