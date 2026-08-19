@@ -328,11 +328,37 @@ contradicts every held outcome, it closes the position as a known loss
 stops retrying. A failed redeem where we hold the WINNING outcome stays in
 the retry queue (money is owed; the revert is gas/RPC/index lag).
 
+**Stale-subgraph guard (2026-08-19):** the SDK's subgraph can lag behind
+actual market settlement, so `listPositions` keeps reporting settled
+markets as open (the Chess-Wikipedia market showed `awaiting_settlement` for
+days). Every sell into one of these markets reverts with `MarketNotOpen()`
+on the LMSR contract, and the naive hourly retry loop would have kept burning
+gas/UAP-gateway credit indefinitely. Two fixes work together:
+
+1. **Pre-sell maturity check** — `DelphiExecutor.getMarket()` (REST, not
+   subgraph) exposes `resolvesAt`; `convergenceExitPass` skips (and drops from
+   tracking) any position whose market is past `resolvesAt + 30 s`. The
+   lifecycle sweep then redeems/liquidates it.
+2. **Reactive fallback** — if the date check passes but the quote/sell still
+   reverts with `MarketNotOpen()` (caught via `err.toString()`; viem hides the
+   decoded name in non-enumerable cause-chain properties), the position is
+   deleted from `positions.json` so the sweep can handle it.
+
+Restored the stuck Chess-Wikipedia position (92.5 TST) and let the UAP position
+stay tracked (its `resolvesAt` was 2026-08-21, still open).
+
 **Thesis-stop re-entry cooldown (2026-08-18):** after an `exit-stop`, the
 same market is gated for `stopReentryCooldownHours` (default 12) unless the
 new signal's edge strictly beats the stopped thesis's edge. Recovered from
 the append-only trade ledger — no extra state file. Prevents the Chess-market
 serial re-entry (4 buys in 4 days, net −89 TST).
+
+**Endgame sizing & calibration tuning (2026-08-19):**
+- `maxPositionFraction 0.1 → 0.15`, `maxMarketFraction 0.25 → 0.35` —
+  with 5 days left, bigger but still Kelly-lite.
+- Forecaster `temperature 0.2 → 0.35` — nudges the model away from the
+  default "obviously 0.95" overconfidence that cost 103 TST on Typhoon Dolphin.
+
 
 ### Runbook (once registration completes)
 
