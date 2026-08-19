@@ -1399,16 +1399,21 @@ export class DelphiRunner {
             if (e.cause?.cause?.cause instanceof Error) toCheck.push(e.cause.cause.cause);
             for (const candidate of toCheck) {
               const c = candidate as any;
-              if (
-                c.shortMessage?.toLowerCase().includes("marketnotopen") ||
-                c.message?.toLowerCase().includes("marketnotopen") ||
-                c.reason?.toLowerCase().includes("marketnotopen") ||
-                c.name?.toLowerCase().includes("marketnotopen") ||
-                c.decoded?.name?.toLowerCase().includes("marketnotopen")
-              ) {
-                isMarketNotOpen = true;
-                break;
+              const fields = [
+                c.shortMessage,
+                c.message,
+                c.reason,
+                c.name,
+                c.details,
+                c.decoded?.name,
+              ];
+              for (const f of fields) {
+                if (typeof f === "string" && f.toLowerCase().includes("marketnotopen")) {
+                  isMarketNotOpen = true;
+                  break;
+                }
               }
+              if (isMarketNotOpen) break;
             }
           }
           if (isMarketNotOpen) {
