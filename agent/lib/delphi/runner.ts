@@ -1383,56 +1383,22 @@ export class DelphiRunner {
         } catch (err) {
           // Stale-subgraph guard (part 2): the SDK's subgraph may not yet
           // report the market as settled, so quoteSellExactIn reverts with
-          // MarketNotOpen(). Viem wraps contract errors: the immediate error
-          // is ContractFunctionExecutionError which wraps
-          // ContractFunctionRevertedError in its `cause` property. We check
-          // all levels of the chain. When this happens the market IS settled
-          // — drop the position from tracking so the lifecycle sweep can
-          // redeem it.
-          let isMarketNotOpen = false;
-          if (err instanceof Error) {
-            const e = err as any;
-            // Check this error and its cause chain
-            const toCheck = [e];
-            if (e.cause) toCheck.push(e.cause);
-            if (e.cause?.cause) toCheck.push(e.cause.cause);
-            if (e.cause?.cause?.cause) toCheck.push(e.cause.cause.cause);
-            for (const candidate of toCheck) {
-              const c = candidate as any;
-              const fields = [
-                c.shortMessage,
-                c.message,
-                c.reason,
-                c.name,
-                c.details,
-                c.decoded?.name,
-              ];
-              for (const f of fields) {
-                if (typeof f === "string" && f.toLowerCase().includes("marketnotopen")) {
-                  isMarketNotOpen = true;
-                  break;
-                }
+          // MarketNotOpen(). We stringify the entire error (which captures
+          // the viem ContractFunctionExecutionError → cause → ContractFunctionRevertedError
+          // chain) and check for the decoded error name. When this happens
+          // the market IS settled — drop from tracking for redemption.
+          const errStr = JSON.stringify(err, (key, value) => {
+            // Safely handle circular refs and non-serializable values
+            if (value && typeof value === 'object') {
+              try {
+                return JSON.stringify(value);
+              } catch {
+                return '[object Object]';
               }
-              if (isMarketNotOpen) break;
             }
-            // DEBUG: print all enumerable property values for diagnostic
-            if (!isMarketNotOpen) {
-              const allProps = Object.keys(e)
-                .map((k) => `${k}=${e[k]}`)
-                .slice(0, 10)
-                .join("; ");
-              const causeProps = e.cause
-                ? Object.keys(e.cause)
-                    .map((k) => `cause.${k}=${e.cause[k]}`)
-                    .slice(0, 10)
-                    .join("; ")
-                : "none";
-              console.warn(
-                `  [delphi-exit] DEBUG MARKETNOTOPEN check: props=[${allProps}] causeProps=[${causeProps}]`,
-              );
-            }
-          }
-          if (isMarketNotOpen) {
+            return value;
+          }, 0).toLowerCase();
+          if (errStr.includes("marketnotopen")) {
             console.log(
               `  [delphi-exit] market ${position.id} settled (MarketNotOpen) — dropping from tracking for redemption`,
             );
