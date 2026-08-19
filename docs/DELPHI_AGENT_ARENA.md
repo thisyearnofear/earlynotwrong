@@ -113,6 +113,7 @@ Env (added to `agent/manifest.json` secrets + `.env.example`):
 | `DELPHI_NETWORK` | `competition-testnet` now, `mainnet` later |
 | `DELPHI_API_ACCESS_KEY` | REST reads (markets/positions). Generate at https://delphi-api-access.gensyn.ai/ |
 | `DELPHI_WALLET_PRIVATE_KEY` | Fresh, competition-only keypair. Never the TWAK or Casper operator key |
+| `BAI_API_KEY` | B.AI API key (free DeepSeek-V4-Flash promo) — rung 3 of the forecaster ladder. Set in `agent/.env` on the VPS (chmod 600), never committed |
 | `VERCEL_AI_GATEWAY_API_KEY` | Free-first inference (zai/glm-5.2) + Exa web search for the Delphi forecaster. Promo window; the paid ladder below stays wired as fallback |
 
 Key SDK facts (v2.1.0): `competition-testnet` network auto-sends `X-Delphi-Mode: competition`; chain ID 685685; competition gateway `0x097599c9D966fF496284b892A8F13BF885b258ef`; market statuses `open | awaiting_settlement | settled | expired | failed` — `settled` → `redeemMarket`, `expired`/`failed` → `liquidate`. **`listMarkets` nests `question`/`outcomes` under `market.metadata`** — flat top-level fields exist only in test fakes, which is why `listOpenMarkets` maps through `mapSdkMarket` (the first live cycle produced estimates=0 until this was fixed). **The SDK has no HTTP timeout of its own** — every executor call is therefore wrapped in `withTimeout` (`sdkTimeoutMs`, default 60s) and the runner loop has a 50-minute cycle watchdog; without these a single hung RPC/subgraph request froze the runner for 13.5h in production (2026-08-15).
@@ -247,12 +248,20 @@ stays that way (or degrades explicitly) after the promos end:
 
 | Surface | Provider | Cost | Guard |
 |---|---|---|---|
-| Forecaster ensemble (3 samples/market) | Vercel AI Gateway · GLM 5.2 | Free through **2026-08-27** | `vercelGatewayFreeActive()` drops it from the ladder on/after `VERCEL_GATEWAY_PROMO_ENDS` (default 2026-08-28) |
+| Forecaster ensemble (3 samples/market) | Vercel AI Gateway · GLM 5.2 | Promo expired / credit exhausted | `vercelGatewayFreeActive()` + circuit breaker on 402 |
+| Inference — rung 3 | **B.AI · DeepSeek-V4-Flash** (keyed, `BAI_API_KEY`) | Free promo (2026-08-19: "unlimited, for a limited time") | cascade falls through to OrcaRouter on error |
+| Inference — rung 4 | OrcaRouter · `deepseek/deepseek-v4-flash-free` | $0 (rate-limited, ~18% error rate) | same |
 | Web briefings — rung 1 | Firecrawl `/v2/search` (keyless) | Free (keyless tier; optional `FIRECRAWL_API_KEY` raises limits) | per-rung breaker; budget counts network calls |
 | Web briefings — rung 2 | Parallel Search MCP (anonymous) | Free (no key; optional `PARALLEL_API_KEY` raises limits) | per-rung breaker; daily-reset window on quota errors |
 | Web briefings — rung 3 | Exa via the same gateway key | Free through **2026-08-31** | gates off with the promo; forecaster falls back to implied odds alone |
 | Ladder fallback | OpenRouter · `nvidia/nemotron-3-ultra-550b-a55b:free` | Free | pinned `:free` model — the account holds paid credits, and `openrouter/auto` on a credited account routes to **paid** models |
 | Vol baseline | SoSoValue klines + spot (arithmetic) | Free (existing 20 req/min key) | blend skipped on parse failure — never billed, never blocks |
+
+Retired tiers (2026-08-19): the keyless **hf-qwen** community endpoint was
+removed — the deployment was retired as its own docs warned ("retired after
+the launch buzz") and every call had started returning 404, collapsing
+estimates to 0/cycle until the b-ai rung landed. The OrcaRouter
+`qwen/qwen3.8-27b-free` model is similarly abandoned (hard quota).
 
 Efficiency mechanisms:
 
@@ -319,6 +328,16 @@ forecast (payout > 0 → the held outcome happened; 0 → it didn't). Expired or
 failed markets are liquidated without resolution (no ground truth), and
 markets where we hold more than one outcome are closed without scoring —
 better no calibration point than a fabricated one.
+
+**All-forecasts calibration ledger (2026-08-19):** the rule above makes the
+traded-only `forecasts.jsonl` selection-biased — it can only ever reflect
+markets the edge gate + sizing let us enter, so it can't answer "how good is
+the forecaster overall". `delphi/forecast-log.ts` fixes that: every estimate
+(traded or not) is appended to `estimates.jsonl` each cycle, and
+`resolveForecastLog()` scores the LAST forecast per (market, outcome) at
+settlement into `forecasts-all.jsonl` (same expiry/failed-drop rule). The
+dashboard exposes both: `calibration` (traded) and `allForecasts` (every
+market) — the all-forecasts number is the one a signal buyer should read.
 
 **Stuck redeems (2026-08-18):** `redeem()` reverts for LOSING shares by
 design — a settled market that resolved against us can never redeem. The
