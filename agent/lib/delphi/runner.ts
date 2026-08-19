@@ -1382,20 +1382,13 @@ export class DelphiRunner {
           quote = await this.executor.quoteSell(position.marketAddress, position.outcomeIdx, shares);
         } catch (err) {
           // Stale-subgraph guard: the SDK's subgraph may not yet report the
-          // market as settled, so quoteSellExactIn reverts. We check
-          // resolvableAt + status from getMarket() as the primary signal,
-          // and also check if err contains "MarketNotOpen" in any string
-          // representation (the console log shows "Error: MarketNotOpen()"
-          // even though viem stores it non-enumerably).
-          const e = err as any;
-          const errObjStr = JSON.stringify(e, (_k, v) => {
-            if (v && typeof v === 'object') return '[obj]';
-            return v;
-          }, 0).toLowerCase();
-          const hasMarketNotOpenInObj = errObjStr.includes("marketnotopen");
-          if (hasMarketNotOpenInObj) {
+          // market as settled, so quoteSellExactIn reverts. Viem's BaseError
+          // implements toString() which produces the full multi-line output
+          // (we see "Error: MarketNotOpen()" in logs). Check that.
+          const full = err instanceof Error ? err.toString() : String(err);
+          if (full.toLowerCase().includes("marketnotopen")) {
             console.log(
-              `  [delphi-exit] market ${position.id} settled (MarketNotOpen found in error object) — dropping from tracking for redemption`,
+              `  [delphi-exit] market ${position.id} settled (MarketNotOpen) — dropping from tracking for redemption`,
             );
             delete positions[position.id];
             continue;
