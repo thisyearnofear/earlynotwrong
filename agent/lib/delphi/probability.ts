@@ -566,7 +566,7 @@ async function fetchLlmEstimate(
       anthropic: { envVar: "ANTHROPIC_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.anthropic },
     },
     maxTokens: 1600, // headroom for longer reasoning when web briefing context is injected
-    temperature: 0.2, // lower temp than the token jury — calibration, not creativity
+    temperature: 0.35, // endgame: increased from 0.2 to reduce 0.95 overconfidence; lower temp = more confident but less calibrated (docs), 0.35 pushes away from round-number confidence toward honest uncertainty
     timeoutMs,
     xTitle: "Early Not Wrong - Delphi Probability Forecaster",
   });

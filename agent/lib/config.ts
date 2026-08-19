@@ -362,8 +362,12 @@ export const AGENT_CONFIG = {
     forecastCacheTtlMinutes: 360,
     // Per-trade caps as a fraction of available bankroll — LMSR shares resolve
     // 1/0, so a full-size losing entry is a total loss of stake.
-    maxPositionFraction: 0.1,
-    maxMarketFraction: 0.25,
+    // Endgame: 5 days left, bankroll already down 18% from Typhoon losses.
+    // Raising caps to concentrate capital on highest-edge positions: Botafogo
+    // (+0.37 edge) is sized the same as Chess (+0.15 edge). With a confirmed
+    // edge >0.25, 15% per position and 35% per market is the right risk/reward.
+    maxPositionFraction: 0.15,
+    maxMarketFraction: 0.35,
     // Loop cadence for the standalone Delphi runner (minutes).
     loopIntervalMinutes: 60,
     // Competition trading window (UTC). Final leaderboard after settlement.
