@@ -218,7 +218,7 @@ describe("DelphiRunner", () => {
   it("skips the cycle when DELPHI_ENABLED is off", async () => {
     delete process.env.DELPHI_ENABLED;
     const executor = new DelphiExecutor({ apiKey: "k", clientFactory: async () => makeFakeClient({ markets: [] }) });
-    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false, webSearch: noopWebSearch, fetchVolBaseline: noopVolBaseline });
+    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null, webSearch: noopWebSearch, fetchVolBaseline: noopVolBaseline });
     const result = await runner.runCycle(1);
     expect(result.marketsEvaluated).toBe(0);
   });
@@ -226,7 +226,7 @@ describe("DelphiRunner", () => {
   it("throws on health-check failure with a helpful message", async () => {
     process.env.DELPHI_ENABLED = "1";
     const executor = new DelphiExecutor({ apiKey: "" }); // simulator → unavailable
-    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false, webSearch: noopWebSearch, fetchVolBaseline: noopVolBaseline });
+    const runner = new DelphiRunner({ executor, dataDir, telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null, webSearch: noopWebSearch, fetchVolBaseline: noopVolBaseline });
     await expect(runner.runCycle(1)).rejects.toThrow(/health check failed/);
   });
 
@@ -249,7 +249,7 @@ describe("DelphiRunner", () => {
     const runner = new DelphiRunner({
       executor,
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -332,7 +332,7 @@ describe("DelphiRunner", () => {
     const runner = new DelphiRunner({
       executor,
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -376,7 +376,7 @@ describe("DelphiRunner", () => {
     const runner = new DelphiRunner({
       executor,
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -410,7 +410,7 @@ describe("DelphiRunner", () => {
     const first = new DelphiRunner({
       executor: new DelphiExecutor(factoryConfig),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -421,7 +421,7 @@ describe("DelphiRunner", () => {
     const second = new DelphiRunner({
       executor: new DelphiExecutor(factoryConfig),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -447,7 +447,7 @@ describe("DelphiRunner", () => {
     const runner = new DelphiRunner({
       executor: new DelphiExecutor(factoryConfig),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -495,7 +495,7 @@ describe("DelphiRunner", () => {
           }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -532,7 +532,7 @@ describe("DelphiRunner", () => {
           }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -574,7 +574,7 @@ describe("DelphiRunner", () => {
           }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: async () => 0.05,
       verificationEnabled: false,
@@ -648,7 +648,7 @@ describe("DelphiRunner", () => {
     const runner = new DelphiRunner({
       executor: new DelphiExecutor({ apiKey: "k", retry: { maxRetries: 0 }, clientFactory: async () => client }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -716,7 +716,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xChess", "Q?")], prices: { "0xChess": [0.4, 0.6] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -736,7 +736,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xChess", "Q?")], prices: { "0xChess": [0.4, 0.6] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -768,7 +768,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xAuth", "Q?")], prices: { "0xAuth": [0.6, 0.4] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -833,7 +833,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xOpen", "Q?")], prices: { "0xOpen": [0.5, 0.5] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -874,7 +874,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xOil", "Will WTI crude oil close above $95 on 2026-08-22 UTC?")], prices: { "0xOil": [0.5, 0.5] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: {
         resetCycleBudget: () => {},
         briefing: async () => ({
@@ -925,7 +925,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xOil2", "Will WTI crude oil close above $95 on 2026-08-22 UTC?")], prices: { "0xOil2": [0.5, 0.5] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: {
         resetCycleBudget: () => {},
         briefing: async () => ({
@@ -972,7 +972,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xV1", "Q?")], prices: { "0xV1": [0.4, 0.6] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       factCheck: noopFactCheck,
@@ -1023,7 +1023,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xV2", "Q?")], prices: { "0xV2": [0.4, 0.6] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       factCheck: noopFactCheck,
@@ -1078,7 +1078,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xV3", "Q?")], prices: { "0xV3": [0.4, 0.6] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       factCheck: noopFactCheck,
@@ -1118,7 +1118,7 @@ describe("DelphiRunner", () => {
           makeFakeClient({ markets: [makeMarket("0xV4", "Will it happen?")], prices: { "0xV4": [0.4, 0.6] } }),
       }),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: {
         resetCycleBudget: () => {},
         briefing: async () => ({
@@ -1160,5 +1160,253 @@ describe("DelphiRunner", () => {
     expect(received!.impliedProbability).toBeCloseTo(0.4, 9);
     expect(received!.webEvidenceText).toContain("fresh evidence");
     expect(received!.estimateProvider).toBe("b-ai"); // for cross-family exclusion
+  });
+
+  it("hold-to-settlement does not sell a position that would have converged or stopped", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    writeFileSync(
+      join(dataDir, "positions.json"),
+      JSON.stringify({
+        "0xHold:0": {
+          id: "0xHold:0",
+          marketAddress: "0xHold",
+          outcomeIdx: 0,
+          question: "Hold me",
+          forecast: 0.5,
+          impliedProbability: 0.4,
+          edge: 0.1,
+          shares: (10n ** 18n).toString(),
+          tokensIn: (4n * 10n ** 5n).toString(),
+          openedAt: 1000,
+        },
+      }),
+    );
+    let sells = 0;
+    const base = makeFakeClient({
+      markets: [{ id: "0xHold", question: "Hold me", category: "crypto", status: "open", resolvesAt: "2026-08-23T00:00:00Z" }],
+      prices: { "0xHold": [0.55, 0.45] }, // would take-profit (0.55 >= 0.50 − 0.02)
+    });
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () => ({
+        ...base,
+        sellShares: async () => {
+          sells++;
+          return { transactionHash: "0xsell" };
+        },
+      }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: false,
+      endgameHoldFromUtc: "2026-08-20T00:00:00Z",
+      now: () => Date.parse("2026-08-21T00:00:00Z"),
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      probability: {
+        estimator: (input) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.5, reasoning: "" },
+            { outcomeIdx: 1, probability: 0.5, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+    const result = await runner.runCycle(1);
+    expect(sells).toBe(0);
+    expect(result.exitsHeld).toBeGreaterThanOrEqual(1);
+    expect(result.exitsConvergence).toBe(0);
+    expect(result.exitsStopped).toBe(0);
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    expect(positions["0xHold:0"]).toBeDefined();
+  });
+
+  it("hold-to-settlement still drops a matured market so the redeem sweep can take it", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    writeFileSync(
+      join(dataDir, "positions.json"),
+      JSON.stringify({
+        "0xDead:0": {
+          id: "0xDead:0",
+          marketAddress: "0xDead",
+          outcomeIdx: 0,
+          question: "Settled",
+          forecast: 0.8,
+          impliedProbability: 0.4,
+          edge: 0.4,
+          shares: (10n ** 18n).toString(),
+          tokensIn: (4n * 10n ** 5n).toString(),
+          openedAt: 1000,
+        },
+      }),
+    );
+    let sells = 0;
+    const base = makeFakeClient({
+      markets: [{
+        id: "0xDead",
+        question: "Settled",
+        category: "crypto",
+        status: "open",
+        resolvesAt: "2000-01-01T00:00:00Z",
+      }],
+      prices: { "0xDead": [0.9, 0.1] },
+    });
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () => ({
+        ...base,
+        sellShares: async () => {
+          sells++;
+          return { transactionHash: "0xsell" };
+        },
+      }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: false,
+      endgameHoldFromUtc: "2026-08-20T00:00:00Z",
+      now: () => Date.parse("2026-08-21T00:00:00Z"),
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      probability: { estimator: () => null as never },
+    });
+    await runner.runCycle(1);
+    expect(sells).toBe(0);
+    const positions = JSON.parse(readFileSync(join(dataDir, "positions.json"), "utf-8"));
+    expect(positions["0xDead:0"]).toBeUndefined();
+  });
+
+  it("tournament mode buys only the highest-multiple candidate", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          markets: [
+            makeMarket("0xCheap", "Cheap true"),
+            makeMarket("0xRich", "Expensive true"),
+          ],
+          prices: { "0xCheap": [0.32, 0.68], "0xRich": [0.5, 0.5] },
+        }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: true,
+      endgameHoldFromUtc: null,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      probability: {
+        minEdgeToTrade: 0.08,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: input.marketAddress === "0xCheap"
+            ? [
+                { outcomeIdx: 0, probability: 0.85, reasoning: "uap-shaped" },
+                { outcomeIdx: 1, probability: 0.15, reasoning: "" },
+              ]
+            : [
+                { outcomeIdx: 0, probability: 0.7, reasoning: "edge but no multiple" },
+                { outcomeIdx: 1, probability: 0.3, reasoning: "" },
+              ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+    const result = await runner.runCycle(1);
+    expect(result.tradesPlaced).toBe(1);
+    const ledger = readFileSync(join(dataDir, "trades.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    const entries = ledger.filter((r: { type: string }) => r.type === "entry");
+    expect(entries).toHaveLength(1);
+    expect(entries[0].marketAddress).toBe("0xCheap");
+  });
+
+  it("skips a market that resolves after the redeem deadline before estimating", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let estimates = 0;
+    const late = {
+      ...makeMarket("0xLate", "After close"),
+      resolvesAt: "2026-08-25T00:00:00Z",
+    };
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () => makeFakeClient({ markets: [late], prices: { "0xLate": [0.3, 0.7] } }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: true,
+      endgameHoldFromUtc: null,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      factCheck: async () => {
+        throw new Error("fact-check must not run on a late market");
+      },
+      probability: {
+        estimator: () => {
+          estimates++;
+          return null as never;
+        },
+      },
+    });
+    const result = await runner.runCycle(1);
+    expect(result.marketsEvaluated).toBe(1);
+    expect(result.estimatesProduced).toBe(0);
+    expect(result.tradesPlaced).toBe(0);
+    expect(estimates).toBe(0);
+  });
+
+  it("post-close cycle skips discovery", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    let listed = 0;
+    const base = makeFakeClient({ markets: [makeMarket("0xM", "Q")] });
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () => ({
+        ...base,
+        listMarkets: async () => {
+          listed++;
+          return { markets: [makeMarket("0xM", "Q")] };
+        },
+      }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: false,
+      endgameHoldFromUtc: null,
+      now: () => Date.parse("2026-08-24T01:00:00Z"),
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+    });
+    const result = await runner.runCycle(1);
+    expect(listed).toBe(0);
+    expect(result.marketsEvaluated).toBe(0);
+    expect(result.tradesPlaced).toBe(0);
   });
 });

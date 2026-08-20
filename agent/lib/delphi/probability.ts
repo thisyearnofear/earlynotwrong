@@ -790,3 +790,51 @@ export function perTradeBudget(params: {
   const budget = [byPosition, byMarketLimit, byPortfolio].reduce((a, b) => (a < b ? a : b));
   return budget > 0n ? budget : 0n;
 }
+
+export interface QuoteForBudgetResult {
+  shares: bigint;
+  fillPrice: number;
+  tokensIn: bigint;
+}
+
+/**
+ * Walk LMSR impact: start from a top-of-book share guess, requote, and
+ * shrink until `tokensIn ≤ budget` and `fillPrice ≤ maxFillPrice`.
+ * Bigint-only share math — 18-dec amounts are past Number precision.
+ */
+export async function quoteSharesForBudget(opts: {
+  budgetTokens: bigint;
+  topOfBookPrice: number;
+  maxFillPrice: number;
+  quoteBuy: (shares: bigint) => Promise<{ tokensIn: string; pricePerShare: number }>;
+}): Promise<QuoteForBudgetResult | null> {
+  if (opts.budgetTokens <= 0n) return null;
+  let shares = sizeSharesBudget(opts.budgetTokens, opts.topOfBookPrice);
+  if (shares <= 0n) return null;
+  const maxFillScaled = BigInt(Math.round(opts.maxFillPrice * 1e6));
+
+  for (let i = 0; i < 8; i++) {
+    const q = await opts.quoteBuy(shares);
+    const tokensIn = BigInt(q.tokensIn);
+    const fill = q.pricePerShare;
+    if (!(fill > 0) || fill >= 1) return null;
+    const fillScaled = BigInt(Math.round(fill * 1e6));
+    const underBudget = tokensIn <= opts.budgetTokens;
+    const underFill = fillScaled <= maxFillScaled;
+    if (underBudget && underFill) {
+      return { shares, fillPrice: fill, tokensIn };
+    }
+    let next = shares;
+    if (!underBudget && tokensIn > 0n) {
+      next = (shares * opts.budgetTokens) / tokensIn;
+    }
+    if (!underFill && fillScaled > 0n) {
+      const scaled = (next * maxFillScaled) / fillScaled;
+      if (scaled < next) next = scaled;
+    }
+    if (next >= shares) next = shares - shares / 10n; // 10% haircut if scale didn't shrink
+    if (next <= 0n || next >= shares) return null;
+    shares = next;
+  }
+  return null;
+}

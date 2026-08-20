@@ -282,6 +282,8 @@ export interface DelphiStatus {
     windowOpens: string;
     windowCloses: string;
     msRemaining: number;
+    exitPolicy?: "convergence" | "hold-to-settlement";
+    tournamentMode?: boolean;
   };
   snapshot: {
     lastCycleAt: number | null;

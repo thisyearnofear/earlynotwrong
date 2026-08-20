@@ -281,7 +281,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const first = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -296,7 +296,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const second = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -312,7 +312,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const third = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -331,7 +331,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const runner = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -371,7 +371,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const runner = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -421,7 +421,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const runner = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,
@@ -446,7 +446,7 @@ describe("DelphiRunner anchoring + calibration integration", () => {
     const runner = new DelphiRunner({
       executor: new DelphiExecutor(factory),
       dataDir,
-      telegramEnabled: false,
+      telegramEnabled: false, tournamentMode: false, endgameHoldFromUtc: null,
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,

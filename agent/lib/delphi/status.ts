@@ -17,6 +17,8 @@ import { join } from "node:path";
 import { calculateCalibrationMetrics, type CalibrationMetrics } from "conviction-core";
 import type { AnchorResult } from "../anchors/types.js";
 import type { DelphiOpenPosition } from "./runner.js";
+import { exitModeAt } from "./endgame.js";
+import { AGENT_CONFIG } from "../config.js";
 
 /** Resolved forecast (from forecasts.jsonl) — the calibration input. */
 interface ResolvedForecast {
@@ -44,6 +46,9 @@ export interface DelphiStatus {
     windowCloses: string;
     /** ms until the window closes (negative when over). */
     msRemaining: number;
+    /** Live exit policy — hold-to-settlement during the tournament endgame. */
+    exitPolicy: "convergence" | "hold-to-settlement";
+    tournamentMode: boolean;
   };
   snapshot: {
     lastCycleAt: number | null;
@@ -156,6 +161,8 @@ export function readDelphiStatus(config: { windowOpens: string; windowCloses: st
       windowOpens: config.windowOpens,
       windowCloses: config.windowCloses,
       msRemaining: new Date(config.windowCloses).getTime() - Date.now(),
+      exitPolicy: exitModeAt(Date.now(), AGENT_CONFIG.delphi.endgameHoldFromUtc),
+      tournamentMode: AGENT_CONFIG.delphi.tournamentMode,
     },
     snapshot: snapshot
       ? {

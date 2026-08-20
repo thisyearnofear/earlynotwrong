@@ -47,6 +47,8 @@ describe("readDelphiStatus", () => {
     // The window (08-10 → 08-24) is live as of 2026-08-14 — but this test
     // should not be date-fragile, so just assert the field is a number.
     expect(typeof status.competition.msRemaining).toBe("number");
+    expect(status.competition.exitPolicy === "convergence" || status.competition.exitPolicy === "hold-to-settlement").toBe(true);
+    expect(typeof status.competition.tournamentMode).toBe("boolean");
   });
 
   it("reflects a populated snapshot, positions, exposure, and calibration", () => {

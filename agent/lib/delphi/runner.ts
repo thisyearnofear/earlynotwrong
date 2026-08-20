@@ -53,12 +53,20 @@ import {
   evaluateConvergenceExit,
   factAuthorityEstimate,
   perTradeBudget,
+  quoteSharesForBudget,
   sizeSharesBudget,
   type ForecastProvenance,
   type MarketEstimate,
   type MarketEstimateInput,
   type ProbabilityConfig,
+  type ProbabilitySignal,
 } from "./probability.js";
+import {
+  exitModeAt,
+  rankByMultiple,
+  resolvesBeforeDeadline,
+  tournamentGates,
+} from "./endgame.js";
 import {
   estimateDailyVolFromCloses,
   cryptoThresholdProbability,
@@ -127,6 +135,16 @@ export interface DelphiRunnerConfig {
   verificationEnabled?: boolean;
   /** Injectable clock (tests). */
   now?: () => number;
+  /**
+   * Tournament sizer (P(top 5), one fat high-multiple entry). Default:
+   * AGENT_CONFIG.delphi.tournamentMode. Tests of the Kelly-era loop pass false.
+   */
+  tournamentMode?: boolean;
+  /**
+   * Hold-to-settlement start instant. `null` forces convergence exits (tests).
+   * Default: AGENT_CONFIG.delphi.endgameHoldFromUtc.
+   */
+  endgameHoldFromUtc?: string | null;
 }
 
 interface DelphiRunnerSnapshot {
@@ -182,6 +200,8 @@ interface CycleResult {
   exitsConvergence: number;
   /** Open positions closed by the thesis stop (price moved against us). */
   exitsStopped: number;
+  /** Open positions held this cycle under endgame hold-to-settlement. */
+  exitsHeld: number;
   /** Web briefings fetched fresh this cycle (not served from cache). */
   briefingsFetched: number;
   /** Markets that got a computed crypto vol-baseline reference. */
@@ -685,6 +705,9 @@ export class DelphiRunner {
   private readonly verify: (input: VerificationInput) => Promise<VerificationResult>;
   private readonly verificationEnabled: boolean;
   private readonly clock: () => number;
+  private readonly tournamentMode: boolean;
+  private readonly endgameHoldFromUtc: string | undefined;
+  private readonly maxNewEntriesPerCycle: number;
   private snapshot: DelphiRunnerSnapshot;
   private running = false;
   /**
@@ -720,6 +743,12 @@ export class DelphiRunner {
     this.verify = config.verify ?? runAdversarialVerification;
     this.verificationEnabled = config.verificationEnabled ?? AGENT_CONFIG.delphi.verificationEnabled;
     this.clock = config.now ?? (() => Date.now());
+    this.tournamentMode = config.tournamentMode ?? AGENT_CONFIG.delphi.tournamentMode;
+    this.endgameHoldFromUtc =
+      config.endgameHoldFromUtc === undefined
+        ? AGENT_CONFIG.delphi.endgameHoldFromUtc
+        : config.endgameHoldFromUtc ?? undefined;
+    this.maxNewEntriesPerCycle = AGENT_CONFIG.delphi.maxNewEntriesPerCycle;
     this.snapshot = loadSnapshot(this.dataDir);
   }
 
@@ -745,6 +774,7 @@ export class DelphiRunner {
       anchorResults: [],
       exitsConvergence: 0,
       exitsStopped: 0,
+      exitsHeld: 0,
       briefingsFetched: 0,
       volBaselines: 0,
       estimatesCached: 0,
@@ -851,17 +881,13 @@ export class DelphiRunner {
     const exits = await this.convergenceExitPass(positions, exposure);
     result.exitsConvergence = exits.convergence;
     result.exitsStopped = exits.stopped;
+    result.exitsHeld = exits.held;
 
     // ── 2. Discover + estimate + gate + trade ─────────────────────────────
-    const markets = await this.executor.listOpenMarkets({ limit: 25 });
-    result.marketsEvaluated = markets.length;
+    const windowClosed =
+      this.clock() > new Date(AGENT_CONFIG.delphi.tradingWindowCloses).getTime();
     const decisions: DelphiDecisionRecord[] = [];
-    // Thesis-stop re-entry guard, derived from the ledger once per cycle
-    // (append-only, restart-safe — no extra state file).
     const stopMap = latestStopsByMarket(readTradeLedger(this.dataDir));
-    // Markets entered this cycle — combined with tracked positions, this is
-    // the one-thesis-per-market guard: never hold both sides (or add to an
-    // existing thesis) of the same market.
     const marketsEnteredThisCycle = new Set<string>();
     const entriesForSummary: Array<{
       question: string;
@@ -878,8 +904,32 @@ export class DelphiRunner {
       verified?: boolean;
       volAnchor?: number;
     }> = [];
+    const tournamentCandidates: Array<{
+      signal: ProbabilitySignal;
+      verifiedProb: number;
+      verification?: VerificationResult;
+    }> = [];
+
+    if (windowClosed) {
+      console.log("[delphi-runner] window closed — redeem-only cycle (no discovery, no entries).");
+    } else {
+    const markets = await this.executor.listOpenMarkets({ limit: 25 });
+    result.marketsEvaluated = markets.length;
 
     for (const market of markets) {
+      if (
+        !resolvesBeforeDeadline(
+          market.resolvesAt,
+          AGENT_CONFIG.delphi.tradingWindowCloses,
+          AGENT_CONFIG.delphi.entryResolveBufferHours * 3_600_000,
+        )
+      ) {
+        console.log(
+          `  [delphi-market] skip "${(market.question ?? "").slice(0, 50)}" — resolves ${market.resolvesAt}, after the redeem deadline`,
+        );
+        continue;
+      }
+
       // ── Tier 1: deterministic resolution authorities (fact-check.ts) ──
       // Runs FIRST: when a matched authority's data already covers the
       // resolution window it returns a direct probability and the market
@@ -1117,142 +1167,35 @@ export class DelphiRunner {
         // thesis (the record itself was pushed before the gate loop).
         decisionRecord.edge = finalSignal.edge;
 
-        // ── Sizing: bankroll fraction → shares, with concentration caps ──
-        const budget = perTradeBudget({
-          bankrollTokens,
-          existingExposureTokens: totalExposure(exposure),
-          marketExposureTokens: BigInt(exposure[signal.marketAddress] ?? "0"),
-          maxPositionFraction: AGENT_CONFIG.delphi.maxPositionFraction,
-          maxMarketFraction: AGENT_CONFIG.delphi.maxMarketFraction,
-        });
-        const price = finalSignal.impliedProbability;
-        const shares = sizeSharesBudget(budget, price);
-        if (shares <= 0n) {
-          result.sizingSkips++;
-          // Diagnostic: a skip with bankroll but zero budget means a cap;
-          // a skip with zero bankroll means the balance read failed.
-          console.warn(
-            `  [delphi-sizing] skip "${finalSignal.question.slice(0, 50)}" outcome=${finalSignal.outcomeIdx} price=${price.toFixed(3)} budget=${budget} bankroll=${bankrollTokens}`,
-          );
+        if (this.tournamentMode) {
+          tournamentCandidates.push({ signal: finalSignal, verifiedProb, verification });
           continue;
         }
 
-        const trade = await this.executor.buyShares({
-          marketAddress: finalSignal.marketAddress,
-          outcomeIdx: finalSignal.outcomeIdx,
-          sharesOut: shares,
-          estimatedProbability: verifiedProb,
+        await this.placeKellyEntry({
+          signal: finalSignal,
+          verifiedProb,
+          verification,
+          bankrollTokens,
+          positions,
+          exposure,
+          result,
+          marketsEnteredThisCycle,
+          entriesForSummary,
         });
-        if (trade.success) {
-          result.tradesPlaced++;
-          marketsEnteredThisCycle.add(finalSignal.marketAddress);
-          addExposure(exposure, finalSignal.marketAddress, BigInt(trade.tokensIn ?? "0"));
-          // Merge the verification outcome into the entry's provenance —
-          // both the adjusted path (verifierModel on the adjusted estimate)
-          // and the confirm path (ran=true, verdict agree) must surface it.
-          // Explicit provider/model AFTER the spread: provenance may omit
-          // them (older persisted estimates), and the entry's provenance
-          // requires them.
-          const entryProvenance: ForecastProvenance = {
-            ...finalSignal.estimate.provenance,
-            provider: finalSignal.estimate.provenance?.provider ?? finalSignal.estimate.provider,
-            model: finalSignal.estimate.provenance?.model ?? finalSignal.estimate.model,
-            verified: verification?.ran,
-            verifierModel: verification?.model,
-          };
-          // Track the open forecast so redemption resolves it for calibration.
-          // The forecast being scored is the POST-verification probability —
-          // the view we actually paid for.
-          positions[forecastId(finalSignal.marketAddress, finalSignal.outcomeIdx)] = {
-            id: forecastId(finalSignal.marketAddress, finalSignal.outcomeIdx),
-            marketAddress: finalSignal.marketAddress,
-            outcomeIdx: finalSignal.outcomeIdx,
-            question: finalSignal.question,
-            forecast: verifiedProb,
-            impliedProbability: finalSignal.impliedProbability,
-            edge: finalSignal.edge,
-            shares: trade.sharesOut ?? "0",
-            tokensIn: trade.tokensIn ?? "0",
-            openedAt: Date.now(),
-            transactionHash: trade.transactionHash,
-            // Provenance for the dashboard card + audit trail.
-            model: entryProvenance.model,
-            samples: entryProvenance.samples,
-            webEvidence: entryProvenance.webEvidence,
-            webSource: entryProvenance.webSource,
-            corroborated: entryProvenance.corroborated,
-            factAuthority: entryProvenance.factAuthority,
-            verified: entryProvenance.verified,
-            verifierModel: entryProvenance.verifierModel,
-            volAnchor: entryProvenance.volAnchor,
-          };
-          // Persist IMMEDIATELY after each buy — not at cycle end. A pm2
-          // reload mid-cycle (production incident 2026-08-15) can otherwise
-          // land the trade on-chain but lose the tracked position, leaving
-          // an orphan that reconciliation must later adopt. The append-only
-          // ledger already survives; now the mutable ledgers do too.
-          savePositions(this.dataDir, positions);
-          saveExposure(this.dataDir, exposure);
-          appendTradeLedger(this.dataDir, {
-            type: "entry",
-            marketAddress: finalSignal.marketAddress,
-            outcomeIdx: finalSignal.outcomeIdx,
-            question: finalSignal.question,
-            estimatedProbability: verifiedProb,
-            impliedProbability: finalSignal.impliedProbability,
-            edge: finalSignal.edge,
-            shares: trade.sharesOut,
-            tokensIn: trade.tokensIn,
-            effectivePrice: trade.effectivePrice,
-            transactionHash: trade.transactionHash,
-            reason: finalSignal.reason,
-            provenance: entryProvenance,
-            verification: verification?.ran
-              ? {
-                  verdict: verification.verdict,
-                  verifierProbability: verification.verifierProbability,
-                  crossFamily: verification.crossFamily,
-                  provider: verification.provider,
-                  model: verification.model,
-                  reasoning: verification.reasoning,
-                }
-              : undefined,
-          });
-          entriesForSummary.push({
-            question: finalSignal.question,
-            outcomeIdx: finalSignal.outcomeIdx,
-            effectivePrice: trade.effectivePrice,
-            estimatedProbability: verifiedProb,
-            edge: finalSignal.edge,
-            transactionHash: trade.transactionHash,
-            // Provenance tags for the Telegram entry line.
-            model: entryProvenance.model,
-            webEvidence: entryProvenance.webEvidence,
-            webSource: entryProvenance.webSource,
-            corroborated: entryProvenance.corroborated,
-            factAuthority: entryProvenance.factAuthority,
-            verified: entryProvenance.verified,
-            volAnchor: entryProvenance.volAnchor,
-          });
-        } else {
-          // Never swallow a trade failure: on-chain reverts (allowance,
-          // gas, slippage) must be visible in the pm2 logs, not just in
-          // the executor's in-memory tradeLog.
-          console.warn(
-            `  [delphi-trade] BUY FAILED "${finalSignal.question.slice(0, 50)}" outcome=${finalSignal.outcomeIdx} shares=${shares} price=${price.toFixed(3)}: ${trade.error}`,
-          );
-          appendTradeLedger(this.dataDir, {
-            type: "entry-failed",
-            marketAddress: finalSignal.marketAddress,
-            outcomeIdx: finalSignal.outcomeIdx,
-            question: finalSignal.question,
-            estimatedProbability: verifiedProb,
-            impliedProbability: finalSignal.impliedProbability,
-            edge: finalSignal.edge,
-            error: trade.error,
-          });
-        }
       }
+    }
+
+    if (this.tournamentMode) {
+      await this.placeTournamentEntries({
+        candidates: tournamentCandidates,
+        bankrollTokens,
+        positions,
+        exposure,
+        result,
+        marketsEnteredThisCycle,
+        entriesForSummary,
+      });
     }
 
     // ── 3. Anchor the cycle's thesis on-chain (deduped, non-critical) ─────
@@ -1287,6 +1230,7 @@ export class DelphiRunner {
         `[delphi-runner] thesis ${anchor.thesisHash.slice(0, 18)}... anchor: ${anchorSummary}`,
       );
     }
+    } // window still open — discovery + entries + anchor
 
     if (this.telegramEnabled) {
       await sendDelphiCycleSummary({
@@ -1329,9 +1273,235 @@ export class DelphiRunner {
     savePositions(this.dataDir, positions);
 
     console.log(
-      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} lostClosed=${result.redeemsLostClosed} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines} factChecks=${result.factChecks} verifications=${result.verificationsRun} blocked=${result.verificationBlocks}`,
+      `[delphi-runner] cycle #${cycleNumber}: markets=${result.marketsEvaluated} estimates=${result.estimatesProduced} cached=${result.estimatesCached} trades=${result.tradesPlaced} exits=${result.exitsConvergence + result.exitsStopped} (converged ${result.exitsConvergence}, stopped ${result.exitsStopped}, held ${result.exitsHeld}) redeems=${result.redeemsSucceeded}/${result.redeemsAttempted} lostClosed=${result.redeemsLostClosed} liquidates=${result.liquidatesSucceeded}/${result.liquidatesAttempted} sizingSkips=${result.sizingSkips} briefings=${result.briefingsFetched} volBaselines=${result.volBaselines} factChecks=${result.factChecks} verifications=${result.verificationsRun} blocked=${result.verificationBlocks}`,
     );
     return result;
+  }
+
+  private async placeKellyEntry(ctx: {
+    signal: ProbabilitySignal;
+    verifiedProb: number;
+    verification?: VerificationResult;
+    bankrollTokens: bigint;
+    positions: Record<string, DelphiOpenPosition>;
+    exposure: ExposureLedger;
+    result: CycleResult;
+    marketsEnteredThisCycle: Set<string>;
+    entriesForSummary: CycleResult extends never ? never : Array<{
+      question: string;
+      outcomeIdx: number;
+      effectivePrice?: number;
+      estimatedProbability?: number;
+      edge: number;
+      transactionHash?: string;
+      model?: string;
+      webEvidence?: boolean;
+      webSource?: BriefingSource;
+      corroborated?: boolean;
+      factAuthority?: string;
+      verified?: boolean;
+      volAnchor?: number;
+    }>;
+  }): Promise<void> {
+    const budget = perTradeBudget({
+      bankrollTokens: ctx.bankrollTokens,
+      existingExposureTokens: totalExposure(ctx.exposure),
+      marketExposureTokens: BigInt(ctx.exposure[ctx.signal.marketAddress] ?? "0"),
+      maxPositionFraction: AGENT_CONFIG.delphi.maxPositionFraction,
+      maxMarketFraction: AGENT_CONFIG.delphi.maxMarketFraction,
+    });
+    const price = ctx.signal.impliedProbability;
+    const shares = sizeSharesBudget(budget, price);
+    if (shares <= 0n) {
+      ctx.result.sizingSkips++;
+      console.warn(
+        `  [delphi-sizing] skip "${ctx.signal.question.slice(0, 50)}" outcome=${ctx.signal.outcomeIdx} price=${price.toFixed(3)} budget=${budget} bankroll=${ctx.bankrollTokens}`,
+      );
+      return;
+    }
+    await this.executeBuy({ ...ctx, shares, price });
+  }
+
+  private async placeTournamentEntries(ctx: {
+    candidates: Array<{ signal: ProbabilitySignal; verifiedProb: number; verification?: VerificationResult }>;
+    bankrollTokens: bigint;
+    positions: Record<string, DelphiOpenPosition>;
+    exposure: ExposureLedger;
+    result: CycleResult;
+    marketsEnteredThisCycle: Set<string>;
+    entriesForSummary: Parameters<DelphiRunner["placeKellyEntry"]>[0]["entriesForSummary"];
+  }): Promise<void> {
+    if (ctx.candidates.length === 0) return;
+    const gates = tournamentGates(ctx.bankrollTokens);
+    const ranked = rankByMultiple(
+      ctx.candidates.map((c) => ({
+        ...c,
+        forecast: c.verifiedProb,
+        fillPrice: c.signal.impliedProbability,
+      })),
+    );
+    let placed = 0;
+    for (const candidate of ranked) {
+      if (placed >= this.maxNewEntriesPerCycle) break;
+      const multiple = candidate.verifiedProb / candidate.signal.impliedProbability;
+      if (multiple < gates.minPayoutMultiple || candidate.signal.impliedProbability > gates.maxFillPrice) {
+        console.log(
+          `  [delphi-tournament] skip "${candidate.signal.question.slice(0, 50)}" outcome=${candidate.signal.outcomeIdx} — multiple ${multiple.toFixed(2)} fill ${candidate.signal.impliedProbability.toFixed(2)} (need ≥${gates.minPayoutMultiple}× @ ≤${gates.maxFillPrice})`,
+        );
+        continue;
+      }
+      const budget = perTradeBudget({
+        bankrollTokens: ctx.bankrollTokens,
+        existingExposureTokens: totalExposure(ctx.exposure),
+        marketExposureTokens: BigInt(ctx.exposure[candidate.signal.marketAddress] ?? "0"),
+        maxPositionFraction: AGENT_CONFIG.delphi.maxPositionFraction,
+        maxMarketFraction: AGENT_CONFIG.delphi.maxMarketFraction,
+      });
+      const sized = await quoteSharesForBudget({
+        budgetTokens: budget,
+        topOfBookPrice: candidate.signal.impliedProbability,
+        maxFillPrice: gates.maxFillPrice,
+        quoteBuy: (shares) =>
+          this.executor.quoteBuy(candidate.signal.marketAddress, candidate.signal.outcomeIdx, shares),
+      });
+      if (!sized) {
+        ctx.result.sizingSkips++;
+        console.warn(
+          `  [delphi-tournament] skip "${candidate.signal.question.slice(0, 50)}" — quote-at-size missed budget=${budget} maxFill=${gates.maxFillPrice}`,
+        );
+        continue;
+      }
+      console.log(
+        `  [delphi-tournament] TAKE "${candidate.signal.question.slice(0, 50)}" outcome=${candidate.signal.outcomeIdx} fc=${candidate.verifiedProb.toFixed(2)} fill=${sized.fillPrice.toFixed(2)} multiple=${(candidate.verifiedProb / sized.fillPrice).toFixed(2)} shares=${sized.shares} tokens=${sized.tokensIn}`,
+      );
+      const ok = await this.executeBuy({
+        signal: candidate.signal,
+        verifiedProb: candidate.verifiedProb,
+        verification: candidate.verification,
+        bankrollTokens: ctx.bankrollTokens,
+        positions: ctx.positions,
+        exposure: ctx.exposure,
+        result: ctx.result,
+        marketsEnteredThisCycle: ctx.marketsEnteredThisCycle,
+        entriesForSummary: ctx.entriesForSummary,
+        shares: sized.shares,
+        price: sized.fillPrice,
+      });
+      if (ok) placed++;
+    }
+  }
+
+  private async executeBuy(ctx: {
+    signal: ProbabilitySignal;
+    verifiedProb: number;
+    verification?: VerificationResult;
+    bankrollTokens: bigint;
+    positions: Record<string, DelphiOpenPosition>;
+    exposure: ExposureLedger;
+    result: CycleResult;
+    marketsEnteredThisCycle: Set<string>;
+    entriesForSummary: Parameters<DelphiRunner["placeKellyEntry"]>[0]["entriesForSummary"];
+    shares: bigint;
+    price: number;
+  }): Promise<boolean> {
+    const { signal: finalSignal, verifiedProb, verification, shares, price } = ctx;
+    const trade = await this.executor.buyShares({
+      marketAddress: finalSignal.marketAddress,
+      outcomeIdx: finalSignal.outcomeIdx,
+      sharesOut: shares,
+      estimatedProbability: verifiedProb,
+    });
+    if (trade.success) {
+      ctx.result.tradesPlaced++;
+      ctx.marketsEnteredThisCycle.add(finalSignal.marketAddress);
+      addExposure(ctx.exposure, finalSignal.marketAddress, BigInt(trade.tokensIn ?? "0"));
+      const entryProvenance: ForecastProvenance = {
+        ...finalSignal.estimate.provenance,
+        provider: finalSignal.estimate.provenance?.provider ?? finalSignal.estimate.provider,
+        model: finalSignal.estimate.provenance?.model ?? finalSignal.estimate.model,
+        verified: verification?.ran,
+        verifierModel: verification?.model,
+      };
+      ctx.positions[forecastId(finalSignal.marketAddress, finalSignal.outcomeIdx)] = {
+        id: forecastId(finalSignal.marketAddress, finalSignal.outcomeIdx),
+        marketAddress: finalSignal.marketAddress,
+        outcomeIdx: finalSignal.outcomeIdx,
+        question: finalSignal.question,
+        forecast: verifiedProb,
+        impliedProbability: finalSignal.impliedProbability,
+        edge: finalSignal.edge,
+        shares: trade.sharesOut ?? "0",
+        tokensIn: trade.tokensIn ?? "0",
+        openedAt: Date.now(),
+        transactionHash: trade.transactionHash,
+        model: entryProvenance.model,
+        samples: entryProvenance.samples,
+        webEvidence: entryProvenance.webEvidence,
+        webSource: entryProvenance.webSource,
+        corroborated: entryProvenance.corroborated,
+        factAuthority: entryProvenance.factAuthority,
+        verified: entryProvenance.verified,
+        verifierModel: entryProvenance.verifierModel,
+        volAnchor: entryProvenance.volAnchor,
+      };
+      savePositions(this.dataDir, ctx.positions);
+      saveExposure(this.dataDir, ctx.exposure);
+      appendTradeLedger(this.dataDir, {
+        type: "entry",
+        marketAddress: finalSignal.marketAddress,
+        outcomeIdx: finalSignal.outcomeIdx,
+        question: finalSignal.question,
+        estimatedProbability: verifiedProb,
+        impliedProbability: finalSignal.impliedProbability,
+        edge: finalSignal.edge,
+        shares: trade.sharesOut,
+        tokensIn: trade.tokensIn,
+        effectivePrice: trade.effectivePrice,
+        transactionHash: trade.transactionHash,
+        reason: finalSignal.reason,
+        provenance: entryProvenance,
+        verification: verification?.ran
+          ? {
+              verdict: verification.verdict,
+              verifierProbability: verification.verifierProbability,
+              crossFamily: verification.crossFamily,
+              provider: verification.provider,
+              model: verification.model,
+              reasoning: verification.reasoning,
+            }
+          : undefined,
+      });
+      ctx.entriesForSummary.push({
+        question: finalSignal.question,
+        outcomeIdx: finalSignal.outcomeIdx,
+        effectivePrice: trade.effectivePrice,
+        estimatedProbability: verifiedProb,
+        edge: finalSignal.edge,
+        transactionHash: trade.transactionHash,
+        model: entryProvenance.model,
+        webEvidence: entryProvenance.webEvidence,
+        webSource: entryProvenance.webSource,
+        corroborated: entryProvenance.corroborated,
+        factAuthority: entryProvenance.factAuthority,
+        verified: entryProvenance.verified,
+        volAnchor: entryProvenance.volAnchor,
+      });
+      return true;
+    }
+    console.warn(
+      `  [delphi-trade] BUY FAILED "${finalSignal.question.slice(0, 50)}" outcome=${finalSignal.outcomeIdx} shares=${shares} price=${price.toFixed(3)}: ${trade.error}`,
+    );
+    appendTradeLedger(this.dataDir, {
+      type: "entry-failed",
+      marketAddress: finalSignal.marketAddress,
+      outcomeIdx: finalSignal.outcomeIdx,
+      question: finalSignal.question,
+      estimatedProbability: verifiedProb,
+      impliedProbability: finalSignal.impliedProbability,
+      edge: finalSignal.edge,
+      error: trade.error,
+    });
+    return false;
   }
 
   /**
@@ -1354,9 +1524,10 @@ export class DelphiRunner {
   private async convergenceExitPass(
     positions: Record<string, DelphiOpenPosition>,
     exposure: ExposureLedger,
-  ): Promise<{ convergence: number; stopped: number }> {
-    const counts = { convergence: 0, stopped: 0 };
+  ): Promise<{ convergence: number; stopped: number; held: number }> {
+    const counts = { convergence: 0, stopped: 0, held: 0 };
     if (Object.keys(positions).length === 0) return counts;
+    const mode = exitModeAt(this.clock(), this.endgameHoldFromUtc);
 
     for (const position of Object.values(positions)) {
       const shares = BigInt(position.shares ?? "0");
@@ -1420,12 +1591,22 @@ export class DelphiRunner {
           );
           continue;
         }
-        const exit = evaluateConvergenceExit({
-          forecast: position.forecast,
-          entryPrice: position.impliedProbability,
-          currentPrice: quote.pricePerShare,
-        });
-        if (exit.action === "hold") continue;
+        const exit = mode === "hold-to-settlement"
+          ? { action: "hold" as const, reason: "endgame: holding to settlement (P&L-only scoring)" }
+          : evaluateConvergenceExit({
+              forecast: position.forecast,
+              entryPrice: position.impliedProbability,
+              currentPrice: quote.pricePerShare,
+            });
+        if (exit.action === "hold") {
+          if (mode === "hold-to-settlement") {
+            counts.held++;
+            console.log(
+              `  [delphi-exit] HOLD ${position.id} @ ${quote.pricePerShare.toFixed(2)} (fc ${position.forecast.toFixed(2)}, entry ${position.impliedProbability.toFixed(2)}) — ${exit.reason}`,
+            );
+          }
+          continue;
+        }
 
         let trade;
         let tradeError: unknown;
@@ -1633,10 +1814,11 @@ export class DelphiRunner {
 
     let cycle = this.snapshot.cyclesRun;
     const windowCloses = new Date(AGENT_CONFIG.delphi.tradingWindowCloses).getTime();
+    const loopUntil = windowCloses + AGENT_CONFIG.delphi.postCloseGraceHours * 3_600_000;
 
     for (;;) {
-      if (Date.now() > windowCloses) {
-        console.log("[delphi-runner] trading window closed — exiting.");
+      if (Date.now() > loopUntil) {
+        console.log("[delphi-runner] post-close grace elapsed — exiting.");
         break;
       }
       cycle++;

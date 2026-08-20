@@ -24,7 +24,7 @@ The **harness transfers wholesale**; the **scoring domain does not**.
 | Risk guardrails (drawdown, concentration, sizing) | Directly apply to LMSR bankroll management |
 | Composite data-providers pattern | Same shape for ingesting external signal per market topic |
 | MCP + x402 paywall, CROO CAP adapter, edge report, buyer agent | **Second paid signal SKU with zero new billing infrastructure** |
-| TypeScript + Node, 356-test Vitest discipline | Delphi SDK is TypeScript/Node 18+ (`@gensyn-ai/gensyn-delphi-sdk` v2.1.0) |
+| TypeScript + Node, 657-test Vitest discipline | Delphi SDK is TypeScript/Node 18+ (`@gensyn-ai/gensyn-delphi-sdk` v2.1.0) |
 
 What **doesn't** port: the 6 deterministic token factors (contrarian 7d return, synthesized RSI, holder growth, DexScreener liquidity). Prediction markets resolve **once** — no trailing exits, no "hold through drawdown". The game is probability-vs-price calibration, not dip-buying. Even evidence of edge needs a different yardstick: **calibration / Brier score across many markets**, not a Sharpe backtest.
 
@@ -181,7 +181,11 @@ Anthropic) stays wired as fallback when the promo ends.
 
 Config knobs (`AGENT_CONFIG.delphi`): `ensembleSamples`, `volBaselineWeight`,
 `categoryEdgeGates` + `defaultCategoryGate`, `convergenceTolerance`,
-`thesisStopEdge`, `webSearchMaxCallsPerCycle`, `webCorroborationEnabled`,
+`thesisStopEdge`, `endgameHoldFromUtc`, `tournamentMode`,
+`maxNewEntriesPerCycle`, `minPayoutMultiple`, `maxFillPrice`,
+`hop2BankrollTst` / `hop2MinPayoutMultiple` / `hop2MaxFillPrice`,
+`entryResolveBufferHours`, `postCloseGraceHours`,
+`webSearchMaxCallsPerCycle`, `webCorroborationEnabled`,
 `verificationEnabled`, `verificationWeight`,
 `verificationDisagreementThreshold`, `forecastCacheTtlMinutes`.
 
@@ -374,15 +378,46 @@ serial re-entry (4 buys in 4 days, net −89 TST).
 
 **Endgame sizing & calibration tuning (2026-08-19):**
 - `maxPositionFraction 0.1 → 0.15`, `maxMarketFraction 0.25 → 0.35` —
-  with 5 days left, bigger but still Kelly-lite.
+  Kelly-lite bump (superseded 2026-08-20 by tournament 0.95 / 0.95).
 - Forecaster `temperature 0.2 → 0.35` — nudges the model away from the
   default "obviously 0.95" overconfidence that cost 103 TST on Typhoon Dolphin.
 
+## Endgame (Aug 20–24) — tournament all-in
+
+Official board 2026-08-20: **rank 122/159, 599.99 TST, PnL −400**. 5th is
+~3034 TST. Kelly-lite 15–20% cannot 5×. This window maximizes **P(top 5)**,
+not E[log wealth]. Ruin of a hop is accepted.
+
+**Why we were down:** `evaluateConvergenceExit` sold the 1/0 settlement
+payoff back into LMSR (take-profit at forecast−2¢, stop at entry−10¢). Live
+record through 08-19: 7 thesis stops vs 5 take-profits. Internal “931.95 TST
+recovered” was a local wallet read; the board is source of truth.
+
+**What shipped (do not magic-number `convergenceTolerance: -1`):**
+
+| Knob | Value | Role |
+|---|---|---|
+| `endgameHoldFromUtc` | `2026-08-20T00:00:00Z` | Skip sell-convergence / thesis-stop. Maturity + `MarketNotOpen` drops still run. |
+| `tournamentMode` | `true` | One fat entry/cycle, ranked by `forecast / fill`, not edge. |
+| `maxPositionFraction` / `maxMarketFraction` | `0.95` | Dump free cash into that ticket. |
+| `minPayoutMultiple` / `maxFillPrice` | `2.2` / `0.45` | Skip +EV that cannot compound to 5th (WTI NO at ~0.66 is a dead end). |
+| hop-2 (cash ≥ 1500 TST) | `1.6` / `0.65` | So a ~0.58 fill can still reach ~3200. |
+| `entryResolveBufferHours` | `6` | No market that cannot settle+redeem before close. |
+| `postCloseGraceHours` | `12` | Loop stays up after 08-24 00:00 for last redeems. |
+| `loopIntervalMinutes` | `30` | Hop-1 redeem can recycle same day. |
+
+`convergenceTolerance` / `thesisStopEdge` were **not** moved — rollback is
+`endgameHoldFromUtc: undefined` + `tournamentMode: false` + fractions `0.15`
+then rebuild + `./deploy.sh <sha>`.
+
+One-thesis, 12h stop-cooldown, and four validation tiers stay ON. Do not
+buy WTI YES (spot ~$86 vs below $65 on 08-21). Closest hop-1 tape name on
+08-20: UAP YES ~0.32.
 
 ### Runbook (once registration completes)
 
 > Status: completed 2026-08-14 — `DELPHI_ENABLED=1` is set on the VPS and the
-> runner cycles hourly. Kept for future restarts/re-provisioning.
+> runner cycles every 30 minutes (was hourly). Kept for future restarts.
 
 ```bash
 # On the VPS — set the three Delphi env vars on the earlynotwrong-delphi process

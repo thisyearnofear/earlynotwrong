@@ -327,8 +327,29 @@ export const AGENT_CONFIG = {
     // Sell-into-convergence exit policy (see probability.ts).
     // Take profit when the market price reaches within `tolerance` of our
     // entry estimate; cut the position when price moves `stopEdge` against us.
+    // Endgame (2026-08-20): these defaults stay for tests + rollback; the
+    // runner ignores them once `endgameHoldFromUtc` has passed.
     convergenceTolerance: 0.02,
     thesisStopEdge: 0.1,
+    // Tournament endgame: hold tracked positions to settlement (P&L-only
+    // scoring; selling the 1/0 payoff back into LMSR is how we sat 122nd).
+    // Set undefined / a far-future date to restore convergence exits.
+    endgameHoldFromUtc: "2026-08-20T00:00:00Z" as string | undefined,
+    // Maximize P(top 5), not E[log wealth]. One fat entry per cycle into
+    // the cheapest +EV that can still 5× via compounding. Ruin accepted.
+    tournamentMode: true,
+    maxNewEntriesPerCycle: 1,
+    minPayoutMultiple: 2.2,
+    maxFillPrice: 0.45,
+    // Once cash is large enough for hop-2, relax the multiple so a ~0.58
+    // fill can still reach ~5th (1900 / 0.58 ≈ 3270).
+    hop2BankrollTst: 1500,
+    hop2MinPayoutMultiple: 1.6,
+    hop2MaxFillPrice: 0.65,
+    // Never enter a market that cannot settle AND redeem before close.
+    entryResolveBufferHours: 6,
+    // Keep cycling after the window so last-day winners get redeemed.
+    postCloseGraceHours: 12,
     // Stop-out re-entry cooldown (hours): after a thesis stop on a market,
     // don't re-enter it for this long unless the new signal's edge beats the
     // stopped entry's edge. Serial re-entry into the same losing thesis is
@@ -360,16 +381,14 @@ export const AGENT_CONFIG = {
     // 2¢-bucketed prices — see forecastCacheKey in runner.ts). Unchanged
     // markets then cost zero inference; the TTL caps staleness.
     forecastCacheTtlMinutes: 360,
-    // Per-trade caps as a fraction of available bankroll — LMSR shares resolve
-    // 1/0, so a full-size losing entry is a total loss of stake.
-    // Endgame: 5 days left, bankroll already down 18% from Typhoon losses.
-    // Raising caps to concentrate capital on highest-edge positions: Botafogo
-    // (+0.37 edge) is sized the same as Chess (+0.15 edge). With a confirmed
-    // edge >0.25, 15% per position and 35% per market is the right risk/reward.
-    maxPositionFraction: 0.15,
-    maxMarketFraction: 0.35,
-    // Loop cadence for the standalone Delphi runner (minutes).
-    loopIntervalMinutes: 60,
+    // Tournament sizing: dump free cash into the one ticket. 0.95 not 1.0
+    // so a quote/gas remainder stays for the redeem sweep. Ruin of a single
+    // hop is accepted — 15% Kelly cannot 5× to top 5 from 600 TST.
+    maxPositionFraction: 0.95,
+    maxMarketFraction: 0.95,
+    // Loop cadence for the standalone Delphi runner (minutes). 30 min so a
+    // hop-1 redeem can recycle into hop-2 the same calendar day.
+    loopIntervalMinutes: 30,
     // Competition trading window (UTC). Final leaderboard after settlement.
     tradingWindowOpens: "2026-08-10T00:00:00Z",
     tradingWindowCloses: "2026-08-24T00:00:00Z",
