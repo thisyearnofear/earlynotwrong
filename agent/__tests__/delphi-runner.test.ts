@@ -17,7 +17,7 @@ import {
   latestStopsByMarket,
   evaluateStopReentryGate,
 } from "../lib/delphi/runner.js";
-import { DelphiExecutor, type DelphiClientLike, type DelphiMarket } from "../lib/delphi/executor.js";
+import { DelphiExecutor, type DelphiClientLike, type DelphiMarket, type DelphiPosition } from "../lib/delphi/executor.js";
 import type { MarketEstimate, MarketEstimateInput } from "../lib/delphi/probability.js";
 import type { FactCheck } from "../lib/delphi/fact-check.js";
 import type { VerificationInput, VerificationResult } from "../lib/delphi/verification.js";
@@ -36,12 +36,17 @@ function makeFakeClient(options: {
   prices?: Record<string, [number, number]>; // marketAddress → [yesPrice, noPrice]
   /** Token balance for sizing; default 1000 tokens (18-dec). */
   balanceTokens?: bigint;
+  /** On-chain positions returned by listPositions (awaiting_settlement counts as open). */
+  chainPositions?: DelphiPosition[];
+  /** getMarket-only markets (not listed as open). */
+  extraMarkets?: DelphiMarket[];
 }): DelphiClientLike {
+  const allMarkets = [...options.markets, ...(options.extraMarkets ?? [])];
   return {
     health: async () => ({ status: "ok" }),
     listMarkets: async () => ({ markets: options.markets }),
     getMarket: async ({ id }) => {
-      const m = options.markets.find((x) => x.id === id);
+      const m = allMarkets.find((x) => x.id === id);
       if (!m) throw new Error(`unknown market ${id}`);
       return m;
     },
@@ -58,7 +63,7 @@ function makeFakeClient(options: {
     getSigner: async () => ({ address: "0xWallet" }),
     getErc20Balance: async () => options.balanceTokens ?? 10_000n * 10n ** 6n, // 10,000 TST, 6-dec
     ensureTokenApproval: async () => ({ approvalNeeded: false, allowance: 0n }),
-    listPositions: async () => ({ positions: [] }),
+    listPositions: async () => ({ positions: options.chainPositions ?? [] }),
     liquidate: async () => ({ transactionHash: "0xliq" }),
     quoteSell: async ({ marketAddress, outcomeIdx, sharesIn }) => {
       const price = (options.prices?.[marketAddress] ?? [0.4, 0.6])[outcomeIdx];
@@ -1338,6 +1343,153 @@ describe("DelphiRunner", () => {
     const entries = ledger.filter((r: { type: string }) => r.type === "entry");
     expect(entries).toHaveLength(1);
     expect(entries[0].marketAddress).toBe("0xCheap");
+  });
+
+  it("tournament mode takes a Kelly-skip that is still +EV and 3×s the stake", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          markets: [makeMarket("0xThin", "Thin but cheap")],
+          prices: { "0xThin": [0.28, 0.72] },
+        }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: true,
+      endgameHoldFromUtc: null,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      probability: {
+        minEdgeToTrade: 0.2,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.35, reasoning: "plus-ev but under Kelly" },
+            { outcomeIdx: 1, probability: 0.65, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+    const result = await runner.runCycle(1);
+    expect(result.tradesPlaced).toBe(1);
+    const ledger = readFileSync(join(dataDir, "trades.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(ledger.filter((r: { type: string }) => r.type === "entry")).toHaveLength(1);
+    expect(ledger.find((r: { type: string }) => r.type === "entry").marketAddress).toBe("0xThin");
+  });
+
+  it("tournament mode never buys WTI settle-below YES", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    const q = "Will WTI front-month crude futures settle below $65.00 on Aug 21, 2026?";
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          markets: [{ ...makeMarket("0xWti", q), outcomes: ["Yes", "No"] }],
+          prices: { "0xWti": [0.08, 0.92] },
+        }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: true,
+      endgameHoldFromUtc: null,
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      probability: {
+        minEdgeToTrade: 0.2,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.15, reasoning: "lottery" },
+            { outcomeIdx: 1, probability: 0.85, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+    const result = await runner.runCycle(1);
+    expect(result.tradesPlaced).toBe(0);
+  });
+
+  it("rebuilds exposure after dropping a matured orphan so the ghost cannot shrink the budget", async () => {
+    process.env.DELPHI_ENABLED = "1";
+    writeFileSync(
+      join(dataDir, "trades.jsonl"),
+      JSON.stringify({
+        type: "entry",
+        marketAddress: "0xGhost",
+        outcomeIdx: 0,
+        question: "dead",
+        tokensIn: "97000000",
+        timestamp: Date.parse("2026-08-20T12:00:00Z"),
+      }) + "\n",
+    );
+    const executor = new DelphiExecutor({
+      apiKey: "k",
+      retry: { maxRetries: 0 },
+      clientFactory: async () =>
+        makeFakeClient({
+          markets: [makeMarket("0xCheap", "Cheap true")],
+          extraMarkets: [{ ...makeMarket("0xGhost", "dead"), resolvesAt: "2026-08-20T00:30:00Z" }],
+          prices: { "0xCheap": [0.28, 0.72] },
+          balanceTokens: 450n * 10n ** 6n,
+          chainPositions: [
+            {
+              marketProxy: "0xGhost",
+              outcomeIdx: "0",
+              shares: "1000000000000000000",
+              marketStatus: "awaiting_settlement",
+              redeemedOrLiquidated: false,
+            },
+          ],
+        }),
+    });
+    const runner = new DelphiRunner({
+      executor,
+      dataDir,
+      telegramEnabled: false,
+      tournamentMode: true,
+      endgameHoldFromUtc: "2026-08-20T00:00:00Z",
+      now: () => Date.parse("2026-08-21T05:00:00Z"),
+      webSearch: noopWebSearch,
+      fetchVolBaseline: noopVolBaseline,
+      verificationEnabled: false,
+      probability: {
+        minEdgeToTrade: 0.2,
+        estimator: (input: MarketEstimateInput) => ({
+          marketAddress: input.marketAddress,
+          question: input.question,
+          outcomes: [
+            { outcomeIdx: 0, probability: 0.4, reasoning: "plus-ev" },
+            { outcomeIdx: 1, probability: 0.6, reasoning: "" },
+          ],
+          provider: "injected",
+          model: "test",
+          estimatedAt: Date.now(),
+        }),
+      },
+    });
+    const result = await runner.runCycle(1);
+    expect(result.tradesPlaced).toBe(1);
+    const exposure = JSON.parse(readFileSync(join(dataDir, "exposure.json"), "utf-8"));
+    expect(exposure["0xGhost"]).toBeUndefined();
+    expect(BigInt(exposure["0xCheap"] ?? "0")).toBeGreaterThan(300n * 10n ** 6n);
   });
 
   it("skips a market that resolves after the redeem deadline before estimating", async () => {

@@ -335,14 +335,16 @@ export const AGENT_CONFIG = {
     // scoring; selling the 1/0 payoff back into LMSR is how we sat 122nd).
     // Set undefined / a far-future date to restore convergence exits.
     endgameHoldFromUtc: "2026-08-20T00:00:00Z" as string | undefined,
-    // Maximize P(top 5), not E[log wealth]. One fat entry per cycle into
-    // the cheapest +EV that can still 5× via compounding. Ruin accepted.
+    // Maximize P(3× the board), not E[log wealth]. One fat entry per cycle
+    // into a +EV ticket whose 1/fill is ≥3 (fill ≤ 0.33). Ruin accepted.
+    // Tournament mode does NOT require the Kelly 8–14¢ edge gate — that
+    // gate starved the ranker on 2026-08-21 (empty candidate list).
     tournamentMode: true,
     maxNewEntriesPerCycle: 1,
-    minPayoutMultiple: 2.2,
-    maxFillPrice: 0.45,
-    // Once cash is large enough for hop-2, relax the multiple so a ~0.58
-    // fill can still reach ~5th (1900 / 0.58 ≈ 3270).
+    minPayoutMultiple: 3.0,
+    maxFillPrice: 0.33,
+    // Once cash is large enough for hop-2, relax so a ~0.58 fill can still
+    // compound (1900 / 0.58 ≈ 3270).
     hop2BankrollTst: 1500,
     hop2MinPayoutMultiple: 1.6,
     hop2MaxFillPrice: 0.65,

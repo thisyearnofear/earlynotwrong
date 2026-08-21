@@ -63,9 +63,11 @@ import {
 } from "./probability.js";
 import {
   exitModeAt,
+  isForbiddenTournamentTicket,
   rankByMultiple,
   resolvesBeforeDeadline,
   tournamentGates,
+  wealthMultiple,
 } from "./endgame.js";
 import {
   estimateDailyVolFromCloses,
@@ -432,6 +434,17 @@ function addExposure(exposure: ExposureLedger, market: string, tokens: bigint): 
 
 function totalExposure(exposure: ExposureLedger): bigint {
   return Object.values(exposure).reduce((acc, v) => acc + BigInt(v ?? "0"), 0n);
+}
+
+/** Drop stale markets (redeem-lost / matured) so they cannot shrink the tournament budget. */
+function syncExposureToPositions(
+  exposure: ExposureLedger,
+  positions: Record<string, DelphiOpenPosition>,
+): void {
+  for (const market of Object.keys(exposure)) delete exposure[market];
+  for (const p of Object.values(positions)) {
+    addExposure(exposure, p.marketAddress, BigInt(p.tokensIn ?? "0"));
+  }
 }
 
 // =============================================================================
@@ -882,6 +895,10 @@ export class DelphiRunner {
     result.exitsConvergence = exits.convergence;
     result.exitsStopped = exits.stopped;
     result.exitsHeld = exits.held;
+    // Exit pass may drop matured positions without touching exposure.json
+    // (Botafogo 97 TST ghost, 2026-08-21). Rebuild from what's still tracked
+    // before tournament sizing, or 95% of cash becomes 95% of cash-minus-ghosts.
+    syncExposureToPositions(exposure, positions);
 
     // ── 2. Discover + estimate + gate + trade ─────────────────────────────
     const windowClosed =
@@ -1039,7 +1056,11 @@ export class DelphiRunner {
           edge: signal.edge,
         };
         decisions.push(decisionRecord);
-        if (signal.decision !== "buy") continue;
+        // Tournament: any strictly +EV side is a candidate. The Kelly 8–14¢
+        // gate starved the ranker on 2026-08-21 (Gemini/WTI/UAP all skipped
+        // before placeTournamentEntries, so there was no TAKE/skip log).
+        const tournamentPlusEv = this.tournamentMode && signal.edge > 0;
+        if (!tournamentPlusEv && signal.decision !== "buy") continue;
 
         // One thesis per market. Production incident 2026-08-15: the same
         // Typhoon market was bought YES in cycle #27 (edge 0.64) and NO in
@@ -1079,6 +1100,16 @@ export class DelphiRunner {
           console.log(
             `  [delphi-signal] re-entry allowed on "${signal.question.slice(0, 50)}": ${gate.reason}`,
           );
+        }
+
+        if (
+          this.tournamentMode &&
+          isForbiddenTournamentTicket(signal.question, signal.outcomeIdx, input.outcomes)
+        ) {
+          console.log(
+            `  [delphi-tournament] skip "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx} — forbidden ticket`,
+          );
+          continue;
         }
 
         // ── Tier 4: adversarial pre-entry verification (verification.ts) ──
@@ -1132,7 +1163,11 @@ export class DelphiRunner {
             };
             const reGated = evaluateProbabilitySignal(adjustedEstimate, input.impliedProbabilities, this.probability);
             const gated = reGated.find((s) => s.outcomeIdx === signal.outcomeIdx);
-            if (!gated || gated.decision !== "buy") {
+            const stillPlusEv = verifiedProb > signal.impliedProbability;
+            const blocked = this.tournamentMode
+              ? !stillPlusEv
+              : !gated || gated.decision !== "buy";
+            if (blocked) {
               result.verificationBlocks++;
               // Mutate the anchored record: the thesis we publish is the one
               // we actually held after verification, not the pre-check view.
@@ -1157,7 +1192,7 @@ export class DelphiRunner {
               );
               continue;
             }
-            finalSignal = gated;
+            finalSignal = gated ?? { ...signal, estimatedProbability: verifiedProb, edge: verifiedProb - signal.impliedProbability };
             console.log(
               `  [delphi-verify] "${signal.question.slice(0, 50)}" outcome=${signal.outcomeIdx}: ${adjustment.reason}`,
             );
@@ -1331,7 +1366,10 @@ export class DelphiRunner {
     marketsEnteredThisCycle: Set<string>;
     entriesForSummary: Parameters<DelphiRunner["placeKellyEntry"]>[0]["entriesForSummary"];
   }): Promise<void> {
-    if (ctx.candidates.length === 0) return;
+    if (ctx.candidates.length === 0) {
+      console.log("  [delphi-tournament] no +EV candidates this cycle");
+      return;
+    }
     const gates = tournamentGates(ctx.bankrollTokens);
     const ranked = rankByMultiple(
       ctx.candidates.map((c) => ({
@@ -1343,10 +1381,16 @@ export class DelphiRunner {
     let placed = 0;
     for (const candidate of ranked) {
       if (placed >= this.maxNewEntriesPerCycle) break;
-      const multiple = candidate.verifiedProb / candidate.signal.impliedProbability;
-      if (multiple < gates.minPayoutMultiple || candidate.signal.impliedProbability > gates.maxFillPrice) {
+      const fill = candidate.signal.impliedProbability;
+      const wealth = wealthMultiple(fill);
+      const plusEv = candidate.verifiedProb > fill;
+      if (
+        !plusEv ||
+        wealth < gates.minPayoutMultiple ||
+        fill > gates.maxFillPrice
+      ) {
         console.log(
-          `  [delphi-tournament] skip "${candidate.signal.question.slice(0, 50)}" outcome=${candidate.signal.outcomeIdx} — multiple ${multiple.toFixed(2)} fill ${candidate.signal.impliedProbability.toFixed(2)} (need ≥${gates.minPayoutMultiple}× @ ≤${gates.maxFillPrice})`,
+          `  [delphi-tournament] skip "${candidate.signal.question.slice(0, 50)}" outcome=${candidate.signal.outcomeIdx} — wealth ${wealth.toFixed(2)}× fill ${fill.toFixed(2)} fc ${candidate.verifiedProb.toFixed(2)} (need ≥${gates.minPayoutMultiple}× @ ≤${gates.maxFillPrice}, +EV)`,
         );
         continue;
       }
@@ -1372,7 +1416,7 @@ export class DelphiRunner {
         continue;
       }
       console.log(
-        `  [delphi-tournament] TAKE "${candidate.signal.question.slice(0, 50)}" outcome=${candidate.signal.outcomeIdx} fc=${candidate.verifiedProb.toFixed(2)} fill=${sized.fillPrice.toFixed(2)} multiple=${(candidate.verifiedProb / sized.fillPrice).toFixed(2)} shares=${sized.shares} tokens=${sized.tokensIn}`,
+        `  [delphi-tournament] TAKE "${candidate.signal.question.slice(0, 50)}" outcome=${candidate.signal.outcomeIdx} fc=${candidate.verifiedProb.toFixed(2)} fill=${sized.fillPrice.toFixed(2)} wealth=${(1 / sized.fillPrice).toFixed(2)}× shares=${sized.shares} tokens=${sized.tokensIn}`,
       );
       const ok = await this.executeBuy({
         signal: candidate.signal,
@@ -1536,23 +1580,17 @@ export class DelphiRunner {
         delete positions[position.id];
         continue;
       }
-      // Adopted orphans (chain reconciliation found shares but no entry
-      // record) have no forecast to converge toward or stop against —
-      // hold them to settlement, where redemption cashes them out.
-      if (position.forecast === undefined) continue;
       try {
         // ── Stale-subgraph guard: check if market is still open ──────
-        // If resolvesAt has passed, the market is settled and sellExactIn
-        // will revert. We must drop the position from tracking so the
-        // lifecycle sweep can redeem it when the subgraph updates.
+        // Runs even for adopted orphans (no forecast): a matured market
+        // must leave the exposure ledger so tournament sizing is not
+        // pinned by ghost TST.
         let marketIsOpen = true;
         try {
           const market = await this.executor.getMarket(position.marketAddress);
           if (market.resolvesAt) {
             const resolvesAtTime = new Date(market.resolvesAt).getTime();
-            if (resolvesAtTime > 0 && Date.now() > resolvesAtTime + 30_000) {
-              // Market has passed its resolution time — treat as settled.
-              // Drop from tracking; the lifecycle sweep will redeem it.
+            if (resolvesAtTime > 0 && this.clock() > resolvesAtTime + 30_000) {
               console.log(
                 `  [delphi-exit] market ${position.id} resolved at ${market.resolvesAt} — dropping from tracking for redemption`,
               );
@@ -1561,13 +1599,16 @@ export class DelphiRunner {
             }
           }
         } catch (err) {
-          // If the market fetch fails (subgraph lag, API down), hold the
-          // position — don't drop a live position because a read failed.
           console.warn(
             `  [delphi-exit] market status check failed for ${position.id}, holding: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
         if (!marketIsOpen) continue;
+
+        // Adopted orphans (chain reconciliation found shares but no entry
+        // record) have no forecast to converge toward or stop against —
+        // hold them to settlement, where redemption cashes them out.
+        if (position.forecast === undefined) continue;
 
         let quote;
         try {

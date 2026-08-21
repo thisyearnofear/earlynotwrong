@@ -60,36 +60,68 @@ export function tournamentGates(bankrollTokens: bigint): TournamentGates {
   };
 }
 
+/** Forecast / fill — calibration quality, not the wealth jump. */
 export function payoutMultiple(forecast: number, fillPrice: number): number {
   if (!(fillPrice > 0)) return 0;
   return forecast / fillPrice;
 }
 
 /**
- * Pick the highest `forecast / fillPrice` that clears the tournament gates.
- * Rank by multiple, not edge: a 0.80 vs 0.32 beats a 0.70 vs 0.55.
+ * Wealth multiple if the ticket pays 1.0: `1 / fillPrice`.
+ * A 0.33 fill 3×s the stake; forecast/fill of 1.19 does not.
+ */
+export function wealthMultiple(fillPrice: number): number {
+  if (!(fillPrice > 0)) return 0;
+  return 1 / fillPrice;
+}
+
+/**
+ * Tickets the tournament must never take even if they 12× on paper.
+ * WTI settle-below YES with spot ~$87 on settlement day is ruin, not a longshot.
+ */
+export function isForbiddenTournamentTicket(
+  question: string,
+  outcomeIdx: number,
+  outcomes?: readonly string[],
+): boolean {
+  const q = question.toLowerCase();
+  const wtiBelow = /\bwti\b/.test(q) && /below\s*\$?\s*65/.test(q);
+  if (!wtiBelow) return false;
+  const label = (outcomes?.[outcomeIdx] ?? "").trim().toLowerCase();
+  if (label === "yes") return true;
+  if (label === "no") return false;
+  // Default binary order is Yes, No.
+  return outcomeIdx === 0;
+}
+
+/**
+ * Pick the cheapest +EV that still 3×s the stake (`1/fill` ≥ min, fill ≤ max).
+ * Tie-break on forecast/fill so a better-calibrated ticket of the same price wins.
  */
 export function selectTournamentCandidate<T extends { forecast: number; fillPrice: number }>(
   candidates: T[],
   gates: TournamentGates,
 ): T | null {
-  let best: T | null = null;
-  let bestMultiple = Number.NEGATIVE_INFINITY;
-  for (const c of candidates) {
-    if (!(c.fillPrice > 0) || c.fillPrice > gates.maxFillPrice + 1e-9) continue;
-    const multiple = payoutMultiple(c.forecast, c.fillPrice);
-    if (multiple < gates.minPayoutMultiple) continue;
-    if (multiple > bestMultiple) {
-      best = c;
-      bestMultiple = multiple;
-    }
-  }
-  return best;
+  const ranked = rankByMultiple(
+    candidates.filter((c) => clearsTournamentGates(c, gates)),
+  );
+  return ranked[0] ?? null;
 }
 
-/** Rank remaining candidates by multiple descending (retry after a skip). */
+export function clearsTournamentGates(
+  c: { forecast: number; fillPrice: number },
+  gates: TournamentGates,
+): boolean {
+  if (!(c.fillPrice > 0) || c.fillPrice > gates.maxFillPrice + 1e-9) return false;
+  if (!(c.forecast > c.fillPrice)) return false;
+  return wealthMultiple(c.fillPrice) + 1e-9 >= gates.minPayoutMultiple;
+}
+
+/** Rank remaining candidates by wealth multiple, then forecast/fill. */
 export function rankByMultiple<T extends { forecast: number; fillPrice: number }>(candidates: T[]): T[] {
-  return [...candidates].sort(
-    (a, b) => payoutMultiple(b.forecast, b.fillPrice) - payoutMultiple(a.forecast, a.fillPrice),
-  );
+  return [...candidates].sort((a, b) => {
+    const dw = wealthMultiple(b.fillPrice) - wealthMultiple(a.fillPrice);
+    if (dw !== 0) return dw;
+    return payoutMultiple(b.forecast, b.fillPrice) - payoutMultiple(a.forecast, a.fillPrice);
+  });
 }

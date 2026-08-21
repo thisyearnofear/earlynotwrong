@@ -11,6 +11,8 @@ import {
   resolvesBeforeDeadline,
   selectTournamentCandidate,
   tournamentGates,
+  wealthMultiple,
+  isForbiddenTournamentTicket,
 } from "../lib/delphi/endgame.js";
 import { quoteSharesForBudget } from "../lib/delphi/probability.js";
 
@@ -61,8 +63,8 @@ describe("resolvesBeforeDeadline", () => {
 
 describe("tournamentGates", () => {
   it("uses hop-1 gates under 1500 TST", () => {
-    expect(tournamentGates(600n * TST)).toEqual({ minPayoutMultiple: 2.2, maxFillPrice: 0.45 });
-    expect(tournamentGates(1499n * TST)).toEqual({ minPayoutMultiple: 2.2, maxFillPrice: 0.45 });
+    expect(tournamentGates(600n * TST)).toEqual({ minPayoutMultiple: 3.0, maxFillPrice: 0.33 });
+    expect(tournamentGates(1499n * TST)).toEqual({ minPayoutMultiple: 3.0, maxFillPrice: 0.33 });
   });
 
   it("relaxes to hop-2 gates at 1500 TST", () => {
@@ -72,13 +74,31 @@ describe("tournamentGates", () => {
 });
 
 describe("selectTournamentCandidate / rankByMultiple", () => {
-  const gates = { minPayoutMultiple: 2.2, maxFillPrice: 0.45 };
+  const gates = { minPayoutMultiple: 3.0, maxFillPrice: 0.33 };
 
-  it("picks the cheapest high-forecast over a larger-edge expensive ticket", () => {
-    const cheap = { id: "uap", forecast: 0.85, fillPrice: 0.32 }; // 2.66×
-    const expensive = { id: "wti-no", forecast: 0.9, fillPrice: 0.66 }; // 1.36×, fill too high
-    const mid = { id: "gemini", forecast: 0.7, fillPrice: 0.55 }; // fill too high
+  it("picks the cheapest +EV 3× over a larger-edge expensive ticket", () => {
+    const cheap = { id: "uap", forecast: 0.85, fillPrice: 0.32 }; // 3.13× wealth
+    const expensive = { id: "wti-no", forecast: 0.9, fillPrice: 0.66 };
+    const mid = { id: "gemini-no", forecast: 0.75, fillPrice: 0.8 };
     expect(selectTournamentCandidate([expensive, mid, cheap], gates)?.id).toBe("uap");
+  });
+
+  it("prefers a cheaper fill over a higher forecast/fill at a worse price", () => {
+    const cheaper = { id: "a", forecast: 0.4, fillPrice: 0.25 }; // 4.0× wealth
+    const betterCalibrated = { id: "b", forecast: 0.85, fillPrice: 0.32 }; // 3.13×
+    expect(selectTournamentCandidate([betterCalibrated, cheaper], gates)?.id).toBe("a");
+  });
+
+  it("rejects a +EV that cannot 3× the stake", () => {
+    expect(
+      selectTournamentCandidate([{ id: "thin", forecast: 0.45, fillPrice: 0.4 }], gates),
+    ).toBeNull();
+  });
+
+  it("rejects -EV even when the fill would 12×", () => {
+    expect(
+      selectTournamentCandidate([{ id: "wti-yes", forecast: 0.05, fillPrice: 0.08 }], gates),
+    ).toBeNull();
   });
 
   it("returns null when nothing clears the multiple/fill gates", () => {
@@ -87,7 +107,7 @@ describe("selectTournamentCandidate / rankByMultiple", () => {
     ).toBeNull();
   });
 
-  it("ranks remaining candidates by multiple descending", () => {
+  it("ranks remaining candidates by wealth multiple descending", () => {
     const ranked = rankByMultiple([
       { id: "a", forecast: 0.8, fillPrice: 0.4 },
       { id: "b", forecast: 0.9, fillPrice: 0.3 },
@@ -95,9 +115,30 @@ describe("selectTournamentCandidate / rankByMultiple", () => {
     expect(ranked.map((c) => c.id)).toEqual(["b", "a"]);
   });
 
-  it("payoutMultiple is forecast/fill", () => {
+  it("payoutMultiple is forecast/fill; wealthMultiple is 1/fill", () => {
     expect(payoutMultiple(0.85, 0.32)).toBeCloseTo(2.656, 2);
     expect(payoutMultiple(0.5, 0)).toBe(0);
+    expect(wealthMultiple(0.32)).toBeCloseTo(3.125, 2);
+    expect(wealthMultiple(0)).toBe(0);
+  });
+});
+
+describe("isForbiddenTournamentTicket", () => {
+  const q = "Will WTI front-month crude futures settle below $65.00 on Aug 21, 2026?";
+
+  it("refuses WTI settle-below YES", () => {
+    expect(isForbiddenTournamentTicket(q, 0, ["Yes", "No"])).toBe(true);
+    expect(isForbiddenTournamentTicket(q, 0)).toBe(true);
+  });
+
+  it("allows WTI settle-below NO", () => {
+    expect(isForbiddenTournamentTicket(q, 1, ["Yes", "No"])).toBe(false);
+  });
+
+  it("does not match unrelated crude questions", () => {
+    expect(
+      isForbiddenTournamentTicket("Will WTI crude oil close above $95 on 2026-08-22 UTC?", 0, ["Yes", "No"]),
+    ).toBe(false);
   });
 });
 

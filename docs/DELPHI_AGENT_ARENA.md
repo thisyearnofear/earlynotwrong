@@ -398,10 +398,11 @@ recovered” was a local wallet read; the board is source of truth.
 | Knob | Value | Role |
 |---|---|---|
 | `endgameHoldFromUtc` | `2026-08-20T00:00:00Z` | Skip sell-convergence / thesis-stop. Maturity + `MarketNotOpen` drops still run. |
-| `tournamentMode` | `true` | One fat entry/cycle, ranked by `forecast / fill`, not edge. |
-| `maxPositionFraction` / `maxMarketFraction` | `0.95` | Dump free cash into that ticket. |
-| `minPayoutMultiple` / `maxFillPrice` | `2.2` / `0.45` | Skip +EV that cannot compound to 5th (WTI NO at ~0.66 is a dead end). |
-| hop-2 (cash ≥ 1500 TST) | `1.6` / `0.65` | So a ~0.58 fill can still reach ~3200. |
+| `tournamentMode` | `true` | One fat entry/cycle into a strictly +EV side. Kelly 8–14¢ gate does **not** apply (it starved the ranker 08-21). |
+| `maxPositionFraction` / `maxMarketFraction` | `0.95` | Dump free cash into that ticket. Exposure is rebuilt from tracked positions after matured drops (no ghost 97 TST). |
+| `minPayoutMultiple` / `maxFillPrice` | `3.0` / `0.33` | Wealth multiple `1/fill`, not forecast/fill. Skip anything that cannot 3× the stake. |
+| hop-2 (cash ≥ 1500 TST) | `1.6` / `0.65` | So a ~0.58 fill can still compound. |
+| WTI settle-below YES | refused | Oil ~$87 vs below $65 on 08-21 — ruin, not a longshot. |
 | `entryResolveBufferHours` | `6` | No market that cannot settle+redeem before close. |
 | `postCloseGraceHours` | `12` | Loop stays up after 08-24 00:00 for last redeems. |
 | `loopIntervalMinutes` | `30` | Hop-1 redeem can recycle same day. |

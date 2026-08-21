@@ -65,7 +65,7 @@ Official leaderboard — the only number that counts: **rank 122/159 · 599.99 T
 We are down. The post-mortem is specific: the losses concentrate in the **exit policy and sizing**, not the forecasts. Selling into convergence trades a 1/0 settlement payoff for an LMSR mid price. 15% Kelly cannot 5× to top 5 from 600 TST.
 
 - Historical internal count through 08-19: **18 entries · 12 exits** (5 convergence take-profits, 7 thesis stops). Board 36 trades includes redeems/failed txs; treat the board as canonical for rank.
-- **Endgame correction shipped 2026-08-20:** hold-to-settlement, tournament sizer (95% of free cash into the single highest `forecast/fill` ≥ 2.2×), resolution-deadline filter, 12h post-close redeem grace. Ruin of a hop is accepted.
+- **Endgame correction shipped 2026-08-20, retargeted 2026-08-21:** hold-to-settlement, tournament sizer (95% of free cash into a strictly +EV ticket whose `1/fill` ≥ 3), resolution-deadline filter, 12h post-close redeem grace. WTI settle-below YES is refused. Ruin of a hop is accepted.
 - Calibration, not P&L, remains the forecaster yardstick — see `allForecasts` on `/delphi/status`.
 - Zero inference spend: free tiers, per-provider circuit breakers, promo-expiry guards.
 
