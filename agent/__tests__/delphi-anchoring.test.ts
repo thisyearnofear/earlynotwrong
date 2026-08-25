@@ -3,7 +3,7 @@
  * and the calibration ledger (forecast resolution on redemption).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +17,21 @@ import {
 } from "../lib/delphi/anchoring.js";
 import { DelphiRunner } from "../lib/delphi/runner.js";
 import { DelphiExecutor, type DelphiClientLike, type DelphiMarket, type DelphiPosition } from "../lib/delphi/executor.js";
+import { AGENT_CONFIG } from "../lib/config.js";
 import type { ConvictionRecord } from "../lib/anchors/types.js";
+
+// Post-competition (2026-08-25): the arena window closed 2026-08-24, so any
+// test that exercises market discovery with the real Date.now() would hit
+// the closed-window branch and silently skip evaluation. Push the configured
+// close out by one year for the lifetime of this file. No test in this file
+// asserts the post-close behavior — they all use the open-window branch.
+const ORIGINAL_WINDOW_CLOSES = AGENT_CONFIG.delphi.tradingWindowCloses;
+beforeAll(() => {
+  (AGENT_CONFIG.delphi as { tradingWindowCloses: string }).tradingWindowCloses = "2027-08-24T00:00:00Z";
+});
+afterAll(() => {
+  (AGENT_CONFIG.delphi as { tradingWindowCloses: string }).tradingWindowCloses = ORIGINAL_WINDOW_CLOSES;
+});
 
 // =============================================================================
 // Digest quantization

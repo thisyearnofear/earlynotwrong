@@ -327,19 +327,19 @@ export const AGENT_CONFIG = {
     // Sell-into-convergence exit policy (see probability.ts).
     // Take profit when the market price reaches within `tolerance` of our
     // entry estimate; cut the position when price moves `stopEdge` against us.
-    // Endgame (2026-08-20): these defaults stay for tests + rollback; the
-    // runner ignores them once `endgameHoldFromUtc` has passed.
     convergenceTolerance: 0.02,
     thesisStopEdge: 0.1,
-    // Tournament endgame: hold tracked positions to settlement (P&L-only
-    // scoring; selling the 1/0 payoff back into LMSR is how we sat 122nd).
-    // Set undefined / a far-future date to restore convergence exits.
-    endgameHoldFromUtc: "2026-08-20T00:00:00Z" as string | undefined,
-    // Maximize P(3× the board), not E[log wealth]. One fat entry per cycle
-    // into a +EV ticket whose 1/fill is ≥3 (fill ≤ 0.33). Ruin accepted.
-    // Tournament mode does NOT require the Kelly 8–14¢ edge gate — that
-    // gate starved the ranker on 2026-08-21 (empty candidate list).
-    tournamentMode: true,
+    // Post-competition (2026-08-25): the Gensyn arena window closed 08-24 and
+    // the tournament endgame (hold-to-settlement from 2026-08-20) is retired.
+    // undefined restores sell-into-convergence exits. The endgame values are
+    // archived in git history; see docs/LESSONS.md. Re-enable them only for a
+    // future P&L-ranked arena window.
+    endgameHoldFromUtc: undefined as string | undefined,
+    // Tournament mode was the arena-only override: one fat +EV entry per
+    // cycle, 1/fill ≥ 3, no Kelly edge gate (it starved the ranker on
+    // 2026-08-21). Off post-competition — normal mode re-arms the
+    // category-aware 8–14¢ edge gates below.
+    tournamentMode: false,
     maxNewEntriesPerCycle: 1,
     minPayoutMultiple: 3.0,
     maxFillPrice: 0.33,
@@ -383,14 +383,22 @@ export const AGENT_CONFIG = {
     // 2¢-bucketed prices — see forecastCacheKey in runner.ts). Unchanged
     // markets then cost zero inference; the TTL caps staleness.
     forecastCacheTtlMinutes: 360,
-    // Tournament sizing: dump free cash into the one ticket. 0.95 not 1.0
-    // so a quote/gas remainder stays for the redeem sweep. Ruin of a single
-    // hop is accepted — 15% Kelly cannot 5× to top 5 from 600 TST.
-    maxPositionFraction: 0.95,
-    maxMarketFraction: 0.95,
-    // Loop cadence for the standalone Delphi runner (minutes). 30 min so a
-    // hop-1 redeem can recycle into hop-2 the same calendar day.
-    loopIntervalMinutes: 30,
+    // Kelly-lite bankroll caps (2026-08-19 tuning). The 0.95/0.95 tournament
+    // dump — ruin-accepted sizing for P&L-only rank chasing — lives in the
+    // separate tournament*Fraction knobs below; it must not be the default
+    // for any future venue.
+    maxPositionFraction: 0.15,
+    maxMarketFraction: 0.35,
+    // Tournament-only sizing (arena-specific, ruin accepted): the fraction of
+    // free cash the tournament sizer dumps into the single high-multiple
+    // ticket. Separate from the Kelly-lite caps above so restoring normal
+    // sizing cannot silently shrink the tournament policy (and a future
+    // arena window re-enables it via tournamentMode alone).
+    tournamentPositionFraction: 0.95,
+    tournamentMarketFraction: 0.95,
+    // Loop cadence for the standalone Delphi runner (minutes). 30 min was the
+    // tournament same-day hop-recycle cadence; normal mode runs hourly.
+    loopIntervalMinutes: 60,
     // Competition trading window (UTC). Final leaderboard after settlement.
     tradingWindowOpens: "2026-08-10T00:00:00Z",
     tradingWindowCloses: "2026-08-24T00:00:00Z",

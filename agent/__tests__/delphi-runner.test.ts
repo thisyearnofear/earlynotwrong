@@ -6,7 +6,7 @@
  * writes, and snapshot persistence across cycles.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,9 +18,24 @@ import {
   evaluateStopReentryGate,
 } from "../lib/delphi/runner.js";
 import { DelphiExecutor, type DelphiClientLike, type DelphiMarket, type DelphiPosition } from "../lib/delphi/executor.js";
+import { AGENT_CONFIG } from "../lib/config.js";
 import type { MarketEstimate, MarketEstimateInput } from "../lib/delphi/probability.js";
 import type { FactCheck } from "../lib/delphi/fact-check.js";
 import type { VerificationInput, VerificationResult } from "../lib/delphi/verification.js";
+
+// Post-competition (2026-08-25): the arena window closed 2026-08-24, so any
+// test that exercises market discovery with the real Date.now() would hit
+// the closed-window branch and silently skip evaluation. Push the configured
+// close out by one year for the lifetime of this file. The one test that
+// asserts post-close behavior (line ~1533) passes a fixed `now:` *after* the
+// new close so it still exercises the right code path.
+const ORIGINAL_WINDOW_CLOSES = AGENT_CONFIG.delphi.tradingWindowCloses;
+beforeAll(() => {
+  (AGENT_CONFIG.delphi as { tradingWindowCloses: string }).tradingWindowCloses = "2027-08-24T00:00:00Z";
+});
+afterAll(() => {
+  (AGENT_CONFIG.delphi as { tradingWindowCloses: string }).tradingWindowCloses = ORIGINAL_WINDOW_CLOSES;
+});
 
 // =============================================================================
 // Fakes
@@ -1497,7 +1512,7 @@ describe("DelphiRunner", () => {
     let estimates = 0;
     const late = {
       ...makeMarket("0xLate", "After close"),
-      resolvesAt: "2026-08-25T00:00:00Z",
+      resolvesAt: "2027-08-25T00:00:00Z", // after the test-file's pushed close
     };
     const executor = new DelphiExecutor({
       apiKey: "k",
@@ -1551,7 +1566,7 @@ describe("DelphiRunner", () => {
       telegramEnabled: false,
       tournamentMode: false,
       endgameHoldFromUtc: null,
-      now: () => Date.parse("2026-08-24T01:00:00Z"),
+      now: () => Date.parse("2027-08-25T00:00:00Z"), // after the test-file's pushed close
       webSearch: noopWebSearch,
       fetchVolBaseline: noopVolBaseline,
       verificationEnabled: false,

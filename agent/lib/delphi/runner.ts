@@ -1398,8 +1398,11 @@ export class DelphiRunner {
         bankrollTokens: ctx.bankrollTokens,
         existingExposureTokens: totalExposure(ctx.exposure),
         marketExposureTokens: BigInt(ctx.exposure[candidate.signal.marketAddress] ?? "0"),
-        maxPositionFraction: AGENT_CONFIG.delphi.maxPositionFraction,
-        maxMarketFraction: AGENT_CONFIG.delphi.maxMarketFraction,
+        // Tournament-only ruin-accepted caps — NOT the Kelly-lite
+        // maxPositionFraction/maxMarketFraction, which stay sane for
+        // normal mode (2026-08-25 post-competition restore).
+        maxPositionFraction: AGENT_CONFIG.delphi.tournamentPositionFraction,
+        maxMarketFraction: AGENT_CONFIG.delphi.tournamentMarketFraction,
       });
       const sized = await quoteSharesForBudget({
         budgetTokens: budget,
