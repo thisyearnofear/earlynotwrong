@@ -18,7 +18,23 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 ## Current Operational Status
 
-> Last updated: 2026-08-20. Repo HEAD includes the tournament endgame; live VPS commit was `754448d0` as of 08-19 — **deploy this commit** before treating hold-to-settlement as live. **Competition window closes 2026-08-24T00:00:00Z (~3.5 days).** Official leaderboard (source of truth): **Early, Not Wrong rank 122/159, 599.99 TST, PnL −400.01, 36 trades** from a 1,000 TST start. The hole is an **exit-policy + sizing** hole, not a missing model: sell-into-convergence fired 7 thesis stops vs 5 take-profits (swapping 1/0 settlement payoffs for LMSR mid prices), and 15% Kelly cannot 5× to top 5 from 600 TST. Endgame shipped in this commit: **hold-to-settlement** (`endgameHoldFromUtc`), **tournament sizer** (95% of free cash into the single highest `forecast/fill` ≥ 2.2× at fill ≤ 0.45; hop-2 relaxes at 1500 TST), markets that cannot settle+redeem before close are skipped, loop continues 12h past close in redeem-only mode, cycles every 30 min. One-thesis-per-market, 12h stop-reentry cooldown, and all four validation tiers stay ON. Open positions: refresh from `/delphi/status` — do not trust the 08-19 UAP / 10Y / Botafogo trio. Target is **P(top 5)**, ruin accepted; hop-1 closest tape name was UAP YES ~0.32 (3× if right). Do **not** buy WTI YES (spot ~$86 vs below-$65). WTI NO is calibrated and a rank dead-end (~1.5×).
+> Last updated: 2026-08-25. The Gensyn Delphi arena window closed
+> 2026-08-24T00:00Z and the runner self-exited after the 12h redeem-only
+> grace — by design. **The delphi surface is archived.** Post-competition
+> defaults in `agent/lib/config.ts` are sane normal-mode values:
+> `tournamentMode: false`, `endgameHoldFromUtc: undefined` (restores
+> convergence exits), `maxPositionFraction: 0.15`, `maxMarketFraction: 0.35`,
+> `loopIntervalMinutes: 60`. The arena-only ruin-accepted knobs
+> (`tournamentPositionFraction`, `tournamentMarketFraction`) live in git
+> history; the hold-to-settlement toggle, `tournamentMode`, and the
+> 30-min cadence are off. `DELPHI_ENABLED` in `agent/.env` is the runtime
+> gate; for VPS closeout, set it to `0` after `pm2 delete
+> earlynotwrong-delphi`. The BSC agent is **still live** — the BNB
+> hackathon window (2026-06-22 → 2026-06-28) is long closed, but the
+> revenue SKUs (MCP x402, CROO CAP `signals-live` / `wallet-score`,
+> anchoring receipts) run on the same loop, and the agent is the product,
+> not a competitor. Full post-mortem (Gensyn arena + BNB hackathon) in
+> `docs/LESSONS.md`.
 
 ### Recently shipped
 
