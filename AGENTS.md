@@ -136,6 +136,8 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | `agent/lib/self-analysis.ts` | Builds the agent's canonical trade ledger and scores its own behavior each cycle via `conviction-core` |
 | `agent/lib/backtest.ts` | Backtest harness + **edge report** — conviction strategy vs naive baseline, factor attribution of winning exits. `runEdgeReport()` answers "does the signal have demonstrable edge?" |
 | `agent/lib/delphi/` | Prediction-market surface (Gensyn Delphi Agent Arena) — `executor.ts` (SDK wrapper, slippage guard, simulator, position lifecycle reads, `quoteSell`/`sellShares` for the convergence exit), `probability.ts` (LLM ensemble estimate + vol-baseline blend + category-aware edge gate + Kelly-lite sizing + `evaluateConvergenceExit`), `vol-baseline.ts` (driftless log-normal threshold pricing + question parsing, zero inference cost), `web-search.ts` (three-rung briefings + Tier-3 two-source corroboration, per-cycle budget + cache), `fact-check.ts` (Tier-1 resolution-authority registry + Wikimedia pageviews verifier), `evidence-filter.ts` (Tier-2 deterministic stale-passage filter), `verification.ts` (Tier-4 cross-family adversarial pre-entry verifier), `lifecycle.ts` (settled→redeem, expired/failed→liquidate sweep), `anchoring.ts` (quantized per-cycle thesis → shared Mantle+Casper adapters, deduped), `runner.ts` (separate pm2 loop `earlynotwrong-delphi`, writes positions.json + forecasts.jsonl under `AGENT_DATA_DIR/delphi/`, side-effect-imports env-bootstrap so agent/.env keys are live, persists per-forecast provenance (model · samples · webEvidence · factAuthority · corroborated · verified) surfaced on the card + Telegram; entry-point guard handles pm2's ProcessContainerFork argv[1] — do not regress to an argv-only check), `status.ts` (disk-backed reader powering `GET /delphi/status`). Gated by `DELPHI_ENABLED` (runtime env check, not build-time config). See `docs/DELPHI_AGENT_ARENA.md`. Strategy: LMSR probability-vs-price edge, **not** token dip-buying; evidence of edge is calibration/Brier (conviction-core `calibration.ts`), not Sharpe |
+| `agent/lib/adapters/` | **Harness adapter layer** — the domain-pluggable boundary. Three extension-point interfaces (`data-source.ts`, `conviction-factors.ts`, `executor.ts`) + shared types (`types.ts`). Crypto domain wrappers (`sosovalue-adapter.ts`, `crypto-conviction.ts`, `twak-adapter.ts`) conform the existing implementations to the interfaces without modifying them. Options domain adapters (`alpaca-data.ts`, `options-conviction.ts`, `alpaca-executor.ts`) implement the Alpaca options agent. `registry.ts` maps domain → adapter triple; `index.ts` is the barrel export. Set `HARNESS_DOMAIN=crypto` (default) or `HARNESS_DOMAIN=options` to switch domains. The loop, LLM ladder, jury, verification, self-analysis, and anchoring are all domain-agnostic — only the three adapters change per domain. See `docs/HARNESS_ARCHITECTURE_PLAN.md` |
+| `agent/lib/harness-config.ts` | Harness domain config layer — `resolveHarnessConfig()` reads `HARNESS_DOMAIN` (default: crypto) and returns the adapter triple (data source, conviction factors, executor). `DOMAIN_PROFILES` maps built-in domains; `HARNESS_CONFIG` is the resolved singleton at startup |
 
 ### Module Dependency Graph
 
@@ -191,6 +193,14 @@ delphi/status.ts (read by GET /delphi/status)
 
 src/components/agent/delphi-arena-card.tsx
   └─ src/lib/agent-client.ts (fetchDelphiStatus → /api/agent/proxy?endpoint=delphi/status)
+
+adapters/ (harness domain layer)
+  ├─ adapters/types.ts (shared domain-agnostic types: Kline, MarketSignal, ConvictionResult, …)
+  ├─ adapters/data-source.ts (interface) ← sosovalue-adapter.ts, alpaca-data.ts
+  ├─ adapters/conviction-factors.ts (interface) ← crypto-conviction.ts, options-conviction.ts
+  ├─ adapters/executor.ts (interface) ← twak-adapter.ts, alpaca-executor.ts
+  ├─ adapters/registry.ts → resolveAdapters(HARNESS_CONFIG) → AdapterBundle
+  └─ harness-config.ts → resolveHarnessConfig() → HARNESS_CONFIG (domain = crypto | options)
 ```
 
 ### Trading Loop (8 Steps)
@@ -233,6 +243,7 @@ src/components/agent/delphi-arena-card.tsx
   - **Composite market data**: SoSoValue token prices are preferred (higher refresh rate); CMC fills missing tokens and provides Fear & Greed / funding rates that SoSoValue doesn't offer. CMC's per-token quote pull (a 147-token batch) is deferred — `cycle-runner.fetchMarketData()` only calls `cmcClient.getEligibleTokenQuotes()` as a fallback when SoSoValue returns no prices, so a healthy SoSoValue run spends ~0 CMC credits on token quotes (CMC is still used every cycle for global metrics + derivatives, which SoSoValue lacks).
   - **Holder data (on-chain conviction)**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`, 50 CUs/call) is the primary source; CoinGecko token info (`holders.count`) is the fallback. Results cached in `agent/data/holders.json`; growth computed over 7d lookback after 24h+ of snapshots. Agent pre-scores tokens to target the top 15 candidates, not the full universe. The CoinGecko fallback is rate-limited (`COINGECKO_MIN_INTERVAL_MS = 12s`) with a 10-min per-contract cache in `holders.ts`, so a NodeReal outage can't cascade into a CoinGecko 429 storm.
 - **Shared conviction framework**: Pure ledger types and behavioral scoring live in `packages/conviction-core`. Both the agent self-analysis and the web wallet analyzer consume the same `calculateBehavioralMetrics` / `analyzePosition` / `calculatePatienceTax` functions. `calibration.ts` adds the prediction-market yardstick (`brierScore` / `logLoss` / `hitRate` / `reliabilityBuckets` / `calculateCalibrationMetrics`), consumed by the Delphi runner's status reader. Do not duplicate scoring logic in `src/` or `agent/`.
+- **Harness adapter layer** (`agent/lib/adapters/`): The agent is an **agentic harness** — a proven autonomous agent architecture that can be plugged into any market domain. The core loop, LLM ladder, jury, adversarial verification, calibration ledger, thesis anchoring, and self-analysis are all domain-agnostic. Three extension points are the plug-in boundary: `DataSource` (fetch market data), `ConvictionFactors` (score a signal), and `TradeExecutor` (place & manage trades). The crypto domain (`sosovalue-adapter.ts` + `crypto-conviction.ts` + `twak-adapter.ts`) wraps the existing implementations to conform to the interfaces without modifying them. The options domain (`alpaca-data.ts` + `options-conviction.ts` + `alpaca-executor.ts`) implements the Alpaca options agent. `HARNESS_DOMAIN` env var switches domains at runtime (default: `crypto`). `resolveAdapters(HARNESS_CONFIG)` returns the adapter triple; the registry throws a clear error for unregistered adapters. New domains register in `DOMAIN_PROFILES` (`harness-config.ts`) and the factory maps (`registry.ts`). See `docs/HARNESS_ARCHITECTURE_PLAN.md`.
 - **Shared LLM ladder**: all LLM calls (token jury + Delphi forecaster + Delphi web briefings) go through `agent/lib/llm-providers.ts` (`chatCompletion`, free-first Vercel AI Gateway [zai/glm-5.2] > OpenRouter > OpenAI > Anthropic) and `agent/lib/delphi/web-search.ts` (Exa via the same gateway key). Gateway quirks verified live: it rejects `response_format` (400), requires `reasoning: { effort }` (GLM 5.2's reasoning tokens otherwise eat the completion budget and leave `content` empty), and its JSON replies can come fenced — parse with `parseLenientJson`. Do not add per-module fetch plumbing for new LLM surfaces — extend the ladder there.
 - **No fabricated fallback data**: Showcase/demo wallets use real public addresses only. Do not add fabricated traders, heatmaps, or percentile defaults to fill empty UI states. Return `null` and show an honest empty state instead.
 - **Cross-chain anchoring**: Same `ConvictionRecord` payload sent to Mantle (EVM, viem) and Casper (casper-js-sdk). Hashes computed once via `conviction-core`'s `computeSubjectHash` / `computeThesisHash` — same hash on every chain.
@@ -444,6 +455,14 @@ If a step fails, the log includes a `TWAK help:` line with the exact fix. The cy
 2. Register the adapter in `agent/lib/anchors/index.ts` `ADAPTER_REGISTRY`
 3. Add chain config to `AGENT_CONFIG` in `config.ts`
 4. Add the adapter name to `AGENT_CONFIG.anchoring.adapters`
+
+### Adding a domain adapter (harness)
+1. Implement the three adapter interfaces (`DataSource`, `ConvictionFactors`, `TradeExecutor`) in new files under `agent/lib/adapters/` (see the crypto wrappers or the Alpaca options adapters)
+2. Add the domain profile to `DOMAIN_PROFILES` in `agent/lib/harness-config.ts` (maps domain name → adapter triple)
+3. Register the adapter factories in the maps in `agent/lib/adapters/registry.ts` (`DATA_SOURCES`, `CONVICTION_FACTORS`, `EXECUTORS`)
+4. Export the new adapters from `agent/lib/adapters/index.ts`
+5. Set `HARNESS_DOMAIN=<your-domain>` at runtime to switch; the registry resolves the adapter triple and throws a clear error if any adapter is missing
+6. The loop, LLM ladder, jury, verification, self-analysis, and anchoring require **no changes** — they're domain-agnostic
 
 ## Pinata Deployment
 
