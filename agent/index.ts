@@ -90,6 +90,8 @@ import type { MarketNarrative } from "./lib/market-narrative.js";
 // Alpaca adapters are loaded and the startup banner shows the options domain.
 import { HARNESS_CONFIG } from "./lib/harness-config.js";
 import { resolveAdapters, listRegisteredAdapters } from "./lib/adapters/index.js";
+import { runOptionsCycle } from "./lib/options-cycle.js";
+import { optionsState } from "./lib/options-state.js";
 
 // =============================================================================
 // Startup Health Check
@@ -639,6 +641,31 @@ function syncServerState(): void {
 }
 
 // =============================================================================
+// Options Domain Server State Sync
+// =============================================================================
+
+/** Sync the options domain state to the server for dashboard visibility. */
+function syncOptionsServerState(): void {
+  const agentSnapshot = {
+    cycle: optionsState.cycle,
+    status: optionsState.status,
+    lastRunAt: optionsState.lastRunAt,
+    nextRunAt: optionsState.nextRunAt,
+    totalTrades: optionsState.totalTrades,
+    totalVolumeUsd: optionsState.totalVolumeUsd,
+    totalGasSpentUsd: optionsState.totalGasSpentUsd,
+    realizedPnlUsd: optionsState.realizedPnlUsd,
+    errors: optionsState.errors,
+    executedTrades: [],
+    anchorResults: optionsState.anchorResults,
+    ledger: optionsState.ledger,
+    lastCycleObservability: optionsState.lastCycleObservability,
+  };
+
+  setAgentState(agentSnapshot);
+}
+
+// =============================================================================
 // Startup
 // =============================================================================
 
@@ -713,48 +740,89 @@ async function main(): Promise<void> {
   console.log(`Agent mode: ${AGENT_MODE.toUpperCase()}${AGENT_MODE === "simulator" ? " (no real execution)" : ""}`);
 
   await restoreSnapshot();
-  syncServerState();
 
-  console.log("\nStarting first cycle...");
-  await runCycle();
+  // ── Domain-aware cycle dispatch ──
+  // The harness loop, LLM ladder, jury, verification, self-analysis, and
+  // anchoring are all domain-agnostic — only the three adapters (data source,
+  // conviction factors, executor) change per domain. This block selects which
+  // pipeline runs at startup and on each scheduled cycle.
+  if (HARNESS_CONFIG.domain === "options") {
+    console.log("\n── Options Cycle (Alpaca domain) ──");
+    // Options state is domain-specific; sync to server for dashboard visibility.
+    syncOptionsServerState();
+    console.log("Starting first options cycle...");
+    await runOptionsCycle(HARNESS_CONFIG);
+    syncOptionsServerState();
 
-  syncServerState();
+    // Schedule next options cycle.
+    const optionsIntervalMs = (AGENT_CONFIG.harness.optionsIntervalMinutes ?? 60) * 60 * 1000;
+    const optionsIntervalMinutes = optionsIntervalMs / 60000;
 
-  const baseIntervalMs = AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
+    const scheduleOptionsCycle = (): void => {
+      setTimeout(() => {
+        runOptionsCycle(HARNESS_CONFIG)
+          .then(() => {
+            try {
+              syncOptionsServerState();
+            } catch (syncError) {
+              console.error("Options state sync failed:", summarizeError(syncError));
+            }
+          })
+          .catch((cycleError) => {
+            console.error("Unhandled options cycle error:", summarizeError(cycleError));
+            try {
+              syncOptionsServerState();
+            } catch { /* ignore */ }
+          })
+          .finally(() => {
+            scheduleOptionsCycle();
+          });
+      }, optionsIntervalMs);
+    };
 
-  const scheduleNextCycle = (): void => {
-    const bnbUsd = getBnbUsd(state.portfolio);
-    const cfg = AGENT_CONFIG.trading.bankroll;
-    const intervalMs = cfg.adaptiveInterval && bnbUsd > 0 && bnbUsd < cfg.targetBnbUsd
-      ? baseIntervalMs * 2
-      : baseIntervalMs;
-    const intervalMinutes = intervalMs / 60000;
+    scheduleOptionsCycle();
+  } else {
+    // ── Crypto Cycle (existing BSC agent) ──
+    console.log("\nStarting first cycle...");
+    await runCycle();
+    syncServerState();
 
-    state.nextRunAt = Date.now() + intervalMs;
-    console.log(`\nNext cycle in ${intervalMinutes} minutes (${new Date(state.nextRunAt).toISOString()})${intervalMs > baseIntervalMs ? ` — adaptive (BNB=$${bnbUsd.toFixed(2)} < target=$${cfg.targetBnbUsd})` : ""}`);
+    const baseIntervalMs = AGENT_CONFIG.trading.loopIntervalMinutes * 60 * 1000;
 
-    setTimeout(() => {
-      runCycle()
-        .then(() => {
-          try {
-            syncServerState();
-          } catch (syncError) {
-            console.error("State sync failed after cycle:", summarizeError(syncError));
-          }
-        })
-        .catch((cycleError) => {
-          console.error("Unhandled cycle error (isolated):", summarizeError(cycleError));
-          try {
-            syncServerState();
-          } catch { /* ignore */ }
-        })
-        .finally(() => {
-          scheduleNextCycle();
-        });
-    }, intervalMs);
-  };
+    const scheduleNextCycle = (): void => {
+      const bnbUsd = getBnbUsd(state.portfolio);
+      const cfg = AGENT_CONFIG.trading.bankroll;
+      const intervalMs = cfg.adaptiveInterval && bnbUsd > 0 && bnbUsd < cfg.targetBnbUsd
+        ? baseIntervalMs * 2
+        : baseIntervalMs;
+      const intervalMinutes = intervalMs / 60000;
 
-  scheduleNextCycle();
+      state.nextRunAt = Date.now() + intervalMs;
+      console.log(`\nNext cycle in ${intervalMinutes} minutes (${new Date(state.nextRunAt).toISOString()})${intervalMs > baseIntervalMs ? ` — adaptive (BNB=$${bnbUsd.toFixed(2)} < target=$${cfg.targetBnbUsd})` : ""}`);
+
+      setTimeout(() => {
+        runCycle()
+          .then(() => {
+            try {
+              syncServerState();
+            } catch (syncError) {
+              console.error("State sync failed after cycle:", summarizeError(syncError));
+            }
+          })
+          .catch((cycleError) => {
+            console.error("Unhandled cycle error (isolated):", summarizeError(cycleError));
+            try {
+              syncServerState();
+            } catch { /* ignore */ }
+          })
+          .finally(() => {
+            scheduleNextCycle();
+          });
+      }, intervalMs);
+    };
+
+    scheduleNextCycle();
+  }
 
   process.on("SIGINT", async () => {
     console.log("\nGraceful shutdown...");

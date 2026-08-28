@@ -424,6 +424,8 @@ export const AGENT_CONFIG = {
       .filter(Boolean),
     // Paper trading by default. Set ALPACA_PAPER=0 for live.
     alpacaPaper: process.env.ALPACA_PAPER !== "0",
+    // Options cycle loop cadence (minutes). Default 60 = hourly, same as crypto.
+    optionsIntervalMinutes: (parseInt(process.env.ALPACA_INTERVAL_MINUTES ?? "60", 10) || 60),
   },
 } as const;
 
