@@ -409,6 +409,22 @@ export const AGENT_CONFIG = {
   anchoring: {
     adapters: ["mantle", "casper"] as readonly string[],
   },
+
+  // Harness domain — which adapter set the agent uses. The harness config
+  // layer (`lib/harness-config.ts`) resolves this to a triple: data source,
+  // conviction factors, and trade executor. Default is "crypto" (the
+  // existing BSC agent). Set HARNESS_DOMAIN=options for the Alpaca
+  // options agent (Alpaca AI Trading Agents Hackathon).
+  harness: {
+    domain: (process.env.HARNESS_DOMAIN ?? "crypto") as "crypto" | "options" | string,
+    // Underliers for the options domain (comma-separated in ALPACA_UNDERLIERS).
+    optionsUnderliers: (process.env.ALPACA_UNDERLIERS ?? "AAPL,MSFT,NVDA,TSLA,SPY,QQQ")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    // Paper trading by default. Set ALPACA_PAPER=0 for live.
+    alpacaPaper: process.env.ALPACA_PAPER !== "0",
+  },
 } as const;
 
 export type AgentConfig = typeof AGENT_CONFIG;

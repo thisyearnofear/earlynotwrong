@@ -85,6 +85,12 @@ import { AGENT_MODE } from "./lib/config.js";
 import { persistState, loadPersistentState } from "./lib/persistence.js";
 import type { MarketNarrative } from "./lib/market-narrative.js";
 
+// Harness adapter layer — domain-aware startup. The adapters are resolved
+// from HARNESS_DOMAIN (default: "crypto"). When domain is "options", the
+// Alpaca adapters are loaded and the startup banner shows the options domain.
+import { HARNESS_CONFIG } from "./lib/harness-config.js";
+import { resolveAdapters, listRegisteredAdapters } from "./lib/adapters/index.js";
+
 // =============================================================================
 // Startup Health Check
 // =============================================================================
@@ -647,6 +653,37 @@ async function main(): Promise<void> {
   console.log(`Eligible tokens: ${AGENT_CONFIG.competition.eligibleTokens.length}`);
   console.log(`Default slippage: ${AGENT_CONFIG.trading.defaultSlippageBps} bps`);
   console.log(`Bankroll: reserve=$${AGENT_CONFIG.trading.bankroll.minBnbReserveUsd}, target=$${AGENT_CONFIG.trading.bankroll.targetBnbUsd}, max-trade-fraction=${AGENT_CONFIG.trading.bankroll.maxTradeFractionOfBnb * 100}%, entry-skip-below=$${AGENT_CONFIG.trading.bankroll.entrySkipBelowBnbUsd}`);
+
+  // ── Harness domain display ──
+  // Shows which adapter set is active. The loop, LLM ladder, jury,
+  // verification, self-analysis, and anchoring are all domain-agnostic —
+  // only the three adapters (data source, conviction factors, executor)
+  // change per domain.
+  console.log(`\n── Harness Domain ──`);
+  console.log(`  Domain:            ${HARNESS_CONFIG.domain}`);
+  console.log(`  Data source:       ${HARNESS_CONFIG.adapters.dataSource}`);
+  console.log(`  Conviction factors: ${HARNESS_CONFIG.adapters.convictionFactors}`);
+  console.log(`  Trade executor:    ${HARNESS_CONFIG.adapters.executor}`);
+  const registered = listRegisteredAdapters();
+  console.log(`  Registered:        sources=[${registered.dataSources.join(", ")}] factors=[${registered.convictionFactors.join(", ")}] executors=[${registered.executors.join(", ")}]`);
+
+  // Resolve adapters at startup so a misconfiguration surfaces immediately,
+  // not mid-cycle. The resolved bundle is available for the options domain
+  // path; the crypto domain continues to use the existing direct-import path.
+  try {
+    const bundle = resolveAdapters(HARNESS_CONFIG);
+    console.log(`  Status:            ✓ adapters resolved`);
+    // When the domain is "options", verify the Alpaca executor is configured.
+    if (HARNESS_CONFIG.domain === "options") {
+      const execHealth = await bundle.executor.healthCheck();
+      console.log(`  Alpaca:            ${execHealth.healthy ? "✓" : "○"} ${execHealth.mode}${execHealth.details ? ` (${JSON.stringify(execHealth.details).slice(0, 80)})` : ""}`);
+    }
+  } catch (err) {
+    console.error(`  Status:            ✗ adapter resolution failed: ${err instanceof Error ? err.message : String(err)}`);
+    if (HARNESS_CONFIG.domain !== "crypto") {
+      console.error("  Falling back to crypto domain (existing agent path).");
+    }
+  }
 
   const server = startServer(31777);
   loadPaymentStats();
