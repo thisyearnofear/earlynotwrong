@@ -371,16 +371,23 @@ async function createProposals(
 
   // Top signals by conviction score.
   const minConviction = 40;
-  const topSignals = optionsState.convictionSignals.filter(s =>
-    s.conviction.score >= minConviction,
-  ).slice(0, 5);
+  // Fail-closed on the core signal: the whole edge is "premium priced
+  // relative to realized vol" — a contract with no usable IV (a gap/stale
+  // quote where the BS solver returned ~0) has no measurable edge and must
+  // not be entry-eligible, even if the overlay factors sum past the
+  // threshold. This is the no-fabricated-data rule applied to IV.
+  const topSignals = optionsState.convictionSignals.filter(s => {
+    const iv = (s.signal.metadata?.impliedVolatility as number) ?? 0;
+    if (iv < 0.05) return false; // degenerate/stale IV → not tradable
+    return s.conviction.score >= minConviction;
+  }).slice(0, 5);
 
   if (topSignals.length === 0) {
-    console.log(`  No signals meet minimum conviction (${minConviction}). Skipping entries.`);
+    console.log(`  No signals meet minimum conviction (${minConviction}) AND usable IV. Skipping entries.`);
     return [];
   }
 
-  console.log(`  ${topSignals.length} signals above conviction threshold (${minConviction})`);
+  console.log(`  ${topSignals.length} signals above conviction threshold (${minConviction}) with usable IV`);
   return topSignals;
 }
 

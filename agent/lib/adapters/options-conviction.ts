@@ -91,6 +91,13 @@ function computeRsi(klines: Kline[], period: number = 14): number | null {
 function ivContrarianFraction(iv: number, ivAvailable: boolean, ivToRealized: number): number {
   if (!ivAvailable) return 0.5;
   if (iv <= 0) return 0.5;
+  // A near-zero IV is a degenerate/stale quote (the indicative mid sits
+  // at-or-below intrinsic, so the Black-Scholes solver returns ~0). That is
+  // NOT "cheap premium" — it's "no real market." Treat it as neutral rather
+  // than fabricating a max-conviction buy edge from a gap quote. The floor
+  // (5% annualized) is far below any liquid equity option, so it only trips
+  // on degenerate data, never on a genuinely cheap (but real) contract.
+  if (iv < 0.05) return 0.5;
   // RV-relative: IV/RV < 1 = cheaper than the underlier's own vol → buy edge.
   if (ivToRealized > 0) {
     if (ivToRealized >= 2.0) return 0.1;  // very rich — avoid buying (crush risk)

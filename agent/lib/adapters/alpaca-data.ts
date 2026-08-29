@@ -342,9 +342,12 @@ function contractToSignal(
   // Derive IV + greeks from the mid quote (Black-Scholes inversion).
   const iv = solveImpliedVol(mid, underlierPrice, strike, T, RISK_FREE_RATE, isCall);
   const greeks = bsGreeks(underlierPrice, strike, T, RISK_FREE_RATE, iv, isCall);
-  // Price premium relative to the underlier's own realized vol (annualized).
-  // IV/RV > 1 → rich premium (crush risk); < 1 → cheap premium (expansion edge).
-  const ivToRealized = realizedVol > 0 ? iv / realizedVol : 0;
+  // A near-zero IV is a degenerate quote (mid at/below intrinsic) — not a
+  // real market. Zero out ivToRealized so the conviction factor can't treat
+  // a gap in the indicative feed as "super cheap premium" (the IV/RV < 1
+  // buy edge only makes sense for a genuinely-priced, non-degenerate vol).
+  const ivUsable = iv >= 0.05;
+  const ivToRealized = ivUsable && realizedVol > 0 ? iv / realizedVol : 0;
 
   // 7d price change of the underlier (options inherit the underlier's drift).
   const priceChange7d = prevClose > 0 ? ((underlierPrice - prevClose) / prevClose) * 100 : 0;

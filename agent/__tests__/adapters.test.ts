@@ -296,6 +296,25 @@ describe("Options Conviction Adapter", () => {
     const ivFactor = result.breakdown.find((f) => f.name === "iv_contrarian");
     expect(ivFactor!.score).toBeGreaterThanOrEqual(13);
   });
+  it("treats a degenerate near-zero IV as neutral, not a cheap-premium buy", async () => {
+    // A stale quote (mid at/below intrinsic) yields IV ≈ 0 and IV/RV ≈ 0.
+    // That is "no real market", not "super cheap premium" — the factor must
+    // not fabricate a max buy edge from it.
+    const deg = makeOptionsSignal({
+      metadata: {
+        ...makeOptionsSignal().metadata,
+        impliedVolatility: 0.0001,
+        realizedVol: 0.35,
+        ivToRealized: 0.0003,
+        gamma: 0.001,
+        theta: -0.01,
+      },
+    });
+    const result = await adapter.score(deg, makeKlines(30, 155));
+    const ivFactor = result.breakdown.find((f) => f.name === "iv_contrarian");
+    // Neutral 0.5 fraction → 10 points out of 20, not 20 (max buy).
+    expect(ivFactor!.score).toBe(10);
+  });
 
   it("penalizes high gamma (squeeze risk)", async () => {
     const highGamma = makeOptionsSignal({
