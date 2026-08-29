@@ -68,6 +68,34 @@ Each hourly cycle:
 - **Fresh paper account** — dedicated hackathon account, $100k starting balance,
   per the judging requirements.
 
+### Partner technology: Featherless AI
+
+Featherless AI is a hackathon **technology partner** — "to be eligible for
+partner prizes, the relevant partner technology must be integrated into a
+project submitted under the challenge." We use it as a **real rung in the
+shared LLM provider ladder** (`agent/lib/llm-providers.ts`), not a token
+credit:
+
+- **Position** — after the free tiers (Vercel AI Gateway, OpenRouter `:free`,
+  B.AI, OrcaRouter) but before the paid keys (OpenAI, Anthropic). Sponsor
+  credits get spent before a real billing key is touched.
+- **Why it's an edge, not a checkbox** — the ladder already feeds the token
+  conviction jury, the Delphi forecaster, the adversarial pre-entry verifier,
+  and the market narrative. Adding Featherless means every one of those
+  surfaces inherits a genuine open-source-inference fallback rung, so a free
+  tier 402/429 degrades to an equally-capable (open-source, sponsor-backed)
+  model instead of falling to a paid key or a template. The cross-family
+  verifier treats Featherless as family `qwen` (distinct from the `deepseek`
+  family), so adversarial cross-examination still works.
+- **Model** — `Qwen/Qwen2.5-72B-Instruct` via the OpenAI-compatible
+  `FEATHERLESS_BASE_URL` (default `https://api.featherless.ai/v1`). Keyed by
+  `FEATHERLESS_API_KEY`. Configurable per-surface
+  (`FEATHERLESS_JURY_MODEL` / `FEATHERLESS_DELPHI_MODEL` /
+  `FEATHERLESS_NARRATIVE_MODEL`).
+- **Documented access** — `$25` participant credits, first-come first-served,
+  activated via lablab; `FEATHERLESS_API_KEY` + `FEATHERLESS_BASE_URL` are
+  documented in `agent/.env.example` and set locally and on the VPS.
+
 ### Harness architecture (the meta-point)
 
 The agent is built on a domain-agnostic harness with three extension points —
