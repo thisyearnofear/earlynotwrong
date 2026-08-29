@@ -22,15 +22,19 @@ strategy-specific rewrites.
 
 Each hourly cycle:
 
-1. **Fetch** — Alpaca Market Data API pulls option chains, implied vol, greeks,
-   open interest, and underlier bars for a curated universe (SPY, QQQ, AAPL,
-   MSFT, NVDA, TSLA).
+1. **Fetch** — Alpaca Market Data API pulls option chain quotes, underlier
+   snapshots, and underlier bars for a curated universe (SPY, QQQ, AAPL,
+   MSFT, NVDA, TSLA). The Basic plan's indicative feed exposes no option
+   IV/greeks, so we derive them from the two-sided quote via Black-Scholes
+   inversion, and score premium *relative to the underlier's realized vol*.
 2. **Score** — an 8-factor conviction model (IV contrarian 20, quality 20,
    regime 15, RSI+delta 10, OI growth 10, gamma squeeze risk 10, earnings vol
    crush 10, vanna/charm decay penalty 5) produces a 0–100 conviction per
-   contract. The thesis: **IV edge + conviction overlay** — extreme IV rank on
-   mean-reverting underliers (sell premium / buy premium) filtered through
-   underlier quality and timing.
+   contract. The thesis: **cheap premium, not momentum** — an option priced
+   below its underlier's realized vol (IV/RV ≪ 1) has room to expand, so it
+   scores high; rich premium (IV/RV ≫ 1) is crush-prone and scores low. The
+   agent is **long-only** (buy-to-open), so IV drives *which* contract to buy,
+   not a sell side.
 3. **Verify** — the cross-family LLM adversarial verifier attacks the thesis
    before entry (base rates, timing, evidence quality); flagged disagreement
    blocks the entry.
@@ -120,7 +124,7 @@ crypto, futures) is three new adapter files, not a new agent.
 |-----------|----------------|
 | **P&L performance** | Paper-traded options with conviction overlay; self-analysis + calibration ledger prove the agent measures its own edge |
 | **Technology implementation** | Trading API + Market Data API + paper trading; Alpaca **CLI** for order execution (IDempotent client-order-id, REST fallback); harness MCP server; autonomous loop; adversarial verification; cross-chain anchoring |
-| **Creativity & originality** | Agent harness as the product — same skeleton ships crypto and options; IV edge + conviction overlay is not a generic buy-the-dip bot |
+| **Creativity & originality** | Agent harness as the product — same skeleton ships crypto and options; cheap-premium (IV vs realized-vol) long-only overlay is not a generic buy-the-dip bot |
 | **Presentation & execution** | Full 8-step pipeline with per-cycle evidence, Telegram dispatch, honest empty states, public repo |
 
 ## How to run
@@ -149,8 +153,9 @@ end-to-end against the real paper account, not a simulator:
   AAPL, MSFT, NVDA, TSLA (7–90d expiries); IV + greeks derived from live
   quotes via Black-Scholes inversion (the Basic plan's indicative feed
   exposes no IV/greeks, so we compute them ourselves).
-- **Real orders** — proposals ≥ 40 conviction are submitted to the paper
-  Trading API. Inside market hours they fill; outside market hours they are
+- **Real orders** — proposals ≥ 40 conviction are executed through Alpaca's
+  official CLI (`alpaca order submit`, idempotent `--client-order-id`, REST
+  fallback). Inside market hours they fill; outside market hours they are
   correctly rejected (`options market orders are only allowed during market
   hours`) and the cycle fails closed — no entries, exits never blocked.
 
