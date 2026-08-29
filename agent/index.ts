@@ -644,7 +644,13 @@ function syncServerState(): void {
 // Options Domain Server State Sync
 // =============================================================================
 
-/** Sync the options domain state to the server for dashboard visibility. */
+/**
+ * Sync the options domain state to the server for dashboard visibility.
+ *
+ * The server's /status route reads the shared AgentServerState. Without
+ * mapping the options portfolio here it falls back to the crypto executor
+ * (TWAK) and shows the wrong domain's data on the options dashboard.
+ */
 function syncOptionsServerState(): void {
   const agentSnapshot = {
     cycle: optionsState.cycle,
@@ -660,6 +666,22 @@ function syncOptionsServerState(): void {
     anchorResults: optionsState.anchorResults,
     ledger: optionsState.ledger,
     lastCycleObservability: optionsState.lastCycleObservability,
+    // Map the options portfolio into the TwakPortfolio shape /status
+    // expects so resolvePortfolio() never falls back to TWAK (crypto).
+    portfolio: optionsState.portfolio
+      ? {
+          totalValueUsd: optionsState.portfolio.totalValueUsd,
+          positions: optionsState.portfolio.positions.map((p) => ({
+            token: p.symbol,
+            symbol: p.symbol,
+            balance: String(p.quantity),
+            valueUsd: p.valueUsd,
+            chain: "options",
+          })),
+          chains: ["options"],
+          lastUpdated: Date.now(),
+        }
+      : null,
   };
 
   setAgentState(agentSnapshot);

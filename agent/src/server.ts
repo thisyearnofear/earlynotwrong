@@ -15,6 +15,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { AGENT_CONFIG } from "../lib/config.js";
+import { HARNESS_CONFIG } from "../lib/harness-config.js";
 import { twakExecutor } from "../lib/twak-executor.js";
 import { guardrails } from "../lib/risk-guardrails.js";
 import { getMantleExplorerTxUrl } from "../lib/config.js";
@@ -168,8 +169,20 @@ let agentState: AgentServerState = {
 /**
  * Resolve the portfolio to report: prefer the loop's augmented snapshot, and
  * only fall back to a raw TWAK fetch before the first cycle has populated it.
+ *
+ * In the options domain the shared snapshot carries the mapped Alpaca
+ * portfolio (set by syncOptionsServerState); never fall back to TWAK there —
+ * TWAK is the crypto executor and would leak the wrong domain's data.
  */
 async function resolvePortfolio(): Promise<TwakPortfolio> {
+  if (HARNESS_CONFIG.domain === "options") {
+    return agentState.portfolio ?? {
+      totalValueUsd: 0,
+      positions: [],
+      chains: [],
+      lastUpdated: Date.now(),
+    };
+  }
   return agentState.portfolio ?? (await twakExecutor.getPortfolio());
 }
 
