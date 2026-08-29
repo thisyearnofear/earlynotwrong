@@ -103,6 +103,7 @@ const PROVIDER_FAMILY: Record<LlmProviderName, string> = {
   openrouter: "router",
   "b-ai": "deepseek",
   orcarouter: "deepseek",
+  featherless: "qwen", // open-source instruct (Qwen2.5-72B default); distinct from the deepseek family
   openai: "gpt",
   anthropic: "claude",
 };
@@ -224,6 +225,7 @@ const VERIFIER_DEFAULT_MODELS = {
   openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
   "b-ai": "deepseek-v4-flash",
   orcarouter: "deepseek/deepseek-v4-flash-free",
+  featherless: "Qwen/Qwen2.5-72B-Instruct",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
 } as const;
@@ -245,6 +247,7 @@ export async function runAdversarialVerification(
         openrouter: { envVar: "OPENROUTER_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.openrouter },
         "b-ai": { envVar: "BAI_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS["b-ai"] },
         orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.orcarouter },
+        featherless: { envVar: "FEATHERLESS_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.featherless },
         openai: { envVar: "OPENAI_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.openai },
         anthropic: { envVar: "ANTHROPIC_DELPHI_MODEL", defaultModel: VERIFIER_DEFAULT_MODELS.anthropic },
       },

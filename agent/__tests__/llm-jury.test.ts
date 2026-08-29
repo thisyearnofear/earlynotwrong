@@ -87,6 +87,7 @@ describe("LLM Conviction Jury", () => {
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.BAI_API_KEY;
     delete process.env.ORCAROUTER_API_KEY;
+    delete process.env.FEATHERLESS_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.LLM_JURY_DISABLED;

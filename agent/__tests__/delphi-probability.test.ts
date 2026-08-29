@@ -59,19 +59,27 @@ describe("estimateProbability — binary constraint + estimator injection", () =
   it("returns null when no estimator and no provider keys are set", async () => {
     // Explicitly clear any env keys that might be set in this shell.
     const saved = {
+      VERCEL_AI_GATEWAY_API_KEY: process.env.VERCEL_AI_GATEWAY_API_KEY,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      BAI_API_KEY: process.env.BAI_API_KEY,
+      ORCAROUTER_API_KEY: process.env.ORCAROUTER_API_KEY,
+      FEATHERLESS_API_KEY: process.env.FEATHERLESS_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     };
+    delete process.env.VERCEL_AI_GATEWAY_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
+    delete process.env.BAI_API_KEY;
+    delete process.env.ORCAROUTER_API_KEY;
+    delete process.env.FEATHERLESS_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     try {
       expect(await estimateProbability(baseInput)).toBeNull();
     } finally {
-      if (saved.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = saved.OPENROUTER_API_KEY;
-      if (saved.OPENAI_API_KEY) process.env.OPENAI_API_KEY = saved.OPENAI_API_KEY;
-      if (saved.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = saved.ANTHROPIC_API_KEY;
+      for (const [k, v] of Object.entries(saved)) {
+        if (v) process.env[k] = v;
+      }
     }
   });
 

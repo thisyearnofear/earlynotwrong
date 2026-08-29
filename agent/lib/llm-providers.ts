@@ -30,6 +30,7 @@ export type LlmProviderName =
   | "openrouter"
   | "b-ai"
   | "orcarouter"
+  | "featherless"
   | "openai"
   | "anthropic";
 
@@ -102,7 +103,12 @@ export interface LlmChatResult {
  *   4. orcarouter — $0 free-tier models on OrcaRouter infra (rate-limited,
  *      slow: ~10s TTFT, ~18% error rate observed 2026-08-15, so it sits
  *      behind the faster endpoints).
- *   5-6. paid keys (openai, anthropic) — last resort.
+ *   5. featherless — hackathon partner sponsor (open-source model inference,
+ *      OpenAI-compatible). Keyed by FEATHERLESS_API_KEY; the $25/participant
+ *      credits require plan activation via lablab (first-come, first-served).
+ *      Sits after the free tiers but before the paid keys — sponsor credits
+ *      should be spent before a real billing key is touched.
+ *   6-7. paid keys (openai, anthropic) — last resort.
  *
  * Retired: the keyless hf-qwen community endpoint was removed 2026-08-19 —
  * the deployment was retired as its docs warned ("retired after the launch
@@ -113,6 +119,7 @@ const PROVIDER_ORDER: LlmProviderName[] = [
   "openrouter",
   "b-ai",
   "orcarouter",
+  "featherless",
   "openai",
   "anthropic",
 ];
@@ -122,6 +129,7 @@ const PROVIDER_KEY_ENV: Record<LlmProviderName, string> = {
   openrouter: "OPENROUTER_API_KEY",
   "b-ai": "BAI_API_KEY",
   orcarouter: "ORCAROUTER_API_KEY",
+  featherless: "FEATHERLESS_API_KEY",
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
 };
@@ -139,6 +147,15 @@ function bAiUrl(): string {
 
 /** OrcaRouter's OpenAI-compatible base URL ($0 free-tier models). */
 const ORCAROUTER_URL = "https://api.orcarouter.ai/v1/chat/completions";
+
+/** Featherless AI's OpenAI-compatible base URL (hackathon partner sponsor).
+ *  Resolved lazily: FEATHERLESS_BASE_URL override is read at call time, not
+ *  module load (env-bootstrap may land after the import). Config for the
+ *  client is the /v1 root — the full path is appended below. */
+function featherlessUrl(): string {
+  const base = process.env.FEATHERLESS_BASE_URL ?? "https://api.featherless.ai/v1";
+  return `${base.replace(/\/+$/, "")}/chat/completions`;
+}
 
 const OPENROUTER_REFERER = "https://earlynotwrong.vercel.app";
 
@@ -595,6 +612,42 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
       };
       return {
         provider: "orcarouter",
+        model,
+        content: json.choices?.[0]?.message?.content?.trim() ?? "",
+      };
+    }
+    case "featherless": {
+      // Featherless AI — hackathon partner sponsor (open-source model
+      // inference, OpenAI-compatible). Some models are gated (need a HF
+      // OAuth org connection for that org) — those return 401/403 or
+      // model_gated_needs_oauth, surfaced like any provider error so the
+      // cascade moves on. JSON is enforced by the system prompt
+      // (no response_format on the verified path); responses are
+      // lenient-parsed by the caller like every other free-tier rung.
+      const response = await fetchWithBackoff(featherlessUrl(), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.FEATHERLESS_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: req.systemPrompt },
+            { role: "user", content: req.userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) throw providerHttpError("Featherless", response);
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return {
+        provider: "featherless",
         model,
         content: json.choices?.[0]?.message?.content?.trim() ?? "",
       };

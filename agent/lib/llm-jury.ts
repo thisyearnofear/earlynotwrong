@@ -29,7 +29,7 @@ import { chatCompletion, firstAvailableLlmProvider, parseLenientJson } from "./l
 // Types
 // =============================================================================
 
-export type JuryProvider = "vercel-gateway" | "openrouter" | "b-ai" | "orcarouter" | "openai" | "anthropic" | "template";
+export type JuryProvider = "vercel-gateway" | "openrouter" | "b-ai" | "orcarouter" | "featherless" | "openai" | "anthropic" | "template";
 
 export type JuryAgreement =
   | "strong-agree"
@@ -176,6 +176,7 @@ const JURY_MODELS = {
   openrouter: { envVar: "OPENROUTER_JURY_MODEL", defaultModel: "nvidia/nemotron-3-ultra-550b-a55b:free" },
   "b-ai": { envVar: "BAI_JURY_MODEL", defaultModel: "deepseek-v4-flash" },
   orcarouter: { envVar: "ORCAROUTER_JURY_MODEL", defaultModel: "deepseek/deepseek-v4-flash-free" },
+  featherless: { envVar: "FEATHERLESS_JURY_MODEL", defaultModel: "Qwen/Qwen2.5-72B-Instruct" },
   openai: { envVar: "OPENAI_JURY_MODEL", defaultModel: "gpt-4o-mini" },
   anthropic: { envVar: "ANTHROPIC_JURY_MODEL", defaultModel: "claude-3-haiku-20240307" },
 } as const;

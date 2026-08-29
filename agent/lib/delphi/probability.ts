@@ -36,7 +36,7 @@ import type { WebSearchBriefing, BriefingSource } from "./web-search.js";
 // Types
 // =============================================================================
 
-export type ForecasterProvider = "vercel-gateway" | "openrouter" | "b-ai" | "orcarouter" | "openai" | "anthropic" | "injected";
+export type ForecasterProvider = "vercel-gateway" | "openrouter" | "b-ai" | "orcarouter" | "featherless" | "openai" | "anthropic" | "injected";
 
 /** Per-outcome probability estimate from the jury. */
 export interface OutcomeEstimate {
@@ -546,6 +546,7 @@ const FORECASTER_DEFAULT_MODELS = {
   openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
   "b-ai": "deepseek-v4-flash",
   orcarouter: "deepseek/deepseek-v4-flash-free",
+  featherless: "Qwen/Qwen2.5-72B-Instruct",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
 } as const;
@@ -562,6 +563,7 @@ async function fetchLlmEstimate(
       openrouter: { envVar: "OPENROUTER_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.openrouter },
       "b-ai": { envVar: "BAI_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS["b-ai"] },
       orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.orcarouter },
+      featherless: { envVar: "FEATHERLESS_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.featherless },
       openai: { envVar: "OPENAI_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.openai },
       anthropic: { envVar: "ANTHROPIC_DELPHI_MODEL", defaultModel: FORECASTER_DEFAULT_MODELS.anthropic },
     },

@@ -295,8 +295,11 @@ export async function generateLLMNarrative(
   // B.AI's free DeepSeek-V4-Flash tier (shared with the LLM ladder in
   // llm-providers.ts).
   const bAiKey = process.env.BAI_API_KEY;
+  // Featherless AI — hackathon partner sponsor (open-source model inference,
+  // OpenAI-compatible). Keyed by FEATHERLESS_API_KEY.
+  const featherlessKey = process.env.FEATHERLESS_API_KEY;
 
-  if (!openrouterKey && !openaiKey && !anthropicKey && !bAiKey) return null;
+  if (!openrouterKey && !openaiKey && !anthropicKey && !bAiKey && !featherlessKey) return null;
 
   const [news, macroEvents] = await Promise.all([
     fetchNewsHeadlines(),
@@ -306,6 +309,9 @@ export async function generateLLMNarrative(
   const prompt = buildLLMPrompt(context, news, macroEvents);
 
   try {
+    if (featherlessKey) {
+      return await callFeatherless(prompt, news, macroEvents);
+    }
     if (bAiKey) {
       return await callBAi(prompt, news, macroEvents);
     }
@@ -353,6 +359,50 @@ function buildLLMPrompt(
  * Call B.AI's OpenAI-compatible endpoint (DeepSeek-V4-Flash free tier).
  * Same base URL + model as the `b-ai` tier in llm-providers.ts — kept in
  * sync by the shared BAI_API_BASE override.
+ */
+async function callFeatherless(
+  prompt: string,
+  news: NarrativeNewsItem[],
+  macroEvents: MacroPauseEvent[],
+): Promise<MarketNarrative> {
+  const base = (process.env.FEATHERLESS_BASE_URL ?? "https://api.featherless.ai/v1").replace(/\/+$/, "");
+  const url = `${base}/chat/completions`;
+  const model = process.env.FEATHERLESS_NARRATIVE_MODEL || "Qwen/Qwen2.5-72B-Instruct";
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.FEATHERLESS_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300,
+      temperature: 0.7,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+
+  if (!response.ok) throw new Error(`Featherless error: ${response.status}`);
+
+  const json = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content?.trim() ?? "";
+
+  return {
+    summary: content,
+    headline: news[0]?.title ?? null,
+    newsCount: news.length,
+    macroEventCount: macroEvents.length,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Call B.AI's OpenAI-compatible API for narrative generation.
  */
 async function callBAi(
   prompt: string,

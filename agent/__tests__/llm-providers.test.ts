@@ -179,6 +179,7 @@ describe("firstAvailableLlmProvider", () => {
     "OPENROUTER_API_KEY",
     "BAI_API_KEY",
     "ORCAROUTER_API_KEY",
+    "FEATHERLESS_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
   ] as const;
@@ -235,6 +236,7 @@ describe("chatCompletion — provider cascade on error", () => {
     "OPENROUTER_API_KEY",
     "BAI_API_KEY",
     "ORCAROUTER_API_KEY",
+    "FEATHERLESS_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
   ] as const;
@@ -245,6 +247,7 @@ describe("chatCompletion — provider cascade on error", () => {
     openrouter: { envVar: "Y", defaultModel: "or-model" },
     "b-ai": { envVar: "BAI_DELPHI_MODEL", defaultModel: "deepseek-v4-flash" },
     orcarouter: { envVar: "ORCAROUTER_DELPHI_MODEL", defaultModel: "deepseek/deepseek-v4-flash-free" },
+    featherless: { envVar: "FEATHERLESS_DELPHI_MODEL", defaultModel: "Qwen/Qwen2.5-72B-Instruct" },
   } as const;
 
   beforeEach(() => {
@@ -424,6 +427,26 @@ describe("chatCompletion — provider cascade on error", () => {
     const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
     expect(result?.provider).toBe("orcarouter");
     expect(result?.content).toBe("orca answer");
+  });
+
+  it("falls through to Featherless when OrcaRouter is down", async () => {
+    // Featherless is the hackathon partner-sponsor rung between the free
+    // tiers and the paid keys; a degraded OrcaRouter must cascade to it.
+    process.env.ORCAROUTER_API_KEY = "orca";
+    process.env.FEATHERLESS_API_KEY = "fl";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 429 }))
+      .mockImplementation(() => chatResponse("featherless answer")) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    const result = await chatCompletion({ systemPrompt: "s", userPrompt: "u", models });
+    expect(result?.provider).toBe("featherless");
+    expect(result?.content).toBe("featherless answer");
+    // The Featherless request hit the OpenAI-compatible /chat/completions
+    // endpoint of the Featherless base URL.
+    const url = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+    expect(url).toContain("featherless.ai");
   });
 
   it("returns null when no provider is configured", async () => {
