@@ -77,6 +77,46 @@ async function fetchPortfolio(
       `across ${portfolio.positions.length} positions, ` +
       `$${portfolio.cashUsd.toFixed(2)} cash`,
     );
+
+    // Adopt open broker positions after a restart. `heldPositions` is
+    // in-memory (not persisted across pm2 restarts), so on a fresh boot it
+    // starts empty while Alpaca still holds open contracts. The broker is
+    // the source of truth — adopt them so exits/P&L tracking resume. This is
+    // the options analog of the crypto "reconcileWithChain" lesson.
+    if (optionsState.heldPositions.length === 0 && portfolio.positions.length > 0) {
+      const adopted: OptionsPosition[] = [];
+      for (const p of portfolio.positions) {
+        const meta = p.metadata ?? {};
+        // Only adopt option contracts (OSI symbols parse into metadata).
+        const contractType = meta.contractType as "call" | "put" | undefined;
+        if (!contractType) {
+          console.log(`  [adopt] Skipping non-option position ${p.symbol}`);
+          continue;
+        }
+        adopted.push({
+          symbol: p.symbol,
+          contractId: p.positionId ?? p.symbol,
+          underlyingSymbol: (meta.underlyingSymbol as string) ?? p.symbol.match(/^[A-Z]+/)?.[0] ?? p.symbol,
+          contractType,
+          strike: (meta.strike as number) ?? 0,
+          expiry: (meta.expiry as string) ?? "",
+          entryPrice: p.avgEntryPrice,
+          avgEntryPrice: p.avgEntryPrice,
+          quantity: p.quantity,
+          multiplier: (meta.multiplier as number) ?? 100,
+          entryCycle: optionsState.cycle,
+          entryConviction: 50, // unknown on adoption — neutral baseline
+          unrealizedPnlUsd: p.unrealizedPnlUsd,
+          unrealizedPnlPercent: p.unrealizedPnlPercent,
+          stuck: false,
+          failedExitAttempts: 0,
+        });
+      }
+      if (adopted.length > 0) {
+        optionsState.heldPositions = adopted;
+        console.log(`  Adopted ${adopted.length} open broker position(s) into tracking`);
+      }
+    }
   } catch (err) {
     console.error(`  [portfolio] Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     optionsState.portfolio = {

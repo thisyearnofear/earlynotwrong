@@ -712,32 +712,44 @@ async function main(): Promise<void> {
     }
   }
 
-  const server = startServer(31777);
+  // Server port: AGENT_PORT env override (default 31777). The options domain
+  // runs as a separate process on its own port so it never collides with the
+  // crypto agent's dashboard.
+  const serverPort = Number(process.env.AGENT_PORT || 31777);
+  const server = startServer(serverPort);
   loadPaymentStats();
-  await startCapClient();
-  const capStatus = getCapStatus();
-  console.log(`  CROO CAP:    ${capStatus.connected ? "✓" : "○"} (${capStatus.services.length} services)`);
-  console.log("");
 
-  const health = await startupCheck();
+  // Skip CROO CAP + Telegram subscriber polling in the options domain:
+  // the cap client would double-fulfill signals-live alongside the crypto
+  // agent on the VPS, and the subscriber polling is crypto-specific.
+  if (HARNESS_CONFIG.domain !== "options") {
+    await startCapClient();
+    const capStatus = getCapStatus();
+    console.log(`  CROO CAP:    ${capStatus.connected ? "✓" : "○"} (${capStatus.services.length} services)`);
+    console.log("");
 
-  sendStartup({
-    twakMode: health.twakMode,
-    cmcConnected: health.cmcConnected,
-    sosovalueConnected: health.sosovalueConnected,
-    walletAddress: health.walletAddress,
-    isTestnet: health.isTestnet,
-    topK: AGENT_CONFIG.trading.topK,
-    intervalMinutes: AGENT_CONFIG.trading.loopIntervalMinutes,
-    maxDrawdown: AGENT_CONFIG.trading.maxDrawdownPercent,
-  }).catch(() => {});
+    const health = await startupCheck();
 
-  // Public "watch this agent" channel — polls getUpdates for /start
-  // subscribers. No-ops without TELEGRAM_BOT_TOKEN; timer is unref'd so it
-  // never holds the process open on its own.
-  startSubscriberPolling();
+    sendStartup({
+      twakMode: health.twakMode,
+      cmcConnected: health.cmcConnected,
+      sosovalueConnected: health.sosovalueConnected,
+      walletAddress: health.walletAddress,
+      isTestnet: health.isTestnet,
+      topK: AGENT_CONFIG.trading.topK,
+      intervalMinutes: AGENT_CONFIG.trading.loopIntervalMinutes,
+      maxDrawdown: AGENT_CONFIG.trading.maxDrawdownPercent,
+    }).catch(() => {});
 
-  console.log(`Agent mode: ${AGENT_MODE.toUpperCase()}${AGENT_MODE === "simulator" ? " (no real execution)" : ""}`);
+    // Public "watch this agent" channel — polls getUpdates for /start
+    // subscribers. No-ops without TELEGRAM_BOT_TOKEN; timer is unref'd.
+    startSubscriberPolling();
+
+    console.log(`Agent mode: ${AGENT_MODE.toUpperCase()}${AGENT_MODE === "simulator" ? " (no real execution)" : ""}`);
+  } else {
+    console.log("  CROO CAP:    ○ (skipped for options domain)");
+    console.log("");
+  }
 
   await restoreSnapshot();
 

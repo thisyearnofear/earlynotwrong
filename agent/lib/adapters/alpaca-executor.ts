@@ -256,11 +256,36 @@ export async function fetchAlpacaPortfolio(): Promise<Portfolio> {
       quantity: parseFloat(p.qty), avgEntryPrice: parseFloat(p.avg_entry_price),
       currentPrice: parseFloat(p.current_price), valueUsd: parseFloat(p.market_value),
       unrealizedPnlUsd: parseFloat(p.unrealized_pl), unrealizedPnlPercent: parseFloat(p.unrealized_plpc) * 100,
+      metadata: parseContractSymbol(p.symbol),
     }));
     return { totalValueUsd: parseFloat(account.portfolio_value), cashUsd: parseFloat(account.cash), positions };
   } catch {
     return { totalValueUsd: 0, cashUsd: 0, positions: [] };
   }
+}
+
+/**
+ * Parse an OSI option symbol (e.g. "AAPL260911C00135000") into contract
+ * metadata: underlier, type, strike, expiry, multiplier. Returns {} when the
+ * symbol isn't a recognized OSI format (e.g. an equity or crypto position).
+ */
+function parseContractSymbol(symbol: string): Record<string, unknown> | undefined {
+  // OSI: ROOT + YYMMDD + C/P + 8-digit strike (implied 3 decimals).
+  const m = symbol.match(/^([A-Z]{1,5})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  if (!m) return undefined;
+  const [, root, yy, mm, dd, type, strikeRaw] = m;
+  const year = 2000 + parseInt(yy, 10);
+  const month = parseInt(mm, 10);
+  const day = parseInt(dd, 10);
+  const strike = parseInt(strikeRaw, 10) / 1000;
+  const expiry = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return {
+    underlyingSymbol: root,
+    contractType: type === "C" ? "call" : "put",
+    strike,
+    expiry,
+    multiplier: 100,
+  };
 }
 
 let _instance: TradeExecutor | null = null;
