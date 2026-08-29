@@ -164,9 +164,9 @@ export function OptionsArenaCard() {
               {isOpen === null ? (
                 <span>market status unknown</span>
               ) : isOpen ? (
-                <span className="text-[#22c55e]">● market open — executing</span>
+                <span className="text-patience">● market open — executing</span>
               ) : (
-                <span className="text-[#f59e0b]">● market closed — orders deferred</span>
+                <span className="text-impatience">● market closed — orders deferred</span>
               )}
               {status.market?.next_open && (
                 <span>next open {new Date(status.market.next_open).toLocaleString("en-US", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
@@ -193,7 +193,7 @@ export function OptionsArenaCard() {
                       <span
                         className={cn(
                           "font-mono text-[10px] tabular-nums",
-                          s.score >= 50 ? "text-[#22c55e]" : s.score >= 40 ? "text-[#f59e0b]" : "text-foreground-dim",
+                          s.score >= 50 ? "text-patience" : s.score >= 40 ? "text-impatience" : "text-foreground-dim",
                         )}
                       >
                         {s.score}/100
@@ -225,7 +225,7 @@ export function OptionsArenaCard() {
                       <span
                         className={cn(
                           "font-mono text-[10px] tabular-nums",
-                          p.unrealizedPnlUsd >= 0 ? "text-[#22c55e]" : "text-impatience",
+                          p.unrealizedPnlUsd >= 0 ? "text-patience" : "text-impatience",
                         )}
                       >
                         {fmtUsd(p.unrealizedPnlUsd)} ({fmtPct(p.unrealizedPnlPercent)})
