@@ -20,6 +20,7 @@ import { getMarketHours } from "../lib/adapters/alpaca-data.js";
 import { twakExecutor } from "../lib/twak-executor.js";
 import { guardrails } from "../lib/risk-guardrails.js";
 import { getMantleExplorerTxUrl } from "../lib/config.js";
+import { optionsState } from "../lib/options-state.js";
 import type { AnchorResult } from "../lib/anchors/types.js";
 import type { SwapResult, TwakPortfolio } from "../lib/twak-executor.js";
 import type { CmcMarketData } from "../lib/data-providers.js";
@@ -512,6 +513,87 @@ app.get("/status", async (c) => {
   };
 
   return c.json(body);
+});
+
+// ===========================================================================
+// GET /options/status — options-domain observability
+// ===========================================================================
+//
+// The options agent runs as a separate process/port (31778) with its own
+// state container (optionsState). This route surfaces that state — portfolio,
+// market-hours gate, cycle/P&L, top scored contracts, and open positions —
+// so the web app's Proof view can render an options card exactly like the
+// Delphi arena card. Returns a domain-friendly payload with honest empty
+// state before the first cycle.
+
+app.get("/options/status", async (c) => {
+  if (HARNESS_CONFIG.domain !== "options") {
+    // Not the options process — the crypto agent serves a different surface.
+    return c.json({ hasData: false, domain: HARNESS_CONFIG.domain });
+  }
+
+  let market = null;
+  try {
+    const hours = await getMarketHours();
+    market = {
+      is_open: hours.isOpen,
+      next_open: hours.nextOpen,
+      next_close: hours.nextClose,
+    };
+  } catch {
+    // Non-fatal.
+  }
+
+  const topSignals = [...optionsState.convictionSignals]
+    .sort((a, b) => b.conviction.score - a.conviction.score)
+    .slice(0, 12)
+    .map((s) => ({
+      symbol: s.signal.symbol,
+      contractType: (s.signal.metadata?.contractType as string) ?? "call",
+      strike: (s.signal.metadata?.strike as number) ?? 0,
+      expiry: (s.signal.metadata?.expiry as string) ?? "",
+      underlyingSymbol: (s.signal.metadata?.underlyingSymbol as string) ?? "",
+      iv: (s.signal.metadata?.impliedVolatility as number) ?? 0,
+      ivToRealized: (s.signal.metadata?.ivToRealized as number) ?? 0,
+      score: s.conviction.score,
+      rationale: s.conviction.rationale,
+    }));
+
+  const positions = optionsState.heldPositions.map((p) => ({
+    symbol: p.symbol,
+    underlyingSymbol: p.underlyingSymbol,
+    contractType: p.contractType,
+    strike: p.strike,
+    expiry: p.expiry,
+    quantity: p.quantity,
+    avgEntryPrice: p.avgEntryPrice,
+    entryConviction: p.entryConviction,
+    unrealizedPnlUsd: p.unrealizedPnlUsd,
+    unrealizedPnlPercent: p.unrealizedPnlPercent,
+  }));
+
+  return c.json({
+    hasData: optionsState.cycle > 0,
+    domain: "options",
+    cycle: optionsState.cycle,
+    status: optionsState.status,
+    lastRunAt: optionsState.lastRunAt,
+    nextRunAt: optionsState.nextRunAt,
+    totalTrades: optionsState.totalTrades,
+    totalVolumeUsd: optionsState.totalVolumeUsd,
+    realizedPnlUsd: optionsState.realizedPnlUsd,
+    errors: optionsState.errors.length,
+    market,
+    portfolio: optionsState.portfolio
+      ? {
+          totalValueUsd: optionsState.portfolio.totalValueUsd,
+          cashUsd: optionsState.portfolio.cashUsd,
+          positions: optionsState.portfolio.positions.length,
+        }
+      : null,
+    topSignals,
+    positions,
+  });
 });
 
 // ===========================================================================

@@ -349,3 +349,76 @@ export async function fetchDelphiStatus(): Promise<DelphiStatus | null> {
     return null;
   }
 }
+
+// ─── Options arena (Alpaca options agent) ───────────────────────────────────
+//
+// The options agent is a separate pm2 process serving its own port. The
+// /api/agent/proxy route namespaces options endpoints as `options/*` and
+// routes them to the options agent (OPTIONS_AGENT_PORT). This mirrors the
+// Delphi runner card — a sibling venue surfaced in the Proof view.
+
+export interface OptionsSignalPreview {
+  symbol: string;
+  contractType: "call" | "put" | string;
+  strike: number;
+  expiry: string;
+  underlyingSymbol: string;
+  iv: number;
+  ivToRealized: number;
+  score: number;
+  rationale: string;
+}
+
+export interface OptionsPositionPreview {
+  symbol: string;
+  underlyingSymbol: string;
+  contractType: "call" | "put";
+  strike: number;
+  expiry: string;
+  quantity: number;
+  avgEntryPrice: number;
+  entryConviction: number;
+  unrealizedPnlUsd: number;
+  unrealizedPnlPercent: number;
+}
+
+export interface OptionsStatus {
+  hasData: boolean;
+  domain: string;
+  cycle: number;
+  status: string;
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+  totalTrades: number;
+  totalVolumeUsd: number;
+  realizedPnlUsd: number;
+  errors: number;
+  market: {
+    is_open: boolean;
+    next_open: string | null;
+    next_close: string | null;
+  } | null;
+  portfolio: {
+    totalValueUsd: number;
+    cashUsd: number;
+    positions: number;
+  } | null;
+  topSignals: OptionsSignalPreview[];
+  positions: OptionsPositionPreview[];
+}
+
+/**
+ * Fetch the options agent status via the Vercel proxy. Returns null when
+ * unreachable; hasData=false is the honest empty state before the first cycle.
+ */
+export async function fetchOptionsStatus(): Promise<OptionsStatus | null> {
+  try {
+    const response = await fetch("/api/agent/proxy?endpoint=options/status", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}

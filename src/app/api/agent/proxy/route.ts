@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const AGENT_HOST = process.env.AGENT_HOST || "144.202.117.160";
 const AGENT_PORT = process.env.AGENT_PORT || "31777";
+// The options agent runs as a separate process on its own port. Options
+// endpoints are namespaced under `options/` and routed here.
+const OPTIONS_AGENT_PORT = process.env.OPTIONS_AGENT_PORT || "31778";
 
 const VALID_GET_ENDPOINTS = [
   "status",
@@ -15,6 +18,7 @@ const VALID_GET_ENDPOINTS = [
   "casper/balance",
   "casper/anchors",
   "delphi/status",
+  "options/status",
 ] as const;
 
 /** Endpoints whose first (uncached) call can take minutes — the edge report
@@ -43,7 +47,11 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams;
   search.delete("endpoint");
   const qs = search.toString();
-  const url = `http://${AGENT_HOST}:${AGENT_PORT}/${endpoint}${qs ? `?${qs}` : ""}`;
+  // Route options/* to the options agent's own port; everything else to the
+  // main crypto agent. The options surface is a sibling process/venue.
+  const isOptions = endpoint.startsWith("options/");
+  const targetPort = isOptions ? OPTIONS_AGENT_PORT : AGENT_PORT;
+  const url = `http://${AGENT_HOST}:${targetPort}/${endpoint}${qs ? `?${qs}` : ""}`;
 
   try {
     const timeoutMs = SLOW_ENDPOINTS.has(endpoint) ? SLOW_ENDPOINT_TIMEOUT_MS : 10_000;
