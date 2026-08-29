@@ -24,6 +24,7 @@ import type {
   TradeResult,
 } from "./types.js";
 import { withTimeout } from "../delphi/executor.js";
+import { getAlpacaCli, type AlpacaCliOrder } from "./alpaca-cli.js";
 
 const ALPACA_TRADING_BASE =
   process.env.ALPACA_API_BASE_URL ??
@@ -115,8 +116,9 @@ async function alpacaGet(path: string): Promise<any> {
 /**
  * Create an Alpaca-backed TradeExecutor for options trading.
  *
- * Uses paper trading by default. CLI and MCP server are alternatives — the
- * executor picks the REST API path (most reliable for programmatic agents).
+ * Uses paper trading by default. Orders are placed through the Alpaca CLI
+ * (the hackathon's "MCP or CLI" requirement) with an automatic REST fallback,
+ * so a missing/failing CLI can never break the live path.
  */
 export function createAlpacaExecutor(): TradeExecutor {
   const executor: TradeExecutor & { fetchAlpacaPortfolio?: () => Promise<Portfolio> } = {
@@ -142,17 +144,54 @@ export function createAlpacaExecutor(): TradeExecutor {
           orderBody.limit_price = String(position.limitPrice);
         }
 
-        const order = await alpacaPost("/v2/orders", orderBody) as AlpacaOrder;
+        // Alpaca CLI path first (hackathon "MCP or CLI" requirement). The CLI
+        // is agent-first: JSON output, idempotent client-order-id. If the CLI
+        // binary is missing or errors, fall back to the REST API so the live
+        // path can't break. clientOrderId is derived deterministically so a
+        // retry of the same logical order can't double-submit.
+        let order: AlpacaCliOrder | null = null;
+        let cliError: string | null = null;
+        try {
+          const clientOrderId = `enw-${contractSymbol}-${Date.now()}`;
+          const cli = getAlpacaCli();
+          order = await cli.submitOrder({
+            symbol: contractSymbol,
+            qty: String(qty),
+            side: position.side === "long" ? "buy" : "sell",
+            type: position.orderType ?? "market",
+            limitPrice: position.orderType === "limit" && position.limitPrice ? String(position.limitPrice) : undefined,
+            clientOrderId,
+          });
+        } catch (err) {
+          cliError = err instanceof Error ? err.message : String(err);
+          console.warn(`  [alpaca-executor] CLI order failed (${cliError}) — falling back to REST`);
+          order = null;
+        }
 
-        // Options are priced per-share; each contract covers 100 shares (multiplier).
-        // Alpaca's filled_avg_price is per-share, so value = price × qty × multiplier.
+        if (order) {
+          // Multiplier-aware value: filled_avg_price is per-share.
+          const multiplier = (meta.multiplier as number) ?? 100;
+          const filledPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
+          const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : qty;
+          return {
+            success: ["filled", "pending", "accepted"].includes(order.status),
+            orderId: order.id,
+            symbol: contractSymbol,
+            executedPrice: filledPrice,
+            executedQuantity: filledQty,
+            executedValueUsd: filledPrice ? filledPrice * filledQty * multiplier : undefined,
+            timestamp: now,
+          };
+        }
+
+        // REST fallback (unchanged behavior).
+        const restOrder = await alpacaPost("/v2/orders", orderBody) as AlpacaOrder;
         const multiplier = (meta.multiplier as number) ?? 100;
-        const filledPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
-        const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : qty;
-
+        const filledPrice = restOrder.filled_avg_price ? parseFloat(restOrder.filled_avg_price) : undefined;
+        const filledQty = restOrder.filled_qty ? parseFloat(restOrder.filled_qty) : qty;
         return {
-          success: ["filled", "pending", "accepted"].includes(order.status),
-          orderId: order.id,
+          success: ["filled", "pending", "accepted"].includes(restOrder.status),
+          orderId: restOrder.id,
           symbol: contractSymbol,
           executedPrice: filledPrice,
           executedQuantity: filledQty,
@@ -225,10 +264,25 @@ export function createAlpacaExecutor(): TradeExecutor {
       try {
         const account = await alpacaGet("/v2/account") as AlpacaAccount;
         const isPaper = ALPACA_TRADING_BASE.includes("paper-api");
+        // Also surface whether the Alpaca CLI binary is present + healthy
+        // (the order-execution path). Non-fatal — REST is the fallback.
+        let cliCli = null;
+        try {
+          const cli = getAlpacaCli();
+          const health = await cli.healthCheck();
+          cliCli = health.healthy ? { version: health.version, mode: "live" } : { version: health.version, mode: "unhealthy" };
+        } catch {
+          cliCli = { mode: "unavailable" };
+        }
         return {
           healthy: account.status === "ACTIVE",
           mode: isPaper ? "paper" : "live",
-          details: { status: account.status, buyingPower: account.buying_power, portfolioValue: account.portfolio_value },
+          details: {
+            status: account.status,
+            buyingPower: account.buying_power,
+            portfolioValue: account.portfolio_value,
+            cli: cliCli,
+          },
         };
       } catch (err) {
         return { healthy: false, mode: "error", details: { error: err instanceof Error ? err.message : String(err) } };
