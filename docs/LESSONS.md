@@ -10,6 +10,7 @@
 |---|---|---|---|
 | **Gensyn Delphi Agent Arena** (prediction markets) | 2026-08-10 → 2026-08-24 | Rank 122/159, ~600 TST from 1,000 TST start (PnL −400, 36 trades) | **Archived.** Not enough calibration outperformance vs LMSR. |
 | **BNB Hack: AI Trading Agent Edition** (BSC live trading) | 2026-06-22 → 2026-06-28 | Submitted; result not posted publicly | Agent kept live as the **product** (MCP x402, CROO CAP, anchoring). |
+| **Alpaca AI Trading Agents Hackathon** (options paper trading) | 2026-08-28 → 2026-09-04 | Live on paper (Aug 29); first fills at Mon open | **In progress.** Pipeline live, adapter verified, strategy predicated on prior lessons — see `docs/ALPACA_HACKATHON_WRITEUP.md` § "Strategy predicate." |
 
 Per-competition source docs: `docs/HACKATHON_SUBMISSION_DELPHI.md`,
 `docs/HACKATHON_PLAN.md`, `docs/OKX_HACKATHON.md` (research-only, did not ship).

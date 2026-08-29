@@ -12,7 +12,19 @@ The Alpaca AI Trading Agents Hackathon (Aug 28 – Sep 4, 2026) is the proof poi
 
 ### Current State
 
-The harness skeleton is already built and battle-tested, but buried inside a BSC crypto agent:
+**Updated 2026-08-29:** the harness is now built and the options domain is
+**live on Alpaca paper**. The full 8-step cycle runs end-to-end against the
+real paper account — 718 contracts fetched/scored across SPY, QQQ, AAPL, MSFT,
+NVDA, TSLA, orders submitted to the paper Trading API (market-hours gated).
+The three adapter interfaces are the real, tested plug-in boundary:
+
+- `DataSource` — sosovalue-adapter (crypto) / alpaca-data (options, verified
+  against the live API: contracts via `GET {paper-api}/v2/options/contracts?underlying_symbols=`,
+  quotes via `v1beta1/options/snapshots`, bars via `v2/stocks/bars` with `feed=iex`).
+- `ConvictionFactors` — crypto-conviction / options-conviction (8 factors summing to 100).
+- `TradeExecutor` — twak-adapter / alpaca-executor (paper orders, positions, risk).
+
+The skeleton was previously proven but buried inside the BSC crypto agent:
 
 - **Autonomous loop** — fetch → score → LLM ensemble → verify → execute → self-analyze → anchor
 - **Free-first LLM ladder** — Vercel AI Gateway > OpenRouter > OpenAI > Anthropic > OrcaRouter, with circuit breakers and backoff
@@ -117,6 +129,10 @@ interface HarnessConfig {
 
 ## Phase 0: Harness Boundary Design (Days 1–2)
 
+> **Status: COMPLETE** — `agent/lib/adapters/` with three extension-point
+> interfaces, the crypto wrappers conforming existing code, and the registry
+> all shipped in PR #35 (merged 2026-08-28, squash `0980c911`).
+
 ### 0.1 Factor out the domain adapter interfaces
 
 Create `agent/lib/adapters/` with three extension point files:
@@ -137,20 +153,31 @@ Create `agent/lib/adapters/` with three extension point files:
 
 ## Phase 1: Alpaca Domain Adapter (Days 2–4)
 
+> **Status: COMPLETE** — all three adapters implemented, type-checked, tested
+> (28 adapter tests), and **verified against the live paper API** (2026-08-29).
+> The data adapter was rewritten after live endpoint mapping: contracts come
+> from the **Trading API** (`GET {paper-api}/v2/options/contracts?underlying_symbols={SYM}`),
+> not the data API's `/v2/stocks/{sym}/options/contracts` (404). IV/greeks are
+> derived from mid quotes via Black-Scholes inversion because the Basic plan's
+> indicative feed exposes no IV/greeks; bars need `feed=iex`. Contract fields
+> are `type`/`close_price`/`open_interest` (not `option_type`/`close`). A
+> 7–90d expiration window skips nearest-weekly contracts whose stale quotes
+> degrade the IV solver.
+
 ### 1.1 Data source adapter — `alpaca-data.ts`
 
-Fetch what the options conviction factors need:
+Fetch what the options conviction factors need (as implemented):
 
-- **Options chains** per underlier (API: `GET /v2/stocks/{symbol}/options/contracts`)
-- **Implied volatility** per contract (in chain data)
-- **Greeks** (delta, gamma, theta, vega — in chain data)
-- **Put/call ratio** (market data endpoint)
-- **IV rank / IV percentile** (historical vol comparison)
-- **Earnings calendar** (market data endpoint)
-- **Gamma exposure clusters** (compute from chain data)
-- **Underlier price + historical klines** (for RSI, regime — reuse existing logic)
+- **Options chains** per underlier (API: `GET {trading-base}/v2/options/contracts?underlying_symbols=`)
+- **Implied volatility** per contract — derived from the mid quote via a
+  Black-Scholes bisection solver (no IV in the Basic-plan payload)
+- **Greeks** (delta, gamma, theta, vega — from the solved IV)
+- **Underlier price + historical klines** (for RSI, regime — `v2/stocks/{s}/snapshot`
+  singular + `v2/stocks/bars` multi-symbol with `feed=iex`)
 
-Alpaca provides all of this via their Trading API + Market Data API. Paper trading environment gives free access to real market data.
+Not implemented on the Basic plan (no paid OPRA feed): real-time greeks,
+option-volume fields, and per-contract historical option bars. The strategy
+works without them (IV from quotes; underlier bars for RSI/regime).
 
 ### 1.2 Options conviction factors — `options-conviction.ts`
 
@@ -195,6 +222,12 @@ DOMAINS = {
 
 ## Phase 2: Harness Loop Integration (Days 3–4)
 
+> **Status: COMPLETE** — `agent/lib/options-cycle.ts` (8-step options pipeline),
+> `options-state.ts` (parallel state container), and domain-aware dispatch in
+> `agent/index.ts` (`HARNESS_DOMAIN=options` runs the options loop; crypto
+> unchanged). Committed `6a9d0a12`. Verified live: portfolio ($100k paper),
+> 718 contracts, conviction scoring, proposals, and order submission.
+
 ### 2.1 Update the main loop
 
 `agent/index.ts` and `cycle-runner.ts` become domain-aware:
@@ -229,6 +262,11 @@ Thesis hash and conviction record are already domain-agnostic (they hash the dig
 ---
 
 ## Phase 3: Hackathon Deliverables (Days 4–6)
+
+> **Status: IN PROGRESS.** Done: one-page write-up
+> (`docs/ALPACA_HACKATHON_WRITEUP.md`), runnable options agent on the live
+> paper account, public repo, adapter + cycle tests. Outstanding: demo
+> dashboard, video presentation, and the build-in-public social posts.
 
 ### 3.1 Options strategy narrative
 

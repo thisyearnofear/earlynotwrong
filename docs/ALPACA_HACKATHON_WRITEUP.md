@@ -100,3 +100,54 @@ npm start
 
 Startup banner confirms the domain + adapters; the first cycle fetches chains,
 scores conviction, checks risk, and places orders in the paper account.
+
+---
+
+## Live status (2026-08-29)
+
+The options agent is **live on Alpaca paper** — the full 8-step cycle runs
+end-to-end against the real paper account, not a simulator:
+
+- **Real portfolio** — reads the dedicated $100k hackathon account
+  (`ACTIVE`, options level 3, 4× Reg-T buying power).
+- **Real market data** — 718 contracts fetched + scored across SPY, QQQ,
+  AAPL, MSFT, NVDA, TSLA (7–90d expiries); IV + greeks derived from live
+  quotes via Black-Scholes inversion (the Basic plan's indicative feed
+  exposes no IV/greeks, so we compute them ourselves).
+- **Real orders** — proposals ≥ 40 conviction are submitted to the paper
+  Trading API. Inside market hours they fill; outside market hours they are
+  correctly rejected (`options market orders are only allowed during market
+  hours`) and the cycle fails closed — no entries, exits never blocked.
+
+Trading is **market-hours gated** (Mon–Fri 09:30–16:00 ET) and paper only —
+no real money is at risk. First paper fills land at Monday's open.
+
+### Strategy predicate — what this builds on
+
+The options strategy is not invented from scratch. It is the same conviction
+core we validated — and lost money against — across two prior competitions,
+re-expressed for options:
+
+1. **Calibration, not Sharpe** (Gensyn Delphi Arena). A prediction
+   instrument is only worth what its probability estimate is worth. The
+   agent scores itself with Brier / log-loss on a calibration ledger, and
+   every entry thesis is attacked by a cross-family adversarial verifier
+   before it fires. IV edge + conviction overlay is the options analog of
+   the conviction-core mispricing approach: buy premium when IV rank is
+   extreme on a mean-reverting underlier, filtered by quality and timing.
+2. **The harness is the artifact** (both runs). What survived real money
+   was the skeleton — loop, ladder, verification, risk, ledger, anchoring —
+   not any single prediction. Options is proof-of-pattern: same skeleton,
+   three new adapter files.
+3. **Fail closed by default** (both runs). No portfolio, no keys, no data,
+   market closed → no entries. Exits are never blocked. Every real-money
+   incident (orphaned positions, both-sides self-hedge, serial re-entry)
+   traced back to a missing guard, not a missing model.
+4. **Free-first data, with a fallback ladder** (LLM-ladder fragility from
+   Delphi). Paid feeds collapse, free ones degrade — so we derive IV from
+   the Basic plan's indicative quotes rather than paying for OPRA, and
+   underlier bars use the `iex` feed the plan actually allows.
+5. **Don't churn** (Delphi exit policy + serial re-entry). Conviction-decay
+   and max-hold exits replace the sell-into-convergence behavior that cost
+   the arena run; a position cap and liquidity filter keep the agent from
+   over-trading illiquid contracts.
