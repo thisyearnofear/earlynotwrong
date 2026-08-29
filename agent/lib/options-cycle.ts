@@ -206,11 +206,12 @@ async function managePositions(
       continue;
     }
 
-    // Recalculate P&L.
-    const marketValue = pos.quantity * currentPrice;
-    const costBasis = pos.quantity * pos.avgEntryPrice;
+    // Recalculate P&L (options: cost = price × quantity × 100-share multiplier).
+    const multiplier = pos.multiplier || 100;
+    const marketValue = pos.quantity * currentPrice * multiplier;
+    const costBasis = pos.quantity * pos.avgEntryPrice * multiplier;
     const unrealizedPnl = marketValue - costBasis;
-    const unrealizedPnlPercent = pos.avgEntryPrice > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
+    const unrealizedPnlPercent = costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
 
     // Hard stop: max hold cycles.
     if (pos.entryCycle + MAX_HOLD_CYCLES <= optionsState.cycle) {
@@ -220,8 +221,7 @@ async function managePositions(
     }
 
     // Conviction decay: if current conviction dropped significantly below entry, exit.
-    // We store the entry conviction as a custom property on the position (not in ledger).
-    const entryConviction = (pos as any).entryConviction ?? 50;
+    const entryConviction = pos.entryConviction ?? 50;
     const convictionDrop = entryConviction - currentScore;
     if (convictionDrop >= MAX_CONVICTION_DROP_FOR_HOLD) {
       console.log(`  CONVICTION_DECAY ${pos.symbol}: ${entryConviction} → ${currentScore} (drop: ${convictionDrop})`);
@@ -254,6 +254,9 @@ async function managePositions(
 
     if (closeResult.success) {
       // Record exit in ledger (LedgerEntry has no convictionScore field).
+      const multiplier = pos.multiplier || 100;
+      const exitPrice = closeResult.executedPrice ?? pos.avgEntryPrice;
+      const exitValueUsd = pos.quantity * exitPrice * multiplier;
       const exitEntry: LedgerEntry = {
         hash: `exit:${pos.symbol}:${closeResult.timestamp}`,
         timestamp: closeResult.timestamp,
@@ -261,15 +264,15 @@ async function managePositions(
         tokenSymbol: pos.symbol,
         type: "sell",
         amount: pos.quantity,
-        priceUsd: closeResult.executedPrice ?? pos.avgEntryPrice,
-        valueUsd: pos.quantity * (closeResult.executedPrice ?? pos.avgEntryPrice),
+        priceUsd: exitPrice,
+        valueUsd: exitValueUsd,
       };
       optionsState.ledger.push(exitEntry);
 
-      const pnl = (closeResult.executedPrice ?? pos.avgEntryPrice) * pos.quantity - pos.quantity * pos.avgEntryPrice;
+      const pnl = (exitPrice - pos.avgEntryPrice) * pos.quantity * multiplier;
       optionsState.realizedPnlUsd += pnl;
       optionsState.totalTrades += 1;
-      optionsState.totalVolumeUsd += pos.quantity * (closeResult.executedPrice ?? pos.avgEntryPrice);
+      optionsState.totalVolumeUsd += exitValueUsd;
       optionsState.tradeStats.exitsCount += 1;
 
       if (pnl > 0) {
@@ -375,11 +378,15 @@ async function executeProposals(
         ? (riskCheck.maxPositionUsd ?? maxPerTrade)
         : maxPerTrade,
     );
-    const quantity = Math.max(1, Math.floor(sizeUsd / (proposal.signal.price || 1)));
+    // Options are priced per-share; each contract covers `multiplier` (100) shares.
+    // Position cost = price × multiplier × qty, so quantity accounts for the multiplier.
+    const multiplier = (proposal.signal.metadata?.multiplier as number) ?? 100;
+    const contractCost = (proposal.signal.price || 1) * multiplier;
+    const quantity = Math.max(1, Math.floor(sizeUsd / contractCost));
 
     const positionConfig: import("./adapters/types.js").PositionConfig = {
-      sizeUsd: quantity * proposal.signal.price,
-      side: proposal.signal.metadata?.contractType === "call" ? "long" : "short",
+      sizeUsd: quantity * contractCost, // actual dollar amount committed
+      side: "long", // buy-to-open (long premium); the conviction direction is "long call"/"long put"
       orderType: "market",
       metadata: {
         ...proposal.signal.metadata,
@@ -395,15 +402,19 @@ async function executeProposals(
     if (tradeResult.success) {
       // Record in ledger — LedgerEntry has no convictionScore field,
       // so we store conviction separately on the position object.
+      const multiplier = (proposal.signal.metadata?.multiplier as number) ?? 100;
+      const entryPrice = tradeResult.executedPrice ?? proposal.signal.price;
+      const entryQty = tradeResult.executedQuantity ?? quantity;
+      const entryValueUsd = entryPrice * entryQty * multiplier;
       const entryEntry: LedgerEntry = {
         hash: `entry:${proposal.signal.symbol}:${tradeResult.timestamp}`,
         timestamp: tradeResult.timestamp,
         tokenAddress: proposal.signal.symbol.toLowerCase(),
         tokenSymbol: proposal.signal.symbol,
         type: "buy",
-        amount: tradeResult.executedQuantity ?? quantity,
-        priceUsd: tradeResult.executedPrice ?? proposal.signal.price,
-        valueUsd: (tradeResult.executedQuantity ?? quantity) * (tradeResult.executedPrice ?? proposal.signal.price),
+        amount: entryQty,
+        priceUsd: entryPrice,
+        valueUsd: entryValueUsd,
       };
       optionsState.ledger.push(entryEntry);
 
@@ -416,20 +427,20 @@ async function executeProposals(
         strike: (proposal.signal.metadata?.strike as number) ?? 0,
         expiry: (proposal.signal.metadata?.expiry as string) ?? "",
         entryPrice: proposal.signal.price,
-        avgEntryPrice: tradeResult.executedPrice ?? proposal.signal.price,
-        quantity: tradeResult.executedQuantity ?? quantity,
+        avgEntryPrice: entryPrice,
+        quantity: entryQty,
+        multiplier,
         entryCycle: optionsState.cycle,
+        entryConviction: proposal.conviction.score,
         unrealizedPnlUsd: 0,
         unrealizedPnlPercent: 0,
         stuck: false,
         failedExitAttempts: 0,
       };
-      // Store entry conviction on position (not in LedgerEntry type).
-      (newState as any).entryConviction = proposal.conviction.score;
       optionsState.heldPositions.push(newState);
 
       optionsState.totalTrades += 1;
-      optionsState.totalVolumeUsd += tradeResult.executedValueUsd ?? (quantity * (tradeResult.executedPrice ?? proposal.signal.price));
+      optionsState.totalVolumeUsd += entryValueUsd;
       optionsState.tradeStats.entriesCount += 1;
 
       console.log(`  ✓ ${proposal.signal.symbol}: ${quantity} contracts @ $${(tradeResult.executedPrice ?? proposal.signal.price).toFixed(4)}`);
@@ -438,7 +449,7 @@ async function executeProposals(
       sendEntryAlert({
         cycle: optionsState.cycle,
         symbol: proposal.signal.symbol,
-        amountUsd: tradeResult.executedValueUsd ?? (quantity * (tradeResult.executedPrice ?? proposal.signal.price)),
+        amountUsd: tradeResult.executedValueUsd ?? entryValueUsd,
         convictionScore: proposal.conviction.score,
         rationale: proposal.conviction.rationale,
         txHash: tradeResult.orderId,

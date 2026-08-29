@@ -76,9 +76,14 @@ function computeRsi(klines: Kline[], period: number = 14): number | null {
  * Extreme IV rank on a mean-reverting underlier is the options equivalent
  * of a crypto contrarian dip. High IV → sell premium (IV will crush);
  * low IV → buy premium (IV will expand). We score the *extremeness*.
+ *
+ * When IV is unavailable (`ivAvailable` false — no tradable quote on the
+ * Basic plan), we return neutral 0.5 instead of 0 so the factor never
+ * masquerades as "extreme low IV" (which would fabricate a buy-premium edge).
  */
-function ivContrarianFraction(iv: number): number {
-  if (iv <= 0) return 0;
+function ivContrarianFraction(iv: number, ivAvailable: boolean): number {
+  if (!ivAvailable) return 0.5;
+  if (iv <= 0) return 0.5;
   // IV is typically 0.1–2.0 (10%–200%). Extreme = > 0.8 or < 0.2.
   if (iv >= 1.0) return 1.0;  // extreme high IV — prime sell premium
   if (iv >= 0.6) return 0.85; // high IV — favorable
@@ -97,16 +102,21 @@ function rsiTimingFraction(rsi: number | null): number {
   return 0;                    // overbought — avoid call entries
 }
 
-/** Quality fraction from volume (proxy for liquidity). */
-function qualityFraction(volume24h: number, marketCap: number): number {
-  // For options, marketCap is the underlier's mcap (if provided in metadata).
+/** Quality fraction from quote-depth liquidity + underlier price (proxy for liquidity). */
+function qualityFraction(volume24h: number, marketCap: number, underlierPrice: number): number {
+  // For options, `volume24h` is the quote-depth notional proxy (USD) and
+  // marketCap is 0. Underlier price is a secondary scale signal: options on
+  // $200+ mega-caps are institutionally liquid by construction.
   const liquidity = Math.max(volume24h, marketCap);
-  if (liquidity <= 0) return 0;
-  if (liquidity >= 1e11) return 1.0; // $100B+ mega-cap
-  if (liquidity >= 1e10) return 0.8;  // $10B+
-  if (liquidity >= 1e9) return 0.6;   // $1B+
-  if (liquidity >= 1e8) return 0.3;   // $100M+
-  return 0.1;
+  let frac = 0.1;
+  if (liquidity >= 1e8) frac = 1.0;   // $100M+ quote depth
+  else if (liquidity >= 1e7) frac = 0.85;
+  else if (liquidity >= 1e6) frac = 0.7;
+  else if (liquidity >= 1e5) frac = 0.5;
+  else if (liquidity >= 1e4) frac = 0.3;
+  // Blend in underlier price scale (mega-cap names have deep option markets).
+  const priceFrac = underlierPrice >= 200 ? 1.0 : underlierPrice >= 100 ? 0.75 : underlierPrice >= 50 ? 0.5 : 0.25;
+  return Math.max(frac, priceFrac * 0.6);
 }
 
 /** Gamma squeeze risk fraction (0–1). High gamma = dangerous. */
@@ -144,18 +154,20 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
     async score(signal: MarketSignal, historical: Kline[]): Promise<ConvictionResult> {
       const meta = signal.metadata ?? {};
       const iv = (meta.impliedVolatility as number) ?? 0;
+      const ivAvailable = (meta.ivAvailable as boolean) ?? false;
       const delta = (meta.delta as number) ?? 0;
       const gamma = (meta.gamma as number) ?? 0;
       const theta = (meta.theta as number) ?? 0;
       const openInterest = (meta.openInterest as number) ?? 0;
       const volume = (meta.volume as number) ?? signal.volume24h;
       const contractType = (meta.contractType as string) ?? "call";
+      const underlierPrice = (meta.underlierPrice as number) ?? 0;
 
       // RSI from underlier historical klines.
       const rsi = computeRsi(historical);
       const rsiTiming = rsiTimingFraction(rsi);
-      const ivFraction = ivContrarianFraction(iv);
-      const qualityFrac = qualityFraction(volume, signal.marketCap);
+      const ivFraction = ivContrarianFraction(iv, ivAvailable);
+      const qualityFrac = qualityFraction(volume, signal.marketCap, underlierPrice);
 
       // Regime: use a neutral baseline (VIX would come from data source metadata).
       const vixLevel = (meta.vix as number) ?? 20;

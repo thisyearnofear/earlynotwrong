@@ -57,9 +57,12 @@ Each hourly cycle:
 
 - **Trading API** — order placement (`POST /v2/orders`), position close
   (`POST /v2/positions/{id}/close`), account + portfolio reads (`/v2/account`,
-  `/v2/positions`). Paper environment by default (`ALPACA_PAPER=0` for live).
-- **Market Data API** — options chains (`/v2/stocks/{s}/options/contracts`),
-  underlier snapshots + daily bars for RSI/regime.
+  `/v2/positions`), and the options chain (`GET /v2/options/contracts?underlying_symbols=`).
+  Paper environment by default (`ALPACA_PAPER=0` for live).
+- **Market Data API** — options quotes (`v1beta1/options/snapshots`), underlier
+  snapshots + daily bars (`v2/stocks/{s}/snapshot`, `v2/stocks/bars`) for
+  RSI/regime. Implied vol + greeks are derived from quotes via Black-Scholes
+  inversion (the Basic plan's indicative feed exposes no IV/greeks directly).
 - **MCP / CLI** — the executor follows Alpaca's agent-first stack; the harness
   MCP server (7 tools) is exposed for agent-to-agent consumption.
 - **Fresh paper account** — dedicated hackathon account, $100k starting balance,

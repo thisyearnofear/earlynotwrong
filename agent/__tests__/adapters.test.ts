@@ -63,6 +63,7 @@ function makeOptionsSignal(overrides: Partial<MarketSignal> = {}): MarketSignal 
       strike: 150,
       expiry: "2024-03-15",
       impliedVolatility: 0.45,
+      ivAvailable: true,
       delta: 0.5,
       gamma: 0.02,
       theta: -0.05,

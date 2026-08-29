@@ -49,8 +49,11 @@ export interface OptionsPosition {
   expiry: string;
   entryPrice: number;
   avgEntryPrice: number;
-  quantity: number;
+  quantity: number; // number of contracts
+  multiplier: number; // shares per contract (100 for US equity options)
   entryCycle: number;
+  /** Conviction score at entry — used for the conviction-decay exit. */
+  entryConviction: number;
   unrealizedPnlUsd: number;
   unrealizedPnlPercent: number;
   stuck: boolean;

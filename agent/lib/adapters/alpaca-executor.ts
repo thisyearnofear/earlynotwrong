@@ -101,6 +101,10 @@ async function alpacaGet(path: string): Promise<any> {
     30000,
     `alpaca:GET ${path}`,
   );
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Alpaca ${res.status} ${res.statusText}: ${body.slice(0, 200)}`);
+  }
   return res.json();
 }
 
@@ -115,7 +119,7 @@ async function alpacaGet(path: string): Promise<any> {
  * executor picks the REST API path (most reliable for programmatic agents).
  */
 export function createAlpacaExecutor(): TradeExecutor {
-  return {
+  const executor: TradeExecutor & { fetchAlpacaPortfolio?: () => Promise<Portfolio> } = {
     async placeOrder(signal: SignalWithScore, position: PositionConfig): Promise<TradeResult> {
       const now = Date.now();
       if (!isConfigured()) {
@@ -140,14 +144,19 @@ export function createAlpacaExecutor(): TradeExecutor {
 
         const order = await alpacaPost("/v2/orders", orderBody) as AlpacaOrder;
 
+        // Options are priced per-share; each contract covers 100 shares (multiplier).
+        // Alpaca's filled_avg_price is per-share, so value = price × qty × multiplier.
+        const multiplier = (meta.multiplier as number) ?? 100;
+        const filledPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
+        const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : qty;
+
         return {
           success: ["filled", "pending", "accepted"].includes(order.status),
           orderId: order.id,
           symbol: contractSymbol,
-          executedPrice: order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined,
-          executedQuantity: order.filled_qty ? parseFloat(order.filled_qty) : qty,
-          executedValueUsd: order.filled_avg_price && order.filled_qty
-            ? parseFloat(order.filled_avg_price) * parseFloat(order.filled_qty) : undefined,
+          executedPrice: filledPrice,
+          executedQuantity: filledQty,
+          executedValueUsd: filledPrice ? filledPrice * filledQty * multiplier : undefined,
           timestamp: now,
         };
       } catch (err) {
@@ -226,6 +235,12 @@ export function createAlpacaExecutor(): TradeExecutor {
       }
     },
   };
+
+  // Attach the portfolio fetcher so the harness cycle's `fetchPortfolio`
+  // step can discover the account's current portfolio via the executor.
+  executor.fetchAlpacaPortfolio = fetchAlpacaPortfolio;
+
+  return executor;
 }
 
 /** Fetch the current portfolio from Alpaca (used by the adapter loop). */
