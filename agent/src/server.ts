@@ -544,7 +544,11 @@ app.get("/options/status", async (c) => {
     // Non-fatal.
   }
 
+  // Only surface contracts with usable IV — a degenerate (near-zero IV)
+  // quote isn't a real market, and showing it as a top pick on the dashboard
+  // would advertise the same fake edge the proposal gate now rejects.
   const topSignals = [...optionsState.convictionSignals]
+    .filter((s) => ((s.signal.metadata?.impliedVolatility as number) ?? 0) >= 0.05)
     .sort((a, b) => b.conviction.score - a.conviction.score)
     .slice(0, 12)
     .map((s) => ({
