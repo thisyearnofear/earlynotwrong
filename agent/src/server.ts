@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { AGENT_CONFIG } from "../lib/config.js";
 import { HARNESS_CONFIG } from "../lib/harness-config.js";
+import { getMarketHours } from "../lib/adapters/alpaca-data.js";
 import { twakExecutor } from "../lib/twak-executor.js";
 import { guardrails } from "../lib/risk-guardrails.js";
 import { getMantleExplorerTxUrl } from "../lib/config.js";
@@ -430,6 +431,22 @@ app.get("/status", async (c) => {
   const netPnlUsd = agentState.realizedPnlUsd - agentState.totalGasSpentUsd;
   const botUsername = getBotUsername();
 
+  // Options domain: surface the market-hours gate so the dashboard shows
+  // when the agent can actually trade (orders are deferred off-hours).
+  let market = null;
+  if (HARNESS_CONFIG.domain === "options") {
+    try {
+      const hours = await getMarketHours();
+      market = {
+        is_open: hours.isOpen,
+        next_open: hours.nextOpen,
+        next_close: hours.nextClose,
+      };
+    } catch {
+      // Non-fatal — market gate is informational on the dashboard.
+    }
+  }
+
   const body = {
     agent: "Early, Not Wrong",
     version: "0.1.0",
@@ -441,6 +458,8 @@ app.get("/status", async (c) => {
     totalTrades: agentState.totalTrades,
     totalVolumeUsd: agentState.totalVolumeUsd,
     errors: agentState.errors.length,
+    // Options domain market-hours state (null for the crypto domain).
+    market,
     // "Watch this agent" — public Telegram subscription channel. Null when
     // TELEGRAM_BOT_TOKEN is unset or getMe hasn't resolved yet.
     telegram: botUsername

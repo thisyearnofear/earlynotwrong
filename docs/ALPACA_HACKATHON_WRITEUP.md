@@ -119,6 +119,31 @@ end-to-end against the real paper account, not a simulator:
   correctly rejected (`options market orders are only allowed during market
   hours`) and the cycle fails closed — no entries, exits never blocked.
 
+### Free-data prep (2026-08-29) — what we tap before Monday's open
+
+Alpaca's Basic plan is quote-only: no option IV/greeks, no open interest, no
+option volume, no option bars. We don't pay for OPRA. Instead we derive the
+edges from what the free tier does expose, so the agent's conviction is
+relativized rather than absolute:
+
+- **Realized vol vs. implied vol (IV/RV)** — we fetch each underlier's 30
+  daily `iex` bars and compute annualized realized vol, then score every
+  option's IV *relative* to its underlier's RV. IV/RV ≪ 1 → cheap premium
+  (buyside edge, IV has room to expand); IV/RV ≫ 1 → rich premium
+  (crush risk, avoid). This is the real "is the option cheap or rich?"
+  signal and replaces the naive absolute-IV cutoff.
+- **Free news feed** (`/v1beta1/news`) — per-underlier headlines + summaries
+  (6h-cached) seed an earnings-timing flag (`earningsNear`) that drives the
+  existing earnings-vol-crush factor, and a lexical sentiment bias that
+  nudges conviction toward the aligned side (bullish headline → call premium).
+  Couldn't get a real earnings calendar (Alpaca doesn't expose one on this
+  plan), so the news feed is the proxy.
+- **Market-hours clock** (`/v2/clock`) — the execution step is now gated on
+  live market open instead of firing orders that Alpaca rejects off-hours.
+  Analysis + scoring + proposals still run every cycle so the dashboard stays
+  live; orders are deferred to the next open. `nextOpen` is surfaced in
+  `/status` so the dashboard shows *when* it can actually trade.
+
 Trading is **market-hours gated** (Mon–Fri 09:30–16:00 ET) and paper only —
 no real money is at risk. First paper fills land at Monday's open.
 

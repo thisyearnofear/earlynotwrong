@@ -71,22 +71,39 @@ function computeRsi(klines: Kline[], period: number = 14): number | null {
 }
 
 /**
- * IV contrarian fraction (0–1).
+ * IV contrarian fraction (0–1), scored from the perspective of a premium
+ * BUYER (the executor always opens long — buy-to-open).
  *
- * Extreme IV rank on a mean-reverting underlier is the options equivalent
- * of a crypto contrarian dip. High IV → sell premium (IV will crush);
- * low IV → buy premium (IV will expand). We score the *extremeness*.
+ * The edge for a long-option buyer is cheap premium: an option priced below
+ * the underlier's own realized vol (IV/RV ≪ 1) has room to expand, so it
+ * scores HIGH (buy). Rich premium (IV/RV ≫ 1) is expensive and crush-prone,
+ * so it scores LOW (avoid buying). This is the options analog of the crypto
+ * contrarian "buy the dip" — the "dip" here is cheap implied vol, not price.
  *
- * When IV is unavailable (`ivAvailable` false — no tradable quote on the
- * Basic plan), we return neutral 0.5 instead of 0 so the factor never
- * masquerades as "extreme low IV" (which would fabricate a buy-premium edge).
+ * When realized vol (RV) is available we score premium *relative* to it
+ * (the "is it cheap or rich?" question, which is the real edge), falling back
+ * to absolute IV bands when RV is absent so behaviour is unchanged offline.
+ *
+ * When IV is unavailable (`ivAvailable` false), we return neutral 0.5 so the
+ * factor never masquerades as "extreme low IV" (which would fabricate a
+ * buy-premium edge).
  */
-function ivContrarianFraction(iv: number, ivAvailable: boolean): number {
+function ivContrarianFraction(iv: number, ivAvailable: boolean, ivToRealized: number): number {
   if (!ivAvailable) return 0.5;
   if (iv <= 0) return 0.5;
-  // IV is typically 0.1–2.0 (10%–200%). Extreme = > 0.8 or < 0.2.
-  if (iv >= 1.0) return 1.0;  // extreme high IV — prime sell premium
-  if (iv >= 0.6) return 0.85; // high IV — favorable
+  // RV-relative: IV/RV < 1 = cheaper than the underlier's own vol → buy edge.
+  if (ivToRealized > 0) {
+    if (ivToRealized >= 2.0) return 0.1;  // very rich — avoid buying (crush risk)
+    if (ivToRealized >= 1.4) return 0.25;
+    if (ivToRealized >= 1.1) return 0.4;  // mildly rich
+    if (ivToRealized >= 0.9) return 0.5;  // fairly priced
+    if (ivToRealized >= 0.6) return 0.7;  // cheap-ish
+    if (ivToRealized >= 0.4) return 0.9;  // cheap — buy premium edge
+    return 1.0;                           // very cheap — IV expansion edge
+  }
+  // Fallback: absolute IV bands (IV typically 0.1–2.0).
+  if (iv >= 1.0) return 0.1;  // extreme high IV — avoid (crush risk)
+  if (iv >= 0.6) return 0.25; // high IV — avoid
   if (iv >= 0.3) return 0.5;  // normal IV — neutral
   if (iv >= 0.15) return 0.75; // low IV — buy premium opportunity
   return 0.5; // very low IV — could be dead stock, neutral
@@ -155,6 +172,7 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
       const meta = signal.metadata ?? {};
       const iv = (meta.impliedVolatility as number) ?? 0;
       const ivAvailable = (meta.ivAvailable as boolean) ?? false;
+      const ivToRealized = (meta.ivToRealized as number) ?? 0;
       const delta = (meta.delta as number) ?? 0;
       const gamma = (meta.gamma as number) ?? 0;
       const theta = (meta.theta as number) ?? 0;
@@ -166,8 +184,15 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
       // RSI from underlier historical klines.
       const rsi = computeRsi(historical);
       const rsiTiming = rsiTimingFraction(rsi);
-      const ivFraction = ivContrarianFraction(iv, ivAvailable);
+      const ivFraction = ivContrarianFraction(iv, ivAvailable, ivToRealized);
       const qualityFrac = qualityFraction(volume, signal.marketCap, underlierPrice);
+
+      // News narrative — free Alpaca feed. A bullish underlier headline
+      // supports call premium; a bearish one supports puts. Kept as a small
+      // bias on top of the deterministic factors rather than a full factor of
+      // its own (weight budget is tight).
+      const newsSentiment = (meta.newsSentiment as string) ?? "neutral";
+      const narrativeBias = newsSentiment === "bullish" ? 0.08 : newsSentiment === "bearish" ? -0.08 : 0;
 
       // Regime: use a neutral baseline (VIX would come from data source metadata).
       const vixLevel = (meta.vix as number) ?? 20;
@@ -186,9 +211,9 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
       const w = OPTIONS_WEIGHTS;
       const breakdown: FactorScore[] = [
         { name: "iv_contrarian", score: Math.round(ivFraction * w.ivContrarian), maxScore: w.ivContrarian,
-          rationale: `IV=${iv.toFixed(3)} → ${iv >= 0.6 ? "sell premium" : iv <= 0.2 ? "buy premium" : "neutral"}` },
+          rationale: `IV=${iv.toFixed(3)}${ivToRealized > 0 ? ` / RV(×${ivToRealized.toFixed(1)})` : ""} → ${ivToRealized > 0 ? (ivToRealized >= 1.1 ? "rich premium — avoid" : ivToRealized <= 0.9 ? "cheap premium — buy edge" : "fairly priced") : iv >= 0.6 ? "high IV — avoid" : iv <= 0.2 ? "low IV — buy edge" : "neutral"}` },
         { name: "rsi_delta", score: Math.round(rsiTiming * w.rsiDelta), maxScore: w.rsiDelta,
-          rationale: `RSI=${rsi ?? "N/A"}, delta=${delta.toFixed(2)}` },
+          rationale: `RSI=${rsi ?? "N/A"}, delta=${delta.toFixed(2)}, news=${newsSentiment}` },
         { name: "quality", score: Math.round(qualityFrac * w.quality), maxScore: w.quality,
           rationale: `Volume=$${(volume / 1e6).toFixed(1)}M` },
         { name: "regime", score: Math.round(regimeFraction * w.regime), maxScore: w.regime,
@@ -203,9 +228,10 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
           rationale: earningsNear ? "Earnings near expiry — vol crush opportunity" : "No earnings timing" },
       ];
 
-      const score = Math.max(0, Math.min(100, breakdown.reduce((sum, f) => sum + f.score, 0)));
+      const raw = breakdown.reduce((sum, f) => sum + f.score, 0);
+      const score = Math.max(0, Math.min(100, Math.round(raw * (1 + narrativeBias))));
       const direction = contractType === "call" ? "long call" : "long put";
-      const rationale = `${signal.symbol}: ${direction} conviction ${score}/100 (IV=${iv.toFixed(2)}, RSI=${rsi ?? "N/A"}, VIX≈${vixLevel})`;
+      const rationale = `${signal.symbol}: ${direction} conviction ${score}/100 (IV=${iv.toFixed(2)}, IV/RV=${ivToRealized > 0 ? ivToRealized.toFixed(1) : "n/a"}, RSI=${rsi ?? "N/A"}, VIX≈${vixLevel})`;
 
       return { symbol: signal.symbol, score, breakdown, rationale };
     },

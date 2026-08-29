@@ -160,6 +160,115 @@ interface AlpacaOptionQuote {
   bs?: number; // bid size
 }
 
+// =============================================================================
+// Free-data enrichment: news + market clock (Basic plan)
+// =============================================================================
+
+/** News article from Alpaca's free news feed (`/v1beta1/news`). */
+interface AlpacaNewsItem {
+  headline: string;
+  summary: string | null;
+  symbols: string[];
+  created_at: string;
+  url: string | null;
+  source?: string;
+}
+
+/** Recent headline per underlier, cached a few hours to avoid re-fetching. */
+interface UnderlierNews {
+  headline: string | null;
+  summary: string | null;
+  url: string | null;
+  fetchedAt: number;
+  earningsNear: boolean;
+  sentimentBias: "bullish" | "bearish" | "neutral";
+}
+
+const NEWS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+const newsCache = new Map<string, UnderlierNews>();
+
+/** Detect earnings timing from a headline (drives the vol-crush factor). */
+function headlineMentionsEarnings(headline: string): boolean {
+  return /\b(earnings|earns|q1|q2|q3|q4|fiscal|guidance|revenues?|quarter|results?|upcoming)\b/i.test(
+    headline,
+  );
+}
+
+/** Crude lexical sentiment for the narrative factor (no paid NLP feed). */
+function lexicalSentiment(summary: string): "bullish" | "bearish" | "neutral" {
+  const bullish = /\b(surge|rally|jump|soar|beat|upgrade|record|boost|gain|rise|outperform|multiply|growth)\b/i;
+  const bearish = /\b(plunge|drop|fall|miss|downgrade|slump|weak|cut|loss|recession|sell|slide|decline|fear)\b/i;
+  const s = summary ?? "";
+  const b = (s.match(bullish) ?? []).length;
+  const n = (s.match(bearish) ?? []).length;
+  if (b > n) return "bullish";
+  if (n > b) return "bearish";
+  return "neutral";
+}
+
+async function fetchUnderlierNews(symbol: string): Promise<UnderlierNews> {
+  const cached = newsCache.get(symbol);
+  if (cached && Date.now() - cached.fetchedAt < NEWS_CACHE_TTL_MS) return cached;
+  try {
+    const res = await alpacaGet(
+      `/v1beta1/news?symbols=${encodeURIComponent(symbol)}&limit=5&sort=desc`,
+    ) as { news?: AlpacaNewsItem[] };
+    const items = res.news ?? [];
+    const top = items.find((n) => n.headline) ?? items[0];
+    const summary = top?.summary ?? "";
+    const entry: UnderlierNews = {
+      headline: top?.headline ?? null,
+      summary: top?.summary ?? null,
+      url: top?.url ?? null,
+      fetchedAt: Date.now(),
+      earningsNear: items.some((n) => headlineMentionsEarnings(n.headline)),
+      sentimentBias: lexicalSentiment(summary),
+    };
+    newsCache.set(symbol, entry);
+    return entry;
+  } catch {
+    return {
+      headline: null, summary: null, url: null,
+      fetchedAt: Date.now(), earningsNear: false, sentimentBias: "neutral",
+    };
+  }
+}
+
+/** Market clock snapshot (free, from the Trading API). */
+interface MarketClock {
+  isOpen: boolean;
+  nextOpen: string | null;
+  nextClose: string | null;
+}
+
+let clockCache: { data: MarketClock; at: number } | null = null;
+
+/**
+ * Return whether the equities/options market is open and the next session
+ * boundary. Cached for 30s. On a fetch error we fail safe to "open" so a
+ * transient clock bug can't freeze trading — the broker's own market-hours
+ * rejection (422) remains the authoritative gate.
+ */
+export async function getMarketHours(): Promise<MarketClock> {
+  if (clockCache && Date.now() - clockCache.at < 30_000) return clockCache.data;
+  try {
+    const res = await alpacaGet("/v2/clock", ALPACA_TRADING_BASE) as {
+      is_open: boolean;
+      next_open?: string;
+      next_close?: string;
+    };
+    const data: MarketClock = {
+      isOpen: !!res.is_open,
+      nextOpen: res.next_open ?? null,
+      nextClose: res.next_close ?? null,
+    };
+    clockCache = { data, at: Date.now() };
+    return data;
+  } catch {
+    return { isOpen: true, nextOpen: null, nextClose: null };
+  }
+}
+
 async function alpacaGet(path: string, base: string = ALPACA_DATA_BASE): Promise<any> {
   const url = `${base}${path}`;
   const res = await withTimeout(fetch(url, { headers: alpacaHeaders() }), 30000, `alpaca:${path}`);
@@ -211,6 +320,8 @@ function contractToSignal(
   quote: AlpacaOptionQuote | undefined,
   underlierPrice: number,
   prevClose: number,
+  realizedVol: number,
+  news: UnderlierNews | undefined,
 ): MarketSignal {
   const strike = parseFloat(c.strike_price);
   const expiry = c.expiration_date;
@@ -231,6 +342,9 @@ function contractToSignal(
   // Derive IV + greeks from the mid quote (Black-Scholes inversion).
   const iv = solveImpliedVol(mid, underlierPrice, strike, T, RISK_FREE_RATE, isCall);
   const greeks = bsGreeks(underlierPrice, strike, T, RISK_FREE_RATE, iv, isCall);
+  // Price premium relative to the underlier's own realized vol (annualized).
+  // IV/RV > 1 → rich premium (crush risk); < 1 → cheap premium (expansion edge).
+  const ivToRealized = realizedVol > 0 ? iv / realizedVol : 0;
 
   // 7d price change of the underlier (options inherit the underlier's drift).
   const priceChange7d = prevClose > 0 ? ((underlierPrice - prevClose) / prevClose) * 100 : 0;
@@ -255,6 +369,8 @@ function contractToSignal(
       multiplier,
       impliedVolatility: iv,
       ivAvailable: mid > 0,
+      ivToRealized,
+      realizedVol,
       delta: greeks.delta,
       gamma: greeks.gamma,
       theta: greeks.theta,
@@ -267,6 +383,11 @@ function contractToSignal(
       quoteNotionalUsd,
       underlierPrice,
       tradable: c.tradable ?? true,
+      earningsNear: news?.earningsNear ?? false,
+      newsHeadline: news?.headline ?? null,
+      newsSummary: news?.summary ?? null,
+      newsUrl: news?.url ?? null,
+      newsSentiment: news?.sentimentBias ?? "neutral",
     },
   };
 }
@@ -281,6 +402,41 @@ function barToKline(b: AlpacaBar): Kline {
     close: b.c,
     volume: b.v,
   };
+}
+
+/**
+ * Annualized realized volatility from daily close-to-close log returns.
+ * Returns 0 when there are too few bars to estimate (needs ≥ 2).
+ */
+function computeRealizedVol(klines: Kline[]): number {
+  if (klines.length < 2) return 0;
+  const returns: number[] = [];
+  for (let i = 1; i < klines.length; i++) {
+    const prev = klines[i - 1].close;
+    const curr = klines[i].close;
+    if (prev > 0 && curr > 0) returns.push(Math.log(curr / prev));
+  }
+  if (returns.length < 2) return 0;
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const variance =
+    returns.reduce((s, r) => s + (r - mean) * (r - mean), 0) / (returns.length - 1);
+  const dailyStd = Math.sqrt(variance);
+  return dailyStd * Math.sqrt(252); // annualize
+}
+
+/** Fetch an underlier's recent daily bars and compute annualized realized vol. */
+async function fetchRealizedVol(symbol: string): Promise<number> {
+  const end = new Date();
+  const start = new Date(Date.now() - 30 * 86400000);
+  try {
+    const res = await alpacaGet(
+      `/v2/stocks/bars?symbols=${encodeURIComponent(symbol)}&timeframe=1Day&feed=iex` +
+        `&start=${start.toISOString()}&end=${end.toISOString()}`,
+    ) as { bars?: Record<string, AlpacaBar[]> };
+    return computeRealizedVol((res.bars?.[symbol] ?? []).map(barToKline));
+  } catch {
+    return 0;
+  }
 }
 
 // =============================================================================
@@ -326,6 +482,11 @@ export function createAlpacaDataAdapter(): DataSource {
         try {
           // Underlier snapshot (singular endpoint) for price + prev close.
           const { price: underlierPrice, prevClose } = await fetchUnderlierSnapshot(underlier);
+          // Underlier's own realized vol (annualized) — the yardstick for
+          // whether the option premium is cheap or rich.
+          const realizedVol = await fetchRealizedVol(underlier);
+          // Free news feed — narrative + earnings timing for this underlier.
+          const news = await fetchUnderlierNews(underlier);
 
           // Fetch the options chain via the TRADING API (not the data API).
           const qs = [
@@ -352,10 +513,11 @@ export function createAlpacaDataAdapter(): DataSource {
           for (const c of contracts) {
             const quote = quotes.get(c.symbol);
             if (quote) withQuotes++;
-            signals.push(contractToSignal(c, quote, underlierPrice, prevClose));
+            signals.push(contractToSignal(c, quote, underlierPrice, prevClose, realizedVol, news));
           }
           console.log(
-            `[alpaca-data] ${underlier}: ${contracts.length} contracts (${withQuotes} with quotes)`,
+            `[alpaca-data] ${underlier}: ${contracts.length} contracts (${withQuotes} with quotes, RV=${(realizedVol * 100).toFixed(0)}%)` +
+            (news?.headline ? ` [news: ${news.headline.slice(0, 60)}]` : ""),
           );
         } catch (err) {
           console.warn(`[alpaca-data] Failed to fetch chain for ${underlier}:`, err instanceof Error ? err.message : String(err));

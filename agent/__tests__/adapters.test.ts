@@ -64,6 +64,8 @@ function makeOptionsSignal(overrides: Partial<MarketSignal> = {}): MarketSignal 
       expiry: "2024-03-15",
       impliedVolatility: 0.45,
       ivAvailable: true,
+      ivToRealized: 0,
+      realizedVol: 0,
       delta: 0.5,
       gamma: 0.02,
       theta: -0.05,
@@ -72,6 +74,10 @@ function makeOptionsSignal(overrides: Partial<MarketSignal> = {}): MarketSignal 
       bid: 4.9,
       ask: 5.1,
       underlierPrice: 155,
+      earningsNear: false,
+      newsHeadline: null,
+      newsSummary: null,
+      newsSentiment: "neutral",
     },
     ...overrides,
   };
@@ -251,14 +257,44 @@ describe("Options Conviction Adapter", () => {
     expect(names).toContain("vanna_charm_penalty");
   });
 
-  it("scores a high-IV signal as a sell-premium opportunity", async () => {
+  it("scores a high-IV signal with a low IV-contrarian contribution (avoid buying rich premium)", async () => {
     const highIv = makeOptionsSignal({
       metadata: { ...makeOptionsSignal().metadata, impliedVolatility: 0.9, gamma: 0.001, theta: -0.01 },
     });
     const result = await adapter.score(highIv, makeKlines(30, 155));
-    expect(result.score).toBeGreaterThan(30);
     const ivFactor = result.breakdown.find((f) => f.name === "iv_contrarian");
-    expect(ivFactor!.score).toBeGreaterThan(10);
+    // Fallback absolute band: IV >= 0.6 → 0.25 fraction → 5 points (out of 20).
+    expect(ivFactor!.score).toBeLessThanOrEqual(5);
+  });
+  it("scores premium rich relative to realized vol as low-conviction (IV/RV >= 1.4, avoid)", async () => {
+    const rich = makeOptionsSignal({
+      metadata: {
+        ...makeOptionsSignal().metadata,
+        impliedVolatility: 0.6,
+        realizedVol: 0.3,
+        ivToRealized: 2.0,
+        gamma: 0.001,
+        theta: -0.01,
+      },
+    });
+    const result = await adapter.score(rich, makeKlines(30, 155));
+    const ivFactor = result.breakdown.find((f) => f.name === "iv_contrarian");
+    expect(ivFactor!.score).toBeLessThanOrEqual(5);
+  });
+  it("scores premium cheap relative to realized vol as high-conviction (IV/RV <= 0.9, buy)", async () => {
+    const cheap = makeOptionsSignal({
+      metadata: {
+        ...makeOptionsSignal().metadata,
+        impliedVolatility: 0.25,
+        realizedVol: 0.35,
+        ivToRealized: 0.71,
+        gamma: 0.001,
+        theta: -0.01,
+      },
+    });
+    const result = await adapter.score(cheap, makeKlines(30, 155));
+    const ivFactor = result.breakdown.find((f) => f.name === "iv_contrarian");
+    expect(ivFactor!.score).toBeGreaterThanOrEqual(13);
   });
 
   it("penalizes high gamma (squeeze risk)", async () => {

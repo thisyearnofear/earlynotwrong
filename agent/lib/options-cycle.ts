@@ -21,6 +21,7 @@
  */
 
 import { resolveAdapters } from "./adapters/index.js";
+import { getMarketHours } from "./adapters/alpaca-data.js";
 import type { AdapterBundle } from "./adapters/index.js";
 import type { HarnessConfig } from "./harness-config.js";
 import { optionsState } from "./options-state.js";
@@ -398,6 +399,18 @@ async function executeProposals(
 
   const portfolio = optionsState.portfolio!;
   const maxPerTrade = Math.min(500, portfolio.totalValueUsd * 0.1); // max 10% of portfolio per trade, $500 cap
+
+  // Market-hours gate (execution only): options market orders are rejected by
+  // Alpaca outside regular hours (422 "only allowed during market hours").
+  // We still analyze + score + propose every cycle so the dashboard stays
+  // live, but defer placing orders until the market reopens. This is the
+  // fail-closed behaviour from the hackathon strategy — no churn, no dead
+  // rejections — rather than firing orders into a closed market.
+  const marketHours = await getMarketHours();
+  if (!marketHours.isOpen) {
+    console.log(`\n[6-7/8] Market closed — deferring ${proposals.length} proposal(s) until next open${marketHours.nextOpen ? ` (${marketHours.nextOpen})` : ""}.`);
+    return;
+  }
 
   console.log(`\n[6-7/8] Executing ${proposals.length} proposals (max $${maxPerTrade.toFixed(2)}/trade)...`);
 
