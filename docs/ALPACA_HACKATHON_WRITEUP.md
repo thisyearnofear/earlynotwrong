@@ -63,9 +63,16 @@ Each hourly cycle:
   snapshots + daily bars (`v2/stocks/{s}/snapshot`, `v2/stocks/bars`) for
   RSI/regime. Implied vol + greeks are derived from quotes via Black-Scholes
   inversion (the Basic plan's indicative feed exposes no IV/greeks directly).
-- **MCP / CLI** — the executor follows Alpaca's agent-first stack; the harness
-  MCP server (7 tools) is exposed for agent-to-agent consumption.
-- **Fresh paper account** — dedicated hackathon account, $100k starting balance,
+- **MCP / CLI** — orders are placed through Alpaca's official **CLI**
+  (`alpacahq/cli`, v0.0.14 prebuilt binary on the VPS) via a `execFile`
+  wrapper (`agent/lib/adapters/alpaca-cli.ts`) — the hackathon's "MCP or CLI"
+  requirement. The CLI is agent-first: structured JSON output, no prompts,
+  idempotent `--client-order-id` for retry safety, `--dry-run` preview. The
+  executor is CLI-first with an automatic REST fallback, so a missing/failing
+  CLI can never break the live path. (The harness also runs its own MCP server
+  exposing our conviction tools for agent-to-agent consumption.)
+- **Fresh paper account** — dedicated hackathon account, `PA34CZ7DH98R`
+  (ACTIVE, $100k starting balance, options level 3, 4× Reg-T buying power),
   per the judging requirements.
 
 ### Partner technology: Featherless AI
@@ -112,7 +119,7 @@ crypto, futures) is three new adapter files, not a new agent.
 | Criterion | Where we hit it |
 |-----------|----------------|
 | **P&L performance** | Paper-traded options with conviction overlay; self-analysis + calibration ledger prove the agent measures its own edge |
-| **Technology implementation** | Trading API + Market Data API + paper trading; MCP server; autonomous loop; adversarial verification; cross-chain anchoring |
+| **Technology implementation** | Trading API + Market Data API + paper trading; Alpaca **CLI** for order execution (IDempotent client-order-id, REST fallback); harness MCP server; autonomous loop; adversarial verification; cross-chain anchoring |
 | **Creativity & originality** | Agent harness as the product — same skeleton ships crypto and options; IV edge + conviction overlay is not a generic buy-the-dip bot |
 | **Presentation & execution** | Full 8-step pipeline with per-cycle evidence, Telegram dispatch, honest empty states, public repo |
 
@@ -137,7 +144,7 @@ The options agent is **live on Alpaca paper** — the full 8-step cycle runs
 end-to-end against the real paper account, not a simulator:
 
 - **Real portfolio** — reads the dedicated $100k hackathon account
-  (`ACTIVE`, options level 3, 4× Reg-T buying power).
+  (`PA34CZ7DH98R`, ACTIVE, options level 3, 4× Reg-T buying power).
 - **Real market data** — 718 contracts fetched + scored across SPY, QQQ,
   AAPL, MSFT, NVDA, TSLA (7–90d expiries); IV + greeks derived from live
   quotes via Black-Scholes inversion (the Basic plan's indicative feed
