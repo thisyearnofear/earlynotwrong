@@ -227,8 +227,8 @@ export function createAlpacaExecutor(): TradeExecutor {
       }
 
       const encoded = encodeURIComponent(symbol);
-      const orderOk = (status: string | undefined) =>
-        ["filled", "pending", "accepted", "new", "partially_filled"].includes(status ?? "");
+      const orderFailed = (status: string | undefined) =>
+        ["rejected", "canceled", "expired", "suspended", "stopped"].includes(status ?? "");
 
       const unwrap = (raw: AlpacaCliOrder | AlpacaOrder | Record<string, unknown>): AlpacaCliOrder | AlpacaOrder => {
         const body = (raw as { body?: AlpacaOrder }).body;
@@ -240,13 +240,17 @@ export function createAlpacaExecutor(): TradeExecutor {
         const order = unwrap(raw);
         const filledPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
         const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : undefined;
+        // Options market closes often ack as `held`/`pending_new` then fill.
+        // An order id that isn't a hard reject is a successful close request.
+        const success = Boolean(order.id) && !orderFailed(order.status);
         return {
-          success: orderOk(order.status) || !order.status,
+          success,
           orderId: order.id || positionId,
           symbol,
           executedPrice: Number.isFinite(filledPrice) ? filledPrice : undefined,
           executedQuantity: Number.isFinite(filledQty) ? filledQty : undefined,
           timestamp: now,
+          error: success ? undefined : `close status ${order.status ?? "unknown"}`,
         };
       };
 
