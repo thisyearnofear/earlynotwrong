@@ -627,12 +627,15 @@ describe("DelphiWebSearch — budget + cache", () => {
     expect(providerCircuitOpen("firecrawl")).toBe(false);
     expect(await ws.briefing("Q1")).toBeNull(); // firecrawl dies → cascade finds nothing else
     expect(providerCircuitOpen("firecrawl")).toBe(true);
-    // Q1 burned 3 calls: firecrawl (throws) + parallel (null) + gateway (null).
-    expect(ws.cycleCalls).toBe(3);
+    // Q1 burned 2 calls: firecrawl (throws) + parallel (null). The Exa/gateway
+    // rung is gated off by VERCEL_GATEWAY_PROMO_ENDS (the 2026-08-28 cutoff
+    // has passed; `vercelGatewayFreeActive()` returns false, so the rung is
+    // skipped before the counter increments — see web-search.ts briefing()).
+    expect(ws.cycleCalls).toBe(2);
     // Subsequent fresh searches skip the dead rung entirely — Q2 costs only
-    // the two healthy rungs, not three.
+    // the one healthy rung (parallel), not the broken firecrawl.
     expect(await ws.briefing("Q2")).toBeNull();
-    expect(ws.cycleCalls).toBe(5);
+    expect(ws.cycleCalls).toBe(3);
   });
 
   it("falls through the ladder when the first rung fails", async () => {
@@ -656,9 +659,12 @@ describe("DelphiWebSearch — budget + cache", () => {
     expect(briefing?.text).toBe("parallel brief");
     expect(briefing?.source).toBe("parallel");
     expect(parallelCalls).toBe(1);
-    expect(ws.cycleCalls).toBe(3); // firecrawl attempt + parallel + cross-check
-    // The cross-check rung answered nothing → corroborated stays undefined
-    // (unattempted), never false.
+    // 2 calls: firecrawl (throws) + parallel (succeeded). The cross-check rung
+    // is the Exa/gateway tier, which is gated off past the 2026-08-28 promo
+    // cutoff — it's skipped before the counter increments, so no third call.
+    expect(ws.cycleCalls).toBe(2);
+    // The cross-check rung was skipped (not attempted) → corroborated stays
+    // undefined (unattempted), never false.
     expect(briefing?.corroborated).toBeUndefined();
   });
 

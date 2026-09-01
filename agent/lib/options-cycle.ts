@@ -24,6 +24,7 @@ import { resolveAdapters } from "./adapters/index.js";
 import { getMarketHours } from "./adapters/alpaca-data.js";
 import type { AdapterBundle } from "./adapters/index.js";
 import type { HarnessConfig } from "./harness-config.js";
+import { HARNESS_CONFIG } from "./harness-config.js";
 import { optionsState } from "./options-state.js";
 import type { OptionsPosition, OptionsSignal } from "./options-state.js";
 import { AGENT_CONFIG } from "./config.js";
@@ -33,7 +34,7 @@ import { analyzeAgentBehavior } from "./self-analysis.js";
 import type { LedgerEntry } from "conviction-core";
 import type { ConvictionRecord } from "./anchors/types.js";
 import { persistState } from "./persistence.js";
-import { sendEntryAlert, sendExitAlert, sendErrorAlert } from "./telegram.js";
+import { sendEntryAlert, sendExitAlert } from "./telegram.js";
 import { summarizeError } from "./errors.js";
 import { computeThesisHash, computeSubjectHash } from "./anchors/hashes.js";
 
@@ -329,16 +330,22 @@ async function managePositions(
       console.log(`  ✓ Closed ${pos.symbol}: P&L $${pnl.toFixed(2)} (tx: ${closeResult.orderId || "N/A"})`);
 
       // Use EXIT_STOP as action since EXIT_DECAY is not a valid enum value.
-      sendExitAlert({
-        cycle: optionsState.cycle,
-        symbol: pos.symbol,
-        action: "EXIT_STOP",
-        reason: "Conviction decay",
-        pnlPercent: pos.avgEntryPrice > 0 ? (pnl / (pos.quantity * pos.avgEntryPrice)) * 100 : 0,
-        amountUsd: pos.quantity * pos.avgEntryPrice,
-        sellFraction: 1,
-        txHash: closeResult.orderId,
-      }).catch(() => {});
+      // Domain guard: the options process shares the same Telegram bot token
+      // as the crypto process, so without this gate the options cycle would
+      // spam the crypto channel's timeline with options-only exit alerts.
+      // Mirrors the CROO CAP / Telegram-subscriber skip in index.ts.
+      if (HARNESS_CONFIG.domain !== "options") {
+        sendExitAlert({
+          cycle: optionsState.cycle,
+          symbol: pos.symbol,
+          action: "EXIT_STOP",
+          reason: "Conviction decay",
+          pnlPercent: pos.avgEntryPrice > 0 ? (pnl / (pos.quantity * pos.avgEntryPrice)) * 100 : 0,
+          amountUsd: pos.quantity * pos.avgEntryPrice,
+          sellFraction: 1,
+          txHash: closeResult.orderId,
+        }).catch(() => {});
+      }
     } else {
       pos.failedExitAttempts += 1;
       console.log(`  ✗ Close failed for ${pos.symbol}: ${closeResult.error}`);
@@ -506,14 +513,18 @@ async function executeProposals(
       console.log(`  ✓ ${proposal.signal.symbol}: ${quantity} contracts @ $${(tradeResult.executedPrice ?? proposal.signal.price).toFixed(4)}`);
 
       // sendEntryAlert expects: cycle, symbol, amountUsd, convictionScore, rationale, txHash?
-      sendEntryAlert({
-        cycle: optionsState.cycle,
-        symbol: proposal.signal.symbol,
-        amountUsd: tradeResult.executedValueUsd ?? entryValueUsd,
-        convictionScore: proposal.conviction.score,
-        rationale: proposal.conviction.rationale,
-        txHash: tradeResult.orderId,
-      }).catch(() => {});
+      // Domain guard: see exit-alert comment above — the options process must
+      // not broadcast entry alerts to the crypto Telegram channel.
+      if (HARNESS_CONFIG.domain !== "options") {
+        sendEntryAlert({
+          cycle: optionsState.cycle,
+          symbol: proposal.signal.symbol,
+          amountUsd: tradeResult.executedValueUsd ?? entryValueUsd,
+          convictionScore: proposal.conviction.score,
+          rationale: proposal.conviction.rationale,
+          txHash: tradeResult.orderId,
+        }).catch(() => {});
+      }
     } else {
       console.log(`  ✗ ${proposal.signal.symbol}: ${tradeResult.error}`);
       optionsState.errors.push(`${proposal.signal.symbol}: ${tradeResult.error}`);
