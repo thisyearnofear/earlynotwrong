@@ -8,7 +8,7 @@
  * Alpaca Trading API:
  *   - POST /v2/orders          — place an order
  *   - DELETE /v2/orders/{id}   — cancel an order
- *   - POST /v2/positions/{id}/close — close a position
+ *   - DELETE /v2/positions/{symbol} — close a position (URL-encoded OSI)
  *   - GET  /v2/account         — account info (buying power, status)
  *   - GET  /v2/positions       — open positions
  */
@@ -68,6 +68,26 @@ interface AlpacaOrder {
   symbol: string;
 }
 
+/** Parse an Alpaca body. 404s on the fake `/close` path came back as the
+ *  literal text "Not Found" — `res.json()` threw before we could log the
+ *  status. Never assume JSON. */
+async function readAlpacaJson(res: Response, label: string): Promise<any> {
+  const text = await res.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Alpaca ${res.status} ${label}: ${text.slice(0, 200)}`);
+    }
+  }
+  if (!res.ok) {
+    const msg = data !== null ? JSON.stringify(data).slice(0, 300) : (text || res.statusText).slice(0, 200);
+    throw new Error(`Alpaca ${res.status} ${label}: ${msg}`);
+  }
+  return data;
+}
+
 async function alpacaPost(path: string, body: unknown): Promise<any> {
   const res = await withTimeout(
     fetch(`${ALPACA_TRADING_BASE}${path}`, {
@@ -78,14 +98,10 @@ async function alpacaPost(path: string, body: unknown): Promise<any> {
     30000,
     `alpaca:POST ${path}`,
   );
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`Alpaca ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
-  }
-  return data;
+  return readAlpacaJson(res, `POST ${path}`);
 }
 
-async function alpacaDelete(path: string): Promise<any> {
+async function alpacaDeleteJson(path: string): Promise<any> {
   const res = await withTimeout(
     fetch(`${ALPACA_TRADING_BASE}${path}`, {
       method: "DELETE",
@@ -94,7 +110,7 @@ async function alpacaDelete(path: string): Promise<any> {
     30000,
     `alpaca:DELETE ${path}`,
   );
-  return res.ok;
+  return readAlpacaJson(res, `DELETE ${path}`);
 }
 
 async function alpacaGet(path: string): Promise<any> {
@@ -209,11 +225,58 @@ export function createAlpacaExecutor(): TradeExecutor {
       if (!isConfigured()) {
         return { success: false, symbol, error: "Alpaca API keys not configured", timestamp: now };
       }
+
+      const encoded = encodeURIComponent(symbol);
+      const orderOk = (status: string | undefined) =>
+        ["filled", "pending", "accepted", "new", "partially_filled"].includes(status ?? "");
+
+      const unwrap = (raw: AlpacaCliOrder | AlpacaOrder | Record<string, unknown>): AlpacaCliOrder | AlpacaOrder => {
+        const body = (raw as { body?: AlpacaOrder }).body;
+        if (body && typeof body === "object" && (body.id || body.status)) return body;
+        return raw as AlpacaCliOrder | AlpacaOrder;
+      };
+
+      const fromOrder = (raw: AlpacaCliOrder | AlpacaOrder | Record<string, unknown>): TradeResult => {
+        const order = unwrap(raw);
+        const filledPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
+        const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : undefined;
+        return {
+          success: orderOk(order.status) || !order.status,
+          orderId: order.id || positionId,
+          symbol,
+          executedPrice: Number.isFinite(filledPrice) ? filledPrice : undefined,
+          executedQuantity: Number.isFinite(filledQty) ? filledQty : undefined,
+          timestamp: now,
+        };
+      };
+
+      // CLI first (hackathon "MCP or CLI") — `alpaca position close`.
       try {
-        await alpacaPost(`/v2/positions/${symbol}/close`, {});
-        return { success: true, orderId: positionId, symbol, timestamp: now };
+        const cli = getAlpacaCli();
+        const order = await cli.closePosition(symbol);
+        return fromOrder(order);
+      } catch (cliErr) {
+        console.warn(
+          `  [alpaca-executor] CLI close failed (${cliErr instanceof Error ? cliErr.message : String(cliErr)}) — falling back to DELETE /v2/positions/{symbol}`,
+        );
+      }
+
+      // Documented REST: DELETE /v2/positions/{symbol_or_asset_id}.
+      // The previous POST /v2/positions/{symbol}/close is not an Alpaca
+      // route — paper returned the literal body "Not Found" and every
+      // exit on 2026-09-01 404'd.
+      try {
+        const order = await alpacaDeleteJson(`/v2/positions/${encoded}`) as AlpacaOrder;
+        return fromOrder(order);
       } catch (err) {
-        return { success: false, symbol, error: err instanceof Error ? err.message : String(err), timestamp: now };
+        const msg = err instanceof Error ? err.message : String(err);
+        // Alpaca's documented 404 for a missing position. Do NOT treat the
+        // generic body "Not Found" as success — that was the bogus POST
+        // /close path, and the contract was still on the book.
+        if (/position does not exist|40410000/i.test(msg)) {
+          return { success: true, orderId: positionId, symbol, timestamp: now };
+        }
+        return { success: false, symbol, error: msg, timestamp: now };
       }
     },
 

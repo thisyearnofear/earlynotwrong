@@ -117,6 +117,40 @@ describe("AlpacaCli — submitOrder", () => {
   });
 });
 
+describe("AlpacaCli — closePosition", () => {
+  let mock: ReturnType<typeof createResponseQueue>;
+
+  beforeEach(() => {
+    mock = createResponseQueue();
+  });
+
+  it("calls `position close --symbol-or-asset-id` (the live CLI flag)", async () => {
+    queueJson(mock.queue, {
+      id: "close-1",
+      status: "filled",
+      symbol: "NVDA260909C00240000",
+      filled_avg_price: "0.14",
+      filled_qty: "127",
+      client_order_id: null,
+    });
+    const cli = new AlpacaCli({ execFileOverride: mock.execFileOverride });
+    const order = await cli.closePosition("NVDA260909C00240000");
+    expect(order.status).toBe("filled");
+    expect(order.filled_avg_price).toBe("0.14");
+    const args = mock.calls[0].args;
+    expect(args.slice(0, 2)).toEqual(["position", "close"]);
+    expect(args).toContain("--symbol-or-asset-id");
+    expect(args[args.indexOf("--symbol-or-asset-id") + 1]).toBe("NVDA260909C00240000");
+    expect(args).not.toContain("--symbol");
+  });
+
+  it("throws when the CLI errors", async () => {
+    queueError(mock.queue, "spawn alpaca ENOENT");
+    const cli = new AlpacaCli({ execFileOverride: mock.execFileOverride });
+    await expect(cli.closePosition("AAPL")).rejects.toThrow(/Alpaca CLI/);
+  });
+});
+
 describe("AlpacaCli — healthCheck", () => {
   let mock: ReturnType<typeof createResponseQueue>;
 

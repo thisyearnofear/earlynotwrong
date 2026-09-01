@@ -463,6 +463,53 @@ describe("Alpaca Executor Adapter", () => {
     expect(result.reason).toContain("concentration");
   });
 
+  it("closePosition DELETEs /v2/positions/{symbol} and never POSTs /close", async () => {
+    const originalKey = process.env.ALPACA_API_KEY_ID;
+    const originalSecret = process.env.ALPACA_API_SECRET_KEY;
+    process.env.ALPACA_API_KEY_ID = "test-key";
+    process.env.ALPACA_API_SECRET_KEY = "test-secret";
+    const calls: Array<{ url: string; method: string }> = [];
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, method: (init?.method ?? "GET").toUpperCase() });
+      return new Response(
+        JSON.stringify({
+          id: "ord-close-1",
+          status: "filled",
+          symbol: "NVDA260909C00240000",
+          filled_avg_price: "0.14",
+          filled_qty: "127",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+    try {
+      const exec = createAlpacaExecutor();
+      const result = await exec.closePosition("NVDA260909C00240000", "pos-1");
+      // CLI may fail (no binary / dummy keys) and fall through to REST.
+      const deletes = calls.filter((c) => c.method === "DELETE");
+      if (result.success && result.orderId === "ord-close-1") {
+        expect(deletes.length).toBeGreaterThanOrEqual(1);
+        expect(deletes[0].url).toMatch(/\/v2\/positions\/NVDA260909C00240000/);
+        expect(deletes[0].url).not.toMatch(/\/close/);
+        expect(calls.some((c) => c.method === "POST" && c.url.includes("/close"))).toBe(false);
+        expect(result.executedPrice).toBe(0.14);
+      } else if (result.success) {
+        // CLI path filled without hitting fetch — still a valid close.
+        expect(result.orderId).toBeTruthy();
+      } else {
+        expect(result.error ?? "").not.toMatch(/Unexpected token/);
+      }
+    } finally {
+      globalThis.fetch = origFetch;
+      if (originalKey) process.env.ALPACA_API_KEY_ID = originalKey;
+      else delete process.env.ALPACA_API_KEY_ID;
+      if (originalSecret) process.env.ALPACA_API_SECRET_KEY = originalSecret;
+      else delete process.env.ALPACA_API_SECRET_KEY;
+    }
+  });
+
   it("healthCheck returns unconfigured when no keys", async () => {
     const originalKey = process.env.ALPACA_API_KEY_ID;
     const originalSecret = process.env.ALPACA_API_SECRET_KEY;

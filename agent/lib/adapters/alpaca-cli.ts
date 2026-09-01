@@ -139,6 +139,19 @@ export class AlpacaCli {
     return JSON.parse(stdout) as AlpacaCliOrder;
   }
 
+  /**
+   * Liquidate an open position. The binary's flag is `--symbol-or-asset-id`
+   * (not `--symbol`) — that's the path the VPS CLI actually documents.
+   */
+  async closePosition(symbol: string): Promise<AlpacaCliOrder> {
+    const stdout = await this.run(
+      ["position", "close", "--symbol-or-asset-id", symbol],
+      30000,
+      "position close",
+    );
+    return JSON.parse(stdout) as AlpacaCliOrder;
+  }
+
   /** Health check: binary version + a read-only account call. */
   async healthCheck(): Promise<AlpacaCliHealth> {
     let version: string | null = null;
