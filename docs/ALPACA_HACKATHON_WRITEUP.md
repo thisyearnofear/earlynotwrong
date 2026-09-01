@@ -38,9 +38,14 @@ Each hourly cycle:
 3. **Verify** — the cross-family LLM adversarial verifier attacks the thesis
    before entry (base rates, timing, evidence quality); flagged disagreement
    blocks the entry.
-4. **Manage** — open positions are re-quoted every cycle; conviction decay
-   (>25pt drop) or max-hold triggers exit. The calibration ledger scores every
-   forecast (Brier, log-loss) — "calibration, not Sharpe."
+4. **Manage** — open positions are re-quoted every cycle against an
+   opinionated exit policy (the options analog of the crypto "early, not
+   wrong" ladder): HOLD ordinary drawdown; EXIT_STOP at −35% (thesis dead);
+   EXIT_TAKE at +50% (lock the asymmetry — theta will not give it back);
+   EXIT_DEAD on a zero bid; EXIT_EXPIRY inside 2 DTE; one living contract
+   per underlier (redundant strikes are closed). Entries are one thesis per
+   name, living premium only (mid ≥ $0.50, |delta| 0.25–0.60, 7–45 DTE),
+   never averaged into.
 5. **Learn** — self-analysis computes behavioral conviction from the ledger,
    and the cycle thesis is anchored on-chain (Mantle ERC-8004 + Casper) for
    tamper-evident decision provenance.
@@ -48,14 +53,20 @@ Each hourly cycle:
 ### Risk gates
 
 - **Drawdown cap** — 25% peak-to-current portfolio drawdown halts new entries.
-- **Concentration cap** — no single underlier exceeds 20% of portfolio.
-- **Position cap** — 10 open contracts max; entries fail closed without a
-  portfolio snapshot.
-- **Buying-power check** — per-trade size = min($500, 10% of portfolio, 25% of
-  cash); insufficient buying power blocks the order.
-- **Liquidity filter** — contracts below $10k volume×price are skipped.
-- **Fail-closed defaults** — no portfolio, no keys, no data → no entries.
-  Exits are never blocked.
+- **Concentration cap** — no single underlier exceeds 20% of portfolio,
+  measured on max(cost basis, mark) so a decaying loser cannot free room
+  to average into the same name.
+- **Position cap** — 6 open contracts max, **one per underlier**.
+- **Sizing** — per-trade cap $1,500 (max $2,500 / 2.5% of book); quantity
+  is `floor(size / (price × 100))` capped at 5 lots. A 1-lot that blows
+  the budget is skipped — never `Math.max(1, …)` into a $3k contract, never
+  100+ lots of a 13¢ weekly.
+- **Entry filters** — conviction ≥ 45, two-sided quote, mid ≥ $0.50,
+  |delta| 0.25–0.60, 7–45 DTE, IV/RV ≤ 1.1, side matches RSI/news.
+- **Buying-power check** — insufficient cash blocks the order.
+- **Liquidity filter** — contracts below $10k quote-depth notional are skipped.
+- **Fail-closed defaults** — no portfolio, no keys, no data, market closed
+  → no entries. Exits are planned every cycle and sent when the market is open.
 
 ### Alpaca infrastructure implementation
 
@@ -153,11 +164,20 @@ end-to-end against the real paper account, not a simulator:
   AAPL, MSFT, NVDA, TSLA (7–90d expiries); IV + greeks derived from live
   quotes via Black-Scholes inversion (the Basic plan's indicative feed
   exposes no IV/greeks, so we compute them ourselves).
-- **Real orders** — proposals ≥ 40 conviction are executed through Alpaca's
-  official CLI (`alpaca order submit`, idempotent `--client-order-id`, REST
-  fallback). Inside market hours they fill; outside market hours they are
-  correctly rejected (`options market orders are only allowed during market
-  hours`) and the cycle fails closed — no entries, exits never blocked.
+- **Real orders** — proposals that clear the thesis (conviction ≥ 45, living
+  premium, one-per-underlier) are executed through Alpaca's official CLI (`alpaca order submit`, idempotent `--client-order-id`, REST
+  fallback). Inside market hours they fill; outside market hours both
+  entries and policy exits are deferred to the next open (Alpaca rejects
+  options market orders off-hours).
+
+### Live book (2026-09-01) — what the new policy does at the next open
+
+Monday's session filled 35 buys and 0 sells: 10 contracts, ~$32k premium,
+seven of them NVDA weeklies including a 142-lot 13¢ call that marked to
+zero overnight. Equity ~$94,997 vs $100k start. The policy above is the
+fix: at the next cash open it will EXIT_DEAD the $0 contract, EXIT_STOP
+anything ≤ −35%, collapse redundant strikes to one thesis per underlier,
+and refuse to average back into lottery tickets.
 
 ### Free-data prep (2026-08-29) — what we tap before Monday's open
 

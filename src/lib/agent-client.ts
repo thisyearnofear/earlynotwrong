@@ -392,6 +392,8 @@ export interface OptionsStatus {
   totalTrades: number;
   totalVolumeUsd: number;
   realizedPnlUsd: number;
+  unrealizedPnlUsd?: number;
+  equityPnlUsd?: number;
   errors: number;
   market: {
     is_open: boolean;
@@ -405,6 +407,7 @@ export interface OptionsStatus {
   } | null;
   topSignals: OptionsSignalPreview[];
   positions: OptionsPositionPreview[];
+  verdicts?: Array<{ symbol: string; action: string; reason: string }>;
 }
 
 /**

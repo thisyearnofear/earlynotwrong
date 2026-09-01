@@ -52,10 +52,14 @@ export interface OptionsPosition {
   quantity: number; // number of contracts
   multiplier: number; // shares per contract (100 for US equity options)
   entryCycle: number;
+  /** Epoch ms when the position was first tracked (time-based max-hold). */
+  enteredAt: number;
   /** Conviction score at entry — used for the conviction-decay exit. */
   entryConviction: number;
   unrealizedPnlUsd: number;
   unrealizedPnlPercent: number;
+  /** High-water unrealized % — reserved for a trailing exit if we re-arm it. */
+  peakUnrealizedPercent: number;
   stuck: boolean;
   failedExitAttempts: number;
   ledgerEntry?: LedgerEntry;

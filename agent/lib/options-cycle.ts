@@ -37,15 +37,100 @@ import { persistState } from "./persistence.js";
 import { sendEntryAlert, sendExitAlert } from "./telegram.js";
 import { summarizeError } from "./errors.js";
 import { computeThesisHash, computeSubjectHash } from "./anchors/hashes.js";
+import {
+  OPTIONS_POLICY,
+  computeRsi,
+  evaluateEntry,
+  planExits,
+  sizeContracts,
+  snapshotFromPosition,
+} from "./options-policy.js";
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-const MIN_TRADE_SIZE_USD = 50;
 const STUCK_AFTER_FAILED_ATTEMPTS = 3;
-const MAX_CONVICTION_DROP_FOR_HOLD = 25; // % drop in conviction → EXIT
-const MAX_HOLD_CYCLES = 60; // hard stop after 60 cycles
+
+function brokerToHeld(
+  p: import("./adapters/types.js").AdapterPosition,
+  now: number,
+): OptionsPosition | null {
+  const meta = p.metadata ?? {};
+  const contractType = meta.contractType as "call" | "put" | undefined;
+  if (!contractType) return null;
+  return {
+    symbol: p.symbol,
+    contractId: p.positionId ?? p.symbol,
+    underlyingSymbol: (meta.underlyingSymbol as string) ?? p.symbol.match(/^[A-Z]+/)?.[0] ?? p.symbol,
+    contractType,
+    strike: (meta.strike as number) ?? 0,
+    expiry: (meta.expiry as string) ?? "",
+    entryPrice: p.avgEntryPrice,
+    avgEntryPrice: p.avgEntryPrice,
+    quantity: p.quantity,
+    multiplier: (meta.multiplier as number) ?? 100,
+    entryCycle: optionsState.cycle,
+    enteredAt: now,
+    entryConviction: 50,
+    unrealizedPnlUsd: p.unrealizedPnlUsd,
+    unrealizedPnlPercent: p.unrealizedPnlPercent,
+    peakUnrealizedPercent: p.unrealizedPnlPercent,
+    stuck: false,
+    failedExitAttempts: 0,
+  };
+}
+
+function reconcileHeldWithBroker(
+  brokerPositions: import("./adapters/types.js").AdapterPosition[],
+): void {
+  const now = Date.now();
+  const bySymbol = new Map(optionsState.heldPositions.map((p) => [p.symbol, p]));
+  const next: OptionsPosition[] = [];
+  let adopted = 0;
+
+  for (const bp of brokerPositions) {
+    const existing = bySymbol.get(bp.symbol);
+    if (existing) {
+      existing.quantity = bp.quantity;
+      existing.avgEntryPrice = bp.avgEntryPrice;
+      existing.unrealizedPnlUsd = bp.unrealizedPnlUsd;
+      existing.unrealizedPnlPercent = bp.unrealizedPnlPercent;
+      existing.peakUnrealizedPercent = Math.max(
+        existing.peakUnrealizedPercent ?? 0,
+        bp.unrealizedPnlPercent,
+      );
+      if (!existing.enteredAt) existing.enteredAt = now;
+      next.push(existing);
+      bySymbol.delete(bp.symbol);
+    } else {
+      const adoptedPos = brokerToHeld(bp, now);
+      if (!adoptedPos) {
+        console.log(`  [adopt] Skipping non-option position ${bp.symbol}`);
+        continue;
+      }
+      next.push(adoptedPos);
+      adopted += 1;
+    }
+  }
+
+  const dropped = [...bySymbol.keys()];
+  optionsState.heldPositions = next;
+  if (adopted > 0) {
+    console.log(`  Adopted ${adopted} open broker position(s) into tracking`);
+  }
+  if (dropped.length > 0) {
+    console.log(`  Dropped ${dropped.length} ghost(s) no longer on the broker: ${dropped.join(", ")}`);
+  }
+}
+
+function rsiForUnderlier(underlier: string): number | null {
+  const match = optionsState.convictionSignals.find(
+    (s) => (s.signal.metadata?.underlyingSymbol as string) === underlier,
+  );
+  if (!match || match.klines.length === 0) return null;
+  return computeRsi(match.klines.map((k) => k.close));
+}
 
 // =============================================================================
 // Step 1: Fetch Portfolio
@@ -80,45 +165,10 @@ async function fetchPortfolio(
       `$${portfolio.cashUsd.toFixed(2)} cash`,
     );
 
-    // Adopt open broker positions after a restart. `heldPositions` is
-    // in-memory (not persisted across pm2 restarts), so on a fresh boot it
-    // starts empty while Alpaca still holds open contracts. The broker is
-    // the source of truth — adopt them so exits/P&L tracking resume. This is
-    // the options analog of the crypto "reconcileWithChain" lesson.
-    if (optionsState.heldPositions.length === 0 && portfolio.positions.length > 0) {
-      const adopted: OptionsPosition[] = [];
-      for (const p of portfolio.positions) {
-        const meta = p.metadata ?? {};
-        // Only adopt option contracts (OSI symbols parse into metadata).
-        const contractType = meta.contractType as "call" | "put" | undefined;
-        if (!contractType) {
-          console.log(`  [adopt] Skipping non-option position ${p.symbol}`);
-          continue;
-        }
-        adopted.push({
-          symbol: p.symbol,
-          contractId: p.positionId ?? p.symbol,
-          underlyingSymbol: (meta.underlyingSymbol as string) ?? p.symbol.match(/^[A-Z]+/)?.[0] ?? p.symbol,
-          contractType,
-          strike: (meta.strike as number) ?? 0,
-          expiry: (meta.expiry as string) ?? "",
-          entryPrice: p.avgEntryPrice,
-          avgEntryPrice: p.avgEntryPrice,
-          quantity: p.quantity,
-          multiplier: (meta.multiplier as number) ?? 100,
-          entryCycle: optionsState.cycle,
-          entryConviction: 50, // unknown on adoption — neutral baseline
-          unrealizedPnlUsd: p.unrealizedPnlUsd,
-          unrealizedPnlPercent: p.unrealizedPnlPercent,
-          stuck: false,
-          failedExitAttempts: 0,
-        });
-      }
-      if (adopted.length > 0) {
-        optionsState.heldPositions = adopted;
-        console.log(`  Adopted ${adopted.length} open broker position(s) into tracking`);
-      }
-    }
+    // Broker is the source of truth every cycle (not only on empty memory).
+    // Adopt missing contracts, refresh marks/qty, drop ghosts. Same lesson
+    // as crypto reconcileWithChain — a bounce must not orphan the book.
+    reconcileHeldWithBroker(portfolio.positions);
   } catch (err) {
     console.error(`  [portfolio] Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     optionsState.portfolio = {
@@ -223,79 +273,92 @@ async function managePositions(
 
   if (optionsState.heldPositions.length === 0) {
     console.log("  No open positions.");
+    optionsState.positionVerdicts = [];
     return;
   }
 
-  const toClose: OptionsPosition[] = [];
-  const remaining: OptionsPosition[] = [];
+  const now = Date.now();
+  const brokerBySymbol = new Map(
+    (optionsState.portfolio?.positions ?? []).map((p) => [p.symbol, p]),
+  );
 
-  for (const pos of optionsState.heldPositions) {
-    // Find the matching signal in current scores.
-    const currentScore = optionsState.convictionSignals
-      .find(s => s.signal.symbol === pos.symbol)?.conviction.score ?? 0;
-
-    // Re-fetch the current market signal for P&L calculation.
-    let currentPrice = 0;
-    const matchingSignal = optionsState.convictionSignals
-      .find(s => s.signal.symbol === pos.symbol);
-    if (matchingSignal) {
-      currentPrice = matchingSignal.signal.price;
-    }
-
-    // Skip if we can't determine price (stale data).
-    if (currentPrice <= 0) {
-      remaining.push(pos);
-      continue;
-    }
-
-    // Recalculate P&L (options: cost = price × quantity × 100-share multiplier).
-    const multiplier = pos.multiplier || 100;
-    const marketValue = pos.quantity * currentPrice * multiplier;
-    const costBasis = pos.quantity * pos.avgEntryPrice * multiplier;
-    const unrealizedPnl = marketValue - costBasis;
-    const unrealizedPnlPercent = costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
-
-    // Hard stop: max hold cycles.
-    if (pos.entryCycle + MAX_HOLD_CYCLES <= optionsState.cycle) {
-      console.log(`  EXPIRED ${pos.symbol}: held ${optionsState.cycle - pos.entryCycle} cycles (max ${MAX_HOLD_CYCLES})`);
-      toClose.push(pos);
-      continue;
-    }
-
-    // Conviction decay: if current conviction dropped significantly below entry, exit.
-    const entryConviction = pos.entryConviction ?? 50;
-    const convictionDrop = entryConviction - currentScore;
-    if (convictionDrop >= MAX_CONVICTION_DROP_FOR_HOLD) {
-      console.log(`  CONVICTION_DECAY ${pos.symbol}: ${entryConviction} → ${currentScore} (drop: ${convictionDrop})`);
-      toClose.push(pos);
-      continue;
-    }
-
-    // Mark stuck positions.
-    if (pos.stuck || pos.failedExitAttempts >= STUCK_AFTER_FAILED_ATTEMPTS) {
-      remaining.push({ ...pos, stuck: true });
-      continue;
-    }
-
-    remaining.push({
-      ...pos,
-      unrealizedPnlUsd: unrealizedPnl,
-      unrealizedPnlPercent,
+  const snapshots = optionsState.heldPositions.map((pos) => {
+    const scored = optionsState.convictionSignals.find((s) => s.signal.symbol === pos.symbol);
+    const broker = brokerBySymbol.get(pos.symbol);
+    const currentPrice =
+      (broker?.currentPrice && broker.currentPrice > 0 ? broker.currentPrice : 0) ||
+      scored?.signal.price ||
+      pos.avgEntryPrice;
+    const bid = (scored?.signal.metadata?.bid as number | undefined) ??
+      (currentPrice <= OPTIONS_POLICY.deadPrice ? 0 : undefined);
+    return snapshotFromPosition(pos, {
+      currentPrice,
+      bid,
+      currentConviction: scored?.conviction.score ?? 0,
+      rsi: rsiForUnderlier(pos.underlyingSymbol),
+      delta: (scored?.signal.metadata?.delta as number) ?? 0,
+      now,
     });
+  });
+
+  const plans = planExits(snapshots);
+  optionsState.positionVerdicts = plans.map((p) => ({
+    action: p.action === "HOLD" ? "HOLD" : p.reason,
+    reason: p.detail,
+    symbol: p.symbol,
+  }));
+
+  for (const plan of plans) {
+    const tag = plan.action === "HOLD" ? "HOLD" : plan.reason;
+    console.log(`  ${tag} ${plan.symbol}: ${plan.detail}`);
   }
 
-  optionsState.heldPositions = remaining;
-  console.log(`  Closed ${toClose.length} positions, ${remaining.length} remaining`);
+  const toClose = optionsState.heldPositions.filter((pos) => {
+    const plan = plans.find((p) => p.symbol === pos.symbol);
+    return plan?.action === "EXIT" && !pos.stuck && pos.failedExitAttempts < STUCK_AFTER_FAILED_ATTEMPTS;
+  });
 
-  // Execute closes.
+  const remaining = optionsState.heldPositions.filter(
+    (pos) => !toClose.some((c) => c.symbol === pos.symbol),
+  );
+
+  // Refresh marks on the positions we're keeping.
+  for (const pos of remaining) {
+    const snap = snapshots.find((s) => s.symbol === pos.symbol);
+    if (!snap) continue;
+    const multiplier = pos.multiplier || 100;
+    pos.unrealizedPnlPercent = snap.unrealizedPnlPercent;
+    pos.unrealizedPnlUsd = (snap.currentPrice - pos.avgEntryPrice) * pos.quantity * multiplier;
+    pos.peakUnrealizedPercent = snap.peakUnrealizedPercent;
+  }
+
+  if (toClose.length === 0) {
+    optionsState.heldPositions = remaining;
+    console.log(`  Closed 0 positions, ${remaining.length} remaining`);
+    return;
+  }
+
+  const marketHours = await getMarketHours();
+  if (!marketHours.isOpen) {
+    optionsState.heldPositions = [...remaining, ...toClose];
+    console.log(
+      `  Market closed — deferring ${toClose.length} exit(s) until next open` +
+        `${marketHours.nextOpen ? ` (${marketHours.nextOpen})` : ""}.`,
+    );
+    return;
+  }
+
+  console.log(`  Closing ${toClose.length} position(s)...`);
+  const stillOpen: OptionsPosition[] = [...remaining];
+
   for (const pos of toClose) {
+    const plan = plans.find((p) => p.symbol === pos.symbol);
     const closeResult = await bundle.executor.closePosition(
       pos.symbol,
       pos.contractId || pos.symbol,
     );
 
     if (closeResult.success) {
-      // Record exit in ledger (LedgerEntry has no convictionScore field).
       const multiplier = pos.multiplier || 100;
       const exitPrice = closeResult.executedPrice ?? pos.avgEntryPrice;
       const exitValueUsd = pos.quantity * exitPrice * multiplier;
@@ -327,30 +390,30 @@ async function managePositions(
         optionsState.tradeStats.largestLossUsd = Math.max(optionsState.tradeStats.largestLossUsd, Math.abs(pnl));
       }
 
-      console.log(`  ✓ Closed ${pos.symbol}: P&L $${pnl.toFixed(2)} (tx: ${closeResult.orderId || "N/A"})`);
+      console.log(`  ✓ Closed ${pos.symbol} (${plan?.reason ?? "EXIT"}): P&L $${pnl.toFixed(2)} (tx: ${closeResult.orderId || "N/A"})`);
 
-      // Use EXIT_STOP as action since EXIT_DECAY is not a valid enum value.
-      // Domain guard: the options process shares the same Telegram bot token
-      // as the crypto process, so without this gate the options cycle would
-      // spam the crypto channel's timeline with options-only exit alerts.
-      // Mirrors the CROO CAP / Telegram-subscriber skip in index.ts.
       if (HARNESS_CONFIG.domain !== "options") {
         sendExitAlert({
           cycle: optionsState.cycle,
           symbol: pos.symbol,
           action: "EXIT_STOP",
-          reason: "Conviction decay",
-          pnlPercent: pos.avgEntryPrice > 0 ? (pnl / (pos.quantity * pos.avgEntryPrice)) * 100 : 0,
-          amountUsd: pos.quantity * pos.avgEntryPrice,
+          reason: plan?.detail ?? "Policy exit",
+          pnlPercent: pos.avgEntryPrice > 0 ? (pnl / (pos.quantity * pos.avgEntryPrice * multiplier)) * 100 : 0,
+          amountUsd: pos.quantity * pos.avgEntryPrice * multiplier,
           sellFraction: 1,
           txHash: closeResult.orderId,
         }).catch(() => {});
       }
     } else {
       pos.failedExitAttempts += 1;
+      if (pos.failedExitAttempts >= STUCK_AFTER_FAILED_ATTEMPTS) pos.stuck = true;
+      stillOpen.push(pos);
       console.log(`  ✗ Close failed for ${pos.symbol}: ${closeResult.error}`);
     }
   }
+
+  optionsState.heldPositions = stillOpen;
+  console.log(`  Closed ${toClose.length - (stillOpen.length - remaining.length)} positions, ${stillOpen.length} remaining`);
 }
 
 // =============================================================================
@@ -358,7 +421,7 @@ async function managePositions(
 // =============================================================================
 
 async function createProposals(
-  bundle: AdapterBundle,
+  _bundle: AdapterBundle,
 ): Promise<Array<OptionsSignal>> {
   console.log("\n[5/8] Creating trade proposals...");
 
@@ -368,34 +431,44 @@ async function createProposals(
     return [];
   }
 
-  // Cap: no new entries if we're at max positions.
-  const maxPositions = 10;
-  const activePositions = optionsState.heldPositions.filter(p => !p.stuck).length;
-  if (activePositions >= maxPositions) {
-    console.log(`  Position cap reached (${activePositions}/${maxPositions}). Skipping new entries.`);
+  const activePositions = optionsState.heldPositions.filter((p) => !p.stuck).length;
+  if (activePositions >= OPTIONS_POLICY.maxPositions) {
+    console.log(`  Position cap reached (${activePositions}/${OPTIONS_POLICY.maxPositions}). Skipping new entries.`);
     return [];
   }
 
-  // Top signals by conviction score.
-  const minConviction = 40;
-  // Fail-closed on the core signal: the whole edge is "premium priced
-  // relative to realized vol" — a contract with no usable IV (a gap/stale
-  // quote where the BS solver returned ~0) has no measurable edge and must
-  // not be entry-eligible, even if the overlay factors sum past the
-  // threshold. This is the no-fabricated-data rule applied to IV.
-  const topSignals = optionsState.convictionSignals.filter(s => {
-    const iv = (s.signal.metadata?.impliedVolatility as number) ?? 0;
-    if (iv < 0.05) return false; // degenerate/stale IV → not tradable
-    return s.conviction.score >= minConviction;
-  }).slice(0, 5);
+  const eligible: OptionsSignal[] = [];
+  const usedUnderliers = new Set(
+    optionsState.heldPositions.filter((p) => !p.stuck).map((p) => p.underlyingSymbol),
+  );
 
-  if (topSignals.length === 0) {
-    console.log(`  No signals meet minimum conviction (${minConviction}) AND usable IV. Skipping entries.`);
+  for (const s of optionsState.convictionSignals) {
+    const underlier = (s.signal.metadata?.underlyingSymbol as string) ?? "";
+    if (underlier && usedUnderliers.has(underlier)) continue;
+    const rsi = rsiForUnderlier(underlier);
+    const decision = evaluateEntry({
+      signal: s.signal,
+      score: s.conviction.score,
+      rsi,
+      held: optionsState.heldPositions,
+    });
+    if (!decision.ok) continue;
+    eligible.push(s);
+    if (underlier) usedUnderliers.add(underlier);
+    if (eligible.length >= 3) break;
+  }
+
+  if (eligible.length === 0) {
+    console.log(
+      `  No signals meet the thesis (conviction ≥${OPTIONS_POLICY.minConviction}, living premium, one-per-underlier). Skipping entries.`,
+    );
     return [];
   }
 
-  console.log(`  ${topSignals.length} signals above conviction threshold (${minConviction}) with usable IV`);
-  return topSignals;
+  console.log(
+    `  ${eligible.length} thesis-eligible signal(s): ${eligible.map((s) => `${s.signal.symbol} ${s.conviction.score}/100`).join(", ")}`,
+  );
+  return eligible;
 }
 
 // =============================================================================
@@ -412,7 +485,6 @@ async function executeProposals(
   }
 
   const portfolio = optionsState.portfolio!;
-  const maxPerTrade = Math.min(500, portfolio.totalValueUsd * 0.1); // max 10% of portfolio per trade, $500 cap
 
   // Market-hours gate (execution only): options market orders are rejected by
   // Alpaca outside regular hours (422 "only allowed during market hours").
@@ -426,9 +498,21 @@ async function executeProposals(
     return;
   }
 
-  console.log(`\n[6-7/8] Executing ${proposals.length} proposals (max $${maxPerTrade.toFixed(2)}/trade)...`);
+  console.log(`\n[6-7/8] Executing ${proposals.length} proposals...`);
 
   for (const proposal of proposals) {
+    // Re-check one-thesis in case an earlier fill this cycle took the underlier.
+    const recheck = evaluateEntry({
+      signal: proposal.signal,
+      score: proposal.conviction.score,
+      rsi: rsiForUnderlier((proposal.signal.metadata?.underlyingSymbol as string) ?? ""),
+      held: optionsState.heldPositions,
+    });
+    if (!recheck.ok) {
+      console.log(`  SKIP ${proposal.signal.symbol}: ${recheck.reason}`);
+      continue;
+    }
+
     const riskCheck = bundle.executor.manageRisk(
       { signal: proposal.signal, conviction: proposal.conviction } as import("./adapters/types.js").SignalWithScore,
       portfolio,
@@ -439,17 +523,19 @@ async function executeProposals(
       continue;
     }
 
-    const sizeUsd = Math.min(
-      maxPerTrade,
-      portfolio.totalValueUsd > 0
-        ? (riskCheck.maxPositionUsd ?? maxPerTrade)
-        : maxPerTrade,
-    );
-    // Options are priced per-share; each contract covers `multiplier` (100) shares.
-    // Position cost = price × multiplier × qty, so quantity accounts for the multiplier.
+    const sized = sizeContracts({
+      price: proposal.signal.price,
+      multiplier: (proposal.signal.metadata?.multiplier as number) ?? 100,
+      portfolioUsd: portfolio.totalValueUsd,
+      cashUsd: portfolio.cashUsd,
+    });
+    if (!sized.ok) {
+      console.log(`  SKIP ${proposal.signal.symbol}: ${sized.reason}`);
+      continue;
+    }
+    const quantity = sized.quantity;
     const multiplier = (proposal.signal.metadata?.multiplier as number) ?? 100;
     const contractCost = (proposal.signal.price || 1) * multiplier;
-    const quantity = Math.max(1, Math.floor(sizeUsd / contractCost));
 
     const positionConfig: import("./adapters/types.js").PositionConfig = {
       sizeUsd: quantity * contractCost, // actual dollar amount committed
@@ -498,9 +584,11 @@ async function executeProposals(
         quantity: entryQty,
         multiplier,
         entryCycle: optionsState.cycle,
+        enteredAt: Date.now(),
         entryConviction: proposal.conviction.score,
         unrealizedPnlUsd: 0,
         unrealizedPnlPercent: 0,
+        peakUnrealizedPercent: 0,
         stuck: false,
         failedExitAttempts: 0,
       };

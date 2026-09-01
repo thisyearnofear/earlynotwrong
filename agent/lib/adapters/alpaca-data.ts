@@ -379,6 +379,7 @@ function contractToSignal(
       theta: greeks.theta,
       vega: greeks.vega,
       openInterest: parseFloat(c.open_interest ?? "0") || 0,
+      daysToExpiry,
       bid,
       ask,
       bidSize: quote?.bs ?? 0,

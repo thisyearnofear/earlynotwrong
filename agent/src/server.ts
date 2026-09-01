@@ -586,6 +586,10 @@ app.get("/options/status", async (c) => {
     totalTrades: optionsState.totalTrades,
     totalVolumeUsd: optionsState.totalVolumeUsd,
     realizedPnlUsd: optionsState.realizedPnlUsd,
+    unrealizedPnlUsd: positions.reduce((sum, p) => sum + (p.unrealizedPnlUsd || 0), 0),
+    equityPnlUsd: optionsState.portfolio
+      ? optionsState.portfolio.totalValueUsd - 100_000
+      : 0,
     errors: optionsState.errors.length,
     market,
     portfolio: optionsState.portfolio
@@ -597,6 +601,7 @@ app.get("/options/status", async (c) => {
       : null,
     topSignals,
     positions,
+    verdicts: optionsState.positionVerdicts.slice(0, 12),
   });
 });
 

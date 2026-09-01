@@ -332,6 +332,34 @@ describe("Options Conviction Adapter", () => {
     expect(result.score).toBeLessThanOrEqual(100);
     expect(result.symbol).toBe(signal.symbol);
   });
+
+  it("scores a put higher on overbought RSI than on oversold RSI", async () => {
+    const overbought = makeKlines(20, 155).map((k, i) => ({ ...k, close: 100 + i * 3 }));
+    const oversold = makeKlines(20, 155).map((k, i) => ({ ...k, close: 160 - i * 3 }));
+    const put = makeOptionsSignal({
+      metadata: { ...makeOptionsSignal().metadata, contractType: "put", delta: -0.4 },
+    });
+    const high = await adapter.score(put, overbought);
+    const low = await adapter.score(put, oversold);
+    const highRsi = high.breakdown.find((f) => f.name === "rsi_delta")!.score;
+    const lowRsi = low.breakdown.find((f) => f.name === "rsi_delta")!.score;
+    expect(highRsi).toBeGreaterThan(lowRsi);
+  });
+
+  it("penalizes earnings-near for a long-premium book", async () => {
+    const near = makeOptionsSignal({
+      metadata: { ...makeOptionsSignal().metadata, earningsNear: true },
+    });
+    const clear = makeOptionsSignal({
+      metadata: { ...makeOptionsSignal().metadata, earningsNear: false },
+    });
+    const a = await adapter.score(near, makeKlines(30, 155));
+    const b = await adapter.score(clear, makeKlines(30, 155));
+    const nearF = a.breakdown.find((f) => f.name === "earnings_vol_crush")!.score;
+    const clearF = b.breakdown.find((f) => f.name === "earnings_vol_crush")!.score;
+    expect(nearF).toBeLessThan(0);
+    expect(clearF).toBeGreaterThan(0);
+  });
 });
 
 // =============================================================================

@@ -150,10 +150,24 @@ export function OptionsArenaCard() {
                 { label: "Value", value: fmtUsd(status.portfolio?.totalValueUsd ?? 0) },
                 { label: "Cash", value: fmtUsd(status.portfolio?.cashUsd ?? 0) },
                 { label: "Trades", value: String(status.totalTrades) },
-                { label: "P&L", value: fmtUsd(status.realizedPnlUsd) },
+                {
+                  label: "P&L",
+                  value: fmtUsd(status.equityPnlUsd ?? (status.realizedPnlUsd + (status.unrealizedPnlUsd ?? 0))),
+                },
               ].map((m) => (
                 <div key={m.label} className="rounded-lg border border-border/30 bg-surface/20 px-1 py-2">
-                  <p className="text-sm font-mono text-foreground tabular-nums">{m.value}</p>
+                  <p
+                    className={cn(
+                      "text-sm font-mono tabular-nums",
+                      m.label === "P&L"
+                        ? (status.equityPnlUsd ?? 0) >= 0
+                          ? "text-patience"
+                          : "text-impatience"
+                        : "text-foreground",
+                    )}
+                  >
+                    {m.value}
+                  </p>
                   <p className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim mt-0.5">{m.label}</p>
                 </div>
               ))}
@@ -235,6 +249,29 @@ export function OptionsArenaCard() {
                 </div>
               )}
             </div>
+
+            {status.verdicts && status.verdicts.length > 0 && (
+              <div>
+                <p className="text-[9px] font-mono uppercase tracking-wider text-foreground-dim mb-1">
+                  This cycle · thesis
+                </p>
+                <div className="space-y-0.5">
+                  {status.verdicts.slice(0, 8).map((v) => (
+                    <div key={v.symbol} className="flex items-center justify-between rounded-md border border-border/20 bg-surface/10 px-2 py-1">
+                      <span className="font-mono text-[10px] text-foreground truncate mr-2">{v.symbol}</span>
+                      <span
+                        className={cn(
+                          "font-mono text-[10px] shrink-0",
+                          v.action === "HOLD" ? "text-patience" : "text-impatience",
+                        )}
+                      >
+                        {v.action === "HOLD" ? "HOLD" : v.action}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Anchor receipt footer */}
             <div className="flex items-center gap-1.5 text-[9px] font-mono text-foreground-dim">

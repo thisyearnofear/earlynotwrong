@@ -51,6 +51,15 @@ ssh "$HOST" bash -s "$REF" <<'EOF'
   # Zero-downtime restart; --update-env re-reads the process's saved env.
   pm2 reload earlynotwrong --update-env
 
+  # Alpaca options agent (separate process/port). Reload whenever the
+  # process is already in the pm2 list — a missing process is non-fatal
+  # so a crypto-only host still deploys cleanly.
+  if pm2 describe earlynotwrong-options >/dev/null 2>&1; then
+    pm2 reload earlynotwrong-options --update-env
+  else
+    echo "earlynotwrong-options not in pm2 — skipping options reload"
+  fi
+
   # Delphi runner (separate pm2 process) — only when explicitly enabled.
   # The arena closed 2026-08-24 and DELPHI_ENABLED=0 in agent/.env, so the
   # runner would self-exit immediately and pm2's autorestart would churn it

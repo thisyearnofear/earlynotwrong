@@ -25,6 +25,7 @@ import type {
 } from "./types.js";
 import { withTimeout } from "../delphi/executor.js";
 import { getAlpacaCli, type AlpacaCliOrder } from "./alpaca-cli.js";
+import { OPTIONS_POLICY, underlierCostUsd } from "../options-policy.js";
 
 const ALPACA_TRADING_BASE =
   process.env.ALPACA_API_BASE_URL ??
@@ -217,7 +218,7 @@ export function createAlpacaExecutor(): TradeExecutor {
     },
 
     manageRisk(signal: SignalWithScore, portfolio: Portfolio): RiskCheck {
-      const maxPerTradeUsd = 1000;
+      const maxPerTradeUsd = OPTIONS_POLICY.maxSizeUsd;
       const maxConcentration = 20; // %
       const maxDrawdown = 25; // %
 
@@ -230,14 +231,11 @@ export function createAlpacaExecutor(): TradeExecutor {
         }
       }
 
-      // Concentration: no single underlier > 20% of portfolio.
+      // Concentration: no single underlier > 20% of portfolio, measured on
+      // max(cost basis, mark). A decaying mark must not free room to average
+      // into the same name.
       const underlying = (signal.signal.metadata?.underlyingSymbol as string) ?? signal.signal.symbol;
-      const underlierExposure = portfolio.positions
-        .filter((p) => {
-          const pUnderlying = p.metadata?.underlyingSymbol as string | undefined;
-          return pUnderlying === underlying || p.symbol.startsWith(underlying);
-        })
-        .reduce((sum, p) => sum + p.valueUsd, 0);
+      const underlierExposure = underlierCostUsd(portfolio.positions, underlying);
 
       if (portfolio.totalValueUsd > 0) {
         const concentration = (underlierExposure / portfolio.totalValueUsd) * 100;

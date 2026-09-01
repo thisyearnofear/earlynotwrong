@@ -116,14 +116,21 @@ function ivContrarianFraction(iv: number, ivAvailable: boolean, ivToRealized: nu
   return 0.5; // very low IV — could be dead stock, neutral
 }
 
-/** RSI timing fraction — rewards oversold underliers for call premium buying. */
-function rsiTimingFraction(rsi: number | null): number {
+/** RSI timing fraction — side-aware. Calls like oversold; puts like overbought. */
+function rsiTimingFraction(rsi: number | null, contractType: string): number {
   if (rsi === null) return 0.5;
-  if (rsi <= 30) return 1.0;  // oversold — good call entry
-  if (rsi <= 45) return 0.75;
-  if (rsi <= 55) return 0.5;   // neutral
-  if (rsi <= 70) return 0.25;
-  return 0;                    // overbought — avoid call entries
+  const oversold = rsi <= 30 ? 1.0 : rsi <= 45 ? 0.75 : rsi <= 55 ? 0.5 : rsi <= 70 ? 0.25 : 0;
+  if (contractType === "put") return 1 - oversold;
+  return oversold;
+}
+
+/** Reward 0.25–0.55 delta (a real option), penalize lotto and stock-substitutes. */
+function deltaQualityFraction(absDelta: number): number {
+  if (absDelta < 0.15) return 0.1;
+  if (absDelta < 0.25) return 0.35;
+  if (absDelta <= 0.55) return 1.0;
+  if (absDelta <= 0.7) return 0.55;
+  return 0.25;
 }
 
 /** Quality fraction from quote-depth liquidity + underlier price (proxy for liquidity). */
@@ -190,7 +197,9 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
 
       // RSI from underlier historical klines.
       const rsi = computeRsi(historical);
-      const rsiTiming = rsiTimingFraction(rsi);
+      const rsiTiming = rsiTimingFraction(rsi, contractType);
+      const absDelta = Math.abs(delta);
+      const rsiDeltaFrac = rsiTiming * 0.6 + deltaQualityFraction(absDelta) * 0.4;
       const ivFraction = ivContrarianFraction(iv, ivAvailable, ivToRealized);
       const qualityFrac = qualityFraction(volume, signal.marketCap, underlierPrice);
 
@@ -213,14 +222,15 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
       const gammaRisk = gammaSqueezeFraction(gamma);
       const decayRisk = vannaCharmFraction(theta);
       const earningsNear = (meta.earningsNear as boolean) ?? false;
-      const earningsFraction = earningsNear ? 1.0 : 0.3;
+      // Long premium: earnings is crush risk, not an opportunity. Penalty
+      // when the event is near; a small bonus when the calendar is clear.
 
       const w = OPTIONS_WEIGHTS;
       const breakdown: FactorScore[] = [
         { name: "iv_contrarian", score: Math.round(ivFraction * w.ivContrarian), maxScore: w.ivContrarian,
           rationale: `IV=${iv.toFixed(3)}${ivToRealized > 0 ? ` / RV(×${ivToRealized.toFixed(1)})` : ""} → ${ivToRealized > 0 ? (ivToRealized >= 1.1 ? "rich premium — avoid" : ivToRealized <= 0.9 ? "cheap premium — buy edge" : "fairly priced") : iv >= 0.6 ? "high IV — avoid" : iv <= 0.2 ? "low IV — buy edge" : "neutral"}` },
-        { name: "rsi_delta", score: Math.round(rsiTiming * w.rsiDelta), maxScore: w.rsiDelta,
-          rationale: `RSI=${rsi ?? "N/A"}, delta=${delta.toFixed(2)}, news=${newsSentiment}` },
+        { name: "rsi_delta", score: Math.round(rsiDeltaFrac * w.rsiDelta), maxScore: w.rsiDelta,
+          rationale: `RSI=${rsi ?? "N/A"}, |delta|=${absDelta.toFixed(2)}, news=${newsSentiment}` },
         { name: "quality", score: Math.round(qualityFrac * w.quality), maxScore: w.quality,
           rationale: `Volume=$${(volume / 1e6).toFixed(1)}M` },
         { name: "regime", score: Math.round(regimeFraction * w.regime), maxScore: w.regime,
@@ -231,8 +241,8 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
           rationale: `Theta=${theta.toFixed(2)} → decay risk` },
         { name: "gamma_squeeze_risk", score: -Math.round(gammaRisk * w.gammaSqueezeRisk), maxScore: w.gammaSqueezeRisk,
           rationale: `Gamma=${gamma.toFixed(3)} → squeeze risk` },
-        { name: "earnings_vol_crush", score: Math.round(earningsFraction * w.earningsVolCrush), maxScore: w.earningsVolCrush,
-          rationale: earningsNear ? "Earnings near expiry — vol crush opportunity" : "No earnings timing" },
+        { name: "earnings_vol_crush", score: earningsNear ? -w.earningsVolCrush : Math.round(0.3 * w.earningsVolCrush), maxScore: w.earningsVolCrush,
+          rationale: earningsNear ? "Earnings near — vol-crush risk for long premium" : "No earnings timing" },
       ];
 
       const raw = breakdown.reduce((sum, f) => sum + f.score, 0);
@@ -247,13 +257,13 @@ export function createOptionsConvictionAdapter(): ConvictionFactors {
       const w = OPTIONS_WEIGHTS;
       return [
         { name: "iv_contrarian", weight: w.ivContrarian, description: "Extreme IV rank on mean-reverting underlier — sell/buy premium edge." },
-        { name: "rsi_delta", weight: w.rsiDelta, description: "Underlier RSI + delta sensitivity for timing." },
+        { name: "rsi_delta", weight: w.rsiDelta, description: "Side-aware RSI + delta quality (0.25–0.55 sweet spot)." },
         { name: "quality", weight: w.quality, description: "Underlier liquidity, AUM, institutional ownership." },
         { name: "regime", weight: w.regime, description: "VIX regime and market regime composite." },
         { name: "open_interest_growth", weight: w.openInterestGrowth, description: "Open interest growth (replaces crypto holder growth)." },
         { name: "vanna_charm_penalty", weight: w.vannaCharmPenalty, description: "Vanna/Charm decay risk penalty." },
         { name: "gamma_squeeze_risk", weight: w.gammaSqueezeRisk, description: "Gamma squeeze risk (penalty for high-gamma positions)." },
-        { name: "earnings_vol_crush", weight: w.earningsVolCrush, description: "Earnings vol crush timing (premium near earnings expiry)." },
+        { name: "earnings_vol_crush", weight: w.earningsVolCrush, description: "Earnings vol crush is a penalty for long premium." },
       ];
     },
   };
