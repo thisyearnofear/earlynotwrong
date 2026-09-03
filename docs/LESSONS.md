@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **Gensyn Delphi Agent Arena** (prediction markets) | 2026-08-10 → 2026-08-24 | Rank 122/159, ~600 TST from 1,000 TST start (PnL −400, 36 trades) | **Archived.** Not enough calibration outperformance vs LMSR. |
 | **BNB Hack: AI Trading Agent Edition** (BSC live trading) | 2026-06-22 → 2026-06-28 | Submitted; result not posted publicly | Agent kept live as the **product** (MCP x402, CROO CAP, anchoring). |
-| **Alpaca AI Trading Agents Hackathon** (options paper trading) | 2026-08-28 → 2026-09-04 | Live on paper (Aug 29); first fills at Mon open | **In progress.** Pipeline live, adapter verified, strategy predicated on prior lessons — see `docs/ALPACA_HACKATHON_WRITEUP.md` § "Strategy predicate." |
+| **Alpaca AI Trading Agents Hackathon** (options paper trading) | 2026-08-28 → 2026-09-04 | Down 3.8% at Wed 10:23 ET ($96,193.78 / $100k), 6 live option positions; see `docs/ALPACA_HACKATHON_WRITEUP.md` § "Tournament day" | **In progress.** Pipeline live, adapters verified, win-or-bust policy deployed mid-tournament; final close 2026-09-04. |
 
 Per-competition source docs: `docs/HACKATHON_SUBMISSION_DELPHI.md`,
 `docs/HACKATHON_PLAN.md`, `docs/OKX_HACKATHON.md` (research-only, did not ship).
@@ -197,6 +197,69 @@ wallet), Mantle + Casper anchoring receipts, the wallet-score SKU.
 Running it is the demo; turning it off is throwing away a live A2A
 node.
 
+## Alpaca AI Trading Agents Hackathon (options paper, Aug–Sep 2026)
+
+### What was on the line
+
+A 7-day paper-trading tournament on Alpaca options. Ranked by equity P&L.
+The agent had to trade options on a free data plan (no OPRA, no option
+ Greeks) using the same 8-step harness with a new Alpaca data/execution
+ adapter pair. The late decision was to swing for the fences: open the
+ throttle on DTE, delta, IV/RV, sizing, and concentration because the
+ portfolio was already down 6.2% with one day left.
+
+### What worked
+
+- **The harness ported cleanly.** The same loop, scoring, risk, ledger,
+  and anchoring machinery ran against a new asset class with three new
+  adapter files and one domain flag. Options greeks were derived from
+  underlier realized vol and indicative option quotes; no paid feed.
+- **Broker reconciliation as source of truth.** `fetchPortfolio()` +
+  `reconcileHeldWithBroker()` rescued the order-status bug: three market
+  orders were accepted by Alpaca but misclassified as failed; the next
+  cycle adopted them from the broker and the book stayed correct.
+- **Win-or-bust policy switch mid-tournament.** Disabling conviction-decay
+  exits and adding a 40pp trailing stop / 150% take-profit kept the big
+  NVDA 200C winner running (+39% at the time of writing). Two theses per
+  underlier let the agent build a near/far call expression.
+- **15-minute cycle cadence.** Short-DTE (1–14 day) options need fast
+  reactivity; the 15-min interval was fast enough to respond without
+  churn.
+- **Options-state persistence.** A dedicated `options-state.json` kept
+  cycle count, ledger, and `peakUnrealizedPercent` across `pm2 reload` /
+  deploys.
+
+### What didn't
+
+- **Order status `new`/`held` was treated as failure.** The original
+  `placeOrder` only counted `filled`/`pending`/`accepted` as success, so
+  `new` and `held` submissions returned `success: false` with an
+  `undefined` error. The agent logged `✗ ...: undefined` and did not
+  record the buys; Alpaca executed them anyway. Fix: any non-hard-fail
+  status (`rejected`/`canceled`/`expired`/`suspended`/`stopped`) is a
+  successful submission; hard failures now carry the actual Alpaca status.
+- **`filled_qty: "0"` is not a fill.** `0` as a string is truthy, so
+  `parseFloat(order.filled_qty)` returned `0` and the agent recorded a
+  zero-quantity position for accepted-but-not-yet-filled orders. The
+  broker reconcile backstopped it, but `totalTrades`/`totalVolumeUsd`
+  telemetry was off.
+- **Conviction-decay exit was the wrong default for a tournament.** It
+  would have sold the +17% NVDA winner just because its score dropped.
+  Price-based exits (trailing stop, take-profit, thesis stop) keep
+  winners and cut losers.
+- **One-thesis-per-underlier was too restrictive for a 3-day window.**
+  Max 2 per name let the agent express a strangle/straddle-like view
+  without self-hedging.
+- **Short-DTE gamma decays fast.** The 1–14 day window is the right
+  weapon, but it needs the expiry-day exit rule and the fast cycle.
+
+### Decision
+
+**In progress through the close.** The options agent is live and the
+ win-or-bust book is on the board. After the tournament it should be
+ archived or folded into a future multi-asset domain switch, depending on
+ whether the Alpaca adapter becomes a product surface.
+
 ## Cross-cutting lessons
 
 1. **Calibration, not Sharpe, is the right yardstick for prediction
@@ -229,6 +292,12 @@ node.
    real-money or live-bankroll incident. The "Recently shipped" log
    is the only durable record of what the harness actually protects
    against — features, by themselves, are not.
+8. **The broker is the source of truth for fills; the order ack is just
+   an ack.** `placeOrder` returns `new`/`held` for options market orders
+   that Alpaca fills asynchronously. Reconcile against the broker book
+   every cycle and record accepted orders with the requested quantity;
+   the broker will correct actual fill price and quantity on the next
+   pass.
 
 ## What we'd do differently next time
 
@@ -247,3 +316,9 @@ node.
 - **Persist every estimate, not just the traded ones, from day one.**
   We added `forecasts-all.jsonl` mid-run; it should have been the
   default.
+- **Persist domain state and pre-flight the order-status matrix before
+  the first live options cycle.** Options market orders return `new`,
+  `held`, `pending_new`, and `filled` — and an accepted order is not a
+  fill. Reconcile against the broker every cycle, log the actual status,
+  and treat hard-fail (`rejected`/`canceled`/`expired`/`suspended`/
+  `stopped`) as the only true failure.
