@@ -27,6 +27,9 @@ import type { CasperEcosystemContext } from "./casper-mcp-client.js";
 import type { CycleExecutionSnapshot } from "./cycle-execution.js";
 import type { CycleObservabilitySnapshot } from "./agent-state.js";
 import type { LedgerEntry } from "conviction-core";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { getDataDir } from "./persistence.js";
 
 // =============================================================================
 // Types
@@ -141,3 +144,52 @@ export const optionsState = {
     regimeScore: number | null;
   }>,
 };
+
+// =============================================================================
+// Persistence — keep options state across pm2 restarts
+// =============================================================================
+
+const OPTIONS_STATE_FILE = "options-state.json";
+
+type RuntimeOnlyKey = "convictionSignals" | "positionVerdicts" | "executedTrades" | "portfolio" | "status";
+
+const RUNTIME_ONLY_KEYS: RuntimeOnlyKey[] = ["convictionSignals", "positionVerdicts", "executedTrades", "portfolio", "status"];
+
+function resetRuntimeFields(target: typeof optionsState): void {
+  target.convictionSignals = [];
+  target.positionVerdicts = [];
+  target.executedTrades = [];
+  target.portfolio = null;
+  target.status = "idle";
+}
+
+/** Restore the options state from disk before a cycle starts. */
+export function loadOptionsState(): void {
+  try {
+    const path = join(getDataDir(), OPTIONS_STATE_FILE);
+    if (!existsSync(path)) {
+      console.log(`  [options-state] no snapshot at ${path}`);
+      return;
+    }
+    const raw = readFileSync(path, "utf-8");
+    const saved = JSON.parse(raw) as Partial<typeof optionsState>;
+    resetRuntimeFields(optionsState);
+    Object.assign(optionsState, saved);
+    resetRuntimeFields(optionsState);
+    console.log(`  [options-state] restored from ${path} (cycle ${optionsState.cycle})`);
+  } catch (err) {
+    console.warn(`  [options-state] restore failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Persist the options state to disk after a cycle completes. */
+export function saveOptionsState(): void {
+  try {
+    const path = join(getDataDir(), OPTIONS_STATE_FILE);
+    const toSave = { ...optionsState };
+    resetRuntimeFields(toSave as typeof optionsState);
+    writeFileSync(path, JSON.stringify(toSave, null, 2));
+  } catch (err) {
+    console.warn(`  [options-state] save failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}

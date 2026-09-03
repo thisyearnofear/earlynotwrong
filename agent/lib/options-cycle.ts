@@ -25,7 +25,7 @@ import { getMarketHours } from "./adapters/alpaca-data.js";
 import type { AdapterBundle } from "./adapters/index.js";
 import type { HarnessConfig } from "./harness-config.js";
 import { HARNESS_CONFIG } from "./harness-config.js";
-import { optionsState } from "./options-state.js";
+import { optionsState, loadOptionsState, saveOptionsState } from "./options-state.js";
 import type { OptionsPosition, OptionsSignal } from "./options-state.js";
 import { AGENT_CONFIG } from "./config.js";
 import { anchorAll } from "./anchors/index.js";
@@ -695,12 +695,6 @@ export async function runOptionsCycle(harnessConfig: HarnessConfig): Promise<voi
   console.log(`║  OPTIONS CYCLE #${String(optionsState.cycle + 1).padStart(2)} — ${new Date().toISOString()}  ║`);
   console.log(`╚═══════════════════════════════════════╝`);
 
-  optionsState.cycle += 1;
-  optionsState.status = "running";
-  optionsState.lastRunAt = Date.now();
-
-  const cycleStart = Date.now();
-
   // Resolve adapters (should already be resolved at startup, but re-check).
   let bundle: AdapterBundle;
   try {
@@ -710,6 +704,16 @@ export async function runOptionsCycle(harnessConfig: HarnessConfig): Promise<voi
     optionsState.status = "error";
     return;
   }
+
+  // Restore options state from the previous cycle so a pm2 restart doesn't
+  // reset cycle count, ledger, realized P&L, and peak-unrealized marks.
+  loadOptionsState();
+
+  optionsState.cycle += 1;
+  optionsState.status = "running";
+  optionsState.lastRunAt = Date.now();
+
+  const cycleStart = Date.now();
 
   try {
     await fetchPortfolio(bundle);
@@ -805,5 +809,7 @@ export async function runOptionsCycle(harnessConfig: HarnessConfig): Promise<voi
     if (err instanceof Error && err.stack) {
       console.error(err.stack);
     }
+  } finally {
+    saveOptionsState();
   }
 }

@@ -469,6 +469,14 @@ async function runCycle(): Promise<void> {
  * (regime, signals, verdicts) is rebuilt by the first cycle.
  */
 async function restoreSnapshot(): Promise<void> {
+  // The options domain has its own state container; options-cycle.ts loads
+  // it at the start of each cycle. Skip crypto-state restore here so a stale
+  // shared state.json doesn't clobber the options process with ledger entries.
+  if (HARNESS_CONFIG.domain === "options") {
+    console.log(`  [snapshot] options domain — per-cycle state restore handled by options-cycle.ts`);
+    return;
+  }
+
   try {
     const persisted = await loadPersistentState();
     const held = persisted?.agent?.heldPositions;
