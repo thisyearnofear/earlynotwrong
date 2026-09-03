@@ -185,19 +185,25 @@ export function createAlpacaExecutor(): TradeExecutor {
           order = null;
         }
 
+        const hardFail = ["rejected", "canceled", "expired", "suspended", "stopped"];
+
         if (order) {
           // Multiplier-aware value: filled_avg_price is per-share.
+          // Treat `new`, `held`, `pending_new`, and `accepted` as successful
+          // submission — Alpaca fills options market orders asynchronously.
           const multiplier = (meta.multiplier as number) ?? 100;
           const filledPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
           const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : qty;
+          const success = Boolean(order.id) && !hardFail.includes(order.status);
           return {
-            success: ["filled", "pending", "accepted"].includes(order.status),
+            success,
             orderId: order.id,
             symbol: contractSymbol,
             executedPrice: filledPrice,
             executedQuantity: filledQty,
-            executedValueUsd: filledPrice ? filledPrice * filledQty * multiplier : undefined,
+            executedValueUsd: filledPrice && filledQty ? filledPrice * filledQty * multiplier : undefined,
             timestamp: now,
+            error: success ? undefined : `order status ${order.status}`,
           };
         }
 
@@ -206,14 +212,16 @@ export function createAlpacaExecutor(): TradeExecutor {
         const multiplier = (meta.multiplier as number) ?? 100;
         const filledPrice = restOrder.filled_avg_price ? parseFloat(restOrder.filled_avg_price) : undefined;
         const filledQty = restOrder.filled_qty ? parseFloat(restOrder.filled_qty) : qty;
+        const success = Boolean(restOrder.id) && !hardFail.includes(restOrder.status);
         return {
-          success: ["filled", "pending", "accepted"].includes(restOrder.status),
+          success,
           orderId: restOrder.id,
           symbol: contractSymbol,
           executedPrice: filledPrice,
           executedQuantity: filledQty,
-          executedValueUsd: filledPrice ? filledPrice * filledQty * multiplier : undefined,
+          executedValueUsd: filledPrice && filledQty ? filledPrice * filledQty * multiplier : undefined,
           timestamp: now,
+          error: success ? undefined : `order status ${restOrder.status}`,
         };
       } catch (err) {
         return { success: false, symbol: contractSymbol, error: err instanceof Error ? err.message : String(err), timestamp: now };
