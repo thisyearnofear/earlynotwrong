@@ -33,7 +33,7 @@ function makeSignal(overrides: Partial<MarketSignal> = {}, meta: Record<string, 
       underlyingSymbol: "NVDA",
       contractType: "call",
       strike: 180,
-      expiry: "2026-09-18",
+      expiry: "2026-09-12",
       impliedVolatility: 0.35,
       ivAvailable: true,
       ivToRealized: 0.8,
@@ -118,7 +118,7 @@ describe("evaluateEntry", () => {
 
   it("rejects lottery-ticket premium", () => {
     const d = evaluateEntry({
-      signal: makeSignal({ price: 0.13 }, { bid: 0.12, ask: 0.14, delta: 0.08 }),
+      signal: makeSignal({ price: 0.05 }, { bid: 0.04, ask: 0.06, delta: 0.25 }),
       score: 60,
       rsi: 40,
       held: [],
@@ -140,16 +140,19 @@ describe("evaluateEntry", () => {
     expect(d.reason).toMatch(/delta/i);
   });
 
-  it("rejects a second contract on an underlier already held", () => {
+  it("rejects a third contract on an underlier already at the max", () => {
     const d = evaluateEntry({
       signal: makeSignal(),
       score: 60,
       rsi: 40,
-      held: [makeHeld({ underlyingSymbol: "NVDA", symbol: "NVDA260911C00200000" })],
+      held: [
+        makeHeld({ underlyingSymbol: "NVDA", symbol: "NVDA260911C00200000" }),
+        makeHeld({ underlyingSymbol: "NVDA", symbol: "NVDA260911C00230000" }),
+      ],
       now,
     });
     expect(d.ok).toBe(false);
-    expect(d.reason).toMatch(/thesis on NVDA/);
+    expect(d.reason).toMatch(/theses on NVDA/);
   });
 
   it("rejects averaging into the same OSI symbol", () => {
@@ -166,7 +169,7 @@ describe("evaluateEntry", () => {
   });
 
   it("rejects a call into overbought RSI", () => {
-    const d = evaluateEntry({ signal: makeSignal(), score: 60, rsi: 78, held: [], now });
+    const d = evaluateEntry({ signal: makeSignal(), score: 60, rsi: 95, held: [], now });
     expect(d.ok).toBe(false);
     expect(d.reason).toMatch(/overbought/);
   });
@@ -185,7 +188,7 @@ describe("evaluateEntry", () => {
 
   it("rejects rich IV/RV", () => {
     const d = evaluateEntry({
-      signal: makeSignal({}, { ivToRealized: 1.8 }),
+      signal: makeSignal({}, { ivToRealized: 2.5 }),
       score: 60,
       rsi: 45,
       held: [],
@@ -196,12 +199,13 @@ describe("evaluateEntry", () => {
   });
 
   it("rejects short-dated contracts", () => {
+    const expiryDay = Date.parse("2026-09-03T14:00:00Z");
     const d = evaluateEntry({
       signal: makeSignal({}, { expiry: "2026-09-03" }),
       score: 60,
       rsi: 45,
       held: [],
-      now,
+      now: expiryDay,
     });
     expect(d.ok).toBe(false);
     expect(d.reason).toMatch(/DTE/);
@@ -217,7 +221,7 @@ describe("sizeContracts", () => {
   });
 
   it("skips a 1-lot that blows the dollar cap (no Math.max(1) override)", () => {
-    const d = sizeContracts({ price: 37.15, portfolioUsd: 100_000, cashUsd: 70_000 });
+    const d = sizeContracts({ price: 150, portfolioUsd: 100_000, cashUsd: 70_000 });
     expect(d.ok).toBe(false);
     expect(d.quantity).toBe(0);
     expect(d.reason).toMatch(/1 lot costs/);
@@ -238,14 +242,19 @@ describe("planExits", () => {
     expect(plans[0].action).toBe("HOLD");
   });
 
-  it("EXIT_STOP at −35%", () => {
-    const plans = planExits([snap({ unrealizedPnlPercent: -39 })]);
+  it("EXIT_STOP at −60%", () => {
+    const plans = planExits([snap({ unrealizedPnlPercent: -65, peakUnrealizedPercent: -25 })]);
     expect(plans[0].reason).toBe("EXIT_STOP");
   });
 
-  it("EXIT_TAKE at +50%", () => {
-    const plans = planExits([snap({ unrealizedPnlPercent: 55 })]);
+  it("EXIT_TAKE at +150%", () => {
+    const plans = planExits([snap({ unrealizedPnlPercent: 160 })]);
     expect(plans[0].reason).toBe("EXIT_TAKE");
+  });
+
+  it("EXIT_TRAIL when a winner gives back 40pp from peak", () => {
+    const plans = planExits([snap({ unrealizedPnlPercent: 10, peakUnrealizedPercent: 55 })]);
+    expect(plans[0].reason).toBe("EXIT_TRAIL");
   });
 
   it("EXIT_DEAD on a zero bid", () => {
@@ -253,14 +262,14 @@ describe("planExits", () => {
     expect(plans[0].reason).toBe("EXIT_DEAD");
   });
 
-  it("EXIT_EXPIRY inside two days", () => {
-    const now = Date.parse("2026-09-01T14:00:00Z");
-    const plans = planExits([snap({ expiry: "2026-09-02", now })]);
+  it("EXIT_EXPIRY on expiry day mid-afternoon", () => {
+    const expiryNow = Date.parse("2026-09-01T18:00:00Z");
+    const plans = planExits([snap({ expiry: "2026-09-01", now: expiryNow })]);
     expect(plans[0].reason).toBe("EXIT_EXPIRY");
   });
 
-  it("EXIT_WRONG_SIDE when holding a call into RSI 75", () => {
-    const plans = planExits([snap({ rsi: 75, unrealizedPnlPercent: -5 })]);
+  it("EXIT_WRONG_SIDE when holding a call into RSI 95", () => {
+    const plans = planExits([snap({ rsi: 95, unrealizedPnlPercent: -5 })]);
     expect(plans[0].reason).toBe("EXIT_WRONG_SIDE");
   });
 
@@ -290,8 +299,8 @@ describe("planExits", () => {
     const plans = planExits([kept, lotto, otm]);
     const bySymbol = Object.fromEntries(plans.map((p) => [p.symbol, p]));
     expect(bySymbol[kept.symbol].action).toBe("HOLD");
+    expect(bySymbol[otm.symbol].action).toBe("HOLD");
     expect(bySymbol[lotto.symbol].reason).toBe("EXIT_REDUNDANT");
-    expect(bySymbol[otm.symbol].reason).toBe("EXIT_REDUNDANT");
   });
 
   it("dead marks beat redundant — the $0 contract is EXIT_DEAD, not HOLD", () => {

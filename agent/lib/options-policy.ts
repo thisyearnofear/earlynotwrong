@@ -23,34 +23,41 @@ import type { OptionsPosition } from "./options-state.js";
 // =============================================================================
 
 export const OPTIONS_POLICY = {
-  minConviction: 45,
+  minConviction: 35,
   minIv: 0.05,
-  /** Per-share mid. Sub-$0.50 weeklies are lottery tickets, not a book. */
-  minPremium: 0.5,
-  minAbsDelta: 0.25,
-  maxAbsDelta: 0.6,
-  minDte: 7,
-  maxDte: 45,
-  /** Don't buy vol that is already rich vs realized. */
-  maxIvToRealized: 1.1,
-  maxPositions: 6,
-  maxPerUnderlier: 1,
-  maxContractsPerOrder: 5,
-  targetSizeUsd: 1500,
-  maxSizeUsd: 2500,
-  maxSizeFrac: 0.025,
-  cashSizeFrac: 0.15,
-  /** Thesis invalidation — same bar as the crypto EXIT_STOP. */
-  stopLossPercent: -35,
-  /** Lock the asymmetry. Options don't trend like tokens; theta eats the rest. */
-  takeProfitPercent: 50,
-  expiryExitDte: 2,
-  maxHoldMs: 5 * 24 * 60 * 60 * 1000,
-  convictionDropForExit: 25,
+  /** Per-share mid. Cheap premium is fine if the size cap prevents a blow-up. */
+  minPremium: 0.1,
+  minAbsDelta: 0.15,
+  maxAbsDelta: 0.8,
+  minDte: 1,
+  maxDte: 14,
+  /** Swing for the fences: pay richer vol for a thesis if the move is there. */
+  maxIvToRealized: 2.0,
+  maxPositions: 8,
+  maxPerUnderlier: 2,
+  maxContractsPerOrder: 50,
+  targetSizeUsd: 10_000,
+  maxSizeUsd: 25_000,
+  maxSizeFrac: 0.10,
+  cashSizeFrac: 0.30,
+  /** Thesis invalidation — wide enough to let gamma breathe. */
+  stopLossPercent: -60,
+  /** Let winners run in a short tournament. */
+  takeProfitPercent: 150,
+  /** Trailing stop: exit if we give back 40 percentage points from the peak. */
+  trailingStopPercent: 40,
+  /** Exit on the expiry day mid-afternoon so the position doesn't expire in our hands. */
+  expiryExitDte: 0.1,
+  maxHoldMs: 3 * 24 * 60 * 60 * 1000,
+  /** Disable conviction-decay exits; we want P&L, not score-chasing. */
+  convictionDropForExit: 1000,
   /** Marks at-or-below this are "no market", not a hold. */
   deadPrice: 0.02,
-  callAvoidRsi: 70,
-  putAvoidRsi: 30,
+  callAvoidRsi: 90,
+  putAvoidRsi: 10,
+  /** Executor guardrails: tournament mode can concentrate harder. */
+  maxConcentrationPercent: 50,
+  maxDrawdownPercent: 50,
 } as const;
 
 export type OptionsExitReason =
@@ -58,6 +65,7 @@ export type OptionsExitReason =
   | "EXIT_EXPIRY"
   | "EXIT_STOP"
   | "EXIT_TAKE"
+  | "EXIT_TRAIL"
   | "EXIT_WRONG_SIDE"
   | "EXIT_DECAY"
   | "EXIT_MAX_HOLD"
@@ -155,6 +163,10 @@ function heldUnderliers(held: readonly OptionsPosition[]): Set<string> {
   return new Set(held.filter((p) => !p.stuck).map((p) => p.underlyingSymbol));
 }
 
+function heldUnderlierCount(held: readonly OptionsPosition[], underlier: string): number {
+  return held.filter((p) => !p.stuck && p.underlyingSymbol === underlier).length;
+}
+
 function heldSymbols(held: readonly OptionsPosition[]): Set<string> {
   return new Set(held.filter((p) => !p.stuck).map((p) => p.symbol));
 }
@@ -230,8 +242,8 @@ export function evaluateEntry(args: {
     return { ok: false, reason: `already holding ${symbol} (one thesis)` };
   }
   const underlier = (meta.underlyingSymbol as string) ?? "";
-  if (underlier && heldUnderliers(held).has(underlier)) {
-    return { ok: false, reason: `already have a thesis on ${underlier}` };
+  if (underlier && heldUnderlierCount(held, underlier) >= OPTIONS_POLICY.maxPerUnderlier) {
+    return { ok: false, reason: `already have ${OPTIONS_POLICY.maxPerUnderlier} theses on ${underlier}` };
   }
 
   return { ok: true, reason: "entry eligible" };
@@ -317,6 +329,14 @@ function standaloneExit(pos: ExitSnapshot): ExitPlan | null {
       detail: `P&L ${pos.unrealizedPnlPercent.toFixed(1)}% ≥ ${p.takeProfitPercent}% lock asymmetry`,
     };
   }
+  if (pos.unrealizedPnlPercent < pos.peakUnrealizedPercent - p.trailingStopPercent) {
+    return {
+      symbol: pos.symbol,
+      action: "EXIT",
+      reason: "EXIT_TRAIL",
+      detail: `P&L gave back ${p.trailingStopPercent}pp from peak ${pos.peakUnrealizedPercent.toFixed(1)}% (now ${pos.unrealizedPnlPercent.toFixed(1)}%)`,
+    };
+  }
   if (pos.contractType === "call" && pos.rsi !== null && pos.rsi >= p.callAvoidRsi) {
     return {
       symbol: pos.symbol,
@@ -386,13 +406,13 @@ export function planExits(positions: readonly ExitSnapshot[]): ExitPlan[] {
   for (const [, group] of byUnderlier) {
     if (group.length <= OPTIONS_POLICY.maxPerUnderlier) continue;
     const ranked = [...group].sort((a, b) => keepScore(b) - keepScore(a));
-    const kept = ranked[0];
-    for (const extra of ranked.slice(1)) {
+    const keptSymbols = ranked.slice(0, OPTIONS_POLICY.maxPerUnderlier).map((p) => p.symbol).join(", ");
+    for (const extra of ranked.slice(OPTIONS_POLICY.maxPerUnderlier)) {
       redundant.set(extra.symbol, {
         symbol: extra.symbol,
         action: "EXIT",
         reason: "EXIT_REDUNDANT",
-        detail: `keeping ${kept.symbol} as the ${extra.underlyingSymbol} thesis`,
+        detail: `keeping ${keptSymbols} as the ${extra.underlyingSymbol} thesis`,
       });
     }
   }

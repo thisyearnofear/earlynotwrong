@@ -286,8 +286,8 @@ export function createAlpacaExecutor(): TradeExecutor {
 
     manageRisk(signal: SignalWithScore, portfolio: Portfolio): RiskCheck {
       const maxPerTradeUsd = OPTIONS_POLICY.maxSizeUsd;
-      const maxConcentration = 20; // %
-      const maxDrawdown = 25; // %
+      const maxConcentration = OPTIONS_POLICY.maxConcentrationPercent; // %
+      const maxDrawdown = OPTIONS_POLICY.maxDrawdownPercent; // %
 
       // Drawdown guard.
       const peakValue = (signal.signal.metadata?.peakPortfolioValue as number) ?? portfolio.totalValueUsd;

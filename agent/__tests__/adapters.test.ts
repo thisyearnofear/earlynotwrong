@@ -442,7 +442,7 @@ describe("Alpaca Executor Adapter", () => {
     });
     const result = adapter.manageRisk(
       { signal, conviction: { symbol: signal.symbol, score: 70, breakdown: [], rationale: "test" } },
-      { totalValueUsd: 7000, cashUsd: 7000, positions: [] },
+      { totalValueUsd: 4000, cashUsd: 4000, positions: [] },
     );
     expect(result.approved).toBe(false);
     expect(result.reason).toContain("drawdown");
@@ -453,7 +453,7 @@ describe("Alpaca Executor Adapter", () => {
     const result = adapter.manageRisk(
       { signal, conviction: { symbol: signal.symbol, score: 70, breakdown: [], rationale: "test" } },
       {
-        totalValueUsd: 10000, cashUsd: 2000,
+        totalValueUsd: 5000, cashUsd: 2000,
         positions: [
           { symbol: "AAPL240301C00140000", quantity: 10, avgEntryPrice: 3, currentPrice: 5, valueUsd: 2500, unrealizedPnlUsd: 500, unrealizedPnlPercent: 20, metadata: { underlyingSymbol: "AAPL" } },
         ],

@@ -170,14 +170,56 @@ end-to-end against the real paper account, not a simulator:
   entries and policy exits are deferred to the next open (Alpaca rejects
   options market orders off-hours).
 
-### Live book (2026-09-01) — what the new policy does at the next open
+### Live book (2026-09-01)
 
-Monday's session filled 35 buys and 0 sells: 10 contracts, ~$32k premium,
-seven of them NVDA weeklies including a 142-lot 13¢ call that marked to
-zero overnight. Equity ~$94,997 vs $100k start. The policy above is the
-fix: at the next cash open it will EXIT_DEAD the $0 contract, EXIT_STOP
-anything ≤ −35%, collapse redundant strikes to one thesis per underlier,
-and refuse to average back into lottery tickets.
+Monday 31 Aug filled **35 buys, 0 sells**: 10 contracts, ~$32k premium,
+mostly NVDA weeklies (including 142× a 13¢ 245C that marked toward zero
+overnight). Close path was broken (`POST /v2/positions/{symbol}/close`
+is not an Alpaca route — paper returned plain-text `Not Found`). After
+the CLI/`DELETE` fix, **7 sells filled ~12:07 ET Tue 1 Sep**. Book is
+one thesis per name:
+
+- AAPL 300C 9/09 ×1
+- MSFT 475C 9/11 ×1
+- NVDA 200C 9/11 ×4
+
+Account `PA34CZ7DH98R`. Do not lead the submission with a headline
+equity % — the public record of the flatten is Post 1 below. Refresh
+marks from Alpaca at write-up time; do not freeze Tuesday afternoon's
+unrealized P&L as if it were settlement.
+
+### Live book (2026-09-03) — pre-market cycle #19
+
+VPS snapshot right before the 3 Sep open. The options agent is at cycle 19, last cycle completed 2026-09-03T00:39:52.912Z, market closed, next open 2026-09-03T09:30:00 ET.
+
+- **Account:** `PA34CZ7DH98R`
+- **Portfolio:** $93,806.51 (cash $84,406.51, 1 open position)
+- **Equity P&L vs $100k start:** -$6,193.49
+- **Realized P&L:** $0
+- **Unrealized P&L:** +$1,385
+- **Cycle #19 activity:** 1 exit (MSFT 475C sold at $37.15 / $3,715), no entries
+- **Open position:** `NVDA260911C00200000` ×4, avg entry $20.0375, unrealized +$1,385 (+17.28%)
+- **Verdict:** `EXIT_DECAY` on the NVDA call (conviction 50 → 0), deferred to the next market open. **This is the bug that got fixed below — a 17% winner should not be sold because a score changed.**
+- **Signals:** no contract cleared conviction ≥45 after the exit/one-thesis filters, so no new buy proposed.
+
+### Tournament win-or-bust tweak (2026-09-03)
+
+One day left and the board is down 6%. The harness is sound; the options-specific policy was too conservative for a short tournament. The fix keeps the harness and opens the throttle:
+
+- **Conviction floor** `45 → 35` — fire more shots.
+- **DTE window** `7–45 → 1–14` — max gamma in the final sessions.
+- **Premium floor** `$0.50 → $0.10` — allow cheap gamma, but size caps prevent lotto blow-ups.
+- **Delta band** `0.25–0.60 → 0.15–0.80` — include more OTM lottery tickets and deeper ITM movers.
+- **IV/RV ceiling** `1.1 → 2.0` — pay richer vol when the thesis is strong.
+- **Sizing** `target $1.5k/max $2.5k → target $10k/max $25k` (10% of book per trade, 50-contract lotto cap).
+- **Concentration** `20% → 50%` per underlier; drawdown halt `25% → 50%`.
+- **Two theses per underlier** (`maxPerUnderlier: 2`) — a strangle or a near/far expression is allowed.
+- **Conviction-decay exit disabled** — no more `EXIT_DECAY`. A trailing stop (`-40pp` from peak) and a `+150%` take-profit now lock big winners while letting them run.
+- **Thesis stop widened** `-35% → -60%`.
+- **Cycle cadence** `60 min → 15 min` for faster reactivity.
+- **Expiry exit** moved to mid-afternoon on expiry day so the position doesn't expire in our hands.
+
+The NVDA 200C 9/11 position now has room to run. If it gives back 40 percentage points from its peak it gets sold; otherwise it rides.
 
 ### Free-data prep (2026-08-29) — what we tap before Monday's open
 
@@ -236,3 +278,42 @@ re-expressed for options:
    and max-hold exits replace the sell-into-convergence behavior that cost
    the arena run; a position cap and liquidity filter keep the agent from
    over-trading illiquid contracts.
+
+---
+
+## Build in public
+
+lablab extra prize wants tagged process posts (`@lablabai` `@AlpacaHQ`),
+max 5 links. Brand > prize: honest, not a blow-up diary; harness is the
+product; do not overclaim AI on this loop.
+
+**Do not write** that the options cycle called the LLM jury, Featherless,
+or Tier-4 verification. Those rungs exist on the shared ladder; this
+paper loop is policy + free-data IV/RV. The close-path incident is fair
+game as process, not as a meme of the 142-lot ticket.
+
+### Post 1 — flatten (posted 2026-09-01)
+
+- **URL:** https://x.com/papajimjams/status/2094840356860764323
+- **Account:** [@papajimjams](https://x.com/papajimjams)
+- **Media:** 8s 1:1 HyperFrames clip (`videos/alpaca-flatten-motion/renders/video.mp4`)
+  + last-frame still. ElevenLabs music/SFX + grain plate; **typeset tape,
+  not a generated P&L card.** Ghost ticks unlabeled so closed OSI symbols
+  were not invented.
+- **Copy (272 chars):**
+
+```
+Same harness we run on crypto, first week on Alpaca paper (PA34CZ7DH98R). Session one over-expressed cheap NVDA weeklies. We tightened: one thesis per name, living premium only, stop at -35%. Flattened 7 of 10 this morning. Holding AAPL / MSFT / NVDA.
+
+@lablabai @AlpacaHQ
+```
+
+- **Alt text:** Alpaca paper: ten ticks collapse to three after flattening
+  7 of 10 — AAPL 300C, MSFT 475C, NVDA 200C. One thesis per name.
+  PA34CZ7DH98R.
+
+### Posts 2–3 — not posted yet
+
+Intended beats when we write them: (2) harness / three adapters, not an
+options bot; (3) craft + submit pointer. Keep the same tags. Paste URLs
+here when they go up so the lablab write-up can link them.

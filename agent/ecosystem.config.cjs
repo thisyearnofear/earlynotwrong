@@ -49,6 +49,7 @@ module.exports = {
         HARNESS_DOMAIN: "options",
         AGENT_PORT: "31778",
         AGENT_DATA_DIR: "/home/linuxuser/earlynotwrong/agent/data-options",
+        ALPACA_INTERVAL_MINUTES: "15",
       },
     },
   ],

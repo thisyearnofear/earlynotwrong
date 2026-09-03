@@ -438,13 +438,15 @@ async function createProposals(
   }
 
   const eligible: OptionsSignal[] = [];
-  const usedUnderliers = new Set(
-    optionsState.heldPositions.filter((p) => !p.stuck).map((p) => p.underlyingSymbol),
-  );
+  const underlierCounts = new Map<string, number>();
+  for (const p of optionsState.heldPositions) {
+    if (p.stuck) continue;
+    underlierCounts.set(p.underlyingSymbol, (underlierCounts.get(p.underlyingSymbol) ?? 0) + 1);
+  }
 
   for (const s of optionsState.convictionSignals) {
     const underlier = (s.signal.metadata?.underlyingSymbol as string) ?? "";
-    if (underlier && usedUnderliers.has(underlier)) continue;
+    if (underlier && (underlierCounts.get(underlier) ?? 0) >= OPTIONS_POLICY.maxPerUnderlier) continue;
     const rsi = rsiForUnderlier(underlier);
     const decision = evaluateEntry({
       signal: s.signal,
@@ -454,13 +456,13 @@ async function createProposals(
     });
     if (!decision.ok) continue;
     eligible.push(s);
-    if (underlier) usedUnderliers.add(underlier);
+    if (underlier) underlierCounts.set(underlier, (underlierCounts.get(underlier) ?? 0) + 1);
     if (eligible.length >= 3) break;
   }
 
   if (eligible.length === 0) {
     console.log(
-      `  No signals meet the thesis (conviction ≥${OPTIONS_POLICY.minConviction}, living premium, one-per-underlier). Skipping entries.`,
+      `  No signals meet the thesis (conviction ≥${OPTIONS_POLICY.minConviction}, living premium, max ${OPTIONS_POLICY.maxPerUnderlier}/underlier). Skipping entries.`,
     );
     return [];
   }
