@@ -279,6 +279,67 @@ re-expressed for options:
    the arena run; a position cap and liquidity filter keep the agent from
    over-trading illiquid contracts.
 
+### Tournament day — 2026-09-03, live notes
+
+**06:00 ET / pre-market:** New win-or-bust policy deployed. One NVDA 200C 9/11 ×4
+position from 1 Sep, marked +17% unrealized. Conviction-decay exit disabled;
+trailing stop (+150% take / 40pp trail) now in charge.
+
+**09:30 ET / open — the order-status bug bites.** The agent queued three buy
+proposals at the open (NVDA 230C, TSLA 375C, TSLA 380C) but printed `✗ ...: undefined`
+and did not record them. Alpaca had accepted the market orders with `new`/`held`
+status; the previous `placeOrder` logic only counted `filled`/`pending`/`accepted` as
+success, so it logged no error string and the agent thought it missed. The broker
+did execute the orders. A cycle later `reconcileHeldWithBroker()` adopted the 4
+positions from the broker, proving the **broker is the real source of truth** and
+the `placeOrder` response status logic was the bug.
+
+**10:00 ET — fix deployed.** `placeOrder` now treats any order with an ID and a
+non-hard-fail status (`rejected`/`canceled`/`expired`/`suspended`/`stopped`) as a
+successful submission and surfaces the actual Alpaca status on hard failures.
+
+**10:23 ET — second wave.** QQQ 719C / 720C 9/10 were accepted cleanly. The agent
+now held 6 positions (2 per underlier, up to the new `maxPerUnderlier: 2`).
+
+**Status at ~14:23 UTC / 10:23 ET:**
+
+- Account `PA34CZ7DH98R`
+- Portfolio $96,193.78, cash $37,570.78, 6 positions
+- Equity P&L vs $100k: -$3,806.22 (recovered from -$6,193.59)
+- Unrealized P&L: +$3,775
+- NVDA 200C ×4: **+39.0%** (+$3,125)
+- NVDA 230C ×26: -8.2%
+- QQQ 719C ×29: +0.6%
+- QQQ 720C ×32: +0.3%
+- TSLA 375C ×8: +6.9%
+- TSLA 380C ×10: +7.6%
+
+All six were **HOLD**. The book is now long tech/semis/NDX through weeklies,
+which is exactly the win-or-bust construction.
+
+**Insights / things that broke and got fixed:**
+
+- **Options market orders are asynchronous on Alpaca paper.** `new`/`held` is not
+  failure; it is "accepted, not yet filled." The agent must record accepted
+  submissions and let `fetchPortfolio` reconcile the real quantity later.
+- **`filled_qty: "0"` is not a fill.** The first patch set `executedQuantity` to
+  the requested `qty` when `filled_qty` was missing, but an explicit `"0"` string
+  was being parsed as `0`. The broker reconcile was the backstop, but the
+  dashboard trade-count / volume numbers are slightly off because some accepted
+  orders were not counted in `totalTrades`/`totalVolumeUsd`.
+- **Persistence mattered.** Before the fix, `pm2 reload` reset cycle count and
+  `heldPositions` metadata. Saving a dedicated `options-state.json` keeps
+  `peakUnrealizedPercent`, ledger, and realized P&L across restarts.
+- **One-thesis-per-underlier was too restrictive for a 3-day tournament.**
+  Allowing 2 theses per name let the agent build a near/far call expression
+  without self-hedging.
+- **Short DTE is the right weapon but needs tighter monitoring.** 1–14 day
+  contracts decay fast; the 15-minute cycle and the expiry-day exit rule are
+  designed to catch that.
+- **The harness survived two real bugs.** The close-path 404 and the order-status
+  miss were both adapter/execution issues, not model issues — consistent with the
+  "harness is the artifact" thesis.
+
 ---
 
 ## Build in public
