@@ -47,8 +47,8 @@ describe("CAP pricing config", () => {
     expect(CAP_PRICING["reputation-agent"].toolName).toBe("get_agent_reputation");
   });
 
-  it("prices signals-live at $0.05 USDC and maps it to get_live_signals", () => {
-    expect(CAP_PRICING["signals-live"].amountUsdcBaseUnits).toBe("50000");
+  it("makes signals-live the free-distribution query", () => {
+    expect(CAP_PRICING["signals-live"].amountUsdcBaseUnits).toBe("0");
     expect(CAP_PRICING["signals-live"].toolName).toBe("get_live_signals");
   });
 

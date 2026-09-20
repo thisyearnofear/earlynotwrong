@@ -138,7 +138,7 @@ export function buildMcpServer(): McpServer {
     "get_live_signals",
     {
       description:
-        "The agent's LIVE conviction signals for the current cycle: market regime (score/label/FGI), top token conviction scores with factor breakdowns and rationale, macro-pause status, and cycle metadata. The tradeable data. PAID (x402, 0.5 CSPR).",
+        "The agent's LIVE conviction signals for the current cycle: market regime (score/label/FGI), top token conviction scores with factor breakdowns and rationale, macro-pause status, and cycle metadata. FREE — free distribution until edge is proven (see GET /edge-report).",
       inputSchema: {},
     },
     async () => {

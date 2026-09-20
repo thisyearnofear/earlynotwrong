@@ -154,7 +154,7 @@ export function ProofLadder({
         if (data.capPaidOrders > 0) {
           return `Store live · ${data.capPaidOrders} paid order${data.capPaidOrders === 1 ? "" : "s"}`;
         }
-        return "Store live · $0.05 signals-live";
+        return "Store live · free signals-live + $0.05 wallet-score";
       case "query":
         return data.mcpQueriesServed > 0
           ? `${data.mcpQueriesServed} MCP queries served`

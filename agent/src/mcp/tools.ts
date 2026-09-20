@@ -236,9 +236,9 @@ export async function getAgentReputation(
   };
 }
 
-// ─── Tool: get_live_signals (PAID) ───────────────────────────────────────────
+// ─── Tool: get_live_signals (FREE) ───────────────────────────────────────────
 //
-// The premium product: the agent's CURRENT-cycle conviction data — market
+// Free distribution: the agent's CURRENT-cycle conviction data — market
 // regime, top token conviction signals with full factor breakdowns and
 // rationale, and macro-pause status. Unlike the anchored-history tools above,
 // this reads the live in-process agent state (the same `state` object the
@@ -249,7 +249,7 @@ export async function getAgentReputation(
 // In simulator mode or before the first cycle completes, the state fields are
 // simply null/empty — the tool returns a well-formed response either way.
 
-/** How many top conviction signals a paid call returns. */
+/** How many top conviction signals a call returns. */
 const LIVE_SIGNALS_TOP_N = 5;
 
 export interface LiveSignalEntry {

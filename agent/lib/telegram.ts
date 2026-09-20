@@ -414,7 +414,7 @@ export async function sendGuidanceBroadcast(params: {
   }
 
   lines.push(
-    `<i>Allocator agents: <a href="${CROO_STORE_URL}">signals-live</a> on CROO ($0.05 USDC) · Requirements: <code>{}</code></i>`,
+    `<i>Allocator agents: <a href="${CROO_STORE_URL}">signals-live</a> on CROO (free distribution) · <a href="${CROO_STORE_URL}">wallet-score</a> audit $0.05 USDC · signals-live Requirements: <code>{}</code></i>`,
   );
 
   lines.push("");

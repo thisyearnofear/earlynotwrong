@@ -1,6 +1,6 @@
 # Product Plan — `wallet-score` (behavioral conviction scoring as a service)
 
-> Status: **planned, building.** Companion to `CROO_INTEGRATION.md`.
+> Status: **live — hero paid SKU.** Companion to `CROO_INTEGRATION.md`.
 >
 > Origin: the `signals-live` CROO product under-delivers because it sells the
 > commodity (token picks) and gives away the scarce thing (behavioral
@@ -193,11 +193,12 @@ phase; not in scope for this plan.
 
 | Service | Price | Rail | Why |
 |---|---|---|---|
-| `wallet-score` | $0.05 USDC | CROO CAP + MCP x402 | Same as `signals-live` — a single, complete, actionable answer. Cheap enough to try, expensive enough to filter tire-kickers. |
+| `wallet-score` | $0.05 USDC HERO | CROO CAP + MCP x402 | The hero paid SKU — a single, complete, actionable answer. Cheap enough to try, expensive enough to filter tire-kickers. |
+| `signals-live` | $0 Free distribution | CROO CAP + MCP | Free until edge is proven (`GET /edge-report`) — distribution hook that leads to the paid wallet-score audit. |
 | `reputation-agent` | $0 (free) | MCP only | Stays free — it's the trust-decision on-ramp. |
 
-`wallet-score` is the new premium product alongside `signals-live`. A buyer
-who wants the agent's own signals buys `signals-live`; a buyer who wants to
+`wallet-score` is the hero paid product; `signals-live` is free distribution. A buyer
+who wants the agent's own signals reads `signals-live` free; a buyer who wants to
 score *their own* wallet (or a copy-trader's, or a treasurer's) buys
 `wallet-score`. Two products, two audiences, one framework.
 

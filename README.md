@@ -101,9 +101,9 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 - **Landing page** — https://earlynotwrong.vercel.app/
 - **Agent dashboard** — https://earlynotwrong.vercel.app/agent
 - **Casper contract** — [testnet.cspr.live](https://testnet.cspr.live/contract-package/973e3c8654e6ee030483969503f21d6fab543317ef60ea2ca041a8e905087afa)
-- **MCP endpoint** — `POST http://144.202.117.160:31777/mcp` (6 tools; trust-decision queries free, live signals x402-paid)
+- **MCP endpoint** — `POST http://144.202.117.160:31777/mcp` (6 tools; trust-decision queries + live signals free, wallet-score x402-paid)
 - **Agent API** — `GET http://144.202.117.160:31777/status`
-- **CROO Agent Store** — [agent.croo.network](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) (`signals-live`, $0.05 USDC)
+- **CROO Agent Store** — [agent.croo.network](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) (`signals-live` free distribution, `wallet-score` $0.05 hero)
 - **GitHub** — https://github.com/thisyearnofear/earlynotwrong
 
 ### One-Curl x402 Challenge (live, no setup)
@@ -170,11 +170,12 @@ echo "ANTHROPIC_API_KEY=sk-ant-..." >> agent/.env  # Claude 3 Haiku
 
 ```bash
 # 1. Create your agent on https://agent.croo.network, then register
-#    only this one service — the only one defensible for a cold Store
-#    buyer (see docs/CROO_INTEGRATION.md for why the other four
+#    two services — free signals distribution + the hero paid wallet-score
+#    audit (see docs/CROO_INTEGRATION.md for why the other four
 #    reputation tools, including the free reputation-agent trust check,
 #    stay MCP-only instead of Store-listed):
-#    • signals-live          ($0.05 — live conviction signals)
+#    • signals-live          ($0 free — live conviction signals)
+#    • wallet-score          ($0.05 hero — behavioral wallet audit)
 #
 # 2. Copy the SDK key from the CROO dashboard
 echo "CROO_SDK_KEY=croo_sk_..." >> agent/.env
@@ -202,8 +203,8 @@ incoming reputation orders. Payment settles on-chain in USDC on Base.
 | [`docs/AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md) | BSC trading agent: 6-factor signal, bankroll discipline, 6-layer scam-token defense |
 | [`docs/HARNESS_ARCHITECTURE_PLAN.md`](./docs/HARNESS_ARCHITECTURE_PLAN.md) | Domain-agnostic harness: crypto + options domains, adapter registry |
 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) | ERC-8004 ConvictionRegistry on Mantle Sepolia |
-| [`docs/A2A_BUYER_GUIDE.md`](./docs/A2A_BUYER_GUIDE.md) | **Start here for buyers** — MCP + CROO rails, signals-live/v1.2, curl + requester |
-| [`examples/buyer-agent/`](./examples/buyer-agent/) | **End-to-end buyer integration** — allocator decision flow: trust gate → paid signals → act + audit. Copy-paste-able, zero deps. See [`DEPLOYMENT.md`](./examples/buyer-agent/DEPLOYMENT.md) for cron/Docker scheduling |
+| [`docs/A2A_BUYER_GUIDE.md`](./docs/A2A_BUYER_GUIDE.md) | **Start here for buyers** — MCP + CROO rails, free signals → $0.05 wallet-score audit, curl + requester |
+| [`examples/buyer-agent/`](./examples/buyer-agent/) | **End-to-end buyer integration** — allocator decision flow: free trust gate → free signals → paid wallet-score → act + audit. Copy-paste-able, zero deps. See [`DEPLOYMENT.md`](./examples/buyer-agent/DEPLOYMENT.md) for cron/Docker scheduling |
 | [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) | Casper Odra registry + MCP server + x402 reputation paywall |
 | [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md) | CROO Agent Protocol integration — CAP services, USDC settlement, SDK methods |
 | [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) | SoSoValue API + SoDEX + AI narrative pipeline |

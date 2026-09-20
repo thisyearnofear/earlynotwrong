@@ -7,15 +7,19 @@
  * the CAP handler routes it to the matching tool.
  *
  * Pricing philosophy (mirrors the x402/MCP side): the trust-decision query
- * (`reputation-agent`) is the free-equivalent — $0 is supported end-to-end
- * here (the handler and payment stats both handle a 0 amount) — while the
- * recurring-value live conviction data (`signals-live`) is the premium
- * product. The four reputation-* serviceIds are PRE-REGISTERED on the CROO
- * Store and must NOT be renamed; the Store listing price for
- * `reputation-agent` must be updated there to match the $0 here.
+ * (`reputation-agent`) and live conviction data (`signals-live`) are the
+ * free tier — $0 is supported end-to-end here (the handler and payment
+ * stats both handle a 0 amount) — because signals are free distribution
+ * until edge is proven. The hero paid SKU is behavioral scoring of
+ * arbitrary wallets (`wallet-score`, $0.05). The four reputation-*
+ * serviceIds are PRE-REGISTERED on the CROO Store and must NOT be
+ * renamed; the Store listing price for `reputation-agent` must be updated
+ * there to match the $0 here.
  *
  * NOTE: `signals-live` is a NEW serviceId — it must be registered on the
  * CROO Agent Store (see docs/CROO_INTEGRATION.md) before it is purchasable.
+ * Its Store listing price must be lowered to $0 (manual Store-dashboard
+ * step — code cannot change the Store listing).
  */
 
 export type CapServiceName =
@@ -65,10 +69,11 @@ export const CAP_PRICING: Record<CapServiceName, CapPricingEntry> = {
   "signals-live": {
     serviceId: "signals-live",
     toolName: "get_live_signals",
-    // NEW serviceId — requires registration on the CROO Agent Store before
-    // it is purchasable (see docs/CROO_INTEGRATION.md).
-    amountUsdcBaseUnits: "50000",
-    description: "$0.05 USDC — live conviction signals for the current cycle (the tradeable data)",
+    // Free distribution until edge is proven — $0 supported end-to-end
+    // (handler + payment stats both handle a 0 amount). Lower the Store
+    // listing price to $0 via the manual Store-dashboard step.
+    amountUsdcBaseUnits: "0",
+    description: "Free ($0 USDC) — live conviction signals (free distribution until edge is proven)",
   },
   "wallet-score": {
     serviceId: "wallet-score",

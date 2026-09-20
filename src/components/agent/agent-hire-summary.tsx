@@ -41,7 +41,7 @@ export function AgentHireSummary({
           top candidate <span className="text-signal">{topCandidate}</span>
         </span>
       )}
-      <span className="text-foreground-dim ml-auto">MCP x402 · CROO $0.05</span>
+      <span className="text-foreground-dim ml-auto">signals-live free · wallet-score $0.05</span>
     </div>
   );
 }

@@ -10,7 +10,7 @@
 **Deployment status** (last verified 2026-07-17):
 
 - CAP client live in `agent/src/cap/` — WebSocket connected on VPS (`GET /cap/status` → `"connected": true`).
-- **CROO Agent Store:** [Early, Not Wrong](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — `signals-live` at $0.05 USDC, SLA &lt; 5 min.
+- **CROO Agent Store:** [Early, Not Wrong](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — `signals-live` free distribution + `wallet-score` at $0.05 USDC (hero paid SKU), SLA &lt; 5 min.
 - **First verified Store purchase:** order `d3e51b1f-df3d-4ccb-8441-21c1117a569c` (2026-07-17) — pay tx `0xae73bab6…`, delivery `signals-live/v1.1` with `guidance: evaluate`.
 - **Current delivery schema:** **signals-live/v1.2** (signals + execution alignment + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
 - Paste-ready listing copy: [`archive/croo-store-listing.md`](./archive/croo-store-listing.md).
@@ -48,16 +48,16 @@ The agent's CAP client recognizes six serviceIds (`agent/src/cap/pricing.ts`). T
 
 | Service ID | Reputation Tool | USDC Price | Store-listed? |
 |---|---:|---|---|
-| `signals-live` | `get_live_signals` | $0.05 | Yes — the tradeable live-signal product |
-| `wallet-score` | `score_wallet` | $0.05 | Yes — behavioral conviction scoring for any wallet (the scarce product). See [`archive/croo-store-listing-wallet-score.md`](./archive/croo-store-listing-wallet-score.md) and [`WALLET_SCORE_PLAN.md`](./WALLET_SCORE_PLAN.md). |
+| `signals-live` | `get_live_signals` | $0 Free distribution | Yes — free live-signal distribution until edge is proven |
+| `wallet-score` | `score_wallet` | $0.05 HERO | Yes — behavioral conviction scoring for any wallet (the hero paid SKU). See [`archive/croo-store-listing-wallet-score.md`](./archive/croo-store-listing-wallet-score.md) and [`WALLET_SCORE_PLAN.md`](./WALLET_SCORE_PLAN.md). |
 | `reputation-agent` | `get_agent_reputation` | $0 (free) | No — CROO requires a positive price; a free query would contradict its own value prop. Free via MCP instead. |
 | `reputation-latest` | `get_latest_conviction` | $0.005 | No — MCP only |
 | `reputation-history` | `get_subject_history` | $0.01 | No — MCP only |
 | `reputation-cross-chain` | `cross_chain_lookup` | $0.01 | No — MCP only |
 
-### Why only one service is Store-listed
+### Why two services are Store-listed
 
-CROO Store buyers are cold — they discover a service with no prior context on ENW. `signals-live` is self-contained: a standalone live trading-signal feed, no prior knowledge required. Everything else is either undiscoverable or mispriced for a cold buyer:
+CROO Store buyers are cold — they discover a service with no prior context on ENW. `signals-live` is self-contained free distribution: a live trading-signal feed, no prior knowledge required, free until edge is proven (see `GET /edge-report`). `wallet-score` is the hero paid SKU: behavioral conviction scoring of any wallet (win rate, patience tax, archetype, cohort percentile) — the scarce thing, not the commodity token picks. Everything else is either undiscoverable or mispriced for a cold buyer:
 
 - The three subject-lookup services (`reputation-latest`, `reputation-history`, `reputation-cross-chain`) require the caller to already know a specific `subjectHash` — and only return data for tokens ENW has itself traded (~20 trades total, no search-by-symbol). A Store buyer has no way to discover what to query.
 - `reputation-agent` is designed to be the *free* trust-decision query — but CROO's Store requires a positive price ("price must be positive"), so listing it there would mean charging for what's supposed to be a free trust check, undermining the reason it exists. It stays free via MCP instead.
@@ -106,14 +106,14 @@ Methods actually called by our adapter:
 ## Setup
 
 1. **Create the agent on the CROO Agent Store** at https://agent.croo.network.
-2. **Create the one Store-listed service** (`signals-live` at $0.05). The human-readable slug must match the key in `agent/src/cap/pricing.ts`. CROO also assigns an **internal service UUID** — copy it from the Store service page and set on the VPS:
+2. **Create the two Store-listed services** (`signals-live` free distribution + `wallet-score` at $0.05 hero). The human-readable slug must match the key in `agent/src/cap/pricing.ts`. CROO also assigns an **internal service UUID** — copy it from the Store service page and set on the VPS:
 
 ```bash
 # Required for Store purchases — negotiations arrive with UUID, not the slug
 echo "CROO_SIGNALS_LIVE_SERVICE_UUID=3da733af-bc0f-492e-9117-d47b055e4fe1" >> agent/.env
 ```
 
-See `agent/.env.example` for `CROO_SERVICE_UUID_MAP` if you list multiple services later. The other four serviceIds stay MCP-only by design — don't register them on the Store.
+See `agent/.env.example` for `CROO_SERVICE_UUID_MAP` for the wallet-score UUID alongside signals-live. The other four serviceIds stay MCP-only by design — don't register them on the Store.
 3. **Copy the SDK key** into the agent environment:
 
 ```bash

@@ -395,7 +395,7 @@ export default function Home() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-[10px] font-mono text-[#65b3ae] hover:underline"
                       >
-                        CROO Store · $0.05
+                        CROO Store · free signals + $0.05 wallet-score
                         <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                       <Link

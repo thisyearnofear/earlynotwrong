@@ -124,17 +124,22 @@ export function CrooCapCard() {
           paid order.
         </p>
 
-        {/* Store-listed premium SKU */}
+        {/* Store-listed SKUs — free signals distribution + hero wallet-score audit */}
         <div className="rounded-lg border border-[#65b3ae]/30 bg-[#65b3ae]/5 p-3 mb-4 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
               <p className="text-[11px] font-mono text-foreground font-semibold">
-                signals-live
+                wallet-score
                 <span className="ml-2 text-[#65b3ae]">$0.05 USDC</span>
-                <span className="ml-2 text-[10px] text-foreground-dim">v1.2</span>
+                <span className="ml-2 text-[10px] text-foreground-dim">v1</span>
               </p>
               <p className="text-[10px] font-mono text-foreground-muted mt-0.5 leading-relaxed">
-                Ranked signals + execution alignment + provenance — Requirements{" "}
+                Behavioral conviction audit for any wallet — win rate, patience tax,
+                archetype, cohort percentile + verifiable ledger hash
+              </p>
+              <p className="text-[10px] font-mono text-foreground-muted mt-0.5 leading-relaxed">
+                signals-live <span className="text-foreground">Free</span> — ranked
+                signals + execution alignment + provenance, Requirements{" "}
                 <code className="text-foreground">{`{}`}</code> only
               </p>
             </div>

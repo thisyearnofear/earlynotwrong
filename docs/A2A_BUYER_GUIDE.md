@@ -1,6 +1,6 @@
 # A2A Buyer Guide — Hire Early, Not Wrong
 
-> **For buyer agents and integrators.** One conviction engine, two settlement rails, one schema (`signals-live/v1.2`).
+> **For buyer agents and integrators.** One conviction engine, two settlement rails, two schemas. **Monetization pivot (2026-09-20):** `signals-live` is free distribution until edge is proven (`GET /edge-report`) — it sells the commodity (token picks) and gives away the scarce thing as metadata. `wallet-score` ($0.05) is the hero paid SKU — behavioral conviction scoring of any wallet is the rare thing, not gated on the agent's own thin track record. Sales order: free signals → paid wallet-score audit.
 
 | | |
 |---|---|
@@ -10,7 +10,7 @@
 | **JSON Schema** | https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json |
 | **Example payload** | https://earlynotwrong.vercel.app/samples/signals-live-v1.2.example.json |
 | **Reference requester** | [`examples/croo-requester/`](../examples/croo-requester/) |
-| **Allocator buyer agent** | [`examples/buyer-agent/`](../examples/buyer-agent/) — full decision flow: trust gate → edge check → paid signals → act + audit. See [`DEPLOYMENT.md`](../examples/buyer-agent/DEPLOYMENT.md) for cron/Docker. |
+| **Allocator buyer agent** | [`examples/buyer-agent/`](../examples/buyer-agent/) — full decision flow: free trust gate → edge check → free signals → paid wallet-score → act + audit. See [`DEPLOYMENT.md`](../examples/buyer-agent/DEPLOYMENT.md) for cron/Docker. |
 | **Edge report** | `GET http://144.202.117.160:31777/edge-report` — conviction vs naive baseline; does the signal have demonstrable edge? |
 
 ---
@@ -19,12 +19,12 @@
 
 | Rail | Best for | Settlement | Hero SKU | Price |
 |------|----------|------------|----------|-------|
-| **MCP + x402** | Direct HTTP clients, Casper-native agents, Cursor/Claude MCP | CSPR (Casper testnet) | `get_live_signals` | 0.5 CSPR |
-| **CROO CAP** | Agents browsing the [CROO Store](https://agent.croo.network), USDC treasuries on Base | USDC (Base) | `signals-live` | $0.05 |
+| **MCP + x402** | Direct HTTP clients, Casper-native agents, Cursor/Claude MCP | CSPR (Casper testnet) | `score_wallet` | $0.05 equiv |
+| **CROO CAP** | Agents browsing the [CROO Store](https://agent.croo.network), USDC treasuries on Base | USDC (Base) | `wallet-score` | $0.05 |
 
 Both return the **same** `signals-live/v1.2` JSON: ranked signals, macro gate, regime, **execution** (what the agent did this cycle vs what it ranked), provenance (behavioral status + anchor links), and buyer **guidance** (`skip_entries` | `evaluate` | `wait`).
 
-Free reputation lookups (`get_agent_reputation`, `get_latest_conviction`, `get_by_thesis`) stay **MCP-only** — use those to decide whether to trust the agent before paying for live signals.
+Free reputation lookups (`get_agent_reputation`, `get_latest_conviction`, `get_by_thesis`) plus `get_live_signals` stay **free** — start with free signals, then hire the paid `wallet-score` audit ($0.05) when you need behavioral scoring of a specific wallet.
 
 ---
 
@@ -73,7 +73,8 @@ Full Casper/MCP/x402 details: [`docs/CASPER_INTEGRATION.md`](./CASPER_INTEGRATIO
 | `get_by_thesis` | Free | Lookup by thesis hash |
 | `get_subject_history` | 0.1 CSPR | Full anchor history |
 | `cross_chain_lookup` | 0.1 CSPR | Mantle + Casper side-by-side |
-| **`get_live_signals`** | **0.5 CSPR** | **Live cycle signals (same as CROO `signals-live`)** |
+| **`get_live_signals`** | **Free** | **Live cycle signals (free distribution until edge is proven)** |
+| `score_wallet` | Paid | Behavioral conviction score for any wallet (hero paid SKU) |
 
 ### Cursor / Claude MCP config
 
@@ -98,16 +99,16 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_agent_reputation","arguments":{}}}'
 ```
 
-### Quick test — paid live signals
+### Quick test — free live signals
 
 ```bash
-curl -sS -i -X POST http://144.202.117.160:31777/mcp \
+curl -sS -X POST http://144.202.117.160:31777/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_live_signals","arguments":{}}}'
 ```
 
-First call returns **HTTP 402** with payment requirements. Resubmit with `X-PAYMENT` after signing the CEP-18 transfer (see CASPER_INTEGRATION.md).
+Free distribution — no payment required. Paid hire is the `score_wallet` / `wallet-score` audit ($0.05).
 
 ### Public teaser (no payment)
 
@@ -126,9 +127,10 @@ Full CAP setup, Store listing, troubleshooting: [`CROO_INTEGRATION.md`](./CROO_I
 ### Store UI (humans + quick demo)
 
 1. Open the [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205)
-2. **Hire** → **signals-live** ($0.05 USDC)
-3. **Requirements:** `{}` only (empty JSON — do not paste deliverable fields)
-4. Pay from CROO wallet (USDC on Base) · delivery in &lt; 1 min typical
+2. **Hire** → **signals-live** (Free distribution — no payment)
+3. **Hire** → **wallet-score** ($0.05 USDC — hero paid SKU; send `{ "address", "chain" }`)
+4. **Requirements for signals-live:** `{}` only (empty JSON — do not paste deliverable fields)
+5. Pay from CROO wallet (USDC on Base) for wallet-score · delivery in &lt; 1 min typical
 
 > **Store operators:** Leave **Deliverable → Schema** empty. Field-builder rows cause `INVALID_DELIVERABLE` on delivery.
 
@@ -176,10 +178,10 @@ Use a **separate requester SDK key** from the provider key running on the VPS We
 
 | # | Persona | Where to look | Why they'd hire |
 |---|---------|---------------|-----------------|
-| 1 | **CROO hackathon buidl team** | CROO Discord, buidl pages | Already on CAP + USDC; needs a reference hire |
-| 2 | **CAP requester author** | CROO Discord #dev, GitHub SDK examples | Needs a real provider SKU to test against |
+| 1 | **CROO hackathon buidl team** | CROO Discord, buidl pages | Already on CAP + USDC; free signals hook, paid wallet-score audit closes |
+| 2 | **CAP requester author** | CROO Discord #dev, GitHub SDK examples | Needs a real provider SKU to test against — free signals to try, wallet-score audit to buy |
 | 3 | **BSC/Base allocator agent** | CT, Farcaster builders | Pre-trade filter, not price feeds |
 | 4 | **Agent-commerce builder** | Store early buyers, x402/CAP threads | One honest listing with schema + dry-run |
 | 5 | **Reputation/proof nerd** | Casper/Mantle Discord, ERC-8004 repos | Provenance block + explorer URLs |
 
-Rules: 1:1 only (no broadcast), one ask per message, no server IP in cold DMs, follow up once after 5–7 days. Lead with the job (pre-trade filter + action contract).
+Rules: 1:1 only (no broadcast), one ask per message, no server IP in cold DMs, follow up once after 5–7 days. Lead with the job (free signals hook → paid wallet-score audit: score any wallet's conviction, patience tax, archetype).

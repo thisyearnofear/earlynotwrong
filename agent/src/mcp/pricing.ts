@@ -1,17 +1,19 @@
 /**
  * Per-tool pricing config for the MCP server.
  *
- * Free tier: get_latest_conviction, get_by_thesis, get_agent_reputation, get_jury_deliberation.
+ * Free tier: get_latest_conviction, get_by_thesis, get_agent_reputation, get_jury_deliberation, get_live_signals.
  *   The trust-decision surface. get_agent_reputation is deliberately free:
  *   it's the one-shot query a first-time evaluator runs to decide whether to
  *   trust this agent at all — paywalling it gates adoption of everything else.
  *   get_jury_deliberation is free because it's metadata about the scoring
  *   process (AI reasoning), not the tradeable signals themselves.
+ *   get_live_signals is free distribution: live conviction signals for the
+ *   current cycle are free until edge is proven (see GET /edge-report).
  *
- * Paid tier (x402): get_subject_history, cross_chain_lookup, get_live_signals.
+ * Paid tier (x402): get_subject_history, cross_chain_lookup.
  *   Recurring-value data. History walks and cross-chain reconciliation are
- *   audit-grade lookups; get_live_signals is the premium product — the agent's
- *   CURRENT-cycle conviction signals, i.e. the tradeable data.
+ *   audit-grade lookups; score_wallet is the hero paid SKU (behavioral
+ *   scoring of arbitrary wallets).
  *
  * Amounts are in the CEP-18 token's base units (decimals from PaymentRequirements.extra).
  * Default 0.1 CSPR per paid call assuming 2-decimal token (≈ 10 base units).
@@ -67,8 +69,9 @@ export const PRICING: Record<ToolName, PricingEntry> = {
       "Free — LLM jury deliberation (provider, verdicts, reasoning, Casper ecosystem context)",
   },
   get_live_signals: {
-    paid: true,
-    amountBaseUnits: "50",
-    description: "0.5 CSPR — live conviction signals for the current cycle (the tradeable data)",
+    paid: false,
+    amountBaseUnits: "0",
+    description:
+      "Free — live conviction signals for the current cycle (free distribution; edge not yet proven — see GET /edge-report)",
   },
 };

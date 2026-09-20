@@ -23,18 +23,18 @@ describe("PRICING config", () => {
     expect(PRICING.get_agent_reputation.amountBaseUnits).toBe("0");
   });
 
-  it("marks the history / cross-chain / live-signal queries as paid", () => {
+  it("marks the history / cross-chain queries as paid", () => {
     expect(PRICING.get_subject_history.paid).toBe(true);
     expect(PRICING.cross_chain_lookup.paid).toBe(true);
-    expect(PRICING.get_live_signals.paid).toBe(true);
   });
 
-  it("prices live signals at 0.5 CSPR (50 base units of the 2-decimal token)", () => {
-    expect(PRICING.get_live_signals.amountBaseUnits).toBe("50");
+  it("marks live signals as free distribution (edge not yet proven)", () => {
+    expect(PRICING.get_live_signals.paid).toBe(false);
+    expect(PRICING.get_live_signals.amountBaseUnits).toBe("0");
   });
 
   it("paid tools carry a non-zero amount", () => {
-    for (const tool of ["get_subject_history", "cross_chain_lookup", "get_live_signals"] as const) {
+    for (const tool of ["get_subject_history", "cross_chain_lookup"] as const) {
       expect(BigInt(PRICING[tool].amountBaseUnits)).toBeGreaterThan(0n);
     }
   });
@@ -171,7 +171,7 @@ describe("x402 middleware — request gating", () => {
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "get_live_signals", arguments: {} },
+        params: { name: "get_subject_history", arguments: { subjectHash: ZERO_HASH } },
       }),
     });
     expect(res.status).toBe(402);
@@ -183,7 +183,29 @@ describe("x402 middleware — request gating", () => {
     expect(body.x402Version).toBe(2);
     expect(body.accepts?.[0]?.scheme).toBe("exact");
     expect(body.accepts?.[0]?.network).toBe("casper:casper-test");
-    expect(body.accepts?.[0]?.amount).toBe(PRICING.get_live_signals.amountBaseUnits);
+    expect(body.accepts?.[0]?.amount).toBe(PRICING.get_subject_history.amountBaseUnits);
+  });
+
+  it("serves get_live_signals without payment (free distribution)", async () => {
+    const { Hono } = await import("hono");
+    const { x402Middleware } = await import("../src/mcp/x402.js");
+    const app = new Hono();
+    app.use("/mcp", x402Middleware());
+    app.post("/mcp", (c) => c.json({ passedThrough: true }));
+
+    const res = await app.request("/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "get_live_signals", arguments: {} },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { passedThrough?: boolean };
+    expect(body.passedThrough).toBe(true);
   });
 
   it("serves get_agent_reputation without payment (free trust-decision query)", async () => {
@@ -290,7 +312,7 @@ describe("x402 middleware — request gating", () => {
     }
   });
 
-  it("serves get_live_signals (regime + signals) when the payment settles", async () => {
+  it("serves get_live_signals (regime + signals) without payment (free tier)", async () => {
     const { Hono } = await import("hono");
     const { x402Middleware } = await import("../src/mcp/x402.js");
     const { getLiveSignalsV1 } = await import("../src/mcp/tools.js");
@@ -337,24 +359,10 @@ describe("x402 middleware — request gating", () => {
       },
     ];
 
-    // Stub fetch to simulate the facilitator settling the payment.
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({ success: true, transaction: "0xabc", network: "casper:casper-test", payer: "0xdef" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      )) as typeof fetch;
-
     try {
-      const fakePayment = Buffer.from(JSON.stringify({
-        x402Version: 2,
-        resource: { url: "http://localhost/mcp" },
-        accepted: {},
-        payload: {},
-      })).toString("base64");
       const res = await app.request("/mcp", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-payment": fakePayment },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -363,7 +371,7 @@ describe("x402 middleware — request gating", () => {
         }),
       });
       expect(res.status).toBe(200);
-      expect(res.headers.get("x-payment-response")).toBeTruthy();
+      expect(res.headers.get("x-payment-response")).toBeNull();
       const body = await res.json() as Awaited<ReturnType<typeof getLiveSignalsV1>>;
       expect(body.schema).toBe("signals-live/v1.2");
       expect(body.freshness.cycle).toBe(7);
@@ -381,7 +389,6 @@ describe("x402 middleware — request gating", () => {
       expect(body.guidance.recommendedAction).toBe("evaluate");
     } finally {
       vi.useRealTimers();
-      globalThis.fetch = originalFetch;
       state.cycle = saved.cycle;
       state.lastRunAt = saved.lastRunAt;
       state.marketRegime = saved.marketRegime;
