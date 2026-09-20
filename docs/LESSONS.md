@@ -12,8 +12,8 @@
 | **BNB Hack: AI Trading Agent Edition** (BSC live trading) | 2026-06-22 → 2026-06-28 | Submitted; result not posted publicly | Agent kept live as the **product** (MCP x402, CROO CAP, anchoring). |
 | **Alpaca AI Trading Agents Hackathon** (options paper trading) | 2026-08-28 → 2026-09-04 | **Closed +2.28%** (~$102.28k on $100k); see § "Alpaca …" below | **Archived.** Adapter pair kept as options domain proof-of-pattern. |
 
-Per-competition source docs: `docs/HACKATHON_SUBMISSION_DELPHI.md`,
-`docs/HACKATHON_PLAN.md`, `docs/OKX_HACKATHON.md` (research-only, did not ship).
+Per-competition source docs: `docs/archive/HACKATHON_SUBMISSION_DELPHI.md`,
+`docs/archive/HACKATHON_PLAN.md`, `docs/archive/OKX_HACKATHON.md` (research-only, did not ship).
 
 ## Gensyn Delphi Agent Arena
 

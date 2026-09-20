@@ -5,7 +5,7 @@
  * mirroring the TwakExecutor shape: lazy client construction, retry wrapper,
  * slippage guard, and a simulator mode that never touches the chain.
  *
- * Strategy context lives in docs/DELPHI_AGENT_ARENA.md. This module is the
+ * Strategy context lives in docs/archive/DELPHI_AGENT_ARENA.md. This module is the
  * execution plumbing only: it deliberately contains no probability-estimation
  * logic (that is `probability.ts` / the LLM jury's job) and no loop scheduling
  * (that is `runner.ts`).
@@ -655,7 +655,7 @@ export class DelphiExecutor {
    * and returns success without touching the chain.
    *
    * `estimatedProbability` is recorded for post-hoc calibration/Brier scoring
-   * (see docs/DELPHI_AGENT_ARENA.md). Callers should pass the model estimate
+   * (see docs/archive/DELPHI_AGENT_ARENA.md). Callers should pass the model estimate
    * that justified the entry.
    */
   async buyShares(params: {

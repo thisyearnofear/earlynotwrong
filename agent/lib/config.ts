@@ -287,7 +287,7 @@ export const AGENT_CONFIG = {
   // Delphi information markets (Gensyn Agent Arena + mainnet later).
   // Prediction-market execution surface: self-contained under agent/lib/delphi/.
   // The BSC pipeline does not import it; the runner is a separate pm2 process.
-  // See docs/DELPHI_AGENT_ARENA.md for strategy and phased plan.
+  // See docs/archive/DELPHI_AGENT_ARENA.md for strategy and phased plan.
   delphi: {
     // Enable gate is runtime-checked per cycle (DELPHI_ENABLED) by the runner,
     // not read from this config object — module-scope env reads are frozen at

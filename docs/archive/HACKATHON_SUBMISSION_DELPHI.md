@@ -108,7 +108,7 @@ Planned after the post-mortem: `get_predictions` — per-market probability + pr
 ## Links
 
 - Repository: https://github.com/thisyearnofear/earlynotwrong
-- Strategy doc: `docs/DELPHI_AGENT_ARENA.md` (in-repo)
+- Strategy doc: `docs/archive/DELPHI_AGENT_ARENA.md` (in-repo)
 - Telegram: https://t.me/earlynotwrongbot
 - Prior surface (Hackathon 1 — Casper reputation rail): same repo, `AGENTS.md`
 

@@ -11,7 +11,7 @@
 
 - JSON Schema: [`signals-live-v1.1.schema.json`](./signals-live-v1.1.schema.json)
 - Example: [`../samples/signals-live-v1.1.example.json`](../samples/signals-live-v1.1.example.json)
-- Store listing copy: [`../croo-store-listing.md`](../croo-store-listing.md)
+- Store listing copy: [`../archive/croo-store-listing.md`](../archive/croo-store-listing.md)
 - Reference requester: [`../../examples/croo-requester/`](../../examples/croo-requester/) · buyer guide: [`../../docs/A2A_BUYER_GUIDE.md`](../../docs/A2A_BUYER_GUIDE.md)
 
 ---
@@ -53,4 +53,4 @@ npx ajv validate \
 ## Implementation
 
 - Assembly: `agent/src/mcp/tools.ts` → `getLiveSignalsV1()`, `buildBuyerGuidance()`, `buildProvenance()`
-- CAP delivery (historical): `DeliverableType.Text` with full `signals-live/v1.1` JSON. **Live delivery is now v1.2** — see [`signals-live-v1.2.md`](./signals-live-v1.2.md). Store Deliverable Schema must stay empty — see `docs/croo-store-listing.md`.
+- CAP delivery (historical): `DeliverableType.Text` with full `signals-live/v1.1` JSON. **Live delivery is now v1.2** — see [`signals-live-v1.2.md`](./signals-live-v1.2.md). Store Deliverable Schema must stay empty — see `docs/archive/croo-store-listing.md`.

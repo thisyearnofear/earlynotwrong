@@ -1,7 +1,7 @@
 /**
  * Delphi Runner — standalone prediction-market trading loop.
  *
- * Separate pm2 process from the BSC pipeline (see docs/DELPHI_AGENT_ARENA.md,
+ * Separate pm2 process from the BSC pipeline (see docs/archive/DELPHI_AGENT_ARENA.md,
  * Phase 3). The loop:
  *
  *   1. Redeem settled markets (cash-out → redeploy)

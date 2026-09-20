@@ -169,7 +169,7 @@ lives.
       `agent/src/cap/handler.ts` (parse `requirements` for address + chain,
       call the tool, deliver JSON text).
 - [ ] **CROO Store listing** for `wallet-score` — paste-ready copy in
-      `docs/croo-store-listing-wallet-score.md`. Self-contained for a cold
+      `docs/archive/croo-store-listing-wallet-score.md`. Self-contained for a cold
       buyer (no prior knowledge of ENW required), unlike the reputation-lookup
       services that need a known `subjectHash`.
 
@@ -227,7 +227,7 @@ score *their own* wallet (or a copy-trader's, or a treasurer's) buys
 ## Operational checklist (tick when done)
 
 - [ ] **Register `wallet-score` on the CROO Agent Store** using the copy in
-      `docs/croo-store-listing-wallet-score.md` (same flow as `signals-live`).
+      `docs/archive/croo-store-listing-wallet-score.md` (same flow as `signals-live`).
 - [ ] **Set the CROO service UUID env var** for wallet-score on the VPS — if
       CROO uses UUIDs in `serviceId`, add it to `CROO_SERVICE_UUID_MAP` (or a
       new `CROO_WALLET_SCORE_SERVICE_UUID`) so `resolveCapServiceId` maps it

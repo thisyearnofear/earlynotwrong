@@ -13,7 +13,7 @@ module.exports = {
       },
     },
     {
-      // Delphi prediction-market runner (docs/DELPHI_AGENT_ARENA.md).
+      // Delphi prediction-market runner (docs/archive/DELPHI_AGENT_ARENA.md).
       // Separate process from the BSC pipeline so a Delphi failure can't take
       // down anchoring/telegram for the crypto signals, and vice versa. The
       // entry checks DELPHI_ENABLED itself, so the process is a harmless

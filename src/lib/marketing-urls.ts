@@ -18,7 +18,7 @@ export const SIGNALS_EXAMPLE_URL =
 
 export const DOCS_MCP_INTEGRATION = `${GITHUB_REPO}/blob/main/docs/A2A_BUYER_GUIDE.md`;
 export const DOCS_CROO_INTEGRATION = `${GITHUB_REPO}/blob/main/docs/CROO_INTEGRATION.md`;
-export const DOCS_CROO_STORE_LISTING = `${GITHUB_REPO}/blob/main/docs/croo-store-listing.md`;
+export const DOCS_CROO_STORE_LISTING = `${GITHUB_REPO}/blob/main/docs/archive/croo-store-listing.md`;
 export const CROO_REQUESTER_PATH = `${GITHUB_REPO}/tree/main/examples/croo-requester`;
 
 export type UtmSource =

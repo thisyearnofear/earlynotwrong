@@ -83,7 +83,7 @@ CMC MCP ─────────►  Conviction Engine  ◄──── On-Ch
 ## Live
 
 > **Casper Agentic Buildathon 2026 — Final Round submission.**
-> Agent reputation marketplace, natively on Casper: Odra contract, MCP server, x402 paywall. Full narrative in [`SUBMISSION.md`](./SUBMISSION.md).
+> Agent reputation marketplace, natively on Casper: Odra contract, MCP server, x402 paywall. Full narrative in [`docs/archive/CASPER_SUBMISSION.md`](./docs/archive/CASPER_SUBMISSION.md).
 
 ### Casper AI Toolkit Usage
 
@@ -254,7 +254,7 @@ and writes that contract, an MCP server exposing the registry to other agents,
 and an x402 paywall so agents pay per query with CEP-18 micropayments. The
 autonomous BSC trading agent is the live reputation source that feeds this layer.
 
-For the buildathon submission narrative, see [`SUBMISSION.md`](./SUBMISSION.md).
+For the buildathon submission narrative, see [`docs/archive/CASPER_SUBMISSION.md`](./docs/archive/CASPER_SUBMISSION.md).
 
 ### Layer history
 

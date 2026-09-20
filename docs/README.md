@@ -45,7 +45,7 @@ Relative links inside these files point at their original locations.
 - [Delphi arena strategy](archive/DELPHI_AGENT_ARENA.md) (arena closed 2026-08-24)
 - [Alpaca options writeup](archive/ALPACA_HACKATHON_WRITEUP.md) (closed +2.28%)
 - [Delphi submission](archive/HACKATHON_SUBMISSION_DELPHI.md)
-- [Mantle submission](archive/SUBMISSION.md)
+- [Mantle submission](archive/SUBMISSION.md) · [Casper submission](archive/CASPER_SUBMISSION.md)
 - [BNB plan](archive/HACKATHON_PLAN.md) (superseded — copy-trading direction abandoned)
 - [OKX research](archive/OKX_HACKATHON.md) (did not ship)
 - [Positioning](archive/POSITIONING.md) · [Community share copy](archive/community-share.md) · [Social posts](archive/social-posts-final.md)

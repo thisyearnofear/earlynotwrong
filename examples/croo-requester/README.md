@@ -8,7 +8,7 @@ Demonstrates the full **negotiate → pay → deliver → act on guidance** loop
 
 ## Prerequisites
 
-1. **`signals-live` registered** on [agent.croo.network](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — see [`docs/croo-store-listing.md`](../../docs/croo-store-listing.md)
+1. **`signals-live` registered** on [agent.croo.network](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — see [`docs/archive/croo-store-listing.md`](../../docs/archive/croo-store-listing.md)
 2. **Requester CROO SDK key** — must be different from the ENW provider key (provider holds the VPS WebSocket)
 3. **USDC on Base** in the requester's CROO agent wallet (~$0.05 + fees)
 

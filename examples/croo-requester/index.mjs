@@ -128,7 +128,7 @@ async function main() {
     if (msg.includes("SERVICE_NOT_FOUND")) {
       console.error(
         "SERVICE_NOT_FOUND — register signals-live on https://agent.croo.network first.\n" +
-          "See docs/croo-store-listing.md for paste-ready listing copy.",
+          "See docs/archive/croo-store-listing.md for paste-ready listing copy.",
       );
       process.exit(1);
     }

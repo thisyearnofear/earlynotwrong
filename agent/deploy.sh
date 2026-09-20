@@ -64,7 +64,7 @@ ssh "$HOST" bash -s "$REF" <<'EOF'
   # The arena closed 2026-08-24 and DELPHI_ENABLED=0 in agent/.env, so the
   # runner would self-exit immediately and pm2's autorestart would churn it
   # forever. Gate the startOrReload on the same env flag the runner checks
-  # (see docs/DELPHI_AGENT_ARENA.md).
+  # (see docs/archive/DELPHI_AGENT_ARENA.md).
   if grep -q "^DELPHI_ENABLED=1" .env; then
     pm2 startOrReload ecosystem.config.cjs --only earlynotwrong-delphi --update-env
   else
