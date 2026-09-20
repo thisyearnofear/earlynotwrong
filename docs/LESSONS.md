@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **Gensyn Delphi Agent Arena** (prediction markets) | 2026-08-10 → 2026-08-24 | Rank 122/159, ~600 TST from 1,000 TST start (PnL −400, 36 trades) | **Archived.** Not enough calibration outperformance vs LMSR. |
 | **BNB Hack: AI Trading Agent Edition** (BSC live trading) | 2026-06-22 → 2026-06-28 | Submitted; result not posted publicly | Agent kept live as the **product** (MCP x402, CROO CAP, anchoring). |
-| **Alpaca AI Trading Agents Hackathon** (options paper trading) | 2026-08-28 → 2026-09-04 | Down 3.8% at Wed 10:23 ET ($96,193.78 / $100k), 6 live option positions; see `docs/ALPACA_HACKATHON_WRITEUP.md` § "Tournament day" | **In progress.** Pipeline live, adapters verified, win-or-bust policy deployed mid-tournament; final close 2026-09-04. |
+| **Alpaca AI Trading Agents Hackathon** (options paper trading) | 2026-08-28 → 2026-09-04 | **Closed +2.28%** (~$102.28k on $100k); see § "Alpaca …" below | **Archived.** Adapter pair kept as options domain proof-of-pattern. |
 
 Per-competition source docs: `docs/HACKATHON_SUBMISSION_DELPHI.md`,
 `docs/HACKATHON_PLAN.md`, `docs/OKX_HACKATHON.md` (research-only, did not ship).
@@ -255,10 +255,12 @@ The agent had to trade options on a free data plan (no OPRA, no option
 
 ### Decision
 
-**In progress through the close.** The options agent is live and the
- win-or-bust book is on the board. After the tournament it should be
- archived or folded into a future multi-asset domain switch, depending on
- whether the Alpaca adapter becomes a product surface.
+**Archived.** Tournament closed 2026-09-04: final equity ~$102.28k on $100k
+start (**+2.28%**). The Alpaca adapter pair (`alpaca-data.ts` +
+`alpaca-executor.ts`) stays as the options domain proof-of-pattern; see the
+harness registry for reuse. Dated snapshots: 2026-09-03 close
+($102,280.40, +$9,864 unrealized, 51 fills) and 2026-09-04 cycle 29
+($102,277.34, `EXIT_TRAIL` queued on `TSLA260911C00380000`).
 
 ## Cross-cutting lessons
 

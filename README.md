@@ -195,6 +195,7 @@ incoming reputation orders. Payment settles on-chain in USDC on Base.
 
 | Document | What it covers |
 |----------|----------------|
+| [`docs/README.md`](./docs/README.md) | Documentation index: current architecture, integrations, operations, and historical material |
 | [`SOUL.md`](./SOUL.md) | Design philosophy and architectural soul |
 | [`AGENTS.md`](./AGENTS.md) | Agent orchestration guide |
 | [`docs/CORE_PRINCIPLES.md`](./docs/CORE_PRINCIPLES.md) | Enhancement First, DRY, Consolidation — governs every change |

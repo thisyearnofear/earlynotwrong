@@ -340,8 +340,6 @@ which is exactly the win-or-bust construction.
   miss were both adapter/execution issues, not model issues — consistent with the
   "harness is the artifact" thesis.
 
----
-
 ## Build in public
 
 lablab extra prize wants tagged process posts (`@lablabai` `@AlpacaHQ`),
