@@ -16,7 +16,7 @@ export const SIGNALS_SCHEMA_URL =
 export const SIGNALS_EXAMPLE_URL =
   "https://earlynotwrong.vercel.app/samples/signals-live-v1.2.example.json";
 
-export const DOCS_MCP_INTEGRATION = `${GITHUB_REPO}/blob/main/docs/MCP_INTEGRATION.md`;
+export const DOCS_MCP_INTEGRATION = `${GITHUB_REPO}/blob/main/docs/A2A_BUYER_GUIDE.md`;
 export const DOCS_CROO_INTEGRATION = `${GITHUB_REPO}/blob/main/docs/CROO_INTEGRATION.md`;
 export const DOCS_CROO_STORE_LISTING = `${GITHUB_REPO}/blob/main/docs/croo-store-listing.md`;
 export const CROO_REQUESTER_PATH = `${GITHUB_REPO}/tree/main/examples/croo-requester`;

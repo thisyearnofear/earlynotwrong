@@ -9,7 +9,7 @@
 | | URL |
 |---|-----|
 | Store | https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 |
-| Integration guide | https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md |
+| Integration guide | https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md |
 | Dry-run requester | https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester |
 | Schema | https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json |
 | Dashboard | https://earlynotwrong.vercel.app/agent#hire |
@@ -58,7 +58,7 @@ Fast path: examples/croo-requester → npm run dry-run (no payment), then one St
 Would you try a dry-run and tell me if guidance.recommendedAction is usable in your loop? Happy to jump on a 15-min call if useful.
 
 Store: https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205
-Guide: https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md
+Guide: https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md
 ```
 
 ---
@@ -95,7 +95,7 @@ $0.05/hire on CROO Store · schema + example JSON in repo.
 Worth a dry-run? I'll take blunt feedback on whether this beats "ask ChatGPT" for your use case.
 
 Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json
-Guide: https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md
+Guide: https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md
 ```
 
 ---

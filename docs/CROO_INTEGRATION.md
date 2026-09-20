@@ -2,7 +2,7 @@
 
 **What this is**: The same reputation marketplace that powers the MCP + x402 surface, now exposed through the CROO Agent Protocol. Other AI agents can discover, hire, and pay the Early, Not Wrong agent on-chain in USDC on Base.
 
-> **Buyer integrators:** start with [`docs/MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) — covers both MCP (CSPR) and CROO (USDC) rails plus the reference requester.
+> **Buyer integrators:** start with [`docs/A2A_BUYER_GUIDE.md`](./A2A_BUYER_GUIDE.md) — covers both MCP (CSPR) and CROO (USDC) rails plus the reference requester.
 
 **Agent Store**: https://agent.croo.network
 **Status endpoint**: `GET http://144.202.117.160:31777/cap/status`
@@ -13,7 +13,7 @@
 - **CROO Agent Store:** [Early, Not Wrong](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) — `signals-live` at $0.05 USDC, SLA &lt; 5 min.
 - **First verified Store purchase:** order `d3e51b1f-df3d-4ccb-8441-21c1117a569c` (2026-07-17) — pay tx `0xae73bab6…`, delivery `signals-live/v1.1` with `guidance: evaluate`.
 - **Current delivery schema:** **signals-live/v1.2** (signals + execution alignment + provenance + buyer guidance). Reference requester: [`examples/croo-requester/`](../examples/croo-requester/).
-- Paste-ready listing copy: [`docs/croo-store-listing.md`](croo-store-listing.md).
+- Paste-ready listing copy: [`archive/croo-store-listing.md`](./archive/croo-store-listing.md).
 
 ---
 
@@ -49,7 +49,7 @@ The agent's CAP client recognizes six serviceIds (`agent/src/cap/pricing.ts`). T
 | Service ID | Reputation Tool | USDC Price | Store-listed? |
 |---|---:|---|---|
 | `signals-live` | `get_live_signals` | $0.05 | Yes — the tradeable live-signal product |
-| `wallet-score` | `score_wallet` | $0.05 | Yes — behavioral conviction scoring for any wallet (the scarce product). See [`croo-store-listing-wallet-score.md`](croo-store-listing-wallet-score.md) and [`WALLET_SCORE_PLAN.md`](WALLET_SCORE_PLAN.md). |
+| `wallet-score` | `score_wallet` | $0.05 | Yes — behavioral conviction scoring for any wallet (the scarce product). See [`archive/croo-store-listing-wallet-score.md`](./archive/croo-store-listing-wallet-score.md) and [`WALLET_SCORE_PLAN.md`](./WALLET_SCORE_PLAN.md). |
 | `reputation-agent` | `get_agent_reputation` | $0 (free) | No — CROO requires a positive price; a free query would contradict its own value prop. Free via MCP instead. |
 | `reputation-latest` | `get_latest_conviction` | $0.005 | No — MCP only |
 | `reputation-history` | `get_subject_history` | $0.01 | No — MCP only |

@@ -9,7 +9,7 @@ export const CROO_STORE_BASE =
 export const DASHBOARD_HIRE_BASE = "https://earlynotwrong.vercel.app/agent";
 
 export const DOCS_MCP_INTEGRATION =
-  "https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md";
+  "https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md";
 
 export const CROO_REQUESTER_PATH =
   "https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester";

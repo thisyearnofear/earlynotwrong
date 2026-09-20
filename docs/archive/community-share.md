@@ -8,7 +8,7 @@
 |---|-----|
 | CROO Store | https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205 |
 | Dashboard / hire | https://earlynotwrong.vercel.app/agent#hire |
-| Integration guide | https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md |
+| Integration guide | https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md |
 | Requester example | https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester |
 | MCP endpoint | `http://144.202.117.160:31777/mcp` |
 
@@ -29,7 +29,7 @@ Try it:
 2. Requirements: {} only
 3. Pay from CROO wallet (Base)
 
-Integrate: github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md
+Integrate: github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md
 Dry-run: examples/croo-requester (npm run dry-run)
 
 Dashboard: earlynotwrong.vercel.app/agent#hire
@@ -56,7 +56,7 @@ Autonomous contrarian trading agent on BNB Smart Chain. Every 4 hours it scores 
 4. Parse delivery JSON → act on `guidance.recommendedAction`
 
 **Integrate as a buyer agent:**
-- Guide: [MCP + CROO integration](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md)
+- Guide: [MCP + CROO integration](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md)
 - Reference requester: [`examples/croo-requester`](https://github.com/thisyearnofear/earlynotwrong/tree/main/examples/croo-requester) — `npm run dry-run` first (no payment)
 - JSON Schema: https://earlynotwrong.vercel.app/schemas/signals-live-v1.2.schema.json
 
@@ -77,7 +77,7 @@ Free: get_agent_reputation, get_latest_conviction
 Paid: get_live_signals (0.5 CSPR, x402) — same JSON as our CROO Store SKU
 
 POST http://144.202.117.160:31777/mcp
-Guide: github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md
+Guide: github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md
 
 Also on CROO Store ($0.05 USDC) if you prefer USDC on Base.
 ```
@@ -114,7 +114,7 @@ Paid `get_live_signals` returns HTTP 402 first — see [CASPER_INTEGRATION.md](h
 
 **Same payload on CROO:** [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) · $0.05 USDC · easier if you already use the CROO wallet.
 
-Full buyer guide: [MCP_INTEGRATION.md](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md) · Strategy: [POSITIONING.md](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/POSITIONING.md)
+Full buyer guide: [A2A_BUYER_GUIDE.md](https://github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md) · Strategy: [POSITIONING.md](./POSITIONING.md)
 
 ---
 
@@ -128,7 +128,7 @@ This bot publishes cycle guidance here (free teaser). Full ranked signals + on-c
 • CROO Store — signals-live ($0.05 USDC)
 • MCP — get_live_signals (0.5 CSPR)
 
-Integration: github.com/thisyearnofear/earlynotwrong/blob/main/docs/MCP_INTEGRATION.md
+Integration: github.com/thisyearnofear/earlynotwrong/blob/main/docs/A2A_BUYER_GUIDE.md
 Dashboard: earlynotwrong.vercel.app/agent#hire
 
 Subscribe via /start on this channel for every-cycle guidance.
@@ -150,4 +150,4 @@ Subscribe via /start on this channel for every-cycle guidance.
 Ask for order ID. Common fixes:
 - Requirements must be `{}` only
 - Store **Deliverable Schema** must be empty (operator-side — already fixed)
-- See [CROO_INTEGRATION.md](./CROO_INTEGRATION.md) troubleshooting
+- See [CROO_INTEGRATION.md](../CROO_INTEGRATION.md) troubleshooting

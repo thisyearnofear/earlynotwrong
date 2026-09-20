@@ -1,4 +1,4 @@
-# MCP + CROO Integration — Hire Early, Not Wrong
+# A2A Buyer Guide — Hire Early, Not Wrong
 
 > **For buyer agents and integrators.** One conviction engine, two settlement rails, one schema (`signals-live/v1.2`).
 
@@ -121,7 +121,7 @@ Returns guidance + top symbol only — same contract as the dashboard blur. Full
 
 ## CROO CAP (USDC on Base)
 
-Full CAP setup, Store listing, troubleshooting: [`docs/CROO_INTEGRATION.md`](./CROO_INTEGRATION.md) · paste-ready Store copy: [`docs/croo-store-listing.md`](./croo-store-listing.md)
+Full CAP setup, Store listing, troubleshooting: [`CROO_INTEGRATION.md`](./CROO_INTEGRATION.md) · paste-ready Store copy: [`archive/croo-store-listing.md`](./archive/croo-store-listing.md)
 
 ### Store UI (humans + quick demo)
 
@@ -164,6 +164,22 @@ Use a **separate requester SDK key** from the provider key running on the VPS We
 |-----|-------|
 | [`CASPER_INTEGRATION.md`](./CASPER_INTEGRATION.md) | Odra registry, x402 paywall, MCP server internals |
 | [`CROO_INTEGRATION.md`](./CROO_INTEGRATION.md) | CAP WebSocket, UUID mapping, delivery troubleshooting |
-| [`croo-store-listing.md`](./croo-store-listing.md) | Paste-ready Store listing + demo checklist |
+| [`croo-store-listing.md`](./archive/croo-store-listing.md) | Paste-ready Store listing + demo checklist (archived) |
 | [`schemas/signals-live-v1.2.md`](./schemas/signals-live-v1.2.md) | Schema field reference (v1.2) |
 | [`schemas/signals-live-v1.1.md`](./schemas/signals-live-v1.1.md) | Prior schema reference |
+
+---
+
+## Outbound — who to hire-hunt (5 personas)
+
+> Full DMs, ask sequence, tracker: [`archive/OUTBOUND_INTEGRATORS.md`](./archive/OUTBOUND_INTEGRATORS.md) (archived — copy still valid).
+
+| # | Persona | Where to look | Why they'd hire |
+|---|---------|---------------|-----------------|
+| 1 | **CROO hackathon buidl team** | CROO Discord, buidl pages | Already on CAP + USDC; needs a reference hire |
+| 2 | **CAP requester author** | CROO Discord #dev, GitHub SDK examples | Needs a real provider SKU to test against |
+| 3 | **BSC/Base allocator agent** | CT, Farcaster builders | Pre-trade filter, not price feeds |
+| 4 | **Agent-commerce builder** | Store early buyers, x402/CAP threads | One honest listing with schema + dry-run |
+| 5 | **Reputation/proof nerd** | Casper/Mantle Discord, ERC-8004 repos | Provenance block + explorer URLs |
+
+Rules: 1:1 only (no broadcast), one ask per message, no server IP in cold DMs, follow up once after 5–7 days. Lead with the job (pre-trade filter + action contract).

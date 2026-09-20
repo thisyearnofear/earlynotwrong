@@ -19,7 +19,7 @@ describe("marketing-urls", () => {
 
   it("tags integration guide URL for telegram", () => {
     const url = integrationGuideUrl("telegram", "guidance-broadcast");
-    expect(url).toContain("MCP_INTEGRATION.md");
+    expect(url).toContain("A2A_BUYER_GUIDE.md");
     expect(url).toContain("utm_source=telegram");
     expect(url).toContain("utm_content=guidance-broadcast");
   });

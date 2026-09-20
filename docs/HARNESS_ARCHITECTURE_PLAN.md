@@ -263,10 +263,14 @@ Thesis hash and conviction record are already domain-agnostic (they hash the dig
 
 ## Phase 3: Hackathon Deliverables (Days 4–6)
 
-> **Status: IN PROGRESS.** Done: one-page write-up
-> (`docs/ALPACA_HACKATHON_WRITEUP.md`), runnable options agent on the live
-> paper account, public repo, adapter + cycle tests. Outstanding: demo
-> dashboard, video presentation, and the build-in-public social posts.
+> **Status: ARCHIVED.** Shipped: one-page write-up
+> (`docs/archive/ALPACA_HACKATHON_WRITEUP.md`), runnable options agent on the
+> live paper account, public repo, adapter + cycle tests, build-in-public
+> **Post 1** (flatten —
+> https://x.com/papajimjams/status/2094840356860764323). Tournament closed
+> 2026-09-04 at +2.28%. Outstanding: demo dashboard, video presentation,
+> Posts 2–3. Social log lives in the archived write-up under
+> **Build in public**.
 
 ### 3.1 Options strategy narrative
 

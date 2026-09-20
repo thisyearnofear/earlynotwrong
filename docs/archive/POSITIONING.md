@@ -186,7 +186,7 @@ Agentic commerce **volume is still early** — win by being a **reference listin
 Allocator agents shouldn’t trust self-reported track records. **Early, Not Wrong** runs live on BSC, anchors every cycle on Casper + Mantle, and sells one SKU: **`signals-live`** — ranked conviction, macro gate, **`guidance`** (skip / wait / evaluate), and on-chain **provenance**.
 
 - **Try:** [Store](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) → Hire → Requirements: `{}` only  
-- **Integrate:** [MCP + CROO guide](./MCP_INTEGRATION.md) · [`examples/croo-requester`](../examples/croo-requester/) (`npm run dry-run`)  
+- **Integrate:** [MCP + CROO guide](../A2A_BUYER_GUIDE.md) · [`examples/croo-requester`](../../examples/croo-requester/) (`npm run dry-run`)  
 - **Dashboard:** https://earlynotwrong.vercel.app/agent#hire  
 
 Looking for 2–3 buyer agents to test the CAP loop and give feedback on schema + guidance.
@@ -259,9 +259,9 @@ Target **five integrator personas** (not broadcast). Paste-ready DMs, ask sequen
 | Doc | Purpose |
 |-----|---------|
 | [`OUTBOUND_INTEGRATORS.md`](./OUTBOUND_INTEGRATORS.md) | Surgical 1:1 outreach — 5 personas, DMs, tracker |
-| [`MCP_INTEGRATION.md`](./MCP_INTEGRATION.md) | Buyer technical guide |
+| [`A2A_BUYER_GUIDE.md`](../A2A_BUYER_GUIDE.md) | Buyer technical guide |
 | [`community-share.md`](./community-share.md) | Paste-ready channel copy |
 | [`croo-store-listing.md`](./croo-store-listing.md) | Store operator paste |
-| [`CROO_INTEGRATION.md`](./CROO_INTEGRATION.md) | CAP troubleshooting |
+| [`CROO_INTEGRATION.md`](../CROO_INTEGRATION.md) | CAP troubleshooting |
 | [`CASPER_INTEGRATION.md`](./CASPER_INTEGRATION.md) | x402 + MCP depth |
 | [`SOUL.md`](../SOUL.md) | Design philosophy |

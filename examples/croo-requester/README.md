@@ -4,7 +4,7 @@ Reference buyer agent for the [Early, Not Wrong](https://earlynotwrong.vercel.ap
 
 Demonstrates the full **negotiate → pay → deliver → act on guidance** loop that CROO Store reviewers and integrators expect.
 
-**Full integration guide (MCP + CROO):** [`docs/MCP_INTEGRATION.md`](../../docs/MCP_INTEGRATION.md)
+**Full integration guide (MCP + CROO):** [`docs/A2A_BUYER_GUIDE.md`](../../docs/A2A_BUYER_GUIDE.md)
 
 ## Prerequisites
 
@@ -68,4 +68,4 @@ Example: [`docs/samples/signals-live-v1.2.example.json`](../../docs/samples/sign
 
 ## MCP alternative
 
-Same payload via MCP `get_live_signals` (0.5 CSPR, Casper x402). See [`docs/MCP_INTEGRATION.md`](../../docs/MCP_INTEGRATION.md).
+Same payload via MCP `get_live_signals` (0.5 CSPR, Casper x402). See [`docs/A2A_BUYER_GUIDE.md`](../../docs/A2A_BUYER_GUIDE.md).

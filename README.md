@@ -200,12 +200,10 @@ incoming reputation orders. Payment settles on-chain in USDC on Base.
 | [`AGENTS.md`](./AGENTS.md) | Agent orchestration guide |
 | [`docs/CORE_PRINCIPLES.md`](./docs/CORE_PRINCIPLES.md) | Enhancement First, DRY, Consolidation — governs every change |
 | [`docs/AGENT_DESIGN.md`](./docs/AGENT_DESIGN.md) | BSC trading agent: 6-factor signal, bankroll discipline, 6-layer scam-token defense |
+| [`docs/HARNESS_ARCHITECTURE_PLAN.md`](./docs/HARNESS_ARCHITECTURE_PLAN.md) | Domain-agnostic harness: crypto + options domains, adapter registry |
 | [`docs/MANTLE_INTEGRATION.md`](./docs/MANTLE_INTEGRATION.md) | ERC-8004 ConvictionRegistry on Mantle Sepolia |
-| [`POSITIONING.md`](./docs/POSITIONING.md) | ICP, differentiation, creative monopoly frame, messaging do/don't |
-| [`OUTBOUND_INTEGRATORS.md`](./docs/OUTBOUND_INTEGRATORS.md) | Surgical outreach to 5 integrator personas — DMs, ask, success metrics |
-| [`docs/MCP_INTEGRATION.md`](./docs/MCP_INTEGRATION.md) | **Start here for buyers** — MCP + CROO rails, signals-live/v1.2, curl + requester |
+| [`docs/A2A_BUYER_GUIDE.md`](./docs/A2A_BUYER_GUIDE.md) | **Start here for buyers** — MCP + CROO rails, signals-live/v1.2, curl + requester |
 | [`examples/buyer-agent/`](./examples/buyer-agent/) | **End-to-end buyer integration** — allocator decision flow: trust gate → paid signals → act + audit. Copy-paste-able, zero deps. See [`DEPLOYMENT.md`](./examples/buyer-agent/DEPLOYMENT.md) for cron/Docker scheduling |
-| [`docs/community-share.md`](./docs/community-share.md) | Paste-ready Telegram/Discord announcements for CROO + Casper channels |
 | [`docs/CASPER_INTEGRATION.md`](./docs/CASPER_INTEGRATION.md) | Casper Odra registry + MCP server + x402 reputation paywall |
 | [`docs/CROO_INTEGRATION.md`](./docs/CROO_INTEGRATION.md) | CROO Agent Protocol integration — CAP services, USDC settlement, SDK methods |
 | [`docs/SOSOVALUE_INTEGRATION.md`](./docs/SOSOVALUE_INTEGRATION.md) | SoSoValue API + SoDEX + AI narrative pipeline |

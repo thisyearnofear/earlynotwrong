@@ -1,5 +1,9 @@
 # Demo Scripts: Early, Not Wrong
 
+> Historical collection of buildathon demo scripts. For the current Casper
+> recording, use [demo-script-final.md](../demo-script-final.md). This file is
+> retained for the older CROO, SoSoValue, and Aleo walkthroughs.
+
 This document contains demo scripts for different aspects of the platform.
 
 - [Casper Agentic Buildathon Demo](#casper-agentic-buildathon-demo) — Odra reputation registry, MCP, x402 paywall
@@ -367,7 +371,7 @@ Cut to:
 
 - CROO Store: https://agent.croo.network
 - Dashboard: https://earlynotwrong.vercel.app/agent#act-4
-- Docs: [`docs/CROO_INTEGRATION.md`](./CROO_INTEGRATION.md)
+- Docs: [`docs/CROO_INTEGRATION.md`](../CROO_INTEGRATION.md)
 
 ## Demo Tips
 
