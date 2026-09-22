@@ -23,9 +23,10 @@ describe("PRICING config", () => {
     expect(PRICING.get_agent_reputation.amountBaseUnits).toBe("0");
   });
 
-  it("marks the history / cross-chain queries as paid", () => {
+  it("marks the history / cross-chain / wallet-score queries as paid", () => {
     expect(PRICING.get_subject_history.paid).toBe(true);
     expect(PRICING.cross_chain_lookup.paid).toBe(true);
+    expect(PRICING.score_wallet.paid).toBe(true);
   });
 
   it("marks live signals as free distribution (edge not yet proven)", () => {
@@ -33,8 +34,12 @@ describe("PRICING config", () => {
     expect(PRICING.get_live_signals.amountBaseUnits).toBe("0");
   });
 
+  it("prices wallet-score at 0.5 CSPR (50 base units of the 2-decimal token)", () => {
+    expect(PRICING.score_wallet.amountBaseUnits).toBe("50");
+  });
+
   it("paid tools carry a non-zero amount", () => {
-    for (const tool of ["get_subject_history", "cross_chain_lookup"] as const) {
+    for (const tool of ["get_subject_history", "cross_chain_lookup", "score_wallet"] as const) {
       expect(BigInt(PRICING[tool].amountBaseUnits)).toBeGreaterThan(0n);
     }
   });
@@ -184,6 +189,35 @@ describe("x402 middleware — request gating", () => {
     expect(body.accepts?.[0]?.scheme).toBe("exact");
     expect(body.accepts?.[0]?.network).toBe("casper:casper-test");
     expect(body.accepts?.[0]?.amount).toBe(PRICING.get_subject_history.amountBaseUnits);
+  });
+
+  it("gates score_wallet behind x402 (402 with the hero-SKU amount)", async () => {
+    const { Hono } = await import("hono");
+    const { x402Middleware } = await import("../src/mcp/x402.js");
+    const app = new Hono();
+    app.use("/mcp", x402Middleware());
+    app.post("/mcp", (c) => c.json({ passedThrough: true }));
+
+    const res = await app.request("/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "score_wallet", arguments: { address: "0xabc", chain: "base" } },
+      }),
+    });
+    expect(res.status).toBe(402);
+    const body = await res.json() as {
+      x402Version?: number;
+      accepts?: Array<{ scheme?: string; network?: string; amount?: string }>;
+      error?: string;
+    };
+    expect(body.x402Version).toBe(2);
+    expect(body.accepts?.[0]?.scheme).toBe("exact");
+    expect(body.accepts?.[0]?.network).toBe("casper:casper-test");
+    expect(body.accepts?.[0]?.amount).toBe(PRICING.score_wallet.amountBaseUnits);
   });
 
   it("serves get_live_signals without payment (free distribution)", async () => {

@@ -799,7 +799,7 @@ export interface ScoreWalletInput {
   /** Wallet address to score (Solana base58 or EVM 0x…). */
   address: string;
   /** Which chain the wallet lives on. */
-  chain: "solana" | "base";
+  chain: "solana" | "base" | "bsc";
   /** Optional resolved name (ENS / Farcaster) for display. */
   resolvedName?: string | null;
   /** Override the default 180-day lookback. */

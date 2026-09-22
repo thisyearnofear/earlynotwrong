@@ -33,7 +33,7 @@ import { keccak256, toBytes } from "viem";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type WalletChain = "solana" | "base";
+export type WalletChain = "solana" | "base" | "bsc";
 
 export interface WalletScoreInput {
   address: string;
@@ -103,7 +103,8 @@ export interface WalletScoreV1 {
 /**
  * Score a wallet's behavioral conviction.
  *
- * Fetches on-chain trade history (Helius for Solana, Zerion/Alchemy for Base),
+ * Fetches on-chain trade history (Helius for Solana, Zerion/Alchemy for Base,
+ * Zerion/BscScan for BSC),
  * reconstructs the ledger, runs conviction-core's scoring, fetches the cohort
  * percentile, and returns the `wallet-score/v1` payload.
  *

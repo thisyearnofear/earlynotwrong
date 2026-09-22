@@ -86,6 +86,11 @@ export const APP_CONFIG = {
       name: "Solana",
       rpcUrl: `https://api.mainnet-beta.solana.com`,
     },
+    bsc: {
+      id: 56,
+      name: "BSC",
+      rpcUrl: `https://bsc-mainnet.nodereal.io/v1/${process.env.NODEREAL_API_KEY}`,
+    },
     aleo: {
       // network: "testnet" — Aleo's current network identifier. The repo had
       // "testnet3" inherited from older SDK versions; the explorer API rejects

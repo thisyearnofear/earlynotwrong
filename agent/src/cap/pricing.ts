@@ -69,11 +69,13 @@ export const CAP_PRICING: Record<CapServiceName, CapPricingEntry> = {
   "signals-live": {
     serviceId: "signals-live",
     toolName: "get_live_signals",
-    // Free distribution until edge is proven — $0 supported end-to-end
-    // (handler + payment stats both handle a 0 amount). Lower the Store
-    // listing price to $0 via the manual Store-dashboard step.
-    amountUsdcBaseUnits: "0",
-    description: "Free ($0 USDC) — live conviction signals (free distribution until edge is proven)",
+    // Near-free distribution until edge is proven — $0.01 is the CROO Store
+    // floor ("price must be positive"), so the Store listing and the code
+    // agree on 10000 base units. MCP stays genuinely free (see
+    // agent/src/mcp/pricing.ts) — the penny is a Store-validation nominal,
+    // not a revenue line.
+    amountUsdcBaseUnits: "10000",
+    description: "$0.01 USDC (Store-minimum nominal) — live conviction signals (near-free distribution until edge is proven)",
   },
   "wallet-score": {
     serviceId: "wallet-score",
@@ -93,11 +95,13 @@ export const CAP_SERVICE_IDS: readonly string[] = Object.values(CAP_PRICING).map
 
 /**
  * CROO Store negotiations often use the Store service UUID in `serviceId`, not
- * the human slug (`signals-live`). Map UUID → slug via env:
+ * the human slug (`signals-live` / `wallet-score`). Map UUID → slug via env:
  *
- *   CROO_SERVICE_UUID_MAP='{"3da733af-...":"signals-live"}'
- * or
+ *   CROO_SERVICE_UUID_MAP='{"3da733af-...":"signals-live","7cd42667-...":"wallet-score"}'
+ * or the per-service vars below.
+ *
  *   CROO_SIGNALS_LIVE_SERVICE_UUID=3da733af-...
+ *   CROO_WALLET_SCORE_SERVICE_UUID=7cd42667-f256-493c-a35a-2578293a4ecf
  */
 export function resolveCapServiceId(rawId: string): CapServiceName | null {
   if (rawId in CAP_PRICING) {
@@ -107,6 +111,11 @@ export function resolveCapServiceId(rawId: string): CapServiceName | null {
   const signalsUuid = process.env.CROO_SIGNALS_LIVE_SERVICE_UUID?.trim();
   if (signalsUuid && rawId === signalsUuid) {
     return "signals-live";
+  }
+
+  const walletScoreUuid = process.env.CROO_WALLET_SCORE_SERVICE_UUID?.trim();
+  if (walletScoreUuid && rawId === walletScoreUuid) {
+    return "wallet-score";
   }
 
   const mapJson = process.env.CROO_SERVICE_UUID_MAP?.trim();

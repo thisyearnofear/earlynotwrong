@@ -31,7 +31,7 @@
       "required": ["chain", "address", "resolvedName"],
       "additionalProperties": false,
       "properties": {
-        "chain": { "type": "string", "enum": ["solana", "base"] },
+        "chain": { "type": "string", "enum": ["solana", "base", "bsc"] },
         "address": { "type": "string" },
         "resolvedName": {
           "type": ["string", "null"],

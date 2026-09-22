@@ -174,7 +174,7 @@ export async function getAnalysesByAddress(
  */
 export async function getCohortPercentile(
   score: number,
-  chain?: "solana" | "base"
+  chain?: "solana" | "base" | "bsc"
 ): Promise<{ topPercent: number; cohortSize: number } | null> {
   const MIN_COHORT_SIZE = 5;
   try {

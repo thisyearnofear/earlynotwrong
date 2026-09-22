@@ -50,7 +50,7 @@ setInterval(() => {
 
 // ─── Input validation ───────────────────────────────────────────────────────
 
-const VALID_CHAINS: WalletChain[] = ["solana", "base"];
+const VALID_CHAINS: WalletChain[] = ["solana", "base", "bsc"];
 
 interface WalletScoreRequest {
   address: string;

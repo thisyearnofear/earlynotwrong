@@ -47,8 +47,8 @@ describe("CAP pricing config", () => {
     expect(CAP_PRICING["reputation-agent"].toolName).toBe("get_agent_reputation");
   });
 
-  it("makes signals-live the free-distribution query", () => {
-    expect(CAP_PRICING["signals-live"].amountUsdcBaseUnits).toBe("0");
+  it("prices signals-live at the $0.01 Store-minimum nominal", () => {
+    expect(CAP_PRICING["signals-live"].amountUsdcBaseUnits).toBe("10000");
     expect(CAP_PRICING["signals-live"].toolName).toBe("get_live_signals");
   });
 
@@ -89,5 +89,14 @@ describe("CAP pricing config", () => {
     expect(resolveCapServiceId(uuid)).toBe("signals-live");
     expect(resolveCapServiceId("unknown-uuid")).toBeNull();
     delete process.env.CROO_SIGNALS_LIVE_SERVICE_UUID;
+  });
+
+  it("resolves the wallet-score Store service UUID to the wallet-score slug", () => {
+    const uuid = "7cd42667-f256-493c-a35a-2578293a4ecf";
+    process.env.CROO_WALLET_SCORE_SERVICE_UUID = uuid;
+    expect(resolveCapServiceId("wallet-score")).toBe("wallet-score");
+    expect(resolveCapServiceId(uuid)).toBe("wallet-score");
+    expect(resolveCapServiceId("unknown-uuid")).toBeNull();
+    delete process.env.CROO_WALLET_SCORE_SERVICE_UUID;
   });
 });

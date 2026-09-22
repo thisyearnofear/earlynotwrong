@@ -30,9 +30,11 @@ export interface PriceAnalysis {
   lastUpdated: number;
 }
 
+export type ChainId = "solana" | "base" | "bsc";
+
 export interface TransactionParams {
   address: string;
-  chain: "solana" | "base";
+  chain: ChainId;
   timeHorizonDays: number;
   minTradeValue: number;
 }
@@ -67,6 +69,8 @@ export class MarketService {
 
     if (chain === "solana") {
       return this.fetchSolanaTransactions(address, timeHorizonDays, minTradeValue);
+    } else if (chain === "bsc") {
+      return this.fetchBscTransactions(address, timeHorizonDays, minTradeValue);
     } else {
       return this.fetchBaseTransactions(address, timeHorizonDays, minTradeValue);
     }
@@ -77,7 +81,7 @@ export class MarketService {
    */
   async getTokenMetadata(
     tokenAddress: string,
-    chain: "solana" | "base"
+    chain: ChainId
   ): Promise<TokenMetadata | null> {
     const cacheKey = CacheKeys.tokenMetadata(tokenAddress, chain);
 
@@ -139,7 +143,7 @@ export class MarketService {
    */
   async getPriceData(
     tokenAddress: string,
-    chain: "solana" | "base"
+    chain: ChainId
   ): Promise<PriceAnalysis | null> {
     const cacheKey = CacheKeys.tokenPrice(tokenAddress, chain);
 
@@ -196,7 +200,7 @@ export class MarketService {
    */
   async getHistoricalPrices(
     tokenAddress: string,
-    chain: "solana" | "base",
+    chain: ChainId,
     fromTimestamp: number,
     toTimestamp: number
   ): Promise<PricePoint[]> {
@@ -227,7 +231,7 @@ export class MarketService {
           }
 
           // 2. Try CoinGecko
-          const platformId = chain === "solana" ? "solana" : "base";
+          const platformId = chain === "solana" ? "solana" : chain === "bsc" ? "binance-smart-chain" : "base";
           const response = await fetch(
             `${getCoingeckoUrl()}/coins/${platformId}/contract/${tokenAddress}/market_chart/range?vs_currency=usd&from=${Math.floor(
               fromTimestamp / 1000
@@ -265,7 +269,7 @@ export class MarketService {
    */
   async calculatePatienceTax(
     tokenAddress: string,
-    chain: "solana" | "base",
+    chain: ChainId,
     exitPrice: number,
     exitTimestamp: number,
     positionSize: number,
@@ -444,10 +448,101 @@ export class MarketService {
   }
 
   /**
-   * Fetch Base via Zerion API
+   * Fetch BSC transactions — same Zerion path as Base, chain_ids=binance-smart-chain.
+   * Zerion txns lack native-BNB value metadata, so the BNB fallback prices via DexScreener.
    */
+  private async fetchBscTransactions(
+    address: string,
+    timeHorizonDays: number,
+    minTradeValue: number
+  ): Promise<TokenTransaction[]> {
+    if (ZERION_API_KEY) {
+      try {
+        const zTransactions = await this.fetchEvmViaZerion(
+          address,
+          "bsc",
+          "binance-smart-chain",
+          timeHorizonDays,
+          minTradeValue
+        );
+        if (zTransactions.length > 0) return zTransactions;
+      } catch (e) {
+        console.warn("Zerion BSC fetch failed, falling back to BscScan:", e);
+      }
+    }
+
+    return this.fetchBscViaBscScan(address, timeHorizonDays, minTradeValue);
+  }
+
+  /**
+   * Fetch BSC via BscScan txlist (keyless free tier, 10k tx cap).
+   * ERC-20 transfers only; BNB value priced via DexScreener batch fallback.
+   */
+  private async fetchBscViaBscScan(
+    address: string,
+    days: number,
+    minVal: number
+  ): Promise<TokenTransaction[]> {
+    const cutoff = Date.now() - days * 86400 * 1000;
+    const apiKey = process.env.BSCSCAN_API_KEY?.trim();
+    const url =
+      `https://api.bscscan.com/api?module=account&action=tokentx` +
+      `&address=${address}&startblock=0&endblock=99999999&sort=asc` +
+      (apiKey ? `&apikey=${apiKey}` : ``);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`BscScan API error: ${res.status}`);
+    const data = await res.json();
+    if (data.status !== "1" || !Array.isArray(data.result)) return [];
+
+    const txs: TokenTransaction[] = [];
+    for (const t of data.result) {
+      const time = Number(t.timeStamp) * 1000;
+      if (time < cutoff) continue;
+      const decimals = Number(t.tokenDecimal || 18);
+      const amount = Number(t.value) / 10 ** decimals;
+      const type = t.to?.toLowerCase() === address.toLowerCase() ? "buy" : "sell";
+      txs.push({
+        hash: t.hash,
+        timestamp: time,
+        tokenAddress: (t.contractAddress || "").toLowerCase(),
+        tokenSymbol: t.tokenSymbol || "UNKNOWN",
+        type,
+        amount,
+        priceUsd: 0,
+        valueUsd: 0,
+        blockNumber: Number(t.blockNumber || 0),
+      });
+    }
+    if (txs.length === 0) return [];
+
+    // Price via DexScreener batch (BscScan tokentx carries no USD values).
+    const unique = Array.from(new Set(txs.map((t) => t.tokenAddress))).filter(Boolean);
+    const prices = await this.batchFetchDexScreenerPrices(unique);
+    const out: TokenTransaction[] = [];
+    for (const t of txs) {
+      const price = prices.get(t.tokenAddress.toLowerCase()) || 0;
+      const valueUsd = price * t.amount;
+      if (valueUsd < minVal) continue;
+      out.push({ ...t, priceUsd: price, valueUsd });
+    }
+    return out.sort((a, b) => a.timestamp - b.timestamp);
+  }
   private async fetchBaseViaZerion(
     address: string,
+    days: number,
+    minVal: number
+  ): Promise<TokenTransaction[]> {
+    return this.fetchEvmViaZerion(address, "base", "base", days, minVal);
+  }
+
+  /**
+   * Shared Zerion wallet-transactions fetch, parameterized by chain.
+   * Zerion chain_id for BSC is `binance-smart-chain` (verified in Zerion docs).
+   */
+  private async fetchEvmViaZerion(
+    address: string,
+    chain: ChainId,
+    zerionChainId: string,
     days: number,
     minVal: number
   ): Promise<TokenTransaction[]> {
@@ -455,7 +550,7 @@ export class MarketService {
     const cutoff = Date.now() - days * 86400 * 1000;
     const txs: TokenTransaction[] = [];
 
-    let url = `https://api.zerion.io/v1/wallets/${address}/transactions/?filter[chain_ids]=base&currency=usd&page[size]=100`;
+    let url = `https://api.zerion.io/v1/wallets/${address}/transactions/?filter[chain_ids]=${zerionChainId}&currency=usd&page[size]=100`;
     let pageCount = 0;
     const MAX_PAGES = 10;
 
@@ -485,7 +580,7 @@ export class MarketService {
           const info = transfer.fungible_info;
           if (!info) continue;
 
-          const impl = info.implementations?.find((i: any) => i.chain_id === "base");
+          const impl = info.implementations?.find((i: any) => i.chain_id === zerionChainId);
           const tokenAddr = impl?.address || attrs.hash;
           const qty = parseFloat(transfer.quantity.float || "0");
           const price = transfer.price || (qty > 0 ? val / qty : 0);

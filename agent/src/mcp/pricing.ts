@@ -10,10 +10,10 @@
  *   get_live_signals is free distribution: live conviction signals for the
  *   current cycle are free until edge is proven (see GET /edge-report).
  *
- * Paid tier (x402): get_subject_history, cross_chain_lookup.
+ * Paid tier (x402): get_subject_history, cross_chain_lookup, score_wallet.
  *   Recurring-value data. History walks and cross-chain reconciliation are
  *   audit-grade lookups; score_wallet is the hero paid SKU (behavioral
- *   scoring of arbitrary wallets).
+ *   scoring of arbitrary wallets — 0.5 CSPR, mirrors the $0.05 USDC CAP price).
  *
  * Amounts are in the CEP-18 token's base units (decimals from PaymentRequirements.extra).
  * Default 0.1 CSPR per paid call assuming 2-decimal token (≈ 10 base units).
@@ -26,7 +26,8 @@ export type ToolName =
   | "cross_chain_lookup"
   | "get_agent_reputation"
   | "get_jury_deliberation"
-  | "get_live_signals";
+  | "get_live_signals"
+  | "score_wallet";
 
 interface PricingEntry {
   paid: boolean;
@@ -73,5 +74,10 @@ export const PRICING: Record<ToolName, PricingEntry> = {
     amountBaseUnits: "0",
     description:
       "Free — live conviction signals for the current cycle (free distribution; edge not yet proven — see GET /edge-report)",
+  },
+  score_wallet: {
+    paid: true,
+    amountBaseUnits: "50",
+    description: "0.5 CSPR — behavioral conviction score for any wallet (the hero paid SKU)",
   },
 };

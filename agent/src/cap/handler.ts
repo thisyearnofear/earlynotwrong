@@ -35,7 +35,7 @@ export interface CapOrderPayload {
 function parseRequirements(requirements: string | undefined): {
   subjectHash: `0x${string}`;
   address?: string;
-  chain?: "solana" | "base";
+  chain?: "solana" | "base" | "bsc";
   resolvedName?: string | null;
 } {
   try {
@@ -43,7 +43,7 @@ function parseRequirements(requirements: string | undefined): {
     const result: {
       subjectHash: `0x${string}`;
       address?: string;
-      chain?: "solana" | "base";
+      chain?: "solana" | "base" | "bsc";
       resolvedName?: string | null;
     } = { subjectHash: "0x" + "0".repeat(64) as `0x${string}` };
     if (typeof parsed.subjectHash === "string") {
@@ -52,7 +52,7 @@ function parseRequirements(requirements: string | undefined): {
     if (typeof parsed.address === "string") {
       result.address = parsed.address;
     }
-    if (parsed.chain === "solana" || parsed.chain === "base") {
+    if (parsed.chain === "solana" || parsed.chain === "base" || parsed.chain === "bsc") {
       result.chain = parsed.chain;
     }
     if (typeof parsed.resolvedName === "string" || parsed.resolvedName === null) {
