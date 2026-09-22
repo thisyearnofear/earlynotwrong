@@ -580,6 +580,47 @@ export class MarketService {
           const info = transfer.fungible_info;
           if (!info) continue;
 
+          // Native gas legs (BNB in, matching `in` direction on a wallet tx)
+          // carry value 0 in Zerion. Resolve the bought token's address from
+          // the OUT leg of the same tx, price it via DexScreener, and treat
+          // the BNB spend as the buy value.
+          const isNativeIn =
+            chain !== "solana" &&
+            transfer.direction === "in" &&
+            (transfer.value || 0) <= 0 &&
+            (info.symbol === "BNB" || info.symbol === "ETH");
+          if (isNativeIn) {
+            const outLeg = (attrs.transfers || []).find(
+              (l: any) =>
+                l.direction === "out" &&
+                l.fungible_info &&
+                l.fungible_info.symbol !== info.symbol
+            );
+            const outInfo = outLeg?.fungible_info;
+            const outImpl = outInfo?.implementations?.find(
+              (i: any) => i.chain_id === zerionChainId
+            );
+            const outAddr = outImpl?.address;
+            const outQty = parseFloat(outLeg?.quantity?.float || "0");
+            if (!outAddr || !(outQty > 0)) continue;
+            const outPrice =
+              outLeg?.price || (await this.getEvmTokenPrice(outAddr, chain));
+            const outVal = outPrice * outQty;
+            if (outVal < minVal) continue;
+            txs.push({
+              hash: attrs.hash,
+              timestamp: time,
+              tokenAddress: outAddr,
+              tokenSymbol: outInfo.symbol || "UNK",
+              type: "buy",
+              amount: outQty,
+              priceUsd: outPrice,
+              valueUsd: outVal,
+              blockNumber: attrs.block_number,
+            });
+            continue;
+          }
+
           const impl = info.implementations?.find((i: any) => i.chain_id === zerionChainId);
           const tokenAddr = impl?.address || attrs.hash;
           const qty = parseFloat(transfer.quantity.float || "0");
@@ -738,6 +779,11 @@ export class MarketService {
         return APP_CONFIG.fallbacks.solPrice;
       }
     }, 600000);
+  }
+
+  private async getEvmTokenPrice(address: string, chain: ChainId): Promise<number> {
+    const data = await this.getPriceData(address, chain);
+    return data?.currentPrice || 0;
   }
 
   private async getBaseTokenPrice(address: string): Promise<number> {
