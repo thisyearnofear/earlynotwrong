@@ -154,7 +154,7 @@ export function buildMcpServer(): McpServer {
     "score_wallet",
     {
       description:
-        "Score ANY wallet's behavioral conviction: win rate, patience tax (USD left on the table by early exits), archetype (Iron Pillar / Profit Phantom / Exit Voyager / Diamond Hand), cohort percentile, and a verifiable ledger hash. Send { address, chain }. This is the scarce product — behavioral scoring of arbitrary wallets, not the agent's own signals. PAID (x402, 0.5 CSPR / $0.05 USDC via CROO).",
+        "Score ANY wallet's behavioral conviction: win rate, patience tax (USD left on the table by early exits), archetype + plain-English behaviorSummary (Iron Pillar / Profit Phantom / Exit Voyager / Diamond Hand), cohort percentile, and a verifiable ledger hash. Send { address, chain }. This is the scarce product — behavioral scoring of arbitrary wallets, not the agent's own signals. PAID (x402, 0.5 CSPR / $0.05 USDC via CROO).",
       inputSchema: {
         address: z.string().min(1).describe("Wallet address (Solana base58 or EVM 0x…)"),
         chain: z.enum(["solana", "base", "bsc"]).describe("Which chain the wallet lives on"),

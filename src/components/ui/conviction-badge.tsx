@@ -29,7 +29,7 @@ const ARCHETYPE_CONFIG = {
     bg: "bg-signal/10",
     border: "border-signal/30",
     glow: "shadow-[0_0_20px_-5px_rgba(34,211,238,0.4)]",
-    description: "Unyielding conviction through high-volatility drawdowns.",
+    description: "Holds through drawdowns and captures upside.",
   },
   "Diamond Hand": {
     icon: Gem,
@@ -37,7 +37,7 @@ const ARCHETYPE_CONFIG = {
     bg: "bg-patience/10",
     border: "border-patience/30",
     glow: "shadow-[0_0_20px_-5px_rgba(52,211,153,0.4)]",
-    description: "Exceptional patience resulting in maximum upside capture.",
+    description: "Holds long and rarely exits.",
   },
   "Profit Phantom": {
     icon: Ghost,
@@ -45,7 +45,7 @@ const ARCHETYPE_CONFIG = {
     bg: "bg-impatience/10",
     border: "border-impatience/30",
     glow: "shadow-[0_0_20px_-5px_rgba(251,191,36,0.4)]",
-    description: "Systematically exits profitable positions before peak growth.",
+    description: "Takes profit early and leaves gains on the table.",
   },
   "Exit Voyager": {
     icon: Zap,
@@ -53,7 +53,7 @@ const ARCHETYPE_CONFIG = {
     bg: "bg-ethos/10",
     border: "border-ethos/30",
     glow: "shadow-[0_0_20px_-5px_rgba(139,92,246,0.4)]",
-    description: "High trade velocity with limited thesis maturation periods.",
+    description: "Frequent short holds with weak conviction.",
   },
 };
 

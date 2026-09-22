@@ -94,6 +94,55 @@ export type Archetype =
   | "Exit Voyager"
   | "Diamond Hand";
 
+/** Machine-friendly slug for A2A buyers (stable; brand labels may stay theatrical). */
+export type ArchetypeId =
+  | "iron_pillar"
+  | "profit_phantom"
+  | "exit_voyager"
+  | "diamond_hand";
+
+/** Brand label + machine id + plain-English behavior gloss. */
+export interface ArchetypeDescription {
+  /** Display name shipped as `archetype` (e.g. "Iron Pillar"). */
+  label: Archetype;
+  /** Stable slug for agents (e.g. "iron_pillar"). */
+  id: ArchetypeId;
+  /** One plain sentence — what the behavior means without brand jargon. */
+  summary: string;
+}
+
+/**
+ * Dual-layer archetype metadata: keep brand names for humans, always ship
+ * `id` + `summary` so buyers don't have to decode "Iron Pillar" alone.
+ */
+export const ARCHETYPE_DESCRIPTIONS: Record<Archetype, ArchetypeDescription> = {
+  "Iron Pillar": {
+    label: "Iron Pillar",
+    id: "iron_pillar",
+    summary: "Holds through drawdowns and captures upside",
+  },
+  "Profit Phantom": {
+    label: "Profit Phantom",
+    id: "profit_phantom",
+    summary: "Takes profit early and leaves gains on the table",
+  },
+  "Exit Voyager": {
+    label: "Exit Voyager",
+    id: "exit_voyager",
+    summary: "Frequent short holds with weak conviction",
+  },
+  "Diamond Hand": {
+    label: "Diamond Hand",
+    id: "diamond_hand",
+    summary: "Holds long and rarely exits",
+  },
+};
+
+/** Resolve brand archetype → id + plain-English summary. */
+export function describeArchetype(archetype: Archetype): ArchetypeDescription {
+  return ARCHETYPE_DESCRIPTIONS[archetype];
+}
+
 /** Behavioral measure of how a subject trades, independent of raw P&L. */
 export interface BehavioralMetrics {
   /** 0–100 behavioral conviction score. */

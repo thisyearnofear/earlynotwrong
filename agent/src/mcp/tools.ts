@@ -814,6 +814,8 @@ export type ScoreWalletResult = Record<string, unknown> & {
   schema: "wallet-score/v1";
   score: number;
   archetype: string;
+  archetypeId?: string;
+  behaviorSummary?: string;
 };
 
 /**

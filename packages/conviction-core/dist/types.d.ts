@@ -81,6 +81,24 @@ export interface ScoreBreakdown {
     panicSell: ScoreComponent;
 }
 export type Archetype = "Iron Pillar" | "Profit Phantom" | "Exit Voyager" | "Diamond Hand";
+/** Machine-friendly slug for A2A buyers (stable; brand labels may stay theatrical). */
+export type ArchetypeId = "iron_pillar" | "profit_phantom" | "exit_voyager" | "diamond_hand";
+/** Brand label + machine id + plain-English behavior gloss. */
+export interface ArchetypeDescription {
+    /** Display name shipped as `archetype` (e.g. "Iron Pillar"). */
+    label: Archetype;
+    /** Stable slug for agents (e.g. "iron_pillar"). */
+    id: ArchetypeId;
+    /** One plain sentence — what the behavior means without brand jargon. */
+    summary: string;
+}
+/**
+ * Dual-layer archetype metadata: keep brand names for humans, always ship
+ * `id` + `summary` so buyers don't have to decode "Iron Pillar" alone.
+ */
+export declare const ARCHETYPE_DESCRIPTIONS: Record<Archetype, ArchetypeDescription>;
+/** Resolve brand archetype → id + plain-English summary. */
+export declare function describeArchetype(archetype: Archetype): ArchetypeDescription;
 /** Behavioral measure of how a subject trades, independent of raw P&L. */
 export interface BehavioralMetrics {
     /** 0–100 behavioral conviction score. */

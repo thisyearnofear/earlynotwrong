@@ -10,6 +10,8 @@
     "subject",
     "score",
     "archetype",
+    "archetypeId",
+    "behaviorSummary",
     "metrics",
     "cohort",
     "positions",
@@ -48,7 +50,16 @@
     "archetype": {
       "type": "string",
       "enum": ["Iron Pillar", "Profit Phantom", "Exit Voyager", "Diamond Hand"],
-      "description": "Behavioral archetype. Iron Pillar = holds through drawdown + captures upside; Profit Phantom = exits early leaving gains; Exit Voyager = frequent low-conviction exits; Diamond Hand = long holds rarely exits."
+      "description": "Brand display label. Prefer behaviorSummary for plain English; prefer archetypeId for machine logic."
+    },
+    "archetypeId": {
+      "type": "string",
+      "enum": ["iron_pillar", "profit_phantom", "exit_voyager", "diamond_hand"],
+      "description": "Stable machine-friendly slug for A2A buyers (maps 1:1 to archetype)."
+    },
+    "behaviorSummary": {
+      "type": "string",
+      "description": "Plain-English gloss of the archetype — what the behavior means without brand jargon."
     },
     "metrics": {
       "type": "object",

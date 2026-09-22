@@ -20,11 +20,13 @@
 import {
   analyzePosition,
   calculateBehavioralMetrics,
+  describeArchetype,
   groupEntriesIntoPositions,
   type LedgerEntry,
   type LedgerPosition,
   type PositionAnalysis,
   type BehavioralMetrics,
+  type ArchetypeId,
 } from "conviction-core";
 import { marketService } from "@/lib/services/market-service";
 import { APP_CONFIG } from "@/lib/config";
@@ -69,7 +71,12 @@ export interface WalletScoreV1 {
     resolvedName: string | null;
   };
   score: number;
+  /** Brand label (e.g. "Iron Pillar"). Keep for humans / UI. */
   archetype: BehavioralMetrics["archetype"];
+  /** Machine-friendly slug (e.g. "iron_pillar") for A2A buyers. */
+  archetypeId: ArchetypeId;
+  /** Plain-English behavior gloss — what the archetype means without jargon. */
+  behaviorSummary: string;
   metrics: {
     winRate: number;
     upsideCapture: number;
@@ -146,12 +153,15 @@ export async function scoreWallet(input: WalletScoreInput): Promise<WalletScoreV
 
   // Empty wallet — honest result, not an error.
   if (positions.length === 0) {
+    const emptyArchetype = describeArchetype("Exit Voyager");
     return {
       schema: "wallet-score/v1",
       generatedAt,
       subject: { chain, address, resolvedName },
       score: 0,
-      archetype: "Exit Voyager",
+      archetype: emptyArchetype.label,
+      archetypeId: emptyArchetype.id,
+      behaviorSummary: emptyArchetype.summary,
       metrics: {
         winRate: 0,
         upsideCapture: 0,
@@ -278,15 +288,22 @@ export async function scoreWallet(input: WalletScoreInput): Promise<WalletScoreV
     };
   });
 
-  // 7. The guidance string — one sentence the buyer can act on.
-  const guidance = buildGuidance(metrics.archetype, metrics.score, metrics.patienceTax);
+  // 7. Dual-layer archetype + guidance the buyer can act on.
+  const archetypeMeta = describeArchetype(metrics.archetype);
+  const guidance = buildGuidance(
+    archetypeMeta,
+    metrics.score,
+    metrics.patienceTax,
+  );
 
   return {
     schema: "wallet-score/v1",
     generatedAt,
     subject: { chain, address, resolvedName },
     score: metrics.score,
-    archetype: metrics.archetype,
+    archetype: archetypeMeta.label,
+    archetypeId: archetypeMeta.id,
+    behaviorSummary: archetypeMeta.summary,
     metrics: {
       winRate: metrics.winRate,
       upsideCapture: metrics.upsideCapture,
@@ -357,7 +374,7 @@ function verifierUrl(chain: WalletChain, address: string): string {
 }
 
 function buildGuidance(
-  archetype: BehavioralMetrics["archetype"],
+  archetype: ReturnType<typeof describeArchetype>,
   score: number,
   patienceTaxUsd: number,
 ): string {
@@ -365,16 +382,5 @@ function buildGuidance(
     patienceTaxUsd > 0
       ? ` Patience tax is $${patienceTaxUsd.toFixed(0)} — money left on the table by exiting before the peak.`
       : "";
-  switch (archetype) {
-    case "Iron Pillar":
-      return `Iron Pillar — holds through drawdown and captures upside. Score ${score}/100.${taxNote}`;
-    case "Profit Phantom":
-      return `Profit Phantom — exits early, leaving gains on the table. Score ${score}/100.${taxNote}`;
-    case "Exit Voyager":
-      return `Exit Voyager — exits frequently, low conviction holding. Score ${score}/100.${taxNote}`;
-    case "Diamond Hand":
-      return `Diamond Hand — long holds, rarely exits. Score ${score}/100.${taxNote}`;
-    default:
-      return `Score ${score}/100.${taxNote}`;
-  }
+  return `${archetype.label} — ${archetype.summary.toLowerCase()}. Score ${score}/100.${taxNote}`;
 }
