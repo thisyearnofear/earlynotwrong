@@ -578,16 +578,19 @@ export class MarketService {
         }
 
         for (const transfer of attrs.transfers || []) {
-          if (transfer.status !== "confirmed") continue;
+          // Zerion omits `status` on wallet-transaction legs (undefined =
+          // confirmed). Only skip explicit non-confirmed legs.
+          if (transfer.status && transfer.status !== "confirmed") continue;
 
           const info = transfer.fungible_info;
           if (!info) continue;
 
-          // Zerion direction semantics (verified on BSC trade legs):
-          // `in` = token flowed INTO the wallet (a buy), `out` = flowed OUT (a sell).
-          // Gas-token legs (BNB in on a buy, e.g. a swap refund) carry their own
-          // value — skip them when the same tx has the real token leg to avoid
-          // double-counting one swap as two positions.
+          // Zerion direction semantics on EVM swaps (verified on BSC legs):
+          // `in` = token flowed INTO the wallet's counterparty flow, i.e. the
+          // token the wallet GAVE (BSC: BNB in + SLX out on a BNB→SLX buy).
+          // So: `out` = token received = buy, `in` = token given = sell.
+          // Gas-token legs (BNB/ETH) are skipped when the same tx has the real
+          // token leg, to avoid double-counting one swap as two positions.
           const legs = attrs.transfers || [];
           const isGasLeg =
             chain !== "solana" &&
@@ -608,12 +611,21 @@ export class MarketService {
           const qty = parseFloat(transfer.quantity.float || "0");
           const price = transfer.price || (qty > 0 ? val / qty : 0);
 
+          // EVM direction is inverted vs Solana: `out` = received = buy.
+          const type =
+            chain === "solana"
+              ? transfer.direction === "in"
+                ? "buy"
+                : "sell"
+              : transfer.direction === "out"
+                ? "buy"
+                : "sell";
           txs.push({
             hash: attrs.hash,
             timestamp: time,
             tokenAddress: tokenAddr,
             tokenSymbol: info.symbol || "UNK",
-            type: transfer.direction === "in" ? "buy" : "sell",
+            type,
             amount: qty,
             priceUsd: price,
             valueUsd: val,
