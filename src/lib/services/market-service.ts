@@ -475,8 +475,13 @@ export class MarketService {
   }
 
   /**
-   * Fetch BSC via BscScan txlist (keyless free tier, 10k tx cap).
-   * ERC-20 transfers only; BNB value priced via DexScreener batch fallback.
+   * Fetch BSC via Etherscan V2 API (chainid=56, keyless free tier 5 calls/s).
+   * NOTE: legacy api.bscscan.com / www.bscscan.com tokentx endpoints sit
+   * behind a Cloudflare challenge that rejects server-side fetch — do NOT
+   * use them. api.etherscan.io/v2/api?chainid=56 is the supported path and
+   * accepts the shared ETHERSCAN_API_KEY (multichain, V2). Without a key the
+   * free tier still answers low-volume calls.
+   * ERC-20 transfers only; value priced via DexScreener batch fallback.
    */
   private async fetchBscViaBscScan(
     address: string,
@@ -484,9 +489,9 @@ export class MarketService {
     minVal: number
   ): Promise<TokenTransaction[]> {
     const cutoff = Date.now() - days * 86400 * 1000;
-    const apiKey = process.env.BSCSCAN_API_KEY?.trim();
+    const apiKey = process.env.ETHERSCAN_API_KEY?.trim() || process.env.BSCSCAN_API_KEY?.trim();
     const url =
-      `https://api.bscscan.com/api?module=account&action=tokentx` +
+      `https://api.etherscan.io/v2/api?chainid=56&module=account&action=tokentx` +
       `&address=${address}&startblock=0&endblock=99999999&sort=asc` +
       (apiKey ? `&apikey=${apiKey}` : ``);
     const res = await fetch(url);
@@ -574,52 +579,29 @@ export class MarketService {
 
         for (const transfer of attrs.transfers || []) {
           if (transfer.status !== "confirmed") continue;
-          const val = transfer.value || 0;
-          if (val < minVal) continue;
 
           const info = transfer.fungible_info;
           if (!info) continue;
 
-          // Native gas legs (BNB in, matching `in` direction on a wallet tx)
-          // carry value 0 in Zerion. Resolve the bought token's address from
-          // the OUT leg of the same tx, price it via DexScreener, and treat
-          // the BNB spend as the buy value.
-          const isNativeIn =
+          // Zerion direction semantics (verified on BSC trade legs):
+          // `in` = token flowed INTO the wallet (a buy), `out` = flowed OUT (a sell).
+          // Gas-token legs (BNB in on a buy, e.g. a swap refund) carry their own
+          // value — skip them when the same tx has the real token leg to avoid
+          // double-counting one swap as two positions.
+          const legs = attrs.transfers || [];
+          const isGasLeg =
             chain !== "solana" &&
-            transfer.direction === "in" &&
-            (transfer.value || 0) <= 0 &&
-            (info.symbol === "BNB" || info.symbol === "ETH");
-          if (isNativeIn) {
-            const outLeg = (attrs.transfers || []).find(
+            (info.symbol === "BNB" || info.symbol === "ETH") &&
+            legs.some(
               (l: any) =>
-                l.direction === "out" &&
+                l !== transfer &&
                 l.fungible_info &&
                 l.fungible_info.symbol !== info.symbol
             );
-            const outInfo = outLeg?.fungible_info;
-            const outImpl = outInfo?.implementations?.find(
-              (i: any) => i.chain_id === zerionChainId
-            );
-            const outAddr = outImpl?.address;
-            const outQty = parseFloat(outLeg?.quantity?.float || "0");
-            if (!outAddr || !(outQty > 0)) continue;
-            const outPrice =
-              outLeg?.price || (await this.getEvmTokenPrice(outAddr, chain));
-            const outVal = outPrice * outQty;
-            if (outVal < minVal) continue;
-            txs.push({
-              hash: attrs.hash,
-              timestamp: time,
-              tokenAddress: outAddr,
-              tokenSymbol: outInfo.symbol || "UNK",
-              type: "buy",
-              amount: outQty,
-              priceUsd: outPrice,
-              valueUsd: outVal,
-              blockNumber: attrs.block_number,
-            });
-            continue;
-          }
+          if (isGasLeg) continue;
+
+          const val = transfer.value || 0;
+          if (val < minVal) continue;
 
           const impl = info.implementations?.find((i: any) => i.chain_id === zerionChainId);
           const tokenAddr = impl?.address || attrs.hash;
