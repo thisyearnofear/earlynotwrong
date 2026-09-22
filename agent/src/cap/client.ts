@@ -112,6 +112,11 @@ export async function startCapClient(): Promise<void> {
 
       if (negotiation.requirements) {
         negotiationRequirements.set(negotiationId, negotiation.requirements);
+      } else {
+        // Some Store orders arrive with empty negotiation requirements — the
+        // buyer's input may only be on the paid order. Cache a sentinel so
+        // OrderPaid knows to fall back to client.getOrder().
+        negotiationRequirements.set(negotiationId, "");
       }
 
       const result = await client!.acceptNegotiation(negotiationId);
@@ -130,8 +135,26 @@ export async function startCapClient(): Promise<void> {
       const resolvedServiceId = resolveCapServiceId(order.serviceId) ?? order.serviceId;
       console.log(`[cap] Order paid: ${orderId} service=${order.serviceId} → ${resolvedServiceId}`);
 
-      const requirements = negotiationRequirements.get(order.negotiationId);
+      let requirements = negotiationRequirements.get(order.negotiationId);
       negotiationRequirements.delete(order.negotiationId);
+      // Fallback: negotiation carried no requirements (Store orders often
+      // don't) — the buyer's input lives on the paid order itself.
+      if (!requirements) {
+        const orderReq =
+          (order as { requirements?: unknown }).requirements ??
+          (order as { negotiation?: { requirements?: unknown } }).negotiation?.requirements;
+        if (typeof orderReq === "string") requirements = orderReq;
+        else if (orderReq != null) {
+          try {
+            requirements = JSON.stringify(orderReq);
+          } catch {
+            requirements = undefined;
+          }
+        }
+        if (requirements) {
+          console.log(`[cap] Order ${orderId} requirements from getOrder (negotiation had none)`);
+        }
+      }
 
       await fulfillCapOrder(client, {
         orderId,
