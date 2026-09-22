@@ -26,11 +26,12 @@ export interface CapOrderPayload {
 }
 
 /**
- * Parse the `requirements` field from a CAP negotiation/order. Expects a
- * JSON object containing at least `subjectHash` (for reputation tools) OR
- * `address` + `chain` (for wallet-score). Returns a safe default on parse
- * failure so the tool returns a clean "no record" response instead of
- * throwing.
+ * Parse the `requirements` field from a CAP negotiation/order. The Store UI
+ * wraps buyer input as `{ "text": "<json string>" }` — unwrap one level when
+ * the outer object has a string `text` field. Also accepts the bare object.
+ * Expects at least `subjectHash` (for reputation tools) OR `address` + `chain`
+ * (for wallet-score). Returns a safe default on parse failure so the tool
+ * returns a clean "no record" response instead of throwing.
  */
 function parseRequirements(requirements: string | undefined): {
   subjectHash: `0x${string}`;
@@ -39,7 +40,19 @@ function parseRequirements(requirements: string | undefined): {
   resolvedName?: string | null;
 } {
   try {
-    const parsed = JSON.parse(requirements ?? "{}");
+    let parsed = JSON.parse(requirements ?? "{}");
+    // Store UI wraps buyer input: { "text": "{ \"address\": ..., ... }" }.
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { text?: unknown }).text === "string"
+    ) {
+      try {
+        parsed = JSON.parse((parsed as { text: string }).text);
+      } catch {
+        // keep outer object; field extraction below will fail cleanly
+      }
+    }
     const result: {
       subjectHash: `0x${string}`;
       address?: string;
