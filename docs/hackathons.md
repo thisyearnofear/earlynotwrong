@@ -61,4 +61,41 @@ SigNoz is an open-source observability platform built on OpenTelemetry. This hac
 
 ---
 
+## 2. TrendSpider Hackathon 2026
+
+> Status: **GO — building** (decided 2026-10-19). Category: **Most Unique
+> Options Indicator**. Full strategy:
+> [`archive/TRENDSPIDER_HACKATHON.md`](archive/TRENDSPIDER_HACKATHON.md).
+
+### Overview
+
+TrendSpider's indicator contest. You write a **new indicator** that renders on
+their charts (Sidekick AI no-code, or JavaScript via the Custom Indicator API) —
+it is not a project submission. **$25,000** in cash & prizes, 4 categories × 3
+prizes ($1,500/$750/$250 cash + subscriptions), sponsored by Clear Street.
+Deadline extended to **2026-10-26**; winners **2026-11-04**.
+
+**Categories:** Best Buy/Sell Signal Indicator · Most Unique Options Indicator ·
+Best Fundamental Analysis Indicator · Most Beautiful On-Chart Indicator.
+
+**Judging:** internal panel — Visual Clarity, Utility, Execution, Presentation.
+No profitability criterion; the backtested-edge story argues Utility +
+Presentation.
+
+**Rules:** publish the indicator public + free to the TrendSpider Store with
+`#TSBuild26` in the description + official form. One script per category.
+Caveat: posted registration closed Sept 16 — confirm late entry before building.
+
+### EarlyNotWrong's Fit
+
+| Criterion | EarlyNotWrong's Position |
+|---|---|
+| **Reusable signal** | The 6-factor conviction engine (contrarian 30 · RSI 10 · quality 20 · regime 20 · holder growth 10 − vol penalty) is a complete buy/sell model with published weights |
+| **Options model already spec'd** | `agent/lib/adapters/options-conviction.ts` implements "IV edge + conviction overlay" with the equity-side factor translation done: IV contrarian 20 · underlier RSI+delta 10 · liquidity/AUM 15 · VIX regime 15 · OI growth 10 · vanna/charm 5 · gamma squeeze 10 · earnings vol-crush 10 |
+| **Edge justification** | `agent/lib/backtest.ts` (`runEdgeReport()`, `GET /edge-report`) compares against a naive baseline; `hasEdge` needs a Sharpe beat **and** non-negative absolute return |
+| **Options data confirmed** | Custom indicators have live OPRA access — IV, greeks, OI, volume by strike/expiry (verified 2026-10-19); HTTP GET to third-party data for gaps |
+| **The gap** | TrendSpider is not a data source for the agent (SoSoValue/CMC + Alpaca). This is a **port of the scoring logic with inputs re-sourced** — not a repo submission |
+
+---
+
 *Archived: 2026*

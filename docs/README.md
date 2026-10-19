@@ -48,6 +48,7 @@ Relative links inside these files point at their original locations.
 - [Mantle submission](archive/SUBMISSION.md) · [Casper submission](archive/CASPER_SUBMISSION.md)
 - [BNB plan](archive/HACKATHON_PLAN.md) (superseded — copy-trading direction abandoned)
 - [OKX research](archive/OKX_HACKATHON.md) (did not ship)
+- [TrendSpider research](archive/TRENDSPIDER_HACKATHON.md) (evaluated 2026-10-19, not built)
 - [Positioning](archive/POSITIONING.md) · [Community share copy](archive/community-share.md) · [Social posts](archive/social-posts-final.md)
 - [CROO Store copy](archive/croo-store-listing.md) · [Wallet score listing](archive/croo-store-listing-wallet-score.md)
 - [Outbound DMs](archive/OUTBOUND_INTEGRATORS.md) (copy folded into the buyer guide § Outbound)
