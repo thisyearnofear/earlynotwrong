@@ -63,9 +63,10 @@ SigNoz is an open-source observability platform built on OpenTelemetry. This hac
 
 ## 2. TrendSpider Hackathon 2026
 
-> Status: **GO — building** (decided 2026-10-19). Category: **Most Unique
-> Options Indicator**. Full strategy:
-> [`archive/TRENDSPIDER_HACKATHON.md`](archive/TRENDSPIDER_HACKATHON.md).
+> Status: **SUBMITTED 2026-10-20** — "Options Conviction Score" in **Most
+> Unique Options Indicator** (store listing pending moderation; OPRA-verified
+> live on NVDA). Script: `trendspider/options-conviction-score.js`. Full
+> strategy: [`archive/TRENDSPIDER_HACKATHON.md`](archive/TRENDSPIDER_HACKATHON.md).
 
 ### Overview
 

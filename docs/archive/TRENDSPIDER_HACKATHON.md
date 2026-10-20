@@ -1,7 +1,11 @@
 # TrendSpider Hackathon 2026 — Research & Strategy
 
-> Status: **GO — building.** Decision made 2026-10-19 after API verification.
-> Deadline: **2026-10-26**. Winners announced **2026-11-04**.
+> Status: **SUBMITTED 2026-10-20** — "Options Conviction Score" published to
+> the TrendSpider Store (pending moderation, open source/public/free) and the
+> official form submitted to **Most Unique Options Indicator**.
+> Store: https://trendspider.com/trading-tools-store/indicators/6ad6d1-options-conviction-score/
+> Script: `trendspider/options-conviction-score.js` · checklist/copy:
+> `trendspider/README.md`. Winners announced **2026-11-04**.
 > Source: https://trendspider.com/hackathon (fetched 2026-10-19).
 > Competition material — history, not operational docs.
 
