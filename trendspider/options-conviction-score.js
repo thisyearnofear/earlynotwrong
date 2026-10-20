@@ -398,24 +398,9 @@ const gAvoid = paint(horizontal_line(avoidZone), {
 });
 fill(gFav, gAvoid, '#888888', 0.05);
 
-// Zone-cross markers (green = entering favorable, red = falling into avoid).
-// Debounced: a marker only fires when the score has spent ≥5 bars on the
-// other side first, so choppy oscillation around a threshold doesn't spam.
-const cross = series_of(null);
-const crossColors = series_of(null);
-let lastCross = -10;
-for (let i = 1; i < n; i++) {
-    const a = conviction[i - 1], b = conviction[i];
-    if (a == null || b == null) continue;
-    const up   = a < buyZone && b >= buyZone;
-    const down = a > avoidZone && b <= avoidZone;
-    if ((up || down) && i - lastCross >= 5) {
-        cross[i] = { y: b, z: 2 };
-        crossColors[i] = up ? greenColor : redColor;
-        lastCross = i;
-    }
-}
-paint(cross, { name: 'Zone cross', style: 'bubble', color: crossColors, ignoreWhenScaling: true });
+// Zone-cross markers removed — the zone-colored line + threshold guides
+// already communicate crossings; bubbles rendered oversized on the 0–100
+// pane at every tested z-scale and cluttered the view.
 
 // ────────────────────────────── Overlay panel ───────────────────────────────
 
