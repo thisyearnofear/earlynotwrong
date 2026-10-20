@@ -281,7 +281,10 @@ try {
                     const dLo = chain.resultByStrike[kLo], dHi = chain.resultByStrike[kHi];
                     const sLo = dLo?.[side], sHi = dHi?.[side];
 
-                    const atmIv     = lerp(dLo?.C?.iv ?? dLo?.P?.iv, dHi?.C?.iv ?? dHi?.P?.iv);
+                    // OPRA 'iv' arrives percent-scale (39.16 = 39.16% IV);
+                    // normalize to decimal like the delta field below.
+                    const rawIv     = lerp(dLo?.C?.iv ?? dLo?.P?.iv, dHi?.C?.iv ?? dHi?.P?.iv);
+                    const atmIv     = rawIv != null && rawIv > 5 ? rawIv / 100 : rawIv;
                     const atmDelta  = Math.abs(lerp(sLo?.gd, sHi?.gd) ?? 0.5);
                     const normDelta = atmDelta > 1 ? atmDelta / 100 : atmDelta;
                     const atmMid    = lerp(mid(sLo), mid(sHi));
@@ -407,7 +410,7 @@ for (let i = 1; i < n; i++) {
     const up   = a < buyZone && b >= buyZone;
     const down = a > avoidZone && b <= avoidZone;
     if ((up || down) && i - lastCross >= 5) {
-        cross[i] = { y: b, z: 5 };
+        cross[i] = { y: b, z: 2 };
         crossColors[i] = up ? greenColor : redColor;
         lastCross = i;
     }
