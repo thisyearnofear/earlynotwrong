@@ -1,48 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="790" font-family="Menlo, monospace">
-<rect width="1400" height="790" fill="#0d1117"/>
-<text x="60" y="95" font-size="52" font-weight="bold" fill="#e6edf3">Conviction Gym</text>
-<text x="60" y="135" font-size="24" fill="#8b949e">When more reasoning makes an agent worse</text>
-<text x="60" y="162" font-size="14" fill="#8b949e">Beam-1.0-501B plays a real trading environment · one JSON action per market day</text>
-<rect x="45" y="155" width="8" height="125" fill="#f85149"/>
-<text x="80" y="215" font-size="58" font-weight="bold" fill="#f85149">−6.5%</text>
-<text x="82" y="255" font-size="17" fill="#e6edf3">worst effort level (medium)</text>
-<text x="82" y="280" font-size="17" fill="#e6edf3">on the choppy 30-day window</text>
-<rect x="45" y="330" width="8" height="125" fill="#3fb950"/>
-<text x="80" y="390" font-size="58" font-weight="bold" fill="#3fb950">+12.9%</text>
-<text x="82" y="430" font-size="17" fill="#e6edf3">Beam at max effort beat the</text>
-<text x="82" y="455" font-size="17" fill="#e6edf3">production heuristic (+9.6%)</text>
-<rect x="45" y="505" width="8" height="125" fill="#d29922"/>
-<text x="80" y="565" font-size="58" font-weight="bold" fill="#d29922">23–24 / 30</text>
-<text x="82" y="605" font-size="17" fill="#e6edf3">high &amp; max responses truncated</text>
-<text x="82" y="630" font-size="17" fill="#e6edf3">at a 1,024-token budget</text>
-<rect x="740" y="-244.0" width="640" height="540" fill="#161b22" rx="8"/>
-<text x="760" y="-219.0" font-size="16" fill="#e6edf3">30-day return by reasoning_effort — choppy window</text>
-<rect x="800" y="236.0" width="26" height="249.60000000000002" fill="#30363d" stroke="#8b949e" stroke-width="1"/>
-<rect x="834" y="236.0" width="26" height="235.20000000000005" fill="#58a6ff" stroke="none" stroke-width="1"/>
-<text x="830.0" y="264.0" font-size="14" fill="#8b949e" text-anchor="middle">minimal</text>
-<rect x="918" y="236.0" width="26" height="144.0" fill="#30363d" stroke="#8b949e" stroke-width="1"/>
-<rect x="952" y="236.0" width="26" height="196.79999999999995" fill="#58a6ff" stroke="none" stroke-width="1"/>
-<text x="948.0" y="264.0" font-size="14" fill="#8b949e" text-anchor="middle">low</text>
-<text x="931.0" y="228.0" font-size="13" fill="#d29922" text-anchor="middle">⚠10/30</text>
-<rect x="1036" y="236.0" width="26" height="38.39999999999998" fill="#30363d" stroke="#8b949e" stroke-width="1"/>
-<rect x="1070" y="236.0" width="26" height="312.0" fill="#58a6ff" stroke="none" stroke-width="1"/>
-<text x="1066.0" y="264.0" font-size="14" fill="#8b949e" text-anchor="middle">medium</text>
-<text x="1049.0" y="228.0" font-size="13" fill="#d29922" text-anchor="middle">⚠17/30</text>
-<rect x="1154" y="236.0" width="26" height="0.0" fill="#30363d" stroke="#8b949e" stroke-width="1"/>
-<rect x="1188" y="236.0" width="26" height="240.0" fill="#58a6ff" stroke="none" stroke-width="1"/>
-<text x="1184.0" y="264.0" font-size="14" fill="#8b949e" text-anchor="middle">high</text>
-<text x="1167.0" y="228.0" font-size="13" fill="#d29922" text-anchor="middle">⚠23/30</text>
-<rect x="1272" y="236.0" width="26" height="9.599999999999994" fill="#30363d" stroke="#8b949e" stroke-width="1"/>
-<rect x="1306" y="236.0" width="26" height="201.60000000000002" fill="#58a6ff" stroke="none" stroke-width="1"/>
-<text x="1302.0" y="264.0" font-size="14" fill="#8b949e" text-anchor="middle">max</text>
-<text x="1285.0" y="228.0" font-size="13" fill="#d29922" text-anchor="middle">⚠24/30</text>
-<line x1="760" y1="236.0" x2="1340" y2="236.0" stroke="#8b949e" stroke-width="1"/>
-<line x1="760" y1="327.2" x2="1340" y2="327.2" stroke="#3fb950" stroke-width="1" stroke-dasharray="5,4"/>
-<text x="1335" y="321.2" font-size="12" fill="#3fb950" text-anchor="end">buy &amp; hold −1.9%</text>
-<rect x="760" y="286.0" width="14" height="14" fill="#30363d" stroke="#8b949e"/>
-<text x="778" y="298.0" font-size="12" fill="#e6edf3">1,024 max_tokens</text>
-<rect x="920" y="286.0" width="14" height="14" fill="#58a6ff"/>
-<text x="938" y="298.0" font-size="12" fill="#e6edf3">8,192 max_tokens</text>
-<text x="1080" y="298.0" font-size="11" fill="#d29922">⚠ = steps truncated → forced hold</text>
-<text x="60" y="760" font-size="13" fill="#8b949e">150 real market days · 26 BSC tokens · every step + token usage in the trace dataset</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="790" font-family="Helvetica Neue, Arial, sans-serif">
+<rect width="1400" height="790" fill="#f4f0e6"/>
+<text x="60" y="90" font-size="50" font-weight="800" letter-spacing="-1" fill="#1a1a18">EARLY, NOT WRONG</text>
+<text x="62" y="126" font-size="26" font-weight="700" letter-spacing="3" fill="#1a6b3c">CONVICTION GYM</text>
+<text x="60" y="164" font-size="20" fill="#1a1a18">When more reasoning makes an agent worse</text>
+<text x="60" y="190" font-size="14" fill="#7a7263">Beam-1.0-501B plays a real trading environment · one JSON action per market day</text>
+<rect x="50" y="235" width="9" height="115" fill="#b23c2e"/>
+<text x="80" y="290" font-size="56" font-weight="800" fill="#b23c2e">−6.5%</text>
+<text x="82" y="328" font-size="17" fill="#1a1a18">worst effort level (medium)</text>
+<text x="82" y="352" font-size="17" fill="#1a1a18">on the choppy 30-day window</text>
+<rect x="50" y="385" width="9" height="115" fill="#1a6b3c"/>
+<text x="80" y="440" font-size="56" font-weight="800" fill="#1a6b3c">+12.9%</text>
+<text x="82" y="478" font-size="17" fill="#1a1a18">Beam at max effort beat the</text>
+<text x="82" y="502" font-size="17" fill="#1a1a18">production heuristic (+9.6%)</text>
+<rect x="50" y="535" width="9" height="115" fill="#a0791f"/>
+<text x="80" y="590" font-size="56" font-weight="800" fill="#a0791f">23–24 / 30</text>
+<text x="82" y="628" font-size="17" fill="#1a1a18">high &amp; max responses truncated</text>
+<text x="82" y="652" font-size="17" fill="#1a1a18">at a 1,024-token budget</text>
+<rect x="770" y="-187.0" width="600" height="530" fill="#ffffff" rx="10" stroke="#ddd5c3"/>
+<text x="790" y="-157.0" font-size="16" font-weight="600" fill="#1a1a18">30-day return by reasoning_effort — choppy window</text>
+<rect x="815" y="268.0" width="26" height="228.8" fill="#d8d2c4" stroke="#7a7263" stroke-width="1"/>
+<rect x="847" y="268.0" width="26" height="215.6" fill="#1a6b3c" stroke="#7a7263" stroke-width="1"/>
+<text x="844" y="294.0" font-size="13" fill="#7a7263" text-anchor="middle">minimal</text>
+<rect x="919" y="268.0" width="26" height="132.0" fill="#d8d2c4" stroke="#7a7263" stroke-width="1"/>
+<rect x="951" y="268.0" width="26" height="180.4" fill="#1a6b3c" stroke="#7a7263" stroke-width="1"/>
+<text x="948" y="294.0" font-size="13" fill="#7a7263" text-anchor="middle">low</text>
+<text x="932.0" y="258.0" font-size="12" fill="#a0791f" text-anchor="middle">⚠10/30</text>
+<rect x="1023" y="268.0" width="26" height="35.2" fill="#d8d2c4" stroke="#7a7263" stroke-width="1"/>
+<rect x="1055" y="268.0" width="26" height="286.0" fill="#1a6b3c" stroke="#7a7263" stroke-width="1"/>
+<text x="1052" y="294.0" font-size="13" fill="#7a7263" text-anchor="middle">medium</text>
+<text x="1036.0" y="258.0" font-size="12" fill="#a0791f" text-anchor="middle">⚠17/30</text>
+<rect x="1127" y="268.0" width="26" height="0.0" fill="#d8d2c4" stroke="#7a7263" stroke-width="1"/>
+<rect x="1159" y="268.0" width="26" height="220.0" fill="#1a6b3c" stroke="#7a7263" stroke-width="1"/>
+<text x="1156" y="294.0" font-size="13" fill="#7a7263" text-anchor="middle">high</text>
+<text x="1140.0" y="258.0" font-size="12" fill="#a0791f" text-anchor="middle">⚠23/30</text>
+<rect x="1231" y="268.0" width="26" height="8.8" fill="#d8d2c4" stroke="#7a7263" stroke-width="1"/>
+<rect x="1263" y="268.0" width="26" height="184.8" fill="#1a6b3c" stroke="#7a7263" stroke-width="1"/>
+<text x="1260" y="294.0" font-size="13" fill="#7a7263" text-anchor="middle">max</text>
+<text x="1244.0" y="258.0" font-size="12" fill="#a0791f" text-anchor="middle">⚠24/30</text>
+<line x1="785" y1="268.0" x2="1325" y2="268.0" stroke="#7a7263" stroke-width="1"/>
+<line x1="785" y1="351.6" x2="1325" y2="351.6" stroke="#1a6b3c" stroke-width="1.5" stroke-dasharray="6,4"/>
+<text x="1322" y="344" font-size="12" fill="#1a6b3c" text-anchor="end">buy &amp; hold −1.9%</text>
+<rect x="790" y="312.0" width="14" height="14" fill="#d8d2c4" stroke="#7a7263"/>
+<text x="808" y="324.0" font-size="12" fill="#1a1a18">1,024 max_tokens</text>
+<rect x="950" y="312.0" width="14" height="14" fill="#1a6b3c"/>
+<text x="968" y="324.0" font-size="12" fill="#1a1a18">8,192 max_tokens</text>
+<text x="1100" y="324.0" font-size="11" fill="#a0791f">⚠ = truncated → forced hold</text>
+<text x="60" y="765" font-size="13" fill="#7a7263">150 real market days · 26 BSC tokens · every step + token usage in the trace dataset</text>
 </svg>
