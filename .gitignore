@@ -104,3 +104,8 @@ demo.cast
 examples/**/.env
 examples/**/.env.*
 !examples/**/.env.example
+
+# Python envs (conviction-gym)
+.venv/
+__pycache__/
+*.egg-info/

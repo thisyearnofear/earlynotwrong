@@ -14,94 +14,123 @@ src/                     — Next.js web app (frontend + API routes)
 
 The **agent** is the autonomous trading core; the **web app** is its monitoring dashboard and the Conviction Analysis surface for end users. `packages/conviction-core` is the single source of truth for the conviction framework consumed by both.
 
+The agent is also a **domain-agnostic harness**: `agent/lib/adapters/` maps
+`HARNESS_DOMAIN` → a `DataSource`/`ConvictionFactors`/`TradeExecutor` triple.
+`crypto` (BSC) is the live domain; `options` (Alpaca) is kept as the
+proof-of-pattern for a second domain.
+
 ---
 
 ## Current Operational Status
 
-> Last updated: 2026-08-25. The Gensyn Delphi arena window closed
-> 2026-08-24T00:00Z and the runner self-exited after the 12h redeem-only
-> grace — by design. **The delphi surface is archived.** Post-competition
-> defaults in `agent/lib/config.ts` are sane normal-mode values:
-> `tournamentMode: false`, `endgameHoldFromUtc: undefined` (restores
-> convergence exits), `maxPositionFraction: 0.15`, `maxMarketFraction: 0.35`,
-> `loopIntervalMinutes: 60`. The arena-only ruin-accepted knobs
-> (`tournamentPositionFraction`, `tournamentMarketFraction`) live in git
-> history; the hold-to-settlement toggle, `tournamentMode`, and the
-> 30-min cadence are off. `DELPHI_ENABLED` in `agent/.env` is the runtime
-> gate; for VPS closeout, set it to `0` after `pm2 delete
-> earlynotwrong-delphi`. The BSC agent is **still live** — the BNB
-> hackathon window (2026-06-22 → 2026-06-28) is long closed, but the
-> revenue SKUs (MCP x402, CROO CAP `signals-live` / `wallet-score`,
-> anchoring receipts) run on the same loop, and the agent is the product,
-> not a competitor. Full post-mortem (Gensyn arena + BNB hackathon) in
-> `docs/LESSONS.md`.
+> Last updated: 2026-10-19.
 
-### Recently shipped
+**Live:**
 
-- **Tournament 3× retarget (2026-08-21)** — Kelly edge gate no longer starves the ranker; hop-1 is `1/fill ≥ 3` (fill ≤ 0.33) on any strictly +EV side; WTI settle-below YES is hard-refused; exposure rebuilds after matured drops (Botafogo ghost). Hold-to-settlement stays. **Deploy this commit.**
-- **Tournament endgame (2026-08-20)** — `agent/lib/delphi/endgame.ts` (new), `probability.ts` (`quoteSharesForBudget`), `runner.ts`, `config.ts`, `status.ts`, arena status type. Hold-to-settlement from `endgameHoldFromUtc`; 95% of free cash into the single highest `forecast/fill` (≥2.2×, fill ≤0.45; hop-2 relaxes at 1500 TST); skip markets that cannot settle+redeem before close; 12h post-close redeem-only grace; 30-min cycles. One-thesis / stop-cooldown / four tiers stay ON. 657 tests. **Deploy this commit** — config lives in compiled TS.
-- **b-ai ladder rung + all-forecasts calibration ledger (`754448d0`, `c36b99e9`, 2026-08-19)** — `agent/lib/llm-providers.ts`, `delphi/forecast-log.ts` (new), `delphi/probability.ts`, `delphi/verification.ts`, `delphi/runner.ts`, `delphi/status.ts`, `llm-jury.ts`, `market-narrative.ts`, arena card, `agent-client.ts`, `.env.example`. Two changes, one root-cause each:
-  - **The free Qwen ladder collapsed (2026-08-19):** the keyless hf-qwen community endpoint was retired (404s, exactly as its own docs warned) and OrcaRouter's `qwen3.8-27b-free` tier rate-limited hard; with the gateway credit gone and OpenRouter mid-daily-cap, estimates fell to **0 per cycle**. The dead hf-qwen tier was removed outright and replaced by a **b-ai rung** (OpenAI-compatible, keyed by `BAI_API_KEY`, `BAI_API_BASE` override, default `deepseek-v4-flash` — free promo, verified live: reasoning tokens ride in a separate `reasoning_content` field so `content` stays clean JSON). Ladder order: gateway > openrouter > b-ai > orcarouter > paid; OrcaRouter defaults moved to `deepseek/deepseek-v4-flash-free`. The verification family map now treats b-ai+orcarouter as the `deepseek` family, so cross-family (Tier 4) verification still excludes the forecaster's own family.
-  - **All-forecasts calibration ledger** — the traded-only `forecasts.jsonl` has a selection-bias problem (it only scores markets where edge + sizing let us enter, so it can't answer "how calibrated is the forecaster overall?"). New `delphi/forecast-log.ts`: `appendForecastLog()` writes **every estimate every cycle** (traded or not) to `estimates.jsonl`; `resolveForecastLog()` runs per cycle, fetches settled markets via `executor.getMarket()`, and scores the LAST forecast per (market, outcome) into `forecasts-all.jsonl` — one calibration row per outcome view, expired/failed dropped without scoring (same no-fabrication rule as the traded ledger). `/delphi/status` exposes `allForecasts` next to the traded-only `calibration`; the arena card renders both and labels the all-forecasts block as "the number a signal buyer should care about". The card also freezes into a "closed · final record" post-mortem state once the competition window passes. 636 tests (13 new).
-- **Stale-subgraph guard + endgame tuning (`e5ef13ad`…`670a424e`, 2026-08-19)** — `agent/lib/delphi/executor.ts`, `runner.ts`, `config.ts`, `probability.ts`. The SDK's subgraph can lag behind actual settlement, so `listPositions` kept reporting the resolved Chess-Wikipedia market as `awaiting_settlement` — every hourly `quoteSellExactIn` reverted with `MarketNotOpen()` (selector `0xb1b4fec0`) and the runner would have retried forever, pinning 92.5 TST. Two fixes work together: (1) a **pre-sell maturity check** — new executor `getMarket()` (REST, timeout/retry-wrapped) exposes `resolvesAt`; `convergenceExitPass` drops any position whose market is past `resolvesAt + 30 s` from tracking so the lifecycle sweep redeems it; (2) a **reactive fallback** on both `quoteSell` and `sellShares` failure paths detects `MarketNotOpen` in `err.toString()` (viem's `ContractFunctionExecutionError` buries the decoded revert name in NON-enumerable cause-chain properties — `err.message`/`String(err)`/`JSON.stringify` (circular refs)/shallow probes all miss it; viem's `BaseError.toString()` emits `Error: MarketNotOpen()`, and `err.walk()` is kept as a secondary check). Same-day sizing/calibration tuning: `maxPositionFraction 0.1 → 0.15`, `maxMarketFraction 0.25 → 0.35` (endgame, Kelly-lite caps), forecaster `temperature 0.2 → 0.35` (counters the correlated 0.95-overconfidence that cost 103 TST on Typhoon Dolphin). Cycling cleanly at cycle #116+; Chess position cleared and redeemed (~92.5 TST recovered, bankroll 818 → 931.95 TST).
-- **4-tier evidence-validation stack (`2026-08-18`)** — `agent/lib/delphi/fact-check.ts` (new), `evidence-filter.ts` (new), `verification.ts` (new), `web-search.ts`, `probability.ts`, `runner.ts`, `llm-providers.ts` (`providerOrder` override + `availableLlmProviders` ordering), `config.ts`, `telegram.ts`, `status.ts`, arena card, `agent-client.ts`. The ensemble's failure mode is correlated overconfidence: three samples of one model family fed one briefing agree with each other and with the briefing's blind spots (Typhoon YES estimated 0.95, settled NO). Four tiers intercept it cheapest-first, each with a strict cost envelope. (1) **Deterministic fact verifiers** — `fact-check.ts` is a registry of resolution authorities; the shipped `wikimedia-pageviews` verifier fetches the exact count the Chess market resolves against (keyless, ~0.3s): completed resolution day → direct probability clamped [0.01, 0.99] built into a deterministic estimate via `factAuthorityEstimate` (NO LLM runs at all), open window → facts injected with a "source of record" label that outranks web evidence in the prompt. New authorities register without runner changes. (2) **Deterministic plausibility filter** — `evidence-filter.ts` strips stale-year briefing passages before prompt injection (the WTI-1986 incident); dateless prose passes; an emptied briefing injects nothing; pure string arithmetic. (3) **Two-source corroboration** — after the primary search rung answers, the next eligible rung is asked the same question (one extra network call from the shared 10/cycle budget) and compared deterministically (`corroborationOverlap`: shared source domain OR ≥3 shared significant tokens); the `corroborated` flag rides on the briefing, never gates the primary, and unattempted ≠ uncorroborated. (4) **Adversarial pre-entry verification** — `verification.ts` fires only AFTER a signal cleared edge + one-thesis + stop-cooldown gates (one LLM call per candidate ENTRY, not per market); a red-team prompt attacks base rates/timing/evidence quality; the verifier runs **cross-family-first** (`crossFamilyOrder` rearranges the ladder so a Qwen estimate gets verified by GLM/GPT/Claude — same family = same blind spots; `DELPHI_VERIFIER_PROVIDER` dedicates a keyed provider); `applyVerificationToProbability` discounts toward the verifier only on flagged disagreement ≥ 0.15 (weight 0.5), then the edge gate re-runs and a collapsed edge blocks the entry (ledgared `verification-blocked` with the verifier's attack). A verification that can't run never blocks. Ground truth trumps opinion: authority-direct estimates are exempt from Tier 4. Full provenance (`factAuthority`, `corroborated`, `verified`, `verifierModel`) threads `ForecastProvenance` → `positions.json` → Telegram tags (`auth:…`/`2-src`/`verified`) → arena-card badges + snapshot counters (`factChecks`, `verificationsRun`, `verificationBlocks`), and the traded forecast is always the POST-verification probability (the calibration ledger scores the view actually paid for). Config: `webCorroborationEnabled`, `verificationEnabled`, `verificationWeight`, `verificationDisagreementThreshold`. 629 tests.
-- **Keyless web-briefing ladder — Firecrawl + Parallel rungs (`2026-08-18`)** — `agent/lib/delphi/web-search.ts` (+ `probability.ts` provenance, runner, telegram, arena card, `.env.example`). Briefings had been dead since the Vercel gateway credit died on 08-15 (briefings=0 every cycle since #27), because the original design coupled search to the gateway's credit. Now `briefing()` walks three rungs, each with its own circuit breaker on the shared provider map: (1) **firecrawl** — keyless `POST api.firecrawl.dev/v2/search` (highlights on by default, `tbs=qdr:w` freshness window); pure retrieval, NO synthesis LLM, so it can't die with inference credit — verified live ~1.3s, and its probe for the Typhoon query returned exactly the JMA evidence we lost money missing; (2) **parallel** — the free anonymous Parallel Search MCP (`search.parallel.ai/mcp`, JSON-RPC `tools/call web_search`, objective-based with LLM-excerpted passages) — verified live ~1.5s; (3) **exa-gateway** — the original Exa/gateway rung, demoted to last (gated on the promo window + gateway key). Budget (`maxCallsPerCycle`=10) now counts NETWORK CALLS not briefing attempts, so a three-rung cascade can't triple spend; quota-exhaustion errors trip a daily-reset breaker, explicit 429s a 5-min one. Provenance gained `webSource` (firecrawl/parallel/exa) — surfaced in the Telegram entry tags (`web:firecrawl`), the arena-card tag, and `positions.json`. Optional `FIRECRAWL_API_KEY`/`PARALLEL_API_KEY` raise limits; both tiers work keyless. The dashboard card legend + empty-state copy no longer says "Exa". 569 tests.
-- **Ladder + lifecycle dead-loop hardening (4 fixes, 2026-08-18)** — `agent/lib/llm-providers.ts`, `delphi/web-search.ts`, `delphi/lifecycle.ts`, `delphi/executor.ts`, `delphi/runner.ts`, `config.ts`. A VPS review found the agent "quiet": cycles ran and estimates stayed healthy (9-11/11), but four dead loops were wasting requests, retrying doomed transactions, and pinning bankroll. (1) **OpenRouter daily-quota 429s now trip a provider breaker sized to the next 00:00 UTC reset** — quota exhaustion can't self-heal in-window, and the previous "one cheap failed request per call" cost ~270 doomed round-trips/day; transient Retry-After-bearing 429s still self-heal without a breaker (`providerHttpError` now carries the `retryAfterUsable` flag; `nextMidnightUtc` exported). (2) **Web briefings share the gateway circuit breaker**: a "credit balance" 402 from `briefing()` trips the same `vercel-gateway` breaker the LLM ladder uses, and fresh searches skip while it's open (the date-only gate had been burning all 10 calls/cycle on dead searches — ~150/day). Cache hits still serve free of the breaker. (3) **Stuck redeem loop resolved via `winningOutcomeIdx`**: the Typhoon market settled NO while we held YES, and `redeem()` reverts for losing shares — the sweep had retried it hourly 50× over ~36h, pinning 103 TST of exposure. `executor.getWinningOutcomeIdx()` (REST `getMarket`) lets the sweep emit a `redeem-lost` event when the resolution contradicts every held outcome: the position is closed, the forecast scored as a loss (no fabricated payout), exposure freed, retries stopped. Failed redeems where we HOLD THE WINNER still retry (money is owed — gas/RPC/index lag). (4) **Thesis-stop re-entry cooldown** (`stopReentryCooldownHours`, default 12): after an `exit-stop`, the same market is gated for 12h unless the new signal's edge strictly beats the stopped thesis's edge (IEEE754-jitter guarded). Recovered from the append-only trade ledger (exit records now persist `edge`; legacy stops fall back to the matching entry's edge, then fail-closed Infinity) — no new state file, survives restarts. This ends the Chess-market serial re-entry (bought 4× in 4 days, net −89 TST). 560 tests (up from 541).
-- **Two free Qwen3.8-27B tiers in the LLM ladder (`86dbfc3b`, `92ba12a8`)** — `agent/lib/llm-providers.ts`, `delphi/probability.ts`, `llm-jury.ts`, `market-narrative.ts`. Both quota-limited free sources died the same day trading started (Vercel gateway credit exhausted — permanent until top-up; OpenRouter `:free` at its 50 req/day cap until 00:00 UTC), collapsing estimates to 0. Two verified-live $0 rungs now carry the cascade: (1) **hf-qwen** — the public KEYLESS HF Inference endpoint for `Qwen/Qwen3.8-27B` (~30 req/min/IP, ~0.7s TTFT, clean JSON at `reasoning_effort=none`; any `HF_QWEN_API_KEY` value opts in because the community deployment is temporary by its own docs); (2) **orcarouter** — `qwen/qwen3.8-27b-free` on OrcaRouter's self-hosted infra ($0, rate-limited, ~10s TTFT, ~18% error rate — the slow safety net; `include_reasoning:false` hangs there, `reasoning_effort:"none"` works). Ladder order: gateway > openrouter > hf-qwen > orcarouter > openai > anthropic. Follow-up fix `92ba12a8`: OpenRouter's daily-quota 429 (no near-term Retry-After) was burning the shared 45s budget on retry backoffs and starving hf-qwen; `fetchWithBackoff` now fails fast on Retry-After-less 429s (quota exhaustion can't self-heal in-window), and the circuit breaker generalizes per-provider, tripping on 402 only (429 throttles self-heal, so a false 30-min disable would be worse than one cheap failed request per call). Verified live: cycle #34 estimates=14/15, and the Chess-pageviews entry was forecast by `hf-qwen ×3 median`. 541 tests.
-- **Both-sides incident fix (`a88c6c4c`)** — `agent/lib/delphi/runner.ts`, `anchoring.ts`. The first live trade exposed two money-integrity bugs: (1) **cycle #27 bought Typhoon YES (edge 0.64) and cycle #29 bought the same market's NO (edge 0.24)** — opposite forecasts 1.5h apart, 193 TST self-hedged into a guaranteed loss minus fees. Now a one-thesis-per-market guard skips any buy signal in a market with a tracked position (or one entered earlier this cycle). (2) **The NO trade was orphaned**: it landed on-chain and in the append-only ledger, but a pm2 deploy reloaded the runner before `positions.json`/`exposure.json` were written. Now `reconcileWithChain()` runs at cycle start — the chain is the source of truth: open on-chain positions the tracked ledger lost are **adopted** (entry metadata recovered from `trades.jsonl`; orphans without it are managed + redeemed but never scored for calibration — no fabricated forecasts). Deliberately adopt-only: absence from the subgraph can be lag, and a stale drop would free exposure for a double entry. Exposure is recomputed from the tracked set each cycle, and positions/exposure persist **immediately after each buy**, not at cycle end. The reconciliation then caught the orphan live, and the convergence pass immediately executed the thesis stop on it (price 0.52 ≤ entry 0.68 − 0.10 stop), recovering 68.26 TST on-chain. Also: the anchoring digest no longer hashes `tradesPlaced` — the thesis is the view, not the execution count; with the guard, an identical view executing 0 trades must dedupe, not re-anchor. 538 tests green.
-- **Inference ladder hardening (`0cd126e5`, `6edbe9ae`, `dc1d632e`)** — `agent/lib/llm-providers.ts`, `delphi/probability.ts`. Three fixes after the cascade shipped: (1) the forecaster's `xTitle` contained an em dash (U+2014) — HTTP headers must be ASCII, so fetch threw *before the request left the process* and killed the OpenRouter fallback (estimates=0 for two cycles); `asciiHeader()` strips non-ASCII defensively. (2) A **30-min circuit breaker** trips on a gateway 402 (credit exhaustion) so the cycle stops paying one failing round-trip per call — OpenRouter serves directly. (3) `fetchWithBackoff` now **honors `Retry-After`** on 429/503 (≤120s): the OpenRouter `:free` tier runs ~20 req/min, and the fixed 2s backoff re-fired before the window reopened.
-- **First trade — decimals bridge (`f61ce32a`) + gateway allowance (`b88854f2`)** — `agent/lib/delphi/executor.ts`, `probability.ts`, `runner.ts`. The root cause of 25 funded cycles with 0 trades: **$TST collateral has 6 decimals, outcome shares have 18**. `quoteBuy`/`quoteSell` divided raw 6-dec tokens by raw 18-dec shares → pricePerShare skewed 10¹² low (live probe: ~3e-13 for a market the API itself quoted at 0.313), and `sizeSharesBudget` rounded every buy to **0 shares**. Fix: `SHARE_TOKEN_DECIMAL_SCALE` (10¹²) + `priceRatioScaled()` bridge all live and simulator quote paths and sizing; the unit convention is documented in `executor.ts`. Second fix found by the first live buy attempt: the SDK's `buyShares` simulates but **never calls `ensureTokenApproval`** — a fresh wallet has zero allowance to the market proxy, so the pre-send simulation reverted. The executor now ensures allowance for at least the slippage-adjusted quote before every buy, and the runner logs + ledgers failed trades (`[delphi-trade] BUY FAILED`) instead of swallowing them. **The test fakes had modeled a non-existent 18-dec token world — that is why the bug survived 500+ tests**; all fakes now use real 6-dec TST units (balances, quotes, redeem payouts). Result: cycle #27 bought 325.7 shares of Typhoon Dolphin Yes @ 0.317 effective (est 0.95, edge 0.64, 103.26 TST), bankroll read 896.74 TST the next cycle. 530 tests green.
-- **LLM ladder cascade (`86995e5e`)** — `agent/lib/llm-providers.ts`. `chatCompletion` used only the first keyed provider and threw on any error; when the Vercel AI Gateway started returning **402** mid-run (2026-08-15), cycle estimates collapsed 13 → 2 → 0. Now `availableLlmProviders()` lists every eligible provider and `chatCompletion` walks them in order, logging each fallthrough (`[llm-providers] vercel-gateway failed (… 402) — falling through to openrouter`) and throwing only the last provider's error. The fallback is the OpenRouter `:free`-pinned model, so the cascade stays $0. Verified live on the VPS. 534 tests green.
-- **SDK timeout fix — hung runner incident (`2716f994`)** — `agent/lib/delphi/executor.ts`, `runner.ts`, `telegram.ts`. The Delphi SDK has **no timeout of its own** (verified in source); a single hung RPC/subgraph request froze the competition runner for ~13.5h on 2026-08-15 (process online, 0% CPU, no cycles) — right after the 1,000 TST bankroll landed. Now every SDK call in the executor is bounded by `withTimeout` (`sdkTimeoutMs`, default 60s, retryable via the existing backoff), Telegram sends get a 10s AbortSignal, and `start()` wraps `runCycle` in a 50-minute cycle watchdog so any unforeseen hang abandons the cycle instead of killing the loop. 528 tests green.
-- **Inference cost + efficiency hardening (`9e8da4fe`, pre-trading audit)** — `agent/lib/llm-providers.ts`, `delphi/runner.ts`, `delphi/web-search.ts`, `delphi/probability.ts`, `llm-jury.ts`, `market-narrative.ts`. Four changes, all driven by "optimize while everything is still free": (1) **Forecast cache** — the runner keys each LLM estimate on `marketAddress + implied probs bucketed to 2¢ + briefing fingerprint`; unchanged markets reuse the prior ensemble at zero inference cost (TTL 6h, pruned per cycle, deliberately in-process only). Vol-anchored markets are never cached (the anchor moves with spot). Cycle #2 baseline: 14 markets × 3 samples ≈ 42 gateway calls/hr → expected near-zero steady-state after the cache warms. (2) **Promo expiry guard** — `vercelGatewayFreeActive()` drops the Vercel AI Gateway from the ladder on/after `VERCEL_GATEWAY_PROMO_ENDS` (default 2026-08-28, day after GLM free window ends), so nothing can silently start billing; Exa briefings gate off with it. (3) **429/5xx backoff** — `fetchWithBackoff` (2s→4s, max 2 retries) on every ladder call; cycle #2's three "Delay was aborted" aborts now retry instead of degrading the ensemble. (4) **Free-model pinning** — the OpenRouter account holds *paid credits* (`is_free_tier=false`), and `openrouter/auto` on a credited account routes to PAID models; the jury, forecaster, and narrative defaults are now pinned to `nvidia/nemotron-3-ultra-550b-a55b:free` (verified live in the catalog 2026-08-14). Briefing cache TTL raised 6h→12h. `estimatesCached` counter surfaced in the snapshot, `/delphi/status`, the arena card, and Telegram. 522 agent tests green.
-- **Delphi live-market fixes (`744114b`)** — `agent/lib/delphi/executor.ts` (`mapSdkMarket`), `runner.ts`, `vol-baseline.ts`, `probability.ts`. Found on the first live cycle after `DELPHI_ENABLED=1` (wallet `0x884c…dEa9` registered + funded, API key validated against 29 competition markets): (1) the SDK nests `question`/`outcomes` under `market.metadata` — flat top-level fields only exist in test fakes — so the runner's `market.question` read was `undefined` and **every market was silently skipped** (`estimates=0` despite 14 open markets). `listOpenMarkets` now normalizes SDK-shaped markets to flat fields and passes through `resolvesAt`. (2) Multi-outcome markets (4-way BTC price bands) were being forced onto a hardcoded `["Yes","No"]` — the estimate input now uses the real outcome labels, and the forecaster system prompt instructs sum-to-1 across all outcomes. (3) The vol baseline now detects threshold **direction** ("above"/"higher" vs "below"/"at or below"); "below"-phrased markets get the complement (1−P), ambiguous phrasing gets no baseline at all — no blend beats a flipped blend. Runner went live on the VPS (`DELPHI_ENABLED=1`, hourly cycles, pm2 save + boot service enabled); the starting $TST bankroll is distributed daily post-registration, so sizing guards keep cycles safe until it lands. 503 agent tests green.
-- **Discovery cohesion fix (`097575a7`)** — `src/lib/db/postgres.ts`, `src/app/discovery/page.tsx`, `src/components/alpha/alpha-trader-card.tsx`, `src/lib/ethos.ts`, `src/lib/services/ethos-cache.ts`. The one surface that inverted the product thesis: Discovery ranked wallets by conviction × Ethos social multiplier (up to 1.5×) and filtered the token heatmap on Ethos ≥ 1000. Now `getAlphaTraders` orders by behavioral conviction score (patience tax as tiebreaker) and `getTokenHeatmap` filters the cohort on behavioral score ≥ 60 — same yardstick as the trader list. Ethos ≥ 1000 remains the access gate on `/api/alpha/*` (anti-sybil) but never affects ordering; UI copy says so explicitly ("Conviction, verified by behavior"; tabs "Behavioral leaders" / "Cohort holdings"; trader card shows Patience Tax instead of Cred-Weighted). Dead multiplier machinery deleted: `ethosMultiplier`/`weightedScore` (postgres), `calculateReputationWeighting`/`ReputationWeightedMetrics` (ethos.ts) + its zero-caller pass-through (ethos-cache.ts). Leaderboard was already behavioral — no change.
-- **Delphi Agent Arena gap closure (`529c7bbf`)** — `agent/lib/delphi/`, `packages/conviction-core/src/calibration.ts`, `src/components/agent/delphi-arena-card.tsx`. The Gensyn Delphi prediction-market competition entry (trading window 2026-08-10 → 2026-08-24) is code-complete through Phase 4b:
-  - **Shared LLM ladder**: `agent/lib/llm-providers.ts` (`chatCompletion`) now owns the OpenRouter > OpenAI > Anthropic plumbing for both the token jury (`llm-jury.ts`) and the Delphi forecaster (`delphi/probability.ts`). One place for model defaults/timeouts.
-  - **On-chain anchoring**: `delphi/anchoring.ts` quantizes the cycle's decisions (edges in 0.05 buckets, neutrals dropped, sorted), hashes via the shared `computeSubjectHash`/`computeThesisHash` scheme, and publishes through the existing Mantle + Casper adapters (`subjectHash = delphi:competitionGateway`). Thesis-hash dedup persists in the snapshot across pm2 restarts — anchors only fire on meaningful view shifts, never on LLM jitter.
-  - **Calibration ledger**: resolved redemptions feed `forecasts.jsonl` (payout > 0 → win, 0 → loss; expired/failed markets and multi-outcome ambiguity are closed *without* scoring). `packages/conviction-core/src/calibration.ts` computes Brier, log-loss, hit rate, and 10-bin reliability buckets — the yardstick promised by the strategy doc ("calibration, not Sharpe").
-  - **Dashboard surfacing**: `GET /delphi/status` (disk-backed reader in `delphi/status.ts` — the runner is a separate pm2 process) + Vercel proxy allowlist + the `Prediction Arena` card in the `/agent` Proof view (lazy fetch, real data only, honest empty states before the runner's first cycle and before forecasts resolve).
-  - **Phase 0 completed 2026-08-14** — wallet `0x884c…dEa9` registered + funded; live since the first cycle that day. Endgame (hold-to-settlement + tournament sizer) ships 2026-08-20.
-- **Delphi alpha stack — free-first inference + five edge sources (Phase 4c)** — `agent/lib/delphi/web-search.ts` + `vol-baseline.ts`, extended `probability.ts` / `executor.ts` / `runner.ts`, `ai` SDK (`@ai-sdk/gateway` tools), shared `parseLenientJson`. The Vercel AI Gateway (`VERCEL_AI_GATEWAY_API_KEY`, GLM 5.2 free through 08-27, Exa search free through 08-31) leads the provider ladder; paid keys stay wired as fallback. Per market: (1) an Exa-sourced web briefing is injected into the forecaster prompt (10/cycle budget + 6h cache — verified live: it moved the BTC-$150k estimate from ~0.35 to ~0.02 against a $63k spot); (2) crypto threshold markets get a driftless log-normal reference probability from realized SoSoValue vol, blended at w=0.35; (3) the edge gate is category-aware (crypto 0.08 → culture 0.14); (4) forecasts are 3-sample ensembles combined by per-outcome median; (5) open positions are re-quoted every cycle and sold into convergence (take profit at forecast−2¢, thesis stop at entry−10¢) via the new `quoteSell`/`sellShares` executor surface. The runner entry now side-effect-imports `env-bootstrap` so `agent/.env` keys are live in its own process; every estimate carries a `ForecastProvenance` (model, ensemble size, web evidence, vol anchor) surfaced as tags on the Prediction Arena card and per-cycle evidence counts in the Telegram summary. Gateway quirks: no `response_format`, always send `reasoning.effort`, JSON may be fenced. 503 agent tests green.
-- **pm2 entry-point fix for the Delphi runner** — under pm2 the child's `process.argv[1]` is the launcher container (`ProcessContainerFork.js`), not the script, so the original argv-based entry guard never fired and `earlynotwrong-delphi` had been importing, skipping `start()`, and idling silently since first deploy. The guard now accepts the pm2 container case; diagnosed on the VPS via a boot probe printing `argv[1]`.
-- **wallet-score — behavioral conviction scoring as a paid product (`d8486513`)** — `src/lib/wallet-score.ts`, `POST /api/agent/wallet-score`, MCP `score_wallet`, CAP `wallet-score` serviceId. Second SKU: score **any** wallet (win rate, patience tax, archetype, cohort percentile, verifiable keccak256 ledger hash) instead of selling the agent's own picks. $0.05 USDC on the CROO Store; the MCP tool proxies to the web endpoint where the Helius/Zerion fetch infra lives. Buyer-agent gained `--test` / `--test-wallet` modes + `FEEDBACK.md` for CROO Test & Earn testers. Plan + listing copy in `docs/WALLET_SCORE_PLAN.md` / `docs/archive/croo-store-listing-wallet-score.md`; schema at `/schemas/wallet-score-v1.schema.json` (score is a 1-decimal number).
-- **Edge-report integrity fix (`8a9f8fe4`)** — `agent/lib/backtest.ts`. The per-regime `hasEdge` now requires non-negative return *and* a Sharpe beat, same bar as the overall report — a fear segment where conviction loses less than naive no longer masquerades as "edge in fear".
+- **`earlynotwrong`** (pm2, port 31777, `HARNESS_DOMAIN=crypto`) — the BSC
+  trading agent. The BNB hackathon window (2026-06-22 → 06-28) is long closed;
+  the agent runs as the product. Revenue surfaces on the same loop:
+  - **MCP + x402** — `score_wallet` is the hero paid SKU (0.5 CSPR);
+    `get_subject_history` and `cross_chain_lookup` are paid; all other tools
+    (including `get_live_signals`) are free distribution.
+  - **CROO CAP** — `wallet-score` ($0.05 USDC on the CROO Store);
+    `signals-live` ($0.01 Store-minimum nominal — distribution, not revenue).
+  - **Anchoring receipts** — every meaningful thesis shift anchors to Mantle
+    (ERC-8004) and Casper (ConvictionRegistry).
+- **`earlynotwrong-options`** (pm2, port 31778, `HARNESS_DOMAIN=options`,
+  `AGENT_DATA_DIR=agent/data-options`) — Alpaca paper-options agent. The
+  hackathon closed 2026-09-04 at +2.28%; the process is kept reloadable as the
+  harness's second-domain proof, not a revenue surface. `deploy.sh` reloads it
+  only when it's already in the pm2 list. It shares the crypto agent's LLM
+  ladder and loop but skips the CROO CAP client (domain guard in `index.ts`).
 
-- **Edge report + buyer-agent integration (`8c92520d`, `085dd3c7`, `d501ae95`)** — `agent/lib/backtest.ts` + `examples/buyer-agent/`.
-  - `runEdgeReport()` runs the conviction strategy alongside a **naive random-entry baseline** (same risk rules, no scoring) and attributes winning-exit P&L to the leading conviction factor. `hasEdge` requires conviction to beat naive on Sharpe *and* be non-negative in absolute return — a strategy that just loses less isn't edge.
-  - `GET /edge-report` (30-min response cache, `?fresh=1` bypass) answers "does the signal have demonstrable edge?" on demand.
-  - **Stale-kline fallback**: when SoSoValue 429s trip the circuit breaker, `loadHistoricalDataDetailed` serves the disk kline cache (TTL-agnostic) before going synthetic — the live endpoint reports `dataSource: "live-stale"` with real history instead of silently going synthetic.
-  - **Kline timestamp normalization**: SoSoValue returns kline timestamps as **strings of milliseconds** despite the interface claiming number-seconds; `normalizeKline()`/`normalizeKlineTimestamp()` fix it at ingest (`fetchKlines`) and on legacy-cache read (`getCachedKlines`). This was a latent bug in the original `loadHistoricalData` that silently produced 0 backtest days the first time real klines ever flowed through it.
-  - The `examples/buyer-agent/` example is a production-hardened allocator: free trust gate → optional `--edge-report` pre-check (skip the paid call if no edge) → x402 paid signals → act with own sizing. `--json` (JSONL audit for cron), full x402 payment round-trip, `DEPLOYMENT.md`.
+**Archived (code kept, processes off):**
 
-- **Signal Edge dashboard panel + agent page component extraction** — `src/components/agent/signal-edge-panel.tsx` + `llm-jury-card.tsx` + `agent-types.ts`. The `/agent` dashboard's Proof view now surfaces a live "Signal Edge" panel: conviction vs naive baseline head-to-head table, verdict banner, and factor-attribution bar chart (which conviction factor drove the winning exits). The 2,751-line `agent/page.tsx` god component was reduced to 1,846 lines (−33%) by extracting: the `ConvictionData` type to a shared `agent-types.ts` (reusable by card components), `LlmJuryCard`, `BuyerPreviewCard`, `ReputationApiCard`, `CrooCapCard`, and their shared types/helpers/constants (`ReputationStats`, `formatCspr`, `formatUsdc`, MCP curl snippets) to `hire-card-shared.ts`. Each card is now independently testable. The `SignalEdgePanel` loads lazily (opt-in backtest run) so it doesn't block the dashboard's critical path.
-- **Buyer-agent integration hardened for production** — `examples/buyer-agent/`. The allocator decision flow now implements the full x402 payment round-trip: when `CASPER_PRIVATE_KEY_HEX` is set, it gets the 402 challenge, constructs the `X-PAYMENT` header (with a real signed CEP-18 transfer via `casper-js-sdk` when installed, or an observable unsigned envelope otherwise), and re-POSTs to settle. Added `--json` mode (machine-readable JSONL audit for cron), `--edge-report` pre-check (skip the paid call if the signal has no demonstrable edge), a `bin` entry (`enw-buyer`), `optionalDependencies` on `casper-js-sdk`, and `DEPLOYMENT.md` (cron scheduling, Docker, env vars, exit codes, the full decision-contract audit schema). The buyer never touches funds — it emits the decision; a downstream executor holds custody.
-- **Casper RPC fallback chain + 429 backoff** — `agent/lib/anchors/casper.ts` + `agent/lib/casper-mcp-client.ts`. Public `node.testnet.casper.network` (no auth, no quota) is now the primary RPC; cspr.cloud with `CSPR_CLOUD_TOKEN` is fallback. Both the anchoring adapter and the MCP consumer try endpoints in order, skipping 429s. Balance check has exponential 429 backoff (15m→30m→1h→2h→4h cap) so the agent stops burning RPC quota on doomed checks when rate-limited.
-- **Casper anchor spend fix** — `agent/lib/llm-jury.ts` + `agent/index.ts`. The thesis-hash dedup was effectively dead: the LLM jury digest included raw adjustment floats, so non-deterministic LLM output moved the thesis hash every cycle and forced redundant 50-CSPR Casper anchors. Fixed by quantizing the digest (5-pt adjustment buckets, agreement→sign, drop neutrals, sort by symbol). Also persisted `lastAnchoredThesisHash` across pm2 restarts and lowered the balance gate from 100→30 CSPR. 4 new jury digest tests.
-- **SigNoz observability + demo progressive disclosure** — per-cycle pipeline timing exposed on `/agent` via `AgentObservabilityPanel` + `AgentCommandStrip`. Demo mode (`?demo=1`) refactored to one-act-at-a-time with sticky `DemoActNav` and collapsed secondary panels behind `DisclosureSection`.
-- **LLM conviction jury (7th factor)** — `agent/lib/llm-jury.ts`. After the 6-factor deterministic scoring, an LLM reviews top candidates and adjusts conviction scores ±15. Reasoning digest included in the thesis hash anchored on Casper. Provider priority: free-first Vercel AI Gateway (zai/glm-5.2) > OpenRouter (`openrouter/auto`) > OpenAI > Anthropic > template (no key). Live on VPS with OpenRouter — jury delivered real verdicts on first deployed cycle (DAI -4, USDC -4, XRP -8). 21 jury tests + 14 Casper MCP client tests.
-- **Casper ecosystem MCP consumer** — `agent/lib/casper-mcp-client.ts`. Agent consumes CSPR.trade MCP (DEX prices/liquidity) and Casper blockchain MCP (era/validators/stake) as cross-chain context for the LLM jury. Agent is now a bidirectional MCP participant (exposes 7 tools + consumes 2 ecosystem servers). Note: both public MCP endpoints were unreachable at deploy time; code degrades gracefully.
-- **OpenRouter integration** — OpenRouter wired as the second-tier LLM provider for both jury and market narrative (behind the free Vercel AI Gateway). Default model `openrouter/auto` routes to best available free model. `OPENROUTER_API_KEY` set on VPS.
-- **signals-live/v1.2** — per-cycle `execution` block (entries/exits/skips + `alignment.topRankedEntered`), explicit `provenance.behavioral.status`, AJV schema validation in CI. Schema: `/schemas/signals-live-v1.2.schema.json`. Deployed to VPS + dashboard copy.
-- **CROO Store live** — [Store listing](https://agent.croo.network/agents/90dd0e5a-a551-4dfb-aa64-b3c0274c2205) with `signals-live` ($0.05 USDC). **Store Deliverable Schema must stay empty** (field builder rows break CAP delivery). Verified orders include `0990e061-…` (2026-07-17). See `docs/archive/croo-store-listing.md` and `docs/CROO_INTEGRATION.md`.
-- **Allocator UX pass** — landing intent CTAs, `/agent#hire`, demo walkthrough mode (`?demo=1`).
-- **Casper anchoring guardrails** — balance gate + thesis-hash deduplication so anchors stop failing when operator CSPR is low and stop paying gas for unchanged theses.
-- **TWAK harvest hardening** — harvest retries now mirror the exit fallback ladder (default → 10% → 20% → 49% slippage → USDC hop → size probe). Persistently unharvestable positions are marked **stuck** and blocklisted.
-- **Stuck positions excluded from cap** — `maxOpenPositions` now counts only active positions, so dead/honeypot tokens stop silently consuming slots.
-- **Pre-entry execution probe** — tokens with DexScreener liquidity below $20k are probed with a real buy/sell round-trip before opening a full position. This catches quote-only false positives like the UAI `SafeTransferFromFailed` allowance/spender mismatch.
+- **`earlynotwrong-delphi`** (`agent/lib/delphi/`) — Gensyn Delphi Agent Arena,
+  closed 2026-08-24 (rank 122/159). Gated by `DELPHI_ENABLED` at runtime;
+  `deploy.sh` only starts it when `DELPHI_ENABLED=1`. Kept in-tree for the
+  calibration machinery, the 4-tier evidence-validation stack, and the
+  convergence-exit logic — see `docs/archive/DELPHI_AGENT_ARENA.md`. If reviving
+  it for a new competition, note the arena-only knobs (`tournamentMode`,
+  `endgameHoldFromUtc`, tournament sizing fractions) are not normal-mode safe.
+- The `/agent` dashboard still renders the Delphi arena card (frozen
+  "closed · final record" post-mortem) and the live options arena card.
+
+Post-mortems for all three competitions: `docs/LESSONS.md`.
+
+### Recently shipped (live surfaces only)
+
+Competition-era changelog lives in `docs/LESSONS.md` and git history — entries
+here only cover surfaces that still run.
+
+- **Free signals-live + wallet-score hero SKU (`a91469af`)** — pricing
+  rebalance: `score_wallet` became the paid MCP hero SKU (0.5 CSPR ≈ $0.05);
+  `get_live_signals`/`signals-live` went free (CROO Store $0.01 floor). Rationale:
+  live signals are distribution; wallet scoring is the product.
+- **wallet-score hardening** — BSC chain support, Zerion EVM direction fix,
+  gas-token legs priced via DexScreener out-leg, tolerance for status-less
+  Zerion legs, dual-layer archetypes with plain-English gloss, Store pricing
+  alignment. The MCP tool proxies to `POST /api/agent/wallet-score` in the web
+  app where the Helius/Zerion fetch infra lives.
+- **Harness adapter layer (`0980c911`)** — `agent/lib/adapters/`: three
+  extension-point interfaces (`DataSource`, `ConvictionFactors`,
+  `TradeExecutor`) + crypto wrappers + Alpaca options adapters + registry.
+  `HARNESS_DOMAIN` switches domains; loop, LLM ladder, jury, self-analysis, and
+  anchoring are domain-agnostic.
+- **Alpaca options execution** — orders via the Alpaca CLI (hackathon
+  "MCP or CLI" requirement) with automatic REST fallback; any non-hard-fail
+  order status (`new`/`held`/`accepted`) counts as a successful submission;
+  `reconcileHeldWithBroker()` adopts broker positions the order path missed so
+  misclassified statuses can't orphan the book. `options-state.json` persists
+  cycle count, ledger, and `peakUnrealizedPercent` across restarts.
+- **Featherless LLM rung** — sponsor tier added to `llm-providers.ts` between
+  the free tiers and paid keys (`FEATHERLESS_API_KEY`, OpenAI-compatible).
+- **Edge report + buyer-agent** — `runEdgeReport()` runs the conviction
+  strategy against a naive random-entry baseline; `hasEdge` requires a Sharpe
+  beat *and* non-negative absolute return. `GET /edge-report` (30-min cache,
+  `?fresh=1`) + lazy Signal Edge panel on `/agent`. `examples/buyer-agent/`
+  does the full x402 payment round-trip with `--edge-report` pre-check and
+  `--json` audit mode.
+- **Casper anchoring reliability** — public `node.testnet.casper.network` is
+  the primary RPC (cspr.cloud fallback); the jury digest is *quantized* so LLM
+  jitter doesn't churn the thesis hash; `lastAnchoredThesisHash` persists across
+  pm2 restarts; 30 CSPR balance gate returns `skipped` instead of burning gas.
+- **LLM conviction jury (7th factor)** — `agent/lib/llm-jury.ts` adjusts top
+  candidates ±15 after deterministic scoring; template mode (zero adjustments)
+  when no provider is keyed.
+- **TWAK harvest hardening** — exits/harvests share the fallback ladder
+  (slippage 1%→10%→20%→49% → USDC hop → size probe); unexitable positions are
+  marked `stuck`, blocklisted, and excluded from `maxOpenPositions`; tokens
+  under $20k DexScreener liquidity get a real buy/sell probe before entry.
+- **Discovery cohesion fix** — Discovery ranks by behavioral conviction score;
+  Ethos ≥1000 is an anti-sybil access gate on `/api/alpha/*` only, never an
+  ordering factor.
 
 ### Active ledger notes
 
-- **UAI** was manually sold after the harvest fix. The remaining ~$0.01 dust was removed from the held-positions ledger. UAI is no longer counted toward the position cap.
-- **BSB** and **GWEI** remain marked stuck from prior cycles and are excluded from portfolio valuation and the active position cap.
-- Current open positions after cleanup: **FET, USDC, SIREN, NEX, SLX** (active) plus **BSB, GWEI** (stuck).
+> Point-in-time from the last VPS review — verify against live `state.json`
+> before acting on these.
+
+- **BSB** and **GWEI** remain marked stuck from prior cycles and are excluded
+  from portfolio valuation and the active position cap.
+- Positions last recorded active: **FET, USDC, SIREN, NEX, SLX**.
 
 ### Ongoing watchlist
 
-- TWAK/LiquidMesh sometimes routes through pools where the wallet only has allowance on a different spender (e.g., 1inch `0x0000001fF...` vs LiquidMesh router `0x3d90...`). The entry probe now detects this before a full entry.
-- SoSoValue API rate-limiting (HTTP 429) is **fixed**. Root cause: the token bucket (capacity 20, refill 1/3s) allowed a ~40-request first minute against the 20 req/min key limit — everything past ~20 got 429'd, 3 consecutive failures tripped the 15-min circuit breaker, and the 147-token snapshot refresh thrashed. Two fixes: (1) a rolling-window rate limiter (`computeSsvThrottleWaitMs`) hard-caps 20 requests in any trailing 60s — the same metric SoSoValue enforces; (2) jittered per-token snapshot TTL (`snapshotTtlMs`, 12h ± 2h hash-derived) so 147 expiries don't land in the same minute. Verified live: 0 HTTP 429s since deploy, `Fetched 124/147` and climbing (was 57/147 thrashing).
-- Casper ecosystem MCP endpoints (`mcp.cspr.trade`, `mcp.cspr-ai.xyz`) were unreachable at deploy time. The `casper-mcp-client.ts` module degrades gracefully — jury proceeds without cross-chain context. If endpoints come back online, no code change needed; context will flow automatically.
-- Casper operator CSPR balance is ~3,065 CSPR (funded 2026-07-23 from testnet faucet). Anchoring is active via the public `node.testnet.casper.network` RPC (no auth, no quota). The thesis-hash dedup + quantized jury digest means anchors only fire on meaningful conviction shifts, not every cycle.
+- TWAK/LiquidMesh sometimes routes through pools where the wallet only has
+  allowance on a different spender (e.g., 1inch `0x0000001fF...` vs LiquidMesh
+  router `0x3d90...`). The entry probe detects this before a full entry.
+- SoSoValue rate-limiting is **fixed**: a rolling-window limiter
+  (`computeSsvThrottleWaitMs`) hard-caps 20 requests per trailing 60s, and
+  jittered per-token snapshot TTLs (12h ± 2h) keep 147 expiries from landing in
+  the same minute. Watch for regression if the token universe grows.
+- Casper ecosystem MCP endpoints (`mcp.cspr.trade`, `mcp.cspr-ai.xyz`) were
+  unreachable at last deploy. `casper-mcp-client.ts` degrades gracefully — the
+  jury proceeds without cross-chain context; no code change needed if they
+  come back.
+- Casper operator CSPR balance was ~3,065 CSPR (funded 2026-07-23 from testnet
+  faucet). Anchoring is active via the public RPC; thesis-hash dedup means
+  anchors only fire on meaningful conviction shifts.
 
 ---
 
@@ -111,20 +140,21 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 
 | File / Module | Purpose |
 |---------------|---------|
-| `agent/index.ts` | Startup, main loop orchestrator (`.env` inline loader, `runCycle()`, `restoreSnapshot()`) |
-| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/edge-report`, `/delphi/status`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
+| `agent/index.ts` | Startup, main loop orchestrator (`.env` inline loader, `runCycle()`, `restoreSnapshot()`), domain guard (`HARNESS_DOMAIN`) |
+| `agent/src/server.ts` | HTTP server (routes: `/status`, `/trades`, `/conviction`, `/edge-report`, `/delphi/status`, `/options/status`, `/signals/teaser`, `/casper/*`, `/mcp`, `/reputation/stats`, `/aleo/sign-voucher`, `/cap/status`) |
 | `agent/src/mcp/` | MCP server + x402 paywall — exposes cross-chain conviction data to AI agents |
 | `agent/src/cap/` | CROO Agent Protocol adapter — reputation services settled in USDC on Base |
 | `agent/src/payment-stats.ts` | Shared A2A payment counters for x402 and CAP |
-| `agent/lib/config.ts` | Single config object (`AGENT_CONFIG`), competition constants, block-explorer URL builders |
-| `agent/lib/agent-state.ts` | Shared mutable state (`state`), 10 type interfaces, helper maps, utility functions |
-| `agent/lib/cycle-runner.ts` | All 8 pipeline steps + helpers (`closePosition`, `finalizeExit`, `printCycleSummary`) |
+| `agent/lib/config.ts` | Single config object (`AGENT_CONFIG`), block-explorer URL builders |
+| `agent/lib/agent-state.ts` | Shared mutable state (`state`), type interfaces, helper maps, utilities |
+| `agent/lib/cycle-runner.ts` | All pipeline steps + helpers (`closePosition`, `finalizeExit`, `printCycleSummary`) |
 | `agent/lib/data-providers.ts` | Composite market data: `CmcClient` (CMC Pro REST) + `SosovalueClient` (SoSoValue OpenAPI) |
 | `agent/lib/dex-trading.ts` | SoDEX spot REST client + EIP-712 signing (`SodexClient`, `SodexNonceManager`) |
 | `agent/lib/holders.ts` | On-chain holder counts (NodeReal JSON-RPC + CoinGecko fallback), growth computation |
 | `agent/lib/conviction-signal.ts` | 7-factor contrarian conviction scoring engine (6 deterministic + LLM jury) |
 | `agent/lib/llm-jury.ts` | LLM conviction jury — reviews top candidates, adjusts scores ±15, reasoning anchored on-chain |
-| `agent/lib/casper-mcp-client.ts` | Casper ecosystem MCP consumer — fetches CSPR.trade DEX data + blockchain status as cross-chain context |
+| `agent/lib/llm-providers.ts` | Shared LLM ladder (`chatCompletion`) — free-first provider cascade used by jury, narrative, and the archived forecaster |
+| `agent/lib/casper-mcp-client.ts` | Casper ecosystem MCP consumer — CSPR.trade DEX data + blockchain status as jury context |
 | `agent/lib/risk-guardrails.ts` | Risk limits (drawdown, position size, daily count, concentration) |
 | `agent/lib/twak-executor.ts` | TWAK CLI wrapper (trade execution, address resolution, portfolio) |
 | `agent/lib/telegram.ts` | Telegram dispatch (3-message cycle summaries, startup, error alerts) |
@@ -134,10 +164,11 @@ The **agent** is the autonomous trading core; the **web app** is its monitoring 
 | `agent/lib/market-narrative.ts` | AI market narrative generation from SoSoValue feeds + macro events |
 | `agent/lib/anchors/` | Cross-chain anchoring adapters — `MantleAnchorAdapter` + `CasperAnchorAdapter` |
 | `agent/lib/self-analysis.ts` | Builds the agent's canonical trade ledger and scores its own behavior each cycle via `conviction-core` |
-| `agent/lib/backtest.ts` | Backtest harness + **edge report** — conviction strategy vs naive baseline, factor attribution of winning exits. `runEdgeReport()` answers "does the signal have demonstrable edge?" |
-| `agent/lib/delphi/` | Prediction-market surface (Gensyn Delphi Agent Arena) — `executor.ts` (SDK wrapper, slippage guard, simulator, position lifecycle reads, `quoteSell`/`sellShares` for the convergence exit), `probability.ts` (LLM ensemble estimate + vol-baseline blend + category-aware edge gate + Kelly-lite sizing + `evaluateConvergenceExit`), `vol-baseline.ts` (driftless log-normal threshold pricing + question parsing, zero inference cost), `web-search.ts` (three-rung briefings + Tier-3 two-source corroboration, per-cycle budget + cache), `fact-check.ts` (Tier-1 resolution-authority registry + Wikimedia pageviews verifier), `evidence-filter.ts` (Tier-2 deterministic stale-passage filter), `verification.ts` (Tier-4 cross-family adversarial pre-entry verifier), `lifecycle.ts` (settled→redeem, expired/failed→liquidate sweep), `anchoring.ts` (quantized per-cycle thesis → shared Mantle+Casper adapters, deduped), `runner.ts` (separate pm2 loop `earlynotwrong-delphi`, writes positions.json + forecasts.jsonl under `AGENT_DATA_DIR/delphi/`, side-effect-imports env-bootstrap so agent/.env keys are live, persists per-forecast provenance (model · samples · webEvidence · factAuthority · corroborated · verified) surfaced on the card + Telegram; entry-point guard handles pm2's ProcessContainerFork argv[1] — do not regress to an argv-only check), `status.ts` (disk-backed reader powering `GET /delphi/status`). Gated by `DELPHI_ENABLED` (runtime env check, not build-time config). See `docs/archive/DELPHI_AGENT_ARENA.md`. Strategy: LMSR probability-vs-price edge, **not** token dip-buying; evidence of edge is calibration/Brier (conviction-core `calibration.ts`), not Sharpe |
-| `agent/lib/adapters/` | **Harness adapter layer** — the domain-pluggable boundary. Three extension-point interfaces (`data-source.ts`, `conviction-factors.ts`, `executor.ts`) + shared types (`types.ts`). Crypto domain wrappers (`sosovalue-adapter.ts`, `crypto-conviction.ts`, `twak-adapter.ts`) conform the existing implementations to the interfaces without modifying them. Options domain adapters (`alpaca-data.ts`, `options-conviction.ts`, `alpaca-executor.ts`) implement the Alpaca options agent. `registry.ts` maps domain → adapter triple; `index.ts` is the barrel export. Set `HARNESS_DOMAIN=crypto` (default) or `HARNESS_DOMAIN=options` to switch domains. The loop, LLM ladder, jury, verification, self-analysis, and anchoring are all domain-agnostic — only the three adapters change per domain. See `docs/HARNESS_ARCHITECTURE_PLAN.md` |
-| `agent/lib/harness-config.ts` | Harness domain config layer — `resolveHarnessConfig()` reads `HARNESS_DOMAIN` (default: crypto) and returns the adapter triple (data source, conviction factors, executor). `DOMAIN_PROFILES` maps built-in domains; `HARNESS_CONFIG` is the resolved singleton at startup |
+| `agent/lib/backtest.ts` | Backtest harness + **edge report** — conviction vs naive baseline, factor attribution of winning exits |
+| `agent/lib/adapters/` | **Harness adapter layer** — the domain-pluggable boundary. Interfaces: `data-source.ts`, `conviction-factors.ts`, `executor.ts` (+ shared `types.ts`). Crypto wrappers: `sosovalue-adapter.ts`, `crypto-conviction.ts`, `twak-adapter.ts`. Options adapters: `alpaca-data.ts`, `options-conviction.ts`, `alpaca-executor.ts` (+ `alpaca-cli.ts`). `registry.ts` maps domain → adapter triple. See `docs/HARNESS_ARCHITECTURE_PLAN.md` |
+| `agent/lib/harness-config.ts` | `resolveHarnessConfig()` reads `HARNESS_DOMAIN` (default `crypto`) → adapter triple; `DOMAIN_PROFILES` maps built-in domains |
+| `agent/conviction-gym/` | **Conviction Gym** — RL environment extracted from the backtest physics (env owns physics only; all decisions are agent actions). Built for the HF×Reflection "Build with Beam" competition. TS reference impl + cross-validated Python Gymnasium port in `python/`. `export-episodes.ts` → `agent/data/episodes.json` (CoinGecko + alternative.me FGI, no proprietary API needed); `run-eval.ts` baselines; `beam.ts`/`run-beam.ts` run Beam-as-policy and record trajectory traces. See `agent/conviction-gym/README.md` |
+| `agent/lib/delphi/` | **Archived** — Gensyn prediction-market surface (competition closed 2026-08-24). Kept for `lifecycle.ts`, `forecast-log.ts` calibration ledgers, `verification.ts`/`fact-check.ts`/`evidence-filter.ts`/`web-search.ts` evidence tiers, and the convergence-exit logic in `probability.ts`. Only runs when `DELPHI_ENABLED=1`; see `docs/archive/DELPHI_AGENT_ARENA.md` |
 
 ### Module Dependency Graph
 
@@ -181,18 +212,7 @@ src/lib/market.ts
 
 llm-jury.ts ─────────────┐
                          ├─ llm-providers.ts (chatCompletion — shared LLM ladder)
-delphi/probability.ts ───┘
-
-delphi/runner.ts
-  ├─ delphi/anchoring.ts → anchors/index.ts (anchorAll) + anchors/hashes.ts
-  ├─ delphi/probability.ts + delphi/lifecycle.ts + delphi/executor.ts
-  └─ conviction-core (ProbabilityForecast)
-
-delphi/status.ts (read by GET /delphi/status)
-  └─ conviction-core (calculateCalibrationMetrics)
-
-src/components/agent/delphi-arena-card.tsx
-  └─ src/lib/agent-client.ts (fetchDelphiStatus → /api/agent/proxy?endpoint=delphi/status)
+delphi/probability.ts ───┘   (delphi = archived)
 
 adapters/ (harness domain layer)
   ├─ adapters/types.ts (shared domain-agnostic types: Kline, MarketSignal, ConvictionResult, …)
@@ -216,7 +236,7 @@ adapters/ (harness domain layer)
    - Volatility penalty — subtracted for erratic 7d price paths
 3b. **LLM conviction jury + Casper MCP context** — the 7th factor:
    - Fetch Casper ecosystem context via MCP (CSPR.trade DEX prices + blockchain network status)
-   - An LLM (OpenAI GPT-4o-mini or Anthropic Claude Haiku) reviews top candidates with cross-chain context
+   - An LLM reviews top candidates with cross-chain context
    - Adjusts conviction scores ±15 based on market context the deterministic scoring can't capture
    - Reasoning digest included in the thesis hash anchored on Casper
    - Template mode (zero adjustments) when no API key is configured
@@ -240,22 +260,22 @@ adapters/ (harness domain layer)
 ### Key Patterns
 
 - **Simulator mode**: Auto-detected when `TWAK_ACCESS_ID` is not set. Uses in-memory mock portfolio.
-  - **Composite market data**: SoSoValue token prices are preferred (higher refresh rate); CMC fills missing tokens and provides Fear & Greed / funding rates that SoSoValue doesn't offer. CMC's per-token quote pull (a 147-token batch) is deferred — `cycle-runner.fetchMarketData()` only calls `cmcClient.getEligibleTokenQuotes()` as a fallback when SoSoValue returns no prices, so a healthy SoSoValue run spends ~0 CMC credits on token quotes (CMC is still used every cycle for global metrics + derivatives, which SoSoValue lacks).
-  - **Holder data (on-chain conviction)**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`, 50 CUs/call) is the primary source; CoinGecko token info (`holders.count`) is the fallback. Results cached in `agent/data/holders.json`; growth computed over 7d lookback after 24h+ of snapshots. Agent pre-scores tokens to target the top 15 candidates, not the full universe. The CoinGecko fallback is rate-limited (`COINGECKO_MIN_INTERVAL_MS = 12s`) with a 10-min per-contract cache in `holders.ts`, so a NodeReal outage can't cascade into a CoinGecko 429 storm.
-- **Shared conviction framework**: Pure ledger types and behavioral scoring live in `packages/conviction-core`. Both the agent self-analysis and the web wallet analyzer consume the same `calculateBehavioralMetrics` / `analyzePosition` / `calculatePatienceTax` functions. `calibration.ts` adds the prediction-market yardstick (`brierScore` / `logLoss` / `hitRate` / `reliabilityBuckets` / `calculateCalibrationMetrics`), consumed by the Delphi runner's status reader. Do not duplicate scoring logic in `src/` or `agent/`.
-- **Harness adapter layer** (`agent/lib/adapters/`): The agent is an **agentic harness** — a proven autonomous agent architecture that can be plugged into any market domain. The core loop, LLM ladder, jury, adversarial verification, calibration ledger, thesis anchoring, and self-analysis are all domain-agnostic. Three extension points are the plug-in boundary: `DataSource` (fetch market data), `ConvictionFactors` (score a signal), and `TradeExecutor` (place & manage trades). The crypto domain (`sosovalue-adapter.ts` + `crypto-conviction.ts` + `twak-adapter.ts`) wraps the existing implementations to conform to the interfaces without modifying them. The options domain (`alpaca-data.ts` + `options-conviction.ts` + `alpaca-executor.ts`) implements the Alpaca options agent. `HARNESS_DOMAIN` env var switches domains at runtime (default: `crypto`). `resolveAdapters(HARNESS_CONFIG)` returns the adapter triple; the registry throws a clear error for unregistered adapters. New domains register in `DOMAIN_PROFILES` (`harness-config.ts`) and the factory maps (`registry.ts`). See `docs/HARNESS_ARCHITECTURE_PLAN.md`.
-- **Shared LLM ladder**: all LLM calls (token jury + Delphi forecaster + Delphi web briefings) go through `agent/lib/llm-providers.ts` (`chatCompletion`, free-first Vercel AI Gateway [zai/glm-5.2] > OpenRouter > OpenAI > Anthropic) and `agent/lib/delphi/web-search.ts` (Exa via the same gateway key). Gateway quirks verified live: it rejects `response_format` (400), requires `reasoning: { effort }` (GLM 5.2's reasoning tokens otherwise eat the completion budget and leave `content` empty), and its JSON replies can come fenced — parse with `parseLenientJson`. Do not add per-module fetch plumbing for new LLM surfaces — extend the ladder there.
+- **Composite market data**: SoSoValue token prices are preferred (higher refresh rate); CMC fills missing tokens and provides Fear & Greed / funding rates that SoSoValue doesn't offer. CMC's per-token quote pull (a 147-token batch) is deferred — `cycle-runner.fetchMarketData()` only calls `cmcClient.getEligibleTokenQuotes()` as a fallback when SoSoValue returns no prices, so a healthy SoSoValue run spends ~0 CMC credits on token quotes (CMC is still used every cycle for global metrics + derivatives, which SoSoValue lacks).
+- **Holder data (on-chain conviction)**: NodeReal MegaNode JSON-RPC (`nr_getTokenHolderCount`, 50 CUs/call) is the primary source; CoinGecko token info (`holders.count`) is the fallback. Results cached in `agent/data/holders.json`; growth computed over 7d lookback after 24h+ of snapshots. Agent pre-scores tokens to target the top 15 candidates, not the full universe. The CoinGecko fallback is rate-limited (`COINGECKO_MIN_INTERVAL_MS = 12s`) with a 10-min per-contract cache in `holders.ts`, so a NodeReal outage can't cascade into a CoinGecko 429 storm.
+- **Shared conviction framework**: Pure ledger types and behavioral scoring live in `packages/conviction-core`. Both the agent self-analysis and the web wallet analyzer consume the same `calculateBehavioralMetrics` / `analyzePosition` / `calculatePatienceTax` functions. `calibration.ts` adds the prediction-market yardstick (`brierScore` / `logLoss` / `hitRate` / `reliabilityBuckets`) — used by the archived Delphi status reader. Do not duplicate scoring logic in `src/` or `agent/`.
+- **Harness adapter layer** (`agent/lib/adapters/`): The agent is an **agentic harness** — a proven autonomous agent architecture that can be plugged into any market domain. The core loop, LLM ladder, jury, self-analysis, and anchoring are all domain-agnostic. Three extension points are the plug-in boundary: `DataSource` (fetch market data), `ConvictionFactors` (score a signal), and `TradeExecutor` (place & manage trades). `HARNESS_DOMAIN` env var switches domains at runtime (default: `crypto`). `resolveAdapters(HARNESS_CONFIG)` returns the adapter triple; the registry throws a clear error for unregistered adapters. New domains register in `DOMAIN_PROFILES` (`harness-config.ts`) and the factory maps (`registry.ts`). See `docs/HARNESS_ARCHITECTURE_PLAN.md`.
+- **Shared LLM ladder**: all LLM calls (token jury, market narrative, archived Delphi surfaces) go through `agent/lib/llm-providers.ts` (`chatCompletion`). Provider order, free-first: **vercel-gateway** (promo credit; circuit breaker skips on 402) > **openrouter** (`:free`-pinned model; 50 req/day, resets 00:00 UTC) > **b-ai** (`BAI_API_KEY`, free DeepSeek tier) > **orcarouter** ($0, rate-limited, slow) > **featherless** (`FEATHERLESS_API_KEY`, sponsor credits) > **openai** > **anthropic**. Per-provider circuit breakers: 402 trips a breaker, quota-exhaustion 429s break until the next 00:00 UTC, transient 429/503 self-heal via `Retry-After`-aware `fetchWithBackoff`. Do not add per-module fetch plumbing for new LLM surfaces — extend the ladder there.
 - **No fabricated fallback data**: Showcase/demo wallets use real public addresses only. Do not add fabricated traders, heatmaps, or percentile defaults to fill empty UI states. Return `null` and show an honest empty state instead.
 - **Cross-chain anchoring**: Same `ConvictionRecord` payload sent to Mantle (EVM, viem) and Casper (casper-js-sdk). Hashes computed once via `conviction-core`'s `computeSubjectHash` / `computeThesisHash` — same hash on every chain.
 - **Telegram dispatch**: 3-message cycle summary with HTML formatting (`<pre>`, `<code>`, `<b>`). Non-blocking `.catch(() => {})` — env-vars-gated startup/cycle/error alerts.
 - **Guardrails**: Pure in-memory state with daily counter reset. Hard limits from `AGENT_CONFIG.trading`.
 - **Bankroll management**: BNB reserve + adaptive interval doubling (4h → 8h) when BNB drops below `targetBnbUsd`.
-- **Position reconciliation**: at startup, `restoreSnapshot()` cross-checks `state.heldPositions` against live TWAK portfolio and drops ghost positions.
+- **Position reconciliation**: at startup, `restoreSnapshot()` cross-checks `state.heldPositions` against live TWAK portfolio and drops ghost positions. The options domain reconciles against the Alpaca broker instead (`reconcileHeldWithBroker`).
 - **Portfolio parser**: Reads `$USD` column from TWAK's column-aligned output. Covered by regression test in `__tests__/twak-executor.test.ts`.
 - **TWAK reliability**: The agent resolves the `twak` binary from common install paths (`~/.local/bin`, `~/.twak/bin`, `/usr/local/bin`) in addition to `PATH`. If TWAK is missing, misconfigured, or the wallet is locked, startup diagnostics print the exact failure and a remediation hint. The cycle still runs: portfolio falls back to the on-chain reader, and trades are skipped rather than crashing the loop.
 - **Agent-to-agent (A2A)**:
-  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. Exposes 7 tools: `get_latest_conviction`, `get_by_thesis`, `get_subject_history`, `get_agent_reputation`, `get_jury_deliberation`, `get_live_signals`, and `score_wallet` (behavioral scoring of any wallet — proxies to the web app's wallet-score endpoint). The agent also **consumes** 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as cross-chain context for the LLM jury — bidirectional MCP participant.
-  - CROO CAP client connects to the CROO network via WebSocket and fulfills six CAP serviceIds (`signals-live` and `wallet-score` Store-listed; four reputation services MCP-only). Store orders require `CROO_SIGNALS_LIVE_SERVICE_UUID` on the VPS — see `docs/CROO_INTEGRATION.md`.
+  - MCP server at `/mcp` with Streamable HTTP transport + x402 paywall. 8 tools — free: `get_latest_conviction`, `get_by_thesis`, `get_agent_reputation`, `get_jury_deliberation`, `get_live_signals`; paid (x402 CEP-18): `get_subject_history`, `cross_chain_lookup`, `score_wallet` (hero SKU — proxies to the web app's wallet-score endpoint). Pricing table: `agent/src/mcp/pricing.ts`. The agent also **consumes** 2 Casper ecosystem MCP servers (CSPR.trade + blockchain) as jury context — bidirectional MCP participant.
+  - CROO CAP client fulfills six serviceIds: `wallet-score` ($0.05) and `signals-live` ($0.01 Store-floor nominal) are Store-listed; four `reputation-*` services are MCP-only pre-registered IDs (do not rename). Store orders arrive as UUIDs — map via `CROO_SERVICE_UUID_MAP` / `CROO_<SERVICE>_SERVICE_UUID` env vars (`resolveCapServiceId`). See `docs/CROO_INTEGRATION.md`.
 
 ### Important Conventions
 
@@ -263,10 +283,11 @@ adapters/ (harness domain layer)
 - Never import Next.js path aliases (`@/`) in agent code.
 - Env vars use `TWAK_` prefix (not `TW_`). The portal calls them `TW_ACCESS_ID` and `TW_HMAC_SECRET`, but the agent reads `TWAK_ACCESS_ID` and `TWAK_HMAC_SECRET`.
 - `execSync` → prefer `execAsync` for long-running operations (trade execution still uses `execSync` due to TWAK CLI limitations).
-- Tests live in `agent/__tests__/` — Vitest framework (657 tests across 40 files).
+- Tests live in `agent/__tests__/` — Vitest framework (~740 tests across 43 files).
 - `agent/data/state.json` is a runtime artifact — it's in `.gitignore` and should not be committed. If `git status` shows it as modified, run `git rm --cached agent/data/state.json`.
 - `agent/data/payment-stats.json` — persisted A2A payment counters (x402 + CAP); survives pm2 restarts.
-- `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is paid via CROO or MCP.
+- `agent/data-options/` — the options domain's own data dir (separate from the crypto agent's `agent/data/`).
+- `GET /signals/teaser` (and `/signals/preview` alias) — public guidance preview only; full `signals-live/v1.2` is via CROO or MCP.
 - `agent/data/holders.json` is a runtime cache — also gitignored.
 - `agent/docs/api/` is TypeDoc output — gitignored, regenerate via `npm run docs`.
 
@@ -289,7 +310,7 @@ SoSoValue rate limits: **20 req/min**, **100,000 req/month** per API key. The ag
   Additional protections:
 
   - If `SOSOVALUE_API_KEY` is missing, all SoSoValue calls short-circuit and CMC/fallback data is used.
-  - **Token-bucket rate limiter** (`ssvThrottle` in `data-providers.ts`) wraps every `ssvRestGet` call and enforces the 20 req/min ceiling. The first 20 requests in a window fire immediately, then requests pace at one per 3s.
+  - **Rolling-window rate limiter** (`computeSsvThrottleWaitMs` in `data-providers.ts`) wraps every `ssvRestGet` call and hard-caps 20 requests in any trailing 60s — the same metric SoSoValue enforces.
   - **Debounced disk writes** — rapid cache updates coalesce into one `sosovalue-cache.json` write 500ms after the last update, so a 147-snapshot cold fill doesn't perform 147 sync writes.
   - A circuit breaker tracks consecutive 401/403/429 responses. After 3 failures, SoSoValue is suspended for 15 minutes.
   - `fetchKlinesBySymbol` is only called for the top 10 conviction candidates and only when `SOSOVALUE_API_KEY` is set.
@@ -425,7 +446,8 @@ If a step fails, the log includes a `TWAK help:` line with the exact fix. The cy
 | `mantle-conviction-card.tsx` | Mantle anchored conviction card |
 | `casper-wallet-connect.tsx` | In-browser Casper Wallet connect + sign proof (uses `window.CasperWalletProvider` injected by the extension) |
 | `agent/signal-edge-panel.tsx` | Signal Edge panel — conviction vs naive baseline head-to-head + factor attribution (Proof view) |
-| `agent/delphi-arena-card.tsx` | Delphi Prediction Arena card — runner stats, open forecasts, calibration (Brier + reliability diagram), anchor receipt (Proof view) |
+| `agent/options-arena-card.tsx` | Options agent card — live Alpaca domain status (Proof view) |
+| `agent/delphi-arena-card.tsx` | Delphi Prediction Arena card — frozen post-mortem state since the arena closed 2026-08-24 (Proof view) |
 | `agent/llm-jury-card.tsx` | LLM Conviction Jury card — 7th factor verdicts (extracted from agent page) |
 | `agent/buyer-preview-card.tsx` | Buyer preview — public signals-live teaser (guidance + top symbol) |
 | `agent/reputation-api-card.tsx` | MCP · x402 reputation API card — query stats, per-tool pricing, copy-paste curls |
@@ -462,14 +484,13 @@ If a step fails, the log includes a `TWAK help:` line with the exact fix. The cy
 3. Register the adapter factories in the maps in `agent/lib/adapters/registry.ts` (`DATA_SOURCES`, `CONVICTION_FACTORS`, `EXECUTORS`)
 4. Export the new adapters from `agent/lib/adapters/index.ts`
 5. Set `HARNESS_DOMAIN=<your-domain>` at runtime to switch; the registry resolves the adapter triple and throws a clear error if any adapter is missing
-6. The loop, LLM ladder, jury, verification, self-analysis, and anchoring require **no changes** — they're domain-agnostic
+6. The loop, LLM ladder, jury, self-analysis, and anchoring require **no changes** — they're domain-agnostic
 
-## Pinata Deployment
+## Deployment
 
 - Build: `npm run build` (runs `tsc`)
 - Start: `node dist/index.js`
-- Port: 31777 (Hono HTTP server)
-- Routes are prefixed by Pinata gateway: `/api/status` → `/status` on port 31777
+- Port: 31777 (crypto) / 31778 (options); Hono HTTP server
 
 ### Deploying to the server (`nuncio-vultr`)
 
@@ -490,9 +511,18 @@ dependency whose devDependencies are not installed by `npm ci` in the agent) →
 working process. `npm run deploy` is an alias. Rollback = `git checkout <prev>`
 on the server.
 
-One-time setup (already done): `git init` + remote + `git checkout -f
-origin/main` on the server, and `agent/ecosystem.config.cjs` documents the pm2
-process. The live process is still managed by name (`pm2 reload earlynotwrong`)
+Process handling after build:
+
+- `earlynotwrong` — always reloaded.
+- `earlynotwrong-options` — reloaded only when already in the pm2 list (a
+  missing process is non-fatal).
+- `earlynotwrong-delphi` — only started when `DELPHI_ENABLED=1`; otherwise left
+  stopped (the archived runner would self-exit and pm2 autorestart would churn
+  it). For a permanent closeout: `pm2 delete earlynotwrong-delphi` and set
+  `DELPHI_ENABLED=0` in `agent/.env`.
+
+`agent/ecosystem.config.cjs` documents all three pm2 apps. The live
+`earlynotwrong` process is still managed by name (`pm2 reload earlynotwrong`)
 so its injected env vars are preserved — do **not** switch it to start from
 `ecosystem.config.cjs` unless you also migrate those env vars into the file.
 
@@ -505,5 +535,4 @@ npm run docs:serve  # serve locally via npx serve
 ```
 
 - Config: `agent/typedoc.json`
-- Output: `agent/docs/api/`
-- 217 HTML pages covering all 14 lib modules + src/ server + MCP tools
+- Output: `agent/docs/api/` (gitignored)
