@@ -38,7 +38,7 @@ export interface PaperPosition {
   peakPriceUsd: number;
 }
 
-const DATA_DIR = join(__dirname, 'data');
+const DATA_DIR = join(__dirname, '..', '..', 'data');
 export const LEDGER_PATH = join(DATA_DIR, 'ryo-ledger.jsonl');
 export const STATE_PATH = join(DATA_DIR, 'ryo-state.json');
 

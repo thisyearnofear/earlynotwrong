@@ -30,6 +30,11 @@ import { getAlpacaDataAdapter } from "./alpaca-data.js";
 import { getOptionsConvictionAdapter } from "./options-conviction.js";
 import { getAlpacaExecutor } from "./alpaca-executor.js";
 
+// RYO-CHAN domain adapters (hackathon 2026 — practice trading).
+import { getRyoDataAdapter } from "./ryo-data.js";
+import { getRyoConvictionAdapter } from "./ryo-conviction.js";
+import { getRyoExecutor } from "./ryo-executor.js";
+
 // =============================================================================
 // Registry Maps
 // =============================================================================
@@ -43,16 +48,19 @@ export interface AdapterBundle {
 const DATA_SOURCES: Record<string, () => DataSource> = {
   sosovalue: getSosovalueAdapter,
   alpaca: getAlpacaDataAdapter,
+  ryo: getRyoDataAdapter,
 };
 
 const CONVICTION_FACTORS: Record<string, () => ConvictionFactors> = {
   crypto: getCryptoConvictionAdapter,
   options: getOptionsConvictionAdapter,
+  ryo: getRyoConvictionAdapter,
 };
 
 const EXECUTORS: Record<string, () => TradeExecutor> = {
   twak: getTwakAdapter,
   alpaca: getAlpacaExecutor,
+  ryo: getRyoExecutor,
 };
 
 // =============================================================================

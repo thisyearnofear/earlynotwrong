@@ -56,6 +56,14 @@ export const DOMAIN_PROFILES: Record<string, HarnessConfig> = {
       executor: "alpaca",
     },
   },
+  ryo: {
+    domain: "ryo",
+    adapters: {
+      dataSource: "ryo",
+      convictionFactors: "ryo",
+      executor: "ryo",
+    },
+  },
 };
 
 /**

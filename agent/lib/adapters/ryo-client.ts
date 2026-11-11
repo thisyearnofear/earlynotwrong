@@ -21,11 +21,11 @@ export interface ToolResult {
 
 const REST_PATHS: Record<string, (args: Record<string, unknown>) => string> = {
   market_overview: () => '/market/overview',
-  scan_market: () => '/market/scan',
   market_intelligence: () => '/market/intelligence',
-  supported_tokens: () => '/market/scan',
+  scan_market: (a) => `/market/scan${a.chain ? `?chain=${a.chain}` : ''}`,
+  supported_tokens: () => '/market/intelligence',
   analyze_token: (a) => `/market/token/${String(a.symbol ?? a.token ?? '').toUpperCase()}`,
-  check_safety: (a) => `/market/token/${String(a.symbol ?? a.token ?? '').toUpperCase()}/safety`,
+  check_safety: (a) => `/market/token/${String(a.symbol ?? a.token ?? '').toUpperCase()}`,
 };
 
 export class RyoClient {
