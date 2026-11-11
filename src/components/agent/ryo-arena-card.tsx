@@ -35,6 +35,7 @@ const ACTION_STYLE: Record<RyoVerdict["action"], { label: string; cls: string }>
   SKIP: { label: "SKIP", cls: "text-[#e8b64c] border-[#e8b64c]/40 bg-[#e8b64c]/10" },
   JURY: { label: "JURY", cls: "text-[#a78bfa] border-[#a78bfa]/40 bg-[#a78bfa]/10" },
   THESIS: { label: "THESIS", cls: "text-[#a78bfa] border-[#a78bfa]/40 bg-[#a78bfa]/10" },
+  RESOLVE: { label: "RESOLVE", cls: "text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10" },
   ANCHOR: { label: "ANCHOR", cls: "text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10" },
 };
 

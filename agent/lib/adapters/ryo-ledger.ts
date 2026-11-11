@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export type TradeAction = 'BUY' | 'HOLD' | 'EXIT' | 'SKIP' | 'THESIS' | 'ANCHOR' | 'JURY';
+export type TradeAction = 'BUY' | 'HOLD' | 'EXIT' | 'SKIP' | 'THESIS' | 'RESOLVE' | 'ANCHOR' | 'JURY';
 
 export interface LedgerEntry {
   ts: string;

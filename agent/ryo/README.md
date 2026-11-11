@@ -44,7 +44,12 @@ agent/ryo/serve.ts                zero-dep status server (node:http)
   GET  /ryo/status                arena-card payload (same as production /ryo/status)
   GET  /ryo/ledger?n=50           raw reasoning trail
   GET  /ryo/verify                chain audit over HTTP
-  POST /ryo/thesis-commit         Track 3 tool
+  GET  /ryo/feed?symbol=          public verdict feed with receipt permalinks
+  GET  /ryo/receipt/{hash}        shareable HTML decision receipt
+  GET  /ryo/debate/{symbol}       reasoning timeline per symbol
+  GET  /ryo/commitment/{hash}     thesis status lookup (open/resolved)
+  POST /tools/thesis_commit/call  Track 3 tool — commit a thesis
+  POST /tools/thesis_resolve/call companion — resolve it once
 
 agent/src/server.ts               production agent also serves GET /ryo/status
 src/app/ryo/page.tsx              standalone Track 2 route — one screen:
@@ -61,11 +66,15 @@ Each cycle runs deterministic scoring → then the **LLM conviction jury**
 (`agent/ryo/ryo-jury.ts`, same shared `chatCompletion` ladder the production
 jury uses) deliberates over the *richest evidence RYO publishes* —
 `deep_analysis` verdicts/confluence/risks/catalysts, `compare_tokens`
-head-to-heads, `monitor_market_sentiment_shift` — and adjusts scores ±15
-with cited reasoning. **Every verdict lands in the ledger as a `JURY`
-entry**: the trail carries actual judgements, not only hashed inputs.
-With no provider keyed the jury runs in honest `template` mode (zero
-adjustments, labeled as such — no fabricated reasoning).
+head-to-heads, `monitor_market_sentiment_shift` — adjusts scores ±15 with
+cited reasoning, and can **veto an entry outright** on disagree/
+strong-disagree. **Every verdict lands in the ledger as a `JURY` entry**:
+provider, model, agreement, keyRisk, marketAssessment, and the digests of
+the exact tool responses it consumed — judgements in the trail, not only
+hashed inputs. Every BUY/SKIP carries a `decisionTrace` (base score → jury
+adjustment → final, threshold, decisive factor, missing fields, tool
+statuses, field provenance). With no provider keyed the jury runs in honest
+`template` mode — labeled, never faked.
 
 ## Contract discipline (MCP Builder Guide)
 
@@ -78,17 +87,27 @@ adjustments, labeled as such — no fabricated reasoning).
 - Internal app routes (`market_intelligence` universe fallback, OHLCV
   klines, embedded safety) are labeled `internal` in evidence digests —
   outside the published six, never silent.
+- **Declared provenance**: every scored field records the JSON path it was
+  extracted from (`metadata.fieldSources` — e.g.
+  `priceChange7dPercent: data.changes.h24`). Extraction is auditable, not
+  anonymous scraping.
 - `GET /health`, `/whoami`, `/tools` (catalog discovery) are first-class
   client methods; 429/503 retried with backoff + `Retry-After` honored.
 
 ## SocialFi surface — receipts a trader can open
 
-- `GET /ryo/feed` — public verdict feed, newest first, with per-decision
-  `receipt_url` permalinks.
+- `GET /ryo/feed[?symbol=]` — public verdict feed, newest first, with
+  per-decision `receipt_url` permalinks.
 - `GET /ryo/receipt/{hash}` — shareable HTML receipt for a single decision:
-  the reason, the chain link, the audit command, related theses on the same
-  symbol. Two opposing `thesis_commit` calls on one symbol are a debate
-  primitive — resolvable when `resolve_after` passes.
+  the reason, evidence digests, the chain link, and the verification recipe.
+- `GET /ryo/debate/{symbol}` — the reasoning timeline for a symbol: theses
+  (open/resolved), jury verdicts, decisions. The room where "early, not
+  wrong" claims get settled.
+- `thesis_commit` + **`thesis_resolve`** — a complete debate primitive:
+  commit reasoning before the move, resolve it once after. Both return
+  RYO's public envelope at the published call convention; resolutions are
+  one-shot so debates stay honest.
+- `GET /ryo/commitment/{hash}` — commitment status (open/resolved) lookup.
 
 The loop, risk checks, and scoring framework are unchanged — the same code
 shape the production agent runs against BSC and Alpaca. `DOMAIN_PROFILES.ryo`

@@ -116,7 +116,7 @@ async function cycle(): Promise<void> {
       ctx.compare?.data ?? null,
       ctx.sentiment?.data ?? null,
     );
-    console.log(`  jury [${deliberation.mode} · ${deliberation.provider}] ${deliberation.marketAssessment.slice(0, 120)}`);
+    console.log(`  jury [${deliberation.mode} · ${deliberation.provider} · ${deliberation.model}] ${deliberation.marketAssessment.slice(0, 120)}`);
     for (const v of deliberation.verdicts) {
       const hit = scored.find((s) => s.signal.symbol.toUpperCase() === v.symbol.toUpperCase());
       if (hit) {
@@ -138,6 +138,7 @@ async function cycle(): Promise<void> {
           provider: deliberation.provider,
           model: deliberation.model,
           mode: deliberation.mode,
+          marketAssessment: deliberation.marketAssessment,
           ...(deepCtx ? { deep_analysis: deepCtx.digest } : {}),
           ...(ctx.compare ? { compare_tokens: ctx.compare.digest } : {}),
           ...(ctx.sentiment ? { sentiment_shift: ctx.sentiment.digest } : {}),
@@ -147,21 +148,48 @@ async function cycle(): Promise<void> {
     scored.sort((a, b) => b.conviction.score - a.conviction.score);
   }
 
-  // 4. Enter the best candidate if jury-adjusted conviction clears the bar.
+  // 4. Decide — with a real judgement gate, not just a score threshold.
+  //    A jury 'disagree'/'strong-disagree' on the top candidate vetoes the
+  //    entry outright: the model decides, not only nudges. Safety vetoes
+  //    still can't be overridden upward — disagreement only ever trades down.
   const top = scored[0];
+  const juryV = deliberation?.verdicts.find((v) => v.symbol.toUpperCase() === top?.signal.symbol.toUpperCase());
+  const juryVeto = juryV != null && (juryV.agreement === "disagree" || juryV.agreement === "strong-disagree");
   const stateNow = loadState();
-  if (top && top.conviction.score >= ENTRY_MIN_CONVICTION && !stateNow.positions.some((p) => p.symbol === top.signal.symbol)) {
+
+  const decisionTrace = (s: typeof top) =>
+    s && {
+      baseScore: juryV?.baseScore ?? s.conviction.score,
+      juryAdjustment: juryV?.adjustment ?? 0,
+      juryAgreement: juryV?.agreement ?? null,
+      juryMode: deliberation?.mode ?? "none",
+      adjustedScore: s.conviction.score,
+      threshold: ENTRY_MIN_CONVICTION,
+      decisiveFactor: s.conviction.breakdown.length
+        ? (() => { const d = [...s.conviction.breakdown].sort((a, b) => Math.abs(b.score) - Math.abs(a.score))[0]; return `${d.name}=${d.score}/${d.maxScore}`; })()
+        : null,
+      missingFields: (s.signal.metadata?.missingFields as string[] | undefined) ?? [],
+      toolStatus: (s.signal.metadata?.toolStatus as unknown) ?? null,
+      fieldSources: (s.signal.metadata?.fieldSources as unknown) ?? null,
+    };
+
+  if (top && juryVeto && !stateNow.positions.some((p) => p.symbol === top.signal.symbol)) {
+    record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score,
+      `jury veto — ${juryV.agreement}: ${juryV.keyRisk}. ${juryV.reasoning.slice(0, 240)}`,
+      { decisionTrace: decisionTrace(top), veto: "jury" });
+    console.log(`  SKIP ${top.signal.symbol} — jury veto (${juryV.agreement}): ${juryV.keyRisk}`);
+  } else if (top && top.conviction.score >= ENTRY_MIN_CONVICTION && !stateNow.positions.some((p) => p.symbol === top.signal.symbol)) {
     const pf = await portfolio();
     const risk = executor.manageRisk(top, pf);
     if (risk.approved) {
       const res = await executor.placeOrder(top, { sizeUsd: risk.maxPositionUsd ?? 0, side: "long" });
       console.log(`  BUY ${top.signal.symbol} $${res.executedValueUsd?.toFixed(0)} — ${top.conviction.rationale}`);
     } else {
-      record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score, `risk veto: ${risk.reason}`, {});
+      record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score, `risk veto: ${risk.reason}`, { decisionTrace: decisionTrace(top) });
       console.log(`  SKIP ${top.signal.symbol} — ${risk.reason}`);
     }
   } else if (top) {
-    record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score, `conviction below ${ENTRY_MIN_CONVICTION}`, {});
+    record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score, `conviction below ${ENTRY_MIN_CONVICTION}`, { decisionTrace: decisionTrace(top) });
     console.log(`  SKIP — best conviction ${top.conviction.score} < ${ENTRY_MIN_CONVICTION}`);
   }
 

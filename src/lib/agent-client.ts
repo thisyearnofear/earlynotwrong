@@ -433,7 +433,7 @@ export async function fetchOptionsStatus(): Promise<OptionsStatus | null> {
 export interface RyoVerdict {
   ts: string;
   symbol: string;
-  action: "BUY" | "HOLD" | "EXIT" | "SKIP" | "THESIS" | "ANCHOR" | "JURY";
+  action: "BUY" | "HOLD" | "EXIT" | "SKIP" | "THESIS" | "RESOLVE" | "ANCHOR" | "JURY";
   conviction: number;
   reason: string;
   sizeUsd?: number;
@@ -471,6 +471,7 @@ export interface RyoStatus {
     skips: number;
     vetoes: number;
     theses: number;
+    resolves: number;
     juryVerdicts: number;
   };
 }

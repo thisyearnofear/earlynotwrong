@@ -26,6 +26,7 @@ const ACTION_STYLE: Record<string, string> = {
   SKIP: "text-[#e8b64c] border-[#e8b64c]/50 bg-[#e8b64c]/10",
   JURY: "text-[#a78bfa] border-[#a78bfa]/50 bg-[#a78bfa]/10",
   THESIS: "text-[#a78bfa] border-[#a78bfa]/50 bg-[#a78bfa]/10",
+  RESOLVE: "text-[#38bdf8] border-[#38bdf8]/50 bg-[#38bdf8]/10",
   ANCHOR: "text-[#38bdf8] border-[#38bdf8]/50 bg-[#38bdf8]/10",
 };
 
@@ -44,9 +45,14 @@ export default function RyoPage() {
 
   useEffect(() => {
     void load();
+    const t = setInterval(load, 30_000); // the feed is the product — keep it fresh
+    return () => clearInterval(t);
   }, [load]);
 
   const jury = status?.verdicts.find((v) => v.action === "JURY");
+  const juryMeta = jury?.evidence as
+    | { mode?: string; provider?: string; model?: string; marketAssessment?: string; keyRisk?: string }
+    | undefined;
   const vetoes = status?.verdicts.filter((v) => v.action === "SKIP" && v.conviction === 0) ?? [];
 
   return (
@@ -114,12 +120,32 @@ export default function RyoPage() {
                 Why it matters
               </h2>
               {jury ? (
-                <blockquote className="border-l-2 border-[#a78bfa]/60 pl-4 text-sm text-foreground-muted leading-relaxed">
-                  {jury.reason}
-                  <footer className="mt-1 text-[10px] text-foreground-dim">
-                    — conviction jury verdict on {jury.symbol} · <a className="underline decoration-[#e8b64c]/60 underline-offset-2 hover:text-[#e8b64c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e8b64c]" href={`${STATUS_BASE}/ryo/receipt/${jury.hash}`}>receipt #{jury.hash.slice(0, 8)}</a>
-                  </footer>
-                </blockquote>
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        "rounded border px-1.5 py-0.5 text-[9px] uppercase",
+                        juryMeta?.mode === "llm"
+                          ? "text-patience border-patience/50 bg-patience/10"
+                          : "text-[#e8b64c] border-[#e8b64c]/50 bg-[#e8b64c]/10",
+                      )}
+                    >
+                      {juryMeta?.mode === "llm" ? `llm jury · ${juryMeta.provider}/${juryMeta.model}` : "template mode — no model keyed"}
+                    </span>
+                    {juryMeta?.keyRisk ? (
+                      <span className="text-[10px] text-impatience">key risk: {juryMeta.keyRisk}</span>
+                    ) : null}
+                  </div>
+                  {juryMeta?.marketAssessment ? (
+                    <p className="mb-2 text-[11px] text-foreground-dim italic">{juryMeta.marketAssessment}</p>
+                  ) : null}
+                  <blockquote className="border-l-2 border-[#a78bfa]/60 pl-4 text-sm text-foreground-muted leading-relaxed">
+                    {jury.reason}
+                    <footer className="mt-1 text-[10px] text-foreground-dim">
+                      — conviction jury verdict on {jury.symbol} · <a className="underline decoration-[#e8b64c]/60 underline-offset-2 hover:text-[#e8b64c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e8b64c]" href={`${STATUS_BASE}/ryo/receipt/${jury.hash}`}>receipt #{jury.hash.slice(0, 8)}</a>
+                    </footer>
+                  </blockquote>
+                </div>
               ) : (
                 <p className="text-sm text-foreground-muted">No jury verdicts yet — the jury runs on the top-4 shortlist each cycle.</p>
               )}
@@ -136,7 +162,7 @@ export default function RyoPage() {
               <h2 id="changed" className="text-[10px] uppercase tracking-[0.2em] text-foreground-dim mb-3">
                 What changed — latest {Math.min(status.verdicts.length, 12)} verdicts
               </h2>
-              <ol className="space-y-1.5">
+              <ol className="space-y-1.5" aria-live="polite" aria-label="Latest verdicts">
                 {status.verdicts.slice(0, 12).map((v) => (
                   <VerdictItem key={v.hash} v={v} />
                 ))}
@@ -152,7 +178,7 @@ export default function RyoPage() {
                 {[
                   { label: "Audit the chain", href: `${STATUS_BASE}/ryo/verify`, note: "recompute every hash" },
                   { label: "Read the feed", href: `${STATUS_BASE}/ryo/feed`, note: "shareable verdicts, newest first" },
-                  { label: "Commit a thesis", href: `${STATUS_BASE}/ryo/status`, note: "POST /tools/thesis_commit/call" },
+                  { label: "Join the debate", href: `${STATUS_BASE}/ryo/debate/${jury?.symbol ?? status.verdicts[0]?.symbol ?? "BTC"}`, note: "commit or resolve a thesis" },
                 ].map((a) => (
                   <li key={a.label}>
                     <a
@@ -191,6 +217,14 @@ function VerdictItem({ v }: { v: RyoVerdict }) {
         <span className={cn("rounded border px-1.5 py-0.5 text-[9px] uppercase", style)}>{v.action}</span>
         <span className="text-[12px] text-foreground">{v.symbol}</span>
         {v.conviction > 0 && <span className="text-[10px] text-patience">{v.conviction}/100</span>}
+        <a
+          href={`${STATUS_BASE}/ryo/debate/${v.symbol}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[9px] text-foreground-dim underline decoration-[#38bdf8]/40 underline-offset-2 hover:text-[#38bdf8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#38bdf8]"
+        >
+          debate
+        </a>
         <a
           href={`${STATUS_BASE}/ryo/receipt/${v.hash}`}
           target="_blank"

@@ -43,5 +43,32 @@
     "mutates": "append-only local ledger only",
     "moves_funds": false,
     "network": "none required (anchoring optional via anchorAll env-gating)"
+  },
+  "companion_tool": {
+    "name": "thesis_resolve",
+    "title": "Resolve a committed thesis",
+    "description": "Closes the debate loop: given a commitment (or receipt hash) from thesis_commit, records the outcome the thesis actually met — validated | invalidated | mixed | expired. One-shot: a commitment resolves exactly once, so debates stay honest. Same public envelope and call convention (POST /tools/thesis_resolve/call).",
+    "inputSchema": {
+      "type": "object",
+      "required": ["commitment", "outcome"],
+      "properties": {
+        "commitment": { "type": "string", "description": "sha256 commitment or receipt hash returned by thesis_commit." },
+        "outcome": { "type": "string", "enum": ["validated", "invalidated", "mixed", "expired"] },
+        "note": { "type": "string", "description": "Optional resolution note — what actually happened." },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "statuses": {
+      "ok": "thesis found, resolution chained",
+      "partial": "thesis already resolved (one-shot refused) or chain degraded",
+      "unavailable": "no such commitment on this ledger"
+    },
+    "lookup": "GET /ryo/commitment/{hash} → open/resolved status without a write",
+    "debate_view": "GET /ryo/debate/{symbol} → the full reasoning timeline for a symbol",
+    "implementation": {
+      "cli": "npx tsx agent/ryo/thesis-resolve.ts --commitment HASH --outcome validated --note \"...\"",
+      "http": "POST /tools/thesis_resolve/call (agent/ryo/serve.ts :31800)",
+      "source": "agent/ryo/thesis-resolve.ts"
+    }
   }
 }

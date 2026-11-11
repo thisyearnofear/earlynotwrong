@@ -22,30 +22,38 @@ import type { Kline, MarketSignal, SignalRequest } from "./types.js";
 import { RyoClient, type ToolResult, type ToolStatus } from "./ryo-client.js";
 import { sha256 } from "./ryo-ledger.js";
 
-/** Depth-first search for the first numeric field matching any key fragment (coerces numeric strings — RYO returns them). */
-function num(obj: unknown, ...keys: string[]): number | undefined {
-  if (obj == null || typeof obj !== "object") return undefined;
-  const stack: unknown[] = [obj];
+/** Depth-first search for the first numeric field matching any key fragment
+ *  (coerces numeric strings — RYO returns them). Returns the value AND the
+ *  JSON path it came from so every scored number carries declared provenance
+ *  — judges see "7d change ← data.changes.h24", not anonymous extraction. */
+function numPath(obj: unknown, ...keys: string[]): { v?: number; path?: string } {
+  if (obj == null || typeof obj !== "object") return {};
+  const stack: Array<{ node: unknown; path: string }> = [{ node: obj, path: "data" }];
   while (stack.length) {
-    const cur = stack.pop();
+    const { node: cur, path } = stack.pop()!;
     if (cur && typeof cur === "object" && !Array.isArray(cur)) {
       for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
+        const childPath = `${path}.${k}`;
         const match = keys.some((f) => k.toLowerCase().includes(f));
         if (match) {
           const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : undefined;
-          if (n !== undefined && Number.isFinite(n)) return n;
+          if (n !== undefined && Number.isFinite(n)) return { v: n, path: childPath };
           // key matches but value is an object like { value: 26, label: "fear" }
           if (v && typeof v === "object" && !Array.isArray(v)) {
             const inner = (v as Record<string, unknown>).value ?? (v as Record<string, unknown>).score;
-            if (typeof inner === "number" && Number.isFinite(inner)) return inner;
-            if (typeof inner === "string" && !Number.isNaN(Number(inner))) return Number(inner);
+            if (typeof inner === "number" && Number.isFinite(inner)) return { v: inner, path: `${childPath}.value` };
+            if (typeof inner === "string" && !Number.isNaN(Number(inner))) return { v: Number(inner), path: `${childPath}.value` };
           }
         }
-        if (v && typeof v === "object") stack.push(v);
+        if (v && typeof v === "object") stack.push({ node: v, path: childPath });
       }
     }
   }
-  return undefined;
+  return {};
+}
+
+function num(obj: unknown, ...keys: string[]): number | undefined {
+  return numPath(obj, ...keys).v;
 }
 
 function symbolOf(item: Record<string, unknown>): string | null {
@@ -77,9 +85,11 @@ function itemToSignal(item: Record<string, unknown>, analysis?: unknown): Market
   if (!symbol) return null;
   const src = analysis && typeof analysis === "object" ? analysis : item;
   const missingFields: string[] = [];
+  const fieldSources: Record<string, string> = {};
   const grab = (field: string, ...keys: string[]): number => {
-    const v = num(src, ...keys);
+    const { v, path } = numPath(src, ...keys);
     if (v === undefined) missingFields.push(field);
+    else fieldSources[field] = path!;
     return v ?? 0;
   };
   return {
@@ -90,7 +100,7 @@ function itemToSignal(item: Record<string, unknown>, analysis?: unknown): Market
     priceChange7dPercent: grab("priceChange7dPercent", "pct_7d", "percent_change_7d", "change_7d", "d7", "7d"),
     volume24h: grab("volume24h", "volume_24h", "volume", "liquidity"),
     marketCap: grab("marketCap", "market_cap", "mcap"),
-    metadata: { raw: item, missingFields },
+    metadata: { raw: item, missingFields, fieldSources },
   };
 }
 
