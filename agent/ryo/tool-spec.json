@@ -1,0 +1,69 @@
+{
+  "name": "thesis_commit",
+  "title": "Commit a verifiable market thesis",
+  "description": "Tamper-evident commitment of an agent's reasoning BEFORE the market moves. Given a symbol, a natural-language thesis, and optional conviction/horizon/evidence references, returns a sha256 commitment plus a hash-chained ledger receipt proving the thesis existed at commit time. Later, anyone can recompute the chain to confirm the thesis was not written after the fact — 'early, not wrong' as a platform primitive. The same append-only ledger carries the caller's theses and the practice agent's decisions, so a single chain audit covers both.",
+  "inputSchema": {
+    "type": "object",
+    "required": ["symbol", "thesis"],
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Ticker the thesis covers (max 14 chars), e.g. 'HYPE'."
+      },
+      "thesis": {
+        "type": "string",
+        "description": "Natural-language thesis (recommended max 500 chars)."
+      },
+      "conviction": {
+        "type": "number",
+        "description": "Optional 0–100 conviction the agent claims.",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "horizon_hours": {
+        "type": "number",
+        "description": "Optional resolution window in hours — after it, the thesis is checkable against outcome."
+      },
+      "evidence_refs": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional digests/URIs of the evidence used (e.g. 'analyze_token:rest:693f8d49b2ae')."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "tool": { "const": "thesis_commit" },
+      "commitment": { "type": "string", "description": "sha256 over the canonical thesis payload — cite this." },
+      "receipt": {
+        "type": "object",
+        "properties": {
+          "ts": { "type": "string", "format": "date-time" },
+          "index": { "type": "integer", "description": "0-based position in the hash chain." },
+          "prevHash": { "type": "string" },
+          "hash": { "type": "string" }
+        }
+      },
+      "resolve_after": { "type": ["string", "null"], "format": "date-time" },
+      "verify": {
+        "type": "object",
+        "properties": {
+          "ledger": { "type": "string" },
+          "command": { "type": "string" },
+          "chain_intact_at_commit": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "implementation": {
+    "cli": "npx tsx agent/ryo/thesis-commit.ts --symbol HYPE --thesis \"...\" --conviction 76 --horizon 72",
+    "http": "POST /ryo/thesis-commit (agent/ryo/serve.ts, or mount on RYO's MCP surface)",
+    "source": "agent/ryo/thesis-commit.ts"
+  },
+  "safety": {
+    "mutates": "append-only local ledger only",
+    "moves_funds": false,
+    "network": "none required (anchoring optional via anchorAll env-gating)"
+  }
+}

@@ -19,6 +19,8 @@ const VALID_GET_ENDPOINTS = [
   "casper/anchors",
   "delphi/status",
   "options/status",
+  "ryo/status",
+  "ryo/verify",
 ] as const;
 
 /** Endpoints whose first (uncached) call can take minutes — the edge report
@@ -50,7 +52,11 @@ export async function GET(req: NextRequest) {
   // Route options/* to the options agent's own port; everything else to the
   // main crypto agent. The options surface is a sibling process/venue.
   const isOptions = endpoint.startsWith("options/");
-  const targetPort = isOptions ? OPTIONS_AGENT_PORT : AGENT_PORT;
+  const isRyo = endpoint.startsWith("ryo/");
+  // ryo/* is file-backed — the main agent serves it by default; point
+  // RYO_AGENT_PORT at the standalone demo server (agent/ryo/serve.ts) if
+  // the practice runner lives on its own port for the demo.
+  const targetPort = isOptions ? OPTIONS_AGENT_PORT : isRyo ? (process.env.RYO_AGENT_PORT || AGENT_PORT) : AGENT_PORT;
   const url = `http://${AGENT_HOST}:${targetPort}/${endpoint}${qs ? `?${qs}` : ""}`;
 
   try {

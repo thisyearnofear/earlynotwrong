@@ -77,6 +77,7 @@ import { LlmJuryCard } from "@/components/agent/llm-jury-card";
 import { SignalEdgePanel } from "@/components/agent/signal-edge-panel";
 import { DelphiArenaCard } from "@/components/agent/delphi-arena-card";
 import { OptionsArenaCard } from "@/components/agent/options-arena-card";
+import { RyoArenaCard } from "@/components/agent/ryo-arena-card";
 import { BuyerPreviewCard } from "@/components/agent/buyer-preview-card";
 import { ReputationApiCard } from "@/components/agent/reputation-api-card";
 import { CrooCapCard } from "@/components/agent/croo-cap-card";
@@ -1132,6 +1133,7 @@ function Dashboard({
         <SignalEdgePanel />
         <DelphiArenaCard />
         <OptionsArenaCard />
+        <RyoArenaCard />
       </AgentViewPanel>
       )}
 

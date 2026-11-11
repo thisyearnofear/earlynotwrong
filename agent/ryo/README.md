@@ -1,6 +1,6 @@
 # Early, Not Wrong — RYO-CHAN Practice Agent
 
-**RYO-CHAN Hackathon 2026 · Track 1 (Autonomous Agents)**
+**RYO-CHAN Hackathon 2026 · Tracks 1 (Autonomous Agents), 2 (Dashboards & Interfaces), 3 (New Skills)**
 
 An autonomous trading agent built on the RYO-CHAN read-only research layer.
 It interprets market evidence, takes conviction-weighted positions, and records
@@ -26,7 +26,24 @@ HARNESS_DOMAIN=ryo
   ├─ ryo-conviction.ts  ConvictionFactors → deterministic 0–100 scoring + safety veto
   ├─ ryo-executor.ts    TradeExecutor     → paper fills into the reasoning ledger
   ├─ ryo-client.ts      transport         → REST-first, MCP (JSON-RPC) fallback
-  └─ ryo-ledger.ts      audit trail       → append-only JSONL, sha256 hash-chained
+  ├─ ryo-ledger.ts      audit trail       → append-only JSONL, sha256 hash-chained
+  └─ ryo-status.ts      Track 2 surface   → file-backed status: verdict feed + chain integrity
+```
+
+Surfaces built on the same files:
+
+```
+agent/ryo/serve.ts                zero-dep status server (node:http)
+  GET  /ryo/status                arena-card payload (same as production /ryo/status)
+  GET  /ryo/ledger?n=50           raw reasoning trail
+  GET  /ryo/verify                chain audit over HTTP
+  POST /ryo/thesis-commit         Track 3 tool
+
+agent/src/server.ts               production agent also serves GET /ryo/status
+src/components/agent/ryo-arena-card.tsx
+                                  dashboard card — verdict feed IS the reasoning
+                                  trail: factor rationale, veto badges, visual
+                                  hash chain, integrity recomputed per fetch
 ```
 
 The loop, risk checks, and scoring framework are unchanged — the same code
@@ -73,6 +90,32 @@ absence is disclosed in the rationale rather than hidden.
 - `EXIT` on +50% peak then −30% give-back — lock the asymmetry
 - `HOLD` through ordinary drawdown — the project's namesake
 
+## Track 3 — `thesis_commit` (new platform tool)
+
+A research primitive RYO doesn't have: **prove your reasoning existed before
+the move**. Any agent commits `symbol + thesis + conviction + evidence_refs`
+and gets back a sha256 commitment plus a hash-chained receipt — "early, not
+wrong" as a platform primitive. Theses chain into the same ledger as the
+practice agent's decisions, so one `--verify` audit covers both.
+
+Spec-shaped to mount on RYO's MCP surface as-is (`agent/ryo/tool-spec.json`):
+
+```bash
+npx tsx agent/ryo/thesis-commit.ts --symbol HYPE \
+  --thesis "RSI 34 + 14% 7d drawdown — oversold mean-reversion" \
+  --conviction 76 --horizon 72
+curl -X POST localhost:31800/ryo/thesis-commit -d '{"symbol":"HYPE","thesis":"…"}'
+```
+
+## On-chain anchoring (judges' pick)
+
+Each cycle's ledger **head-hash** is committed through the repo's existing
+anchor stack (`agent/lib/anchors/` — the same `anchorAll` the production
+agent uses for Casper/Mantle thesis anchoring). The local chain proves
+integrity; the anchor proves the trail existed at that time. Best-effort and
+honest: adapters report `skipped` when operator env isn't configured, and
+skip results are themselves recorded in the ledger. `RYO_ANCHOR=0` disables.
+
 ## Run it
 
 ```bash
@@ -80,6 +123,7 @@ export RYO_MCP_KEY=ryo_mcp_...     # issued in the app (Bearer credential)
 npx tsx agent/ryo/run.ts                     # one cycle (tsx, no build step)
 npx tsx agent/ryo/run.ts --cycles 12 --interval 300
 npx tsx agent/ryo/run.ts --verify            # audit the hash chain
+npx tsx agent/ryo/serve.ts                   # status server → :31800/ryo/status
 ```
 
 State (paper cash $10,000 + positions) persists in `agent/data/ryo-state.json`.

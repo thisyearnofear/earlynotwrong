@@ -425,3 +425,63 @@ export async function fetchOptionsStatus(): Promise<OptionsStatus | null> {
     return null;
   }
 }
+
+// ─── RYO-CHAN practice domain ───────────────────────────────────────────────
+// File-backed surface (agent/data/ryo-*) — the verdict feed IS the hash-chained
+// reasoning trail, so the card renders cause → effect, not just numbers.
+
+export interface RyoVerdict {
+  ts: string;
+  symbol: string;
+  action: "BUY" | "HOLD" | "EXIT" | "SKIP" | "THESIS" | "ANCHOR";
+  conviction: number;
+  reason: string;
+  sizeUsd?: number;
+  priceUsd?: number;
+  hash: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface RyoStatus {
+  hasData: boolean;
+  domain: "ryo";
+  mode: "paper";
+  servedBy?: string;
+  cycle: number;
+  lastRunAt: string | null;
+  cashUsd: number;
+  positions: Array<{
+    symbol: string;
+    entryPriceUsd: number;
+    sizeUsd: number;
+    openedAt: string;
+    peakPriceUsd: number;
+  }>;
+  verdicts: RyoVerdict[];
+  chain: {
+    entries: number;
+    intact: boolean;
+    headHash: string | null;
+    headHashes: string[];
+  };
+  stats: {
+    buys: number;
+    holds: number;
+    exits: number;
+    skips: number;
+    vetoes: number;
+    theses: number;
+  };
+}
+
+export async function fetchRyoStatus(): Promise<RyoStatus | null> {
+  try {
+    const response = await fetch("/api/agent/proxy?endpoint=ryo/status", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}

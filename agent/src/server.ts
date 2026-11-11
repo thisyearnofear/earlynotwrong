@@ -606,6 +606,22 @@ app.get("/options/status", async (c) => {
 });
 
 // ===========================================================================
+// GET /ryo/status — RYO-CHAN practice-domain observability
+// ===========================================================================
+//
+// Unlike options (in-process state), the RYO runner persists to
+// agent/data/ryo-state.json + ryo-ledger.jsonl — so this route is
+// domain-agnostic: any agent process can serve the reasoning trail by
+// reading two files. Same payload the standalone demo server
+// (agent/ryo/serve.ts) produces; the web app's RyoArenaCard consumes it.
+
+import { readRyoStatus } from "../lib/adapters/ryo-status.js";
+
+app.get("/ryo/status", (c) => {
+  return c.json({ ...readRyoStatus(), servedBy: HARNESS_CONFIG.domain });
+});
+
+// ===========================================================================
 // GET /edge-report
 // ===========================================================================
 // On-demand edge report: conviction strategy vs naive baseline, with factor

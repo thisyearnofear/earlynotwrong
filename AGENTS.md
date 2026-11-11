@@ -77,6 +77,15 @@ here only cover surfaces that still run.
   `TradeExecutor`) + crypto wrappers + Alpaca options adapters + registry.
   `HARNESS_DOMAIN` switches domains; loop, LLM ladder, jury, self-analysis, and
   anchoring are domain-agnostic.
+- **RYO-CHAN domain (`agent/ryo/`, `agent/lib/adapters/ryo-*.ts`)** — third
+  harness domain: RYO research API → conviction scoring → paper fills into a
+  sha256 hash-chained reasoning ledger (`agent/data/ryo-ledger.jsonl`, gitignored).
+  File-backed status: `ryo-status.ts` serves any process; `agent/ryo/serve.ts`
+  is the zero-dep demo server (`/ryo/status|ledger|verify`, `POST /ryo/thesis-commit`).
+  `thesis_commit` is the Track 3 platform tool (spec in `agent/ryo/tool-spec.json`).
+  `RyoArenaCard` renders the verdict feed on `/agent`; proxy whitelists
+  `ryo/status`+`ryo/verify` (`RYO_AGENT_PORT` overrides the target port).
+  `RYO_MCP_KEY` = bearer credential; `RYO_ANCHOR=0` disables head-hash anchoring.
 - **Alpaca options execution** — orders via the Alpaca CLI (hackathon
   "MCP or CLI" requirement) with automatic REST fallback; any non-hard-fail
   order status (`new`/`held`/`accepted`) counts as a successful submission;
