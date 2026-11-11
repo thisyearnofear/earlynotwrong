@@ -521,7 +521,10 @@ async function callProvider(provider: LlmProviderName, req: LlmChatRequest): Pro
       };
     }
     case "openai": {
-      const response = await fetchWithBackoff("https://api.openai.com/v1/chat/completions", {
+      // OPENAI_BASE_URL makes this rung OpenAI-compatible-gateway-safe
+      // (e.g. twigpine's ogw_ keys) — defaults to api.openai.com.
+      const base = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+      const response = await fetchWithBackoff(`${base}/chat/completions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
