@@ -92,7 +92,9 @@ function buildPrompt(
     lines.push("");
     lines.push(`## ${s.symbol} — score ${c.conviction.score}/100`);
     lines.push(`  breakdown: ${c.conviction.breakdown.map((b) => `${b.name}=${b.score}/${b.maxScore}`).join(" ")}`);
-    lines.push(`  price $${s.price.toFixed(4)} | 24h ${s.priceChange24hPercent.toFixed(1)}% | 7d ${s.priceChange7dPercent.toFixed(1)}%`);
+    const miss = new Set(Array.isArray(meta.missingFields) ? (meta.missingFields as string[]) : []);
+    const field = (name: string, v: number, suffix = "") => (miss.has(name) ? "n/a" : `${v.toFixed(suffix === "%" ? 1 : 4)}${suffix}`);
+    lines.push(`  price $${field("price", s.price)} | 24h ${field("priceChange24hPercent", s.priceChange24hPercent, "%")} | 7d ${field("priceChange7dPercent", s.priceChange7dPercent, "%")}`);
     if (meta.rsi14 != null) lines.push(`  RSI(14): ${meta.rsi14} · ema_trend: ${meta.emaTrend ?? "n/a"} · ryo verdict: ${meta.verdict ?? "n/a"}`);
     if (Array.isArray(meta.missingFields) && meta.missingFields.length) {
       lines.push(`  ⚠ degraded evidence — missing: ${(meta.missingFields as string[]).join(", ")}`);

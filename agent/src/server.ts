@@ -616,9 +616,82 @@ app.get("/options/status", async (c) => {
 // (agent/ryo/serve.ts) produces; the web app's RyoArenaCard consumes it.
 
 import { readRyoStatus } from "../lib/adapters/ryo-status.js";
+import { verifyChain as ryoVerifyChain, LEDGER_PATH as RYO_LEDGER_PATH } from "../lib/adapters/ryo-ledger.js";
+import { thesisCommit, type ThesisCommitInput } from "../ryo/thesis-commit.js";
+import { thesisResolve, type ThesisResolveInput } from "../ryo/thesis-resolve.js";
+import { RyoClient } from "../lib/adapters/ryo-client.js";
+import { ledgerEntries, receiptPage, debatePage, feedPayload, commitmentLookup } from "../ryo/surfaces.js";
+
+// Lazy market client — price evidence for the debate tools. Constructed on
+// first use so the agent starts credential-free; absent a key the tools
+// degrade honestly (warnings name the missing price check).
+let _ryoMarketClient: RyoClient | null = null;
+function ryoMarketClient(): RyoClient | undefined {
+  if (!process.env.RYO_MCP_KEY) return undefined;
+  return (_ryoMarketClient ??= new RyoClient());
+}
 
 app.get("/ryo/status", (c) => {
   return c.json({ ...readRyoStatus(), servedBy: HARNESS_CONFIG.domain });
+});
+
+// RYO social surfaces — same routes the standalone demo server exposes,
+// so feed/receipt/debate links work on the public deployment too.
+
+app.get("/ryo/ledger", (c) => {
+  const n = Math.min(Number(c.req.query("n") ?? 50), 500);
+  return c.json({ entries: ledgerEntries().slice(-n) });
+});
+
+app.get("/ryo/verify", (c) => {
+  return c.json({ ...ryoVerifyChain(), ledger: RYO_LEDGER_PATH });
+});
+
+app.get("/ryo/feed", (c) => {
+  const n = Math.min(Number(c.req.query("n") ?? 25), 100);
+  const base = new URL(c.req.url).origin;
+  const sym = c.req.query("symbol")?.toUpperCase();
+  return c.json(feedPayload(base, ledgerEntries(), n, sym));
+});
+
+app.get("/ryo/receipt/:hash", (c) => {
+  const hash = c.req.param("hash");
+  const e = ledgerEntries().find((x) => x.hash === hash || x.hash.startsWith(hash));
+  if (!e) return c.html("<h1>receipt not found</h1>", 404);
+  return c.html(receiptPage(e, ryoVerifyChain().ok));
+});
+
+app.get("/ryo/debate/:symbol", (c) => {
+  const symbol = c.req.param("symbol").toUpperCase();
+  const entries = ledgerEntries().filter((e) => e.symbol.toUpperCase() === symbol);
+  if (!entries.length) return c.html(`<h1>no debate on ${symbol}</h1>`, 404);
+  const base = new URL(c.req.url).origin;
+  return c.html(debatePage(symbol, entries, base));
+});
+
+app.get("/ryo/commitment/:hash", (c) => {
+  const commitment = c.req.param("hash");
+  const found = commitmentLookup(commitment);
+  if (!found) return c.json({ found: false, commitment }, 404);
+  return c.json(found);
+});
+
+app.post("/tools/thesis_commit/call", async (c) => {
+  try {
+    const parsed = (await c.req.json()) as ThesisCommitInput;
+    return c.json(await thesisCommit(parsed, ryoMarketClient()));
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
+});
+
+app.post("/tools/thesis_resolve/call", async (c) => {
+  try {
+    const parsed = (await c.req.json()) as ThesisResolveInput;
+    return c.json(await thesisResolve(parsed, ryoMarketClient()));
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
 });
 
 // ===========================================================================

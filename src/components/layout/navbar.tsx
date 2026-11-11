@@ -70,6 +70,13 @@ const PRIMARY_NAV: {
     match: (p) => p === "/agent" || p.startsWith("/agent/"),
   },
   {
+    href: "/ryo",
+    label: "RYO",
+    mobileLabel: "RYO Decisions",
+    icon: Crown,
+    match: (p) => p === "/ryo" || p.startsWith("/ryo/"),
+  },
+  {
     href: "/leaderboard",
     label: "Leaderboard",
     icon: TrendingUp,

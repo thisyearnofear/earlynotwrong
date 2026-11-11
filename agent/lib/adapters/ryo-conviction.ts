@@ -28,28 +28,47 @@ function scoreOne(signal: MarketSignal, historical: Kline[]): ConvictionResult {
     notes.push(`tool status: ${Object.entries(toolStatus).filter(([, s]) => s !== "ok").map(([t, s]) => `${t}=${s}`).join(", ")}`);
   }
 
-  // Contrarian (30): reward 7d drawdowns — "early, not wrong".
-  const chg7d = signal.priceChange7dPercent;
-  const contrarian = chg7d < 0 ? Math.min(W.contrarian, Math.abs(chg7d) * 1.5) : Math.max(0, 10 - chg7d * 0.5);
-  breakdown.push({ name: "contrarian", score: round(contrarian), maxScore: W.contrarian, rationale: `7d change ${chg7d.toFixed(1)}%` });
-  if (chg7d < -10) notes.push(`down ${chg7d.toFixed(1)}% over 7d — contrarian window`);
+  // Per-factor gating: a missing field gates ITS factor — the field is
+  // scored as unavailable, never as a fabricated 0 (a real-0 7d change
+  // would otherwise hand contrarian 10 free points for a flat market).
+  const has = (f: string) => !missing.includes(f);
 
-  // Quality (20): log-scaled market cap + liquidity.
-  const mcapPts = signal.marketCap > 0 ? Math.min(12, Math.log10(Math.max(signal.marketCap, 1)) * 1.5) : 4;
-  const liqPts = signal.volume24h > 0 ? Math.min(8, Math.log10(Math.max(signal.volume24h, 1))) : 2;
-  breakdown.push({ name: "quality", score: round(mcapPts + liqPts), maxScore: W.quality, rationale: `mcap $${fmt(signal.marketCap)}, vol $${fmt(signal.volume24h)}` });
+  // Contrarian (30): reward 7d drawdowns — "early, not wrong".
+  if (has("priceChange7dPercent")) {
+    const chg7d = signal.priceChange7dPercent;
+    const contrarian = chg7d < 0 ? Math.min(W.contrarian, Math.abs(chg7d) * 1.5) : Math.max(0, 10 - chg7d * 0.5);
+    breakdown.push({ name: "contrarian", score: round(contrarian), maxScore: W.contrarian, rationale: `7d change ${chg7d.toFixed(1)}%` });
+    if (chg7d < -10) notes.push(`down ${chg7d.toFixed(1)}% over 7d — contrarian window`);
+  } else {
+    breakdown.push({ name: "contrarian", score: 0, maxScore: W.contrarian, rationale: "7d change unavailable — not scored" });
+  }
+
+  // Quality (20): log-scaled market cap + liquidity; each sub-input gated.
+  const mcapPts = has("marketCap") && signal.marketCap > 0 ? Math.min(12, Math.log10(Math.max(signal.marketCap, 1)) * 1.5) : 0;
+  const liqPts = has("volume24h") && signal.volume24h > 0 ? Math.min(8, Math.log10(Math.max(signal.volume24h, 1))) : 0;
+  breakdown.push({
+    name: "quality",
+    score: round(mcapPts + liqPts),
+    maxScore: W.quality,
+    rationale: `mcap ${has("marketCap") ? `$${fmt(signal.marketCap)}` : "n/a"}, vol ${has("volume24h") ? `$${fmt(signal.volume24h)}` : "n/a"}`,
+  });
 
   // Timing (10): 24h stabilization after a drop; penalize chasing.
-  const chg24h = signal.priceChange24hPercent;
-  const timing = chg24h > -3 && chg24h < 8 ? W.timing : chg24h >= 8 ? 4 : 2;
-  breakdown.push({ name: "timing", score: timing, maxScore: W.timing, rationale: `24h change ${chg24h.toFixed(1)}%` });
-  if (chg24h >= 8) notes.push(`+${chg24h.toFixed(1)}% 24h — timing penalty (don't chase)`);
+  if (has("priceChange24hPercent")) {
+    const chg24h = signal.priceChange24hPercent;
+    const timing = chg24h > -3 && chg24h < 8 ? W.timing : chg24h >= 8 ? 4 : 2;
+    breakdown.push({ name: "timing", score: timing, maxScore: W.timing, rationale: `24h change ${chg24h.toFixed(1)}%` });
+    if (chg24h >= 8) notes.push(`+${chg24h.toFixed(1)}% 24h — timing penalty (don't chase)`);
+  } else {
+    breakdown.push({ name: "timing", score: 0, maxScore: W.timing, rationale: "24h change unavailable — not scored" });
+  }
 
-  // Regime (20): fear/greed from market_overview via signal metadata.
-  const fear = typeof meta.fearGreed === "number" ? meta.fearGreed : 50;
-  const regime = fear <= 30 ? W.regime : fear <= 50 ? 14 : fear <= 70 ? 8 : 4;
-  breakdown.push({ name: "regime", score: regime, maxScore: W.regime, rationale: `fear/greed ${fear}` });
-  if (fear <= 30) notes.push(`fear regime (${fear}) — asymmetry favors buyers`);
+  // Regime (20): fear/greed. Unknown regime is conservative, not free points.
+  const fearKnown = typeof meta.fearGreed === "number";
+  const fear = fearKnown ? (meta.fearGreed as number) : 50;
+  const regime = !fearKnown ? 6 : fear <= 30 ? W.regime : fear <= 50 ? 14 : fear <= 70 ? 8 : 4;
+  breakdown.push({ name: "regime", score: regime, maxScore: W.regime, rationale: fearKnown ? `fear/greed ${fear} (${meta.fearSource ?? "market_overview"})` : "regime unavailable — conservative" });
+  if (fearKnown && fear <= 30) notes.push(`fear regime (${fear}) — asymmetry favors buyers`);
 
   // Volatility penalty (within quality envelope): erratic kline path.
   if (historical.length >= 7) {

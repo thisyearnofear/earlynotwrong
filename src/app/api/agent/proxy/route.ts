@@ -21,6 +21,8 @@ const VALID_GET_ENDPOINTS = [
   "options/status",
   "ryo/status",
   "ryo/verify",
+  "ryo/feed",
+  "ryo/ledger",
 ] as const;
 
 /** Endpoints whose first (uncached) call can take minutes — the edge report

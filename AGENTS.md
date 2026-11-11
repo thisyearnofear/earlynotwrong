@@ -83,13 +83,19 @@ here only cover surfaces that still run.
   → paper fills into a sha256 hash-chained reasoning ledger
   (`agent/data/ryo-ledger.jsonl`, gitignored). Client follows the published
   `POST /tools/{t}/call` convention; internal app routes are labeled fallback.
-  File-backed status: `ryo-status.ts` serves any process; `agent/ryo/serve.ts`
-  is the zero-dep demo server (`/ryo/status|ledger|verify|feed|receipt|debate|commitment`).
-  `thesis_commit` + `thesis_resolve` are the Track 3 platform tools (spec in
-  `agent/ryo/tool-spec.json`); `jury-smoke.ts` demos the jury without a RYO key.
+  File-backed status: `ryo-status.ts` serves any process. `agent/ryo/surfaces.ts`
+  is the shared page/feed builder module — both `agent/ryo/serve.ts` (zero-dep
+  local demo, :31800) and `agent/src/server.ts` (production, :31777) mount the
+  same `/ryo/status|ledger|verify|feed|receipt|debate|commitment` routes and
+  `POST /tools/thesis_{commit,resolve}/call` from it. Debate pages are writable
+  (commit/resolve forms); commit seals `price_at_commit`, resolve checks the
+  live price and flags contested outcomes. `thesis_commit` + `thesis_resolve`
+  are the Track 3 platform tools (spec in `agent/ryo/tool-spec.json`);
+  `jury-smoke.ts` is a jury FIXTURE — invented prices, not live evidence.
   `RyoArenaCard` renders the verdict feed on `/agent`; `/ryo` is the standalone
-  Track 2 route; proxy whitelists `ryo/*` (`RYO_AGENT_PORT` overrides target port).
-  `RYO_MCP_KEY` = bearer credential; `RYO_ANCHOR=0` disables head-hash anchoring.
+  Track 2 route (decision hero, nav-linked); proxy whitelists `ryo/*`
+  (`RYO_AGENT_PORT` overrides target port). `RYO_MCP_KEY` = bearer credential;
+  `RYO_ANCHOR=0` disables head-hash anchoring.
 - **Alpaca options execution** — orders via the Alpaca CLI (hackathon
   "MCP or CLI" requirement) with automatic REST fallback; any non-hard-fail
   order status (`new`/`held`/`accepted`) counts as a successful submission;

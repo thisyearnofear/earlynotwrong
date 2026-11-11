@@ -17,7 +17,12 @@ import { fetchRyoStatus, type RyoStatus, type RyoVerdict } from "@/lib/agent-cli
 import { ShieldCheck, ShieldAlert, ExternalLink, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const STATUS_BASE = process.env.NEXT_PUBLIC_RYO_STATUS_BASE ?? "http://localhost:31800";
+// The social surfaces (feed/receipt/debate/commitment/tools) are mounted on
+// the production agent server — links work for judges without local services.
+// Override for local demos where serve.ts runs on its own port.
+const STATUS_BASE =
+  process.env.NEXT_PUBLIC_RYO_STATUS_BASE ??
+  `http://${process.env.NEXT_PUBLIC_AGENT_HOST ?? "144.202.117.160"}:${process.env.NEXT_PUBLIC_RYO_AGENT_PORT ?? "31777"}`;
 
 const ACTION_STYLE: Record<string, string> = {
   BUY: "text-patience border-patience/50 bg-patience/10",
@@ -55,6 +60,13 @@ export default function RyoPage() {
     | undefined;
   const vetoes = status?.verdicts.filter((v) => v.action === "SKIP" && v.conviction === 0) ?? [];
 
+  // The decision — the thing a judge reads in the first 30 seconds. Latest
+  // actionable verdict (BUY/SKIP/EXIT), its score, jury delta, and reason.
+  const decision = status?.verdicts.find((v) => v.action === "BUY" || v.action === "SKIP" || v.action === "EXIT");
+  const trace = decision?.evidence?.decisionTrace as
+    | { baseScore?: number; juryAdjustment?: number; adjustedScore?: number; threshold?: number; missingFields?: string[] }
+    | undefined;
+
   return (
     <main className="min-h-screen bg-[#0d0f0a] text-foreground font-mono px-5 py-8 md:px-10">
       <a
@@ -68,9 +80,57 @@ export default function RyoPage() {
         <p className="text-[10px] uppercase tracking-[0.2em] text-foreground-dim mb-2">
           RYO-CHAN Hackathon · Track 2 · paper trades only
         </p>
-        <h1 className="text-2xl md:text-3xl text-foreground">
-          What the agent decided — <span className="text-[#e8b64c]">and why you can trust the trail</span>
-        </h1>
+
+        {/* THE DECISION — leads the page. Symbol, action, score, jury delta,
+            veto state, reason: the 30-second read a judge needs. */}
+        {decision ? (
+          <section aria-label="Latest decision" className="rounded-lg border border-border/40 bg-surface/10 p-5">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className={cn("rounded border px-2 py-0.5 text-[11px] uppercase", ACTION_STYLE[decision.action] ?? ACTION_STYLE.HOLD)}>
+                {decision.action}
+              </span>
+              <h1 className="text-3xl md:text-4xl text-foreground">{decision.symbol}</h1>
+              {decision.conviction > 0 && (
+                <span className="text-xl text-patience">
+                  {trace?.adjustedScore ?? decision.conviction}/100
+                </span>
+              )}
+              {trace?.juryAdjustment != null && trace.juryAdjustment !== 0 && (
+                <span className={cn("text-sm", trace.juryAdjustment > 0 ? "text-patience" : "text-impatience")}>
+                  jury {trace.juryAdjustment > 0 ? "+" : ""}{trace.juryAdjustment}
+                </span>
+              )}
+              {decision.action === "SKIP" && decision.conviction === 0 && (
+                <span className="text-sm text-impatience">vetoed</span>
+              )}
+            </div>
+            <p className="mt-3 text-sm text-foreground-muted leading-relaxed">{decision.reason}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-foreground-dim">
+              <span>{decision.ts.slice(0, 16).replace("T", " ")} UTC</span>
+              {trace?.missingFields?.length ? <span>missing: {trace.missingFields.join(", ")}</span> : null}
+              <a
+                href={`${STATUS_BASE}/ryo/receipt/${decision.hash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-[#e8b64c]/40 underline-offset-2 hover:text-[#e8b64c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e8b64c]"
+              >
+                receipt #{decision.hash.slice(0, 8)}
+              </a>
+              <a
+                href={`${STATUS_BASE}/ryo/debate/${decision.symbol}`}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-[#38bdf8]/40 underline-offset-2 hover:text-[#38bdf8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#38bdf8]"
+              >
+                debate {decision.symbol}
+              </a>
+            </div>
+          </section>
+        ) : (
+          <h1 className="text-2xl md:text-3xl text-foreground">
+            What the agent decided — <span className="text-[#e8b64c]">and why you can trust the trail</span>
+          </h1>
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {status?.chain ? (
             <span

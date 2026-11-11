@@ -28,11 +28,19 @@
       "commitment": "sha256 over canonical thesis payload — cite this",
       "receipt": { "ts": "iso", "index": "0-based chain position", "prevHash": "sha256", "hash": "sha256" },
       "resolve_after": "iso | null",
-      "verify": { "ledger": "agent/data/ryo-ledger.jsonl", "command": "npx tsx agent/ryo/run.ts --verify", "chain_intact_at_commit": "boolean" }
+      "price_at_commit": "number | null — sealed reference price for thesis_resolve's evidence check (via analyze_token; null = unverifiable, named in warnings)",
+      "verify": {
+        "hash_spec": "self-contained: entry.hash = sha256(prevHash + canonical-json(entry)) — a verifier needs no repo clone",
+        "status_url": "GET /ryo/commitment/{commitment} — live open/resolved status",
+        "audit_url": "GET /ryo/verify — live chain audit",
+        "ledger": "agent/data/ryo-ledger.jsonl",
+        "command": "npx tsx agent/ryo/run.ts --verify",
+        "chain_intact_at_commit": "boolean"
+      }
     },
     "summary": { "headline": "one-line commit summary", "points": ["key facts"] },
-    "availability": { "ledger": "ok|partial", "anchor": "optional" },
-    "warnings": ["non-empty when the chain was already broken at commit time"]
+    "availability": { "ledger": "ok|partial", "market_price": "ok|unavailable", "anchor": "optional" },
+    "warnings": ["non-empty when the chain was already broken at commit time, or price_at_commit couldn't be fetched"]
   },
   "implementation": {
     "cli": "npx tsx agent/ryo/thesis-commit.ts --symbol HYPE --thesis \"...\" --conviction 76 --horizon 72",
@@ -47,7 +55,7 @@
   "companion_tool": {
     "name": "thesis_resolve",
     "title": "Resolve a committed thesis",
-    "description": "Closes the debate loop: given a commitment (or receipt hash) from thesis_commit, records the outcome the thesis actually met — validated | invalidated | mixed | expired. One-shot: a commitment resolves exactly once, so debates stay honest. Same public envelope and call convention (POST /tools/thesis_resolve/call).",
+    "description": "Closes the debate loop: given a commitment (or receipt hash) from thesis_commit, records the outcome the thesis actually met — validated | invalidated | mixed | expired. Evidence-checked, not self-reported: when the commit sealed price_at_commit, resolve fetches the live price via analyze_token, computes the actual move (±5% band), and flags the result contested when the claimed outcome disagrees with the evidence. Unavailable prices are recorded as claimed-unverified, never fabricated. One-shot: a commitment resolves exactly once, so debates stay honest. Same public envelope and call convention (POST /tools/thesis_resolve/call).",
     "inputSchema": {
       "type": "object",
       "required": ["commitment", "outcome"],
@@ -63,8 +71,13 @@
       "partial": "thesis already resolved (one-shot refused) or chain degraded",
       "unavailable": "no such commitment on this ledger"
     },
+    "price_check": {
+      "rule": "move_pct = (price_at_resolve - price_at_commit) / price_at_commit; >= +5% validated, <= -5% invalidated, else mixed",
+      "fields": "data.price_check = { price_at_commit, price_at_resolve, move_pct, computed_outcome, claimed_outcome, agreed }",
+      "contested": "when agreed === false the RESOLVE entry carries contested:true and the disagreement is named in warnings"
+    },
     "lookup": "GET /ryo/commitment/{hash} → open/resolved status without a write",
-    "debate_view": "GET /ryo/debate/{symbol} → the full reasoning timeline for a symbol",
+    "debate_view": "GET /ryo/debate/{symbol} → the full reasoning timeline for a symbol, with commit/resolve forms that post to these same endpoints",
     "implementation": {
       "cli": "npx tsx agent/ryo/thesis-resolve.ts --commitment HASH --outcome validated --note \"...\"",
       "http": "POST /tools/thesis_resolve/call (agent/ryo/serve.ts :31800)",

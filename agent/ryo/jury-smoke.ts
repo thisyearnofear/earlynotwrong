@@ -1,6 +1,9 @@
 /**
- * Jury smoke test — exercises the real deliberation path with realistic
- * candidates, no RYO credential needed. Judges can watch the model think:
+ * Jury FIXTURE — demos the deliberation path on INVENTED candidates with
+ * invented prices. This exercises the model's reasoning mechanics only; it
+ * is not live market evidence and must not be presented as a real RYO
+ * cycle. A real cycle writes JURY rows into agent/data/ryo-ledger.jsonl —
+ * that ledger is the artifact judges should audit.
  *
  *   FEATHERLESS_API_KEY=rc_… npx tsx agent/ryo/jury-smoke.ts
  *

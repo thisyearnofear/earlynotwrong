@@ -159,14 +159,15 @@ export function createRyoDataAdapter(client: RyoClient = new RyoClient()): DataS
       }
       const limit = config.limit ?? 12;
 
-      // Regime context: published market_overview + sentiment shift first,
-      // internal intelligence fear/greed as fallback.
-      let fearGreed = num(intelBody, "fear", "greed");
-      let overviewDigest: string | null = null;
+      // Regime context: PUBLISHED market_overview first — the six-tool
+      // contract covers regime; internal intelligence is the labeled fallback.
+      const overview = await client.tool("market_overview");
+      let fearGreed = num(overview.data, "fear", "greed");
+      let fearSource: string = "market_overview";
+      const overviewDigest = overview.ok ? digest(overview) : null;
       if (fearGreed === undefined) {
-        const overview = await client.tool("market_overview");
-        fearGreed = num(overview.data, "fear", "greed");
-        if (overview.ok) overviewDigest = digest(overview);
+        fearGreed = num(intelBody, "fear", "greed");
+        fearSource = "market_intelligence(internal)";
       }
 
       const signals: MarketSignal[] = [];
@@ -194,6 +195,7 @@ export function createRyoDataAdapter(client: RyoClient = new RyoClient()): DataS
           verdict: a?.verdict ?? item.verdict ?? null,
           evidence,
           fearGreed: fearGreed ?? null,
+          fearSource,
         };
         if (config.minLiquidityUsd && sig.volume24h < config.minLiquidityUsd) continue;
         signals.push(sig);

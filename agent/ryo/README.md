@@ -2,16 +2,18 @@
 
 **RYO-CHAN Hackathon 2026 · Tracks 1 (Autonomous Agents), 2 (Dashboards & Interfaces), 3 (New Skills)**
 
-An autonomous trading agent built on the RYO-CHAN read-only research layer.
-It interprets market evidence, takes conviction-weighted positions, and records
-every decision — buys, holds, exits, and *refusals to trade* — in a
-tamper-evident, hash-chained reasoning ledger that judges can recompute.
+A reasoning product built on the RYO-CHAN research layer: an AI agent reads
+live market evidence, deliberates with a real model, takes or refuses
+conviction-weighted positions, and leaves a path other people can open —
+shareable receipts, a public feed, per-symbol debates, and a commitment
+primitive any caller can use.
 
-This is a port of the production Early, Not Wrong agent (`agent/`): the same
-"early, not wrong" philosophy — buy contrarian fear, hold through ordinary
-drawdown, exit only when the thesis breaks — reimplemented as a first-class
-domain in the project's harness adapter layer. **Paper trades only. No real
-funds are touched.**
+Every decision — buys, holds, exits, jury verdicts, *refusals to trade* —
+lands in a tamper-evident, hash-chained ledger that judges can recompute.
+The agent runs as a first-class `ryo` domain in the repo's existing harness
+(disclosed below); the product layer on top — jury, receipts, debate,
+commit/resolve tools, the `/ryo` screen — is new. **Paper trades only.
+No real funds are touched.**
 
 ## Architecture — RYO as a harness domain
 
@@ -51,9 +53,15 @@ agent/ryo/serve.ts                zero-dep status server (node:http)
   POST /tools/thesis_commit/call  Track 3 tool — commit a thesis
   POST /tools/thesis_resolve/call companion — resolve it once
 
-agent/src/server.ts               production agent also serves GET /ryo/status
-src/app/ryo/page.tsx              standalone Track 2 route — one screen:
-                                  what changed / why it matters / what to do
+agent/src/server.ts               production agent mounts every route above —
+                                  feed/receipts/debates/tools work on the public
+                                  deployment, not only localhost
+src/app/ryo/page.tsx              standalone Track 2 route — the decision leads
+                                  (symbol · action · score · jury delta · veto),
+                                  then feed/audit/debate action links
+agent/ryo/surfaces.ts             shared page builders — receipts, debate,
+                                  feed, commitment lookup (both servers import
+                                  these so the surfaces can't drift)
 src/components/agent/ryo-arena-card.tsx
                                   dashboard card — verdict feed IS the reasoning
                                   trail: factor rationale, veto badges, visual
@@ -102,12 +110,18 @@ statuses, field provenance). With no provider keyed the jury runs in honest
   the reason, evidence digests, the chain link, and the verification recipe.
 - `GET /ryo/debate/{symbol}` — the reasoning timeline for a symbol: theses
   (open/resolved), jury verdicts, decisions. The room where "early, not
-  wrong" claims get settled.
+  wrong" claims get settled — and it's **writable**: commit + resolve forms
+  post to the tool endpoints from the page itself.
 - `thesis_commit` + **`thesis_resolve`** — a complete debate primitive:
-  commit reasoning before the move, resolve it once after. Both return
-  RYO's public envelope at the published call convention; resolutions are
-  one-shot so debates stay honest.
-- `GET /ryo/commitment/{hash}` — commitment status (open/resolved) lookup.
+  commit reasoning before the move, resolve it once after. Commit seals
+  `price_at_commit` into the entry; resolve fetches the live price, computes
+  the actual move, and flags the outcome `contested` when a caller's claim
+  disagrees with the evidence — resolutions are evidence-checked, not
+  self-reported. Both return RYO's public envelope at the published call
+  convention; resolutions are one-shot so debates stay honest.
+- `GET /ryo/commitment/{hash}` — commitment status (open/resolved) lookup;
+  the verify recipe in every commit receipt is self-contained (`hash_spec`
+  + live `status_url`/`audit_url` — no repo clone needed to check one).
 
 The loop, risk checks, and scoring framework are unchanged — the same code
 shape the production agent runs against BSC and Alpaca. `DOMAIN_PROFILES.ryo`
@@ -139,7 +153,7 @@ with the failure named — the trail stays honest even when the data isn't.
 | Contrarian | 30 | 7d drawdown from `analyze_token` — rewards buying fear |
 | Quality | 20 | market cap + 24h volume (log-scaled); kline vol haircut |
 | Timing | 10 | 24h stabilization; penalizes chasing pumps |
-| Regime | 20 | `market_intelligence` fear/greed (fear = asymmetry) |
+| Regime | 20 | `market_overview` fear/greed — published tool; internal intelligence is the labeled fallback (fear = asymmetry; unavailable = conservative 6) |
 | Safety | 10 | embedded `check_safety` block |
 
 **Hard vetoes:** `safe: false`, positive `honeypot`, or flag failures (e.g.
@@ -172,8 +186,15 @@ curl -X POST localhost:31800/tools/thesis_commit/call -d '{"symbol":"HYPE","thes
 
 **`thesis_resolve`** completes the primitive: given a commitment, it records
 the outcome (validated / invalidated / mixed / expired) — one-shot, so a
-debate can't be re-scored after the fact. Two opposing `thesis_commit` calls
-on one symbol are a debate; `GET /ryo/debate/{symbol}` is where it settles.
+debate can't be re-scored after the fact. **The outcome is checked, not just
+claimed:** commit seals `price_at_commit` into the entry; resolve fetches
+the live price via `analyze_token`, computes the actual move (±5% band =
+validated/invalidated), and flags the resolution `contested` when the
+caller's claim disagrees with the evidence. No price at either end → the
+outcome is recorded as *claimed, unverified* — never fabricated. Two
+opposing `thesis_commit` calls on one symbol are a debate; `GET
+/ryo/debate/{symbol}` is where it settles — and where anyone commits
+theirs (the forms on that page post to the same tool endpoints).
 
 ## On-chain anchoring (judges' pick)
 
@@ -195,7 +216,10 @@ npx tsx agent/ryo/run.ts --verify            # audit the hash chain
 npx tsx agent/ryo/serve.ts                   # status server → :31800/ryo/status
 # optional: any key from the llm-providers ladder enables the LLM jury
 # (VERCEL_GATEWAY_* / OPENROUTER_* / OPENAI_* / ANTHROPIC_* / FEATHERLESS_* …)
-npx tsx agent/ryo/jury-smoke.ts              # watch the jury think — no RYO key needed
+npx tsx agent/ryo/jury-smoke.ts              # jury FIXTURE — invented prices, demos
+                                           # the model's reasoning only; NOT a live
+                                           # cycle. Live evidence = JURY rows in the
+                                           # ledger from a keyed run.ts cycle.
 ```
 
 State (paper cash $10,000 + positions) persists in `agent/data/ryo-state.json`.

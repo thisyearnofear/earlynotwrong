@@ -53,7 +53,19 @@ export function createRyoExecutor(client: RyoClient = new RyoClient()): TradeExe
       const state = loadState();
       state.cycle += 1;
       const symbol = signal.signal.symbol;
-      const price = signal.signal.price || 1;
+      const price = signal.signal.price;
+
+      // Never fill at a fabricated mark — a missing price is a SKIP with the
+      // gap named, not a $1 entry (null ≠ 0, and ≠ $1 either).
+      if (!price || price <= 0) {
+        const reason = "entry price unavailable — refusing to record a fill at a fabricated mark";
+        record(state.cycle, symbol, "SKIP", signal.conviction.score, reason, {
+          signal: signal.signal.metadata?.evidence,
+          missingFields: signal.signal.metadata?.missingFields,
+        });
+        return { success: false, symbol, error: reason, timestamp: Date.now() };
+      }
+
       const sizeUsd = Math.min(position.sizeUsd, state.cashUsd);
 
       if (sizeUsd < 10) {
@@ -76,6 +88,7 @@ export function createRyoExecutor(client: RyoClient = new RyoClient()): TradeExe
       record(state.cycle, symbol, "BUY", signal.conviction.score, signal.conviction.rationale, {
         signal: signal.signal.metadata?.evidence,
         breakdown: signal.conviction.breakdown.map((b) => `${b.name}:${b.score}/${b.maxScore}`),
+        ...(signal.signal.metadata?.decisionTrace ? { decisionTrace: signal.signal.metadata.decisionTrace } : {}),
       }, { sizeUsd, priceUsd: price });
 
       return {
@@ -96,7 +109,11 @@ export function createRyoExecutor(client: RyoClient = new RyoClient()): TradeExe
       if (!pos) return { success: false, symbol, error: "no open position", timestamp: Date.now() };
 
       const a = await client.tool("analyze_token", { symbol });
-      const px = num(a.data, "price_usd", "price", "usd") ?? pos.entryPriceUsd;
+      const livePx = num(a.data, "price_usd", "price", "usd");
+      // Exit even when the mark is unavailable (don't strand the paper book),
+      // but say so — the recorded pnl is then flat-by-fallback, disclosed.
+      const px = livePx ?? pos.entryPriceUsd;
+      const priceFallback = livePx === undefined;
       const pnl = ((px - pos.entryPriceUsd) / pos.entryPriceUsd) * 100;
       const valueUsd = pos.sizeUsd * (1 + pnl / 100);
 
@@ -104,7 +121,10 @@ export function createRyoExecutor(client: RyoClient = new RyoClient()): TradeExe
       state.positions = state.positions.filter((p) => p.symbol !== symbol);
       saveState(state);
 
-      record(state.cycle, symbol, "EXIT", 0, `exit at ${pnl.toFixed(1)}% pnl`, { analyze: `analyze_token:${a.transport}` }, { priceUsd: px });
+      record(state.cycle, symbol, "EXIT", 0, `exit at ${pnl.toFixed(1)}% pnl${priceFallback ? " (live mark unavailable — recorded at entry)" : ""}`, {
+        analyze: `analyze_token:${a.transport}`,
+        ...(priceFallback ? { price_source: "entry-fallback — analyze_token returned no price" } : {}),
+      }, { priceUsd: px });
       return {
         success: true,
         orderId: `ryo-paper-exit-${state.cycle}-${symbol}`,
