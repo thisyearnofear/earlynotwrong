@@ -19,6 +19,15 @@ function scoreOne(signal: MarketSignal, historical: Kline[]): ConvictionResult {
   const notes: string[] = [];
   if (typeof meta.rsi14 === "number" && meta.rsi14 < 35) notes.push(`RSI ${meta.rsi14.toFixed(0)} — oversold timing`);
 
+  // Degraded-evidence disclosure (spec: never convert unavailable → zero).
+  // Missing fields don't fabricate a number — they cut the score AND get named.
+  const missing = Array.isArray(meta.missingFields) ? (meta.missingFields as string[]) : [];
+  if (missing.length) notes.push(`evidence degraded — missing: ${missing.join(", ")}`);
+  const toolStatus = (meta.toolStatus ?? {}) as Record<string, string>;
+  if (Object.values(toolStatus).some((s) => s === "partial" || s === "unavailable")) {
+    notes.push(`tool status: ${Object.entries(toolStatus).filter(([, s]) => s !== "ok").map(([t, s]) => `${t}=${s}`).join(", ")}`);
+  }
+
   // Contrarian (30): reward 7d drawdowns — "early, not wrong".
   const chg7d = signal.priceChange7dPercent;
   const contrarian = chg7d < 0 ? Math.min(W.contrarian, Math.abs(chg7d) * 1.5) : Math.max(0, 10 - chg7d * 0.5);
@@ -61,7 +70,13 @@ function scoreOne(signal: MarketSignal, historical: Kline[]): ConvictionResult {
   breakdown.push({ name: "safety", score: round(safetyPts), maxScore: W.safety, rationale: honeypot ? "honeypot flag — hard veto" : "check_safety passed" });
   if (honeypot) notes.push("HONEYPOT — vetoed");
 
-  const total = honeypot ? 0 : Math.round(breakdown.reduce((a, b) => a + b.score, 0));
+  // A score built on missing evidence is a weaker claim — cap it instead of
+  // pretending the inputs were there (published contract: null ≠ 0).
+  let total = honeypot ? 0 : Math.round(breakdown.reduce((a, b) => a + b.score, 0));
+  if (!honeypot && missing.length >= 2) {
+    total = Math.min(total, 45);
+    notes.push(`score capped at 45 — ${missing.length} core fields missing`);
+  }
   return { symbol: signal.symbol, score: total, breakdown, rationale: notes.join("; ") || `${signal.symbol} factors net ${total}` };
 }
 
@@ -89,8 +104,9 @@ export function createRyoConvictionAdapter(): ConvictionFactors {
         { name: "contrarian", weight: W.contrarian, description: "Rewards quality assets down 7d — early, not wrong." },
         { name: "quality", weight: W.quality, description: "Market cap + liquidity floor from analyze_token." },
         { name: "timing", weight: W.timing, description: "24h stabilization; penalizes chasing pumps." },
-        { name: "regime", weight: W.regime, description: "Fear/greed regime from market_overview." },
-        { name: "safety", weight: W.safety, description: "check_safety gate — honeypot is a hard veto." },
+        { name: "regime", weight: W.regime, description: "Fear/greed regime + 7d sentiment shift." },
+        { name: "safety", weight: W.safety, description: "check_safety/deep_analysis verdict gate — honeypot is a hard veto." },
+        { name: "jury", weight: 0, description: "LLM jury adjusts ±15 post-scoring over deep_analysis/compare_tokens/sentiment evidence." },
       ];
     },
   };

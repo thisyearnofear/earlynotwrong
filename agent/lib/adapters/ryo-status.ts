@@ -52,6 +52,7 @@ export interface RyoStatus {
     skips: number;
     vetoes: number;
     theses: number;
+    juryVerdicts: number;
   };
 }
 
@@ -122,6 +123,7 @@ export function readRyoStatus(): RyoStatus {
       skips: count((e) => e.action === "SKIP" && e.conviction > 0),
       vetoes: count((e) => e.action === "SKIP" && e.conviction === 0),
       theses: count((e) => e.action === "THESIS"),
+      juryVerdicts: count((e) => e.action === "JURY"),
     },
   };
 }

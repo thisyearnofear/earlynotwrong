@@ -33,6 +33,7 @@ const ACTION_STYLE: Record<RyoVerdict["action"], { label: string; cls: string }>
   HOLD: { label: "HOLD", cls: "text-foreground-muted border-border/40 bg-surface/20" },
   EXIT: { label: "EXIT", cls: "text-impatience border-impatience/40 bg-impatience/10" },
   SKIP: { label: "SKIP", cls: "text-[#e8b64c] border-[#e8b64c]/40 bg-[#e8b64c]/10" },
+  JURY: { label: "JURY", cls: "text-[#a78bfa] border-[#a78bfa]/40 bg-[#a78bfa]/10" },
   THESIS: { label: "THESIS", cls: "text-[#a78bfa] border-[#a78bfa]/40 bg-[#a78bfa]/10" },
   ANCHOR: { label: "ANCHOR", cls: "text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10" },
 };

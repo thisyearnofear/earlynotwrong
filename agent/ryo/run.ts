@@ -7,11 +7,13 @@
  *   RYO_MCP_KEY=... npx tsx agent/ryo/run.ts --cycles 5 --interval 60
  *   npx tsx agent/ryo/run.ts --verify                     # audit the ledger chain
  */
-import { getRyoDataAdapter } from "../lib/adapters/ryo-data.js";
+import { getRyoDataAdapter, fetchRyoJuryContext } from "../lib/adapters/ryo-data.js";
 import { getRyoConvictionAdapter } from "../lib/adapters/ryo-conviction.js";
 import { createRyoExecutor } from "../lib/adapters/ryo-executor.js";
+import { RyoClient } from "../lib/adapters/ryo-client.js";
 import { DOMAIN_PROFILES } from "../lib/harness-config.js";
 import { verifyChain, loadState, saveState, record, lastHash, LEDGER_PATH } from "../lib/adapters/ryo-ledger.js";
+import { deliberateRyoJury } from "./ryo-jury.js";
 import type { Portfolio } from "../lib/adapters/types.js";
 
 const args = process.argv.slice(2);
@@ -39,6 +41,7 @@ const TAKE_PROFIT_PCT = 50;
 const ANCHOR_ENABLED = process.env.RYO_ANCHOR !== "0";
 let lastAnchoredHead: string | null = null;
 
+const client = new RyoClient();
 const dataSource = getRyoDataAdapter();
 const factors = getRyoConvictionAdapter();
 const executor = createRyoExecutor();
@@ -83,7 +86,7 @@ async function cycle(): Promise<void> {
   const current = loadState();
   saveState({ ...current, positions: current.positions.map((p) => open.find((o) => o.symbol === p.symbol) ?? p) });
 
-  // 2. Fetch the tradable universe + score.
+  // 2. Fetch the tradable universe + deterministic score.
   const signals = await dataSource.fetchSignals({ limit: 12 });
   console.log(`  universe: ${signals.map((s) => s.symbol).join(", ") || "(empty)"}`);
   const scored = [];
@@ -95,7 +98,56 @@ async function cycle(): Promise<void> {
   }
   scored.sort((a, b) => b.conviction.score - a.conviction.score);
 
-  // 3. Enter the best candidate if conviction clears the bar.
+  // 3. Jury stage — the model thinks. deep_analysis + compare_tokens +
+  //    sentiment shift on the shortlist, then ±15 adjustments with cited
+  //    reasoning. Every verdict becomes a JURY ledger entry: a judgement
+  //    in the trail, not just hashed inputs.
+  const shortlist = scored.filter((s) => s.conviction.score > 0).slice(0, 4);
+  let deliberation = null;
+  if (shortlist.length) {
+    const ctx = await fetchRyoJuryContext(client, shortlist.map((s) => s.signal.symbol));
+    deliberation = await deliberateRyoJury(
+      shortlist.map((s) => ({
+        signal: s.signal,
+        conviction: s.conviction,
+        deep: ctx.deep.get(s.signal.symbol.toUpperCase())?.data ?? null,
+        deepStatus: ctx.deep.get(s.signal.symbol.toUpperCase())?.status,
+      })),
+      ctx.compare?.data ?? null,
+      ctx.sentiment?.data ?? null,
+    );
+    console.log(`  jury [${deliberation.mode} · ${deliberation.provider}] ${deliberation.marketAssessment.slice(0, 120)}`);
+    for (const v of deliberation.verdicts) {
+      const hit = scored.find((s) => s.signal.symbol.toUpperCase() === v.symbol.toUpperCase());
+      if (hit) {
+        hit.conviction = {
+          ...hit.conviction,
+          score: v.adjustedScore,
+          breakdown: [...hit.conviction.breakdown, { name: "jury", score: v.adjustment, maxScore: 15, rationale: `${v.agreement} — ${v.keyRisk}` }],
+          rationale: `${hit.conviction.rationale} · jury ${v.adjustment >= 0 ? "+" : ""}${v.adjustment} (${v.agreement})`,
+        };
+      }
+      const deepCtx = ctx.deep.get(v.symbol.toUpperCase());
+      record(state.cycle + 1, v.symbol, "JURY", v.adjustedScore,
+        `jury ${v.adjustment >= 0 ? "+" : ""}${v.adjustment} (${v.agreement}): ${v.reasoning}`,
+        {
+          baseScore: v.baseScore,
+          adjustment: v.adjustment,
+          agreement: v.agreement,
+          keyRisk: v.keyRisk,
+          provider: deliberation.provider,
+          model: deliberation.model,
+          mode: deliberation.mode,
+          ...(deepCtx ? { deep_analysis: deepCtx.digest } : {}),
+          ...(ctx.compare ? { compare_tokens: ctx.compare.digest } : {}),
+          ...(ctx.sentiment ? { sentiment_shift: ctx.sentiment.digest } : {}),
+        });
+      console.log(`  JURY ${v.symbol} ${v.baseScore}→${v.adjustedScore} (${v.agreement}) ${v.reasoning.slice(0, 100)}`);
+    }
+    scored.sort((a, b) => b.conviction.score - a.conviction.score);
+  }
+
+  // 4. Enter the best candidate if jury-adjusted conviction clears the bar.
   const top = scored[0];
   const stateNow = loadState();
   if (top && top.conviction.score >= ENTRY_MIN_CONVICTION && !stateNow.positions.some((p) => p.symbol === top.signal.symbol)) {
@@ -113,7 +165,7 @@ async function cycle(): Promise<void> {
     console.log(`  SKIP — best conviction ${top.conviction.score} < ${ENTRY_MIN_CONVICTION}`);
   }
 
-  // 4. Anchor the reasoning trail head on-chain — "tamper-evident" made
+  // 5. Anchor the reasoning trail head on-chain — "tamper-evident" made
   // literal. Local chain proves integrity; the anchor proves this trail
   // existed at this time. Best-effort; RYO_ANCHOR=0 disables.
   if (ANCHOR_ENABLED) await anchorHead(scored[0]?.conviction.score ?? 0, signals.length);

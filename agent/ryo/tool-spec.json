@@ -1,64 +1,42 @@
 {
   "name": "thesis_commit",
   "title": "Commit a verifiable market thesis",
-  "description": "Tamper-evident commitment of an agent's reasoning BEFORE the market moves. Given a symbol, a natural-language thesis, and optional conviction/horizon/evidence references, returns a sha256 commitment plus a hash-chained ledger receipt proving the thesis existed at commit time. Later, anyone can recompute the chain to confirm the thesis was not written after the fact — 'early, not wrong' as a platform primitive. The same append-only ledger carries the caller's theses and the practice agent's decisions, so a single chain audit covers both.",
+  "description": "Tamper-evident commitment of an agent's reasoning BEFORE the market moves. Given a symbol, a natural-language thesis, and optional conviction/horizon/evidence references, returns a sha256 commitment plus a hash-chained receipt proving the thesis existed at commit time — 'early, not wrong' as a platform primitive. Returns the same public envelope as the six published tools (schema_version, tool, status, data_mode, as_of, request, data, summary, availability, warnings) at the same call convention (POST /tools/thesis_commit/call), so mounting is mechanical: no caller changes, no required adoption of the producer's ledger — the receipt embeds its hashes and a verify recipe in data.",
   "inputSchema": {
     "type": "object",
     "required": ["symbol", "thesis"],
     "properties": {
-      "symbol": {
-        "type": "string",
-        "description": "Ticker the thesis covers (max 14 chars), e.g. 'HYPE'."
-      },
-      "thesis": {
-        "type": "string",
-        "description": "Natural-language thesis (recommended max 500 chars)."
-      },
-      "conviction": {
-        "type": "number",
-        "description": "Optional 0–100 conviction the agent claims.",
-        "minimum": 0,
-        "maximum": 100
-      },
-      "horizon_hours": {
-        "type": "number",
-        "description": "Optional resolution window in hours — after it, the thesis is checkable against outcome."
-      },
-      "evidence_refs": {
-        "type": "array",
-        "items": { "type": "string" },
-        "description": "Optional digests/URIs of the evidence used (e.g. 'analyze_token:rest:693f8d49b2ae')."
-      }
+      "symbol": { "type": "string", "description": "Ticker the thesis covers (max 14 chars), e.g. 'HYPE'." },
+      "thesis": { "type": "string", "description": "Natural-language thesis (recommended max 500 chars)." },
+      "conviction": { "type": "number", "minimum": 0, "maximum": 100, "description": "Optional 0–100 conviction the agent claims." },
+      "horizon_hours": { "type": "number", "description": "Optional resolution window in hours — after it, the thesis is checkable against outcome." },
+      "evidence_refs": { "type": "array", "items": { "type": "string" }, "description": "Optional digests/URIs of the evidence used (e.g. 'analyze_token:rest:693f8d49b2ae')." }
     }
   },
-  "outputSchema": {
-    "type": "object",
-    "properties": {
-      "tool": { "const": "thesis_commit" },
-      "commitment": { "type": "string", "description": "sha256 over the canonical thesis payload — cite this." },
-      "receipt": {
-        "type": "object",
-        "properties": {
-          "ts": { "type": "string", "format": "date-time" },
-          "index": { "type": "integer", "description": "0-based position in the hash chain." },
-          "prevHash": { "type": "string" },
-          "hash": { "type": "string" }
-        }
-      },
-      "resolve_after": { "type": ["string", "null"], "format": "date-time" },
-      "verify": {
-        "type": "object",
-        "properties": {
-          "ledger": { "type": "string" },
-          "command": { "type": "string" },
-          "chain_intact_at_commit": { "type": "boolean" }
-        }
-      }
-    }
+  "call_convention": {
+    "rest": "POST {BASE}/tools/thesis_commit/call  body: bare argument object",
+    "matches_published_surface": true
+  },
+  "output_envelope": {
+    "schema_version": "1.0",
+    "tool": "thesis_commit",
+    "status": "ok | partial | unavailable",
+    "data_mode": "local-ledger",
+    "as_of": "ISO-8601 commit time",
+    "request": "echo of normalized arguments",
+    "data": {
+      "commitment": "sha256 over canonical thesis payload — cite this",
+      "receipt": { "ts": "iso", "index": "0-based chain position", "prevHash": "sha256", "hash": "sha256" },
+      "resolve_after": "iso | null",
+      "verify": { "ledger": "agent/data/ryo-ledger.jsonl", "command": "npx tsx agent/ryo/run.ts --verify", "chain_intact_at_commit": "boolean" }
+    },
+    "summary": { "headline": "one-line commit summary", "points": ["key facts"] },
+    "availability": { "ledger": "ok|partial", "anchor": "optional" },
+    "warnings": ["non-empty when the chain was already broken at commit time"]
   },
   "implementation": {
     "cli": "npx tsx agent/ryo/thesis-commit.ts --symbol HYPE --thesis \"...\" --conviction 76 --horizon 72",
-    "http": "POST /ryo/thesis-commit (agent/ryo/serve.ts, or mount on RYO's MCP surface)",
+    "http": "POST /tools/thesis_commit/call (agent/ryo/serve.ts :31800)",
     "source": "agent/ryo/thesis-commit.ts"
   },
   "safety": {

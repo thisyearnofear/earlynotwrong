@@ -21,13 +21,20 @@ were the existing domains; this submission adds `ryo` as the third:
 
 ```
 HARNESS_DOMAIN=ryo
-  ├─ ryo-data.ts        DataSource        → /api/market/intelligence (universe),
-  │                                       scan_market, analyze_token, ohlcv klines
-  ├─ ryo-conviction.ts  ConvictionFactors → deterministic 0–100 scoring + safety veto
+  ├─ ryo-data.ts        DataSource        → scan_market → analyze_token →
+  │                                       deep_analysis/compare_tokens/
+  │                                       monitor_market_sentiment_shift
+  ├─ ryo-conviction.ts  ConvictionFactors → deterministic 0–100 + safety veto
+  │                                       + degraded-evidence caps
+  ├─ ryo-jury.ts        model judgement   → LLM jury ±15 over deep_analysis
+  │                                       (shared llm-providers ladder,
+  │                                       honest template fallback)
   ├─ ryo-executor.ts    TradeExecutor     → paper fills into the reasoning ledger
-  ├─ ryo-client.ts      transport         → REST-first, MCP (JSON-RPC) fallback
+  ├─ ryo-client.ts      transport         → published POST /tools/{t}/call
+  │                                       primary; MCP JSON-RPC; internal
+  │                                       app REST fallback (labeled)
   ├─ ryo-ledger.ts      audit trail       → append-only JSONL, sha256 hash-chained
-  └─ ryo-status.ts      Track 2 surface   → file-backed status: verdict feed + chain integrity
+  └─ ryo-status.ts      status builder    → file-backed: verdict feed + chain integrity
 ```
 
 Surfaces built on the same files:
@@ -40,11 +47,48 @@ agent/ryo/serve.ts                zero-dep status server (node:http)
   POST /ryo/thesis-commit         Track 3 tool
 
 agent/src/server.ts               production agent also serves GET /ryo/status
+src/app/ryo/page.tsx              standalone Track 2 route — one screen:
+                                  what changed / why it matters / what to do
 src/components/agent/ryo-arena-card.tsx
                                   dashboard card — verdict feed IS the reasoning
                                   trail: factor rationale, veto badges, visual
                                   hash chain, integrity recomputed per fetch
 ```
+
+## The thinking loop — real judgement, not only scoring
+
+Each cycle runs deterministic scoring → then the **LLM conviction jury**
+(`agent/ryo/ryo-jury.ts`, same shared `chatCompletion` ladder the production
+jury uses) deliberates over the *richest evidence RYO publishes* —
+`deep_analysis` verdicts/confluence/risks/catalysts, `compare_tokens`
+head-to-heads, `monitor_market_sentiment_shift` — and adjusts scores ±15
+with cited reasoning. **Every verdict lands in the ledger as a `JURY`
+entry**: the trail carries actual judgements, not only hashed inputs.
+With no provider keyed the jury runs in honest `template` mode (zero
+adjustments, labeled as such — no fabricated reasoning).
+
+## Contract discipline (MCP Builder Guide)
+
+- Transport: `POST {RYO_MCP_URL}/tools/{tool}/call` — the published
+  convention — with the public envelope (`status`, `availability`,
+  `warnings`) surfaced verbatim into `metadata.toolStatus`.
+- `null`/`unavailable` never becomes `0`: missing fields are named in
+  `metadata.missingFields`, and ≥2 missing core fields **caps the score at
+  45** — a weaker-evidence claim, not a fabricated one.
+- Internal app routes (`market_intelligence` universe fallback, OHLCV
+  klines, embedded safety) are labeled `internal` in evidence digests —
+  outside the published six, never silent.
+- `GET /health`, `/whoami`, `/tools` (catalog discovery) are first-class
+  client methods; 429/503 retried with backoff + `Retry-After` honored.
+
+## SocialFi surface — receipts a trader can open
+
+- `GET /ryo/feed` — public verdict feed, newest first, with per-decision
+  `receipt_url` permalinks.
+- `GET /ryo/receipt/{hash}` — shareable HTML receipt for a single decision:
+  the reason, the chain link, the audit command, related theses on the same
+  symbol. Two opposing `thesis_commit` calls on one symbol are a debate
+  primitive — resolvable when `resolve_after` passes.
 
 The loop, risk checks, and scoring framework are unchanged — the same code
 shape the production agent runs against BSC and Alpaca. `DOMAIN_PROFILES.ryo`
@@ -119,11 +163,14 @@ skip results are themselves recorded in the ledger. `RYO_ANCHOR=0` disables.
 ## Run it
 
 ```bash
-export RYO_MCP_KEY=ryo_mcp_...     # issued in the app (Bearer credential)
+export RYO_MCP_KEY=ryo_mcp_...     # builder credential (Bearer)
+export RYO_MCP_URL=https://app-ryochan.com/api/mcp   # published endpoint
 npx tsx agent/ryo/run.ts                     # one cycle (tsx, no build step)
 npx tsx agent/ryo/run.ts --cycles 12 --interval 300
 npx tsx agent/ryo/run.ts --verify            # audit the hash chain
 npx tsx agent/ryo/serve.ts                   # status server → :31800/ryo/status
+# optional: any key from the llm-providers ladder enables the LLM jury
+# (VERCEL_GATEWAY_* / OPENROUTER_* / OPENAI_* / ANTHROPIC_* / …)
 ```
 
 State (paper cash $10,000 + positions) persists in `agent/data/ryo-state.json`.

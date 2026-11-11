@@ -4,19 +4,20 @@
  * A research primitive RYO doesn't have: tamper-evident commitment of an
  * agent's reasoning *before* the market moves. Any agent calls this tool,
  * gets back a hash-chained receipt proving its thesis existed at time T —
- * "early, not wrong" as a platform primitive. Later, anyone can recompute
- * the chain and confirm the thesis wasn't written after the fact.
+ * "early, not wrong" as a platform primitive.
  *
- * Spec-shaped to mount on RYO's MCP surface as-is: pure function in →
- * structured receipt out, no side-channel I/O required beyond the shared
- * append-only ledger (same file the practice agent's decisions chain into,
- * so a single --verify audit covers decisions AND committed theses).
+ * Spec conformance (docs/MCP-Builder-Guide.md): the tool returns RYO's own
+ * public envelope — {schema_version, tool, status, data_mode, as_of,
+ * request, data, summary, availability, warnings} — and mounts at the same
+ * call convention (POST /tools/thesis_commit/call). Dropping it onto the
+ * platform's surface requires no caller-side changes and no adoption of
+ * our ledger: the receipt embeds the hashes plus a verify recipe in `data`.
  *
  *   npx tsx agent/ryo/thesis-commit.ts --symbol HYPE \
  *     --thesis "RSI 34 + 14% 7d drawdown — oversold mean-reversion" \
  *     --conviction 76 --horizon 72
  */
-import { sha256, record, lastHash, verifyChain } from "../lib/adapters/ryo-ledger.js";
+import { sha256, record, verifyChain } from "../lib/adapters/ryo-ledger.js";
 
 export interface ThesisCommitInput {
   /** Ticker the thesis covers, e.g. "HYPE". */
@@ -31,27 +32,28 @@ export interface ThesisCommitInput {
   evidence_refs?: string[];
 }
 
-export interface ThesisCommitReceipt {
+/** RYO public result envelope — identical top-level contract to the six
+ *  published tools, so platform mounting is mechanical. */
+export interface ThesisCommitResult {
+  schema_version: string;
   tool: "thesis_commit";
-  /** sha256 commitment over the canonical thesis payload — what gets cited. */
-  commitment: string;
-  receipt: {
-    ts: string;
-    index: number;
-    prevHash: string;
-    hash: string;
+  status: "ok" | "partial" | "unavailable";
+  data_mode: "local-ledger";
+  as_of: string;
+  request: ThesisCommitInput;
+  data: {
+    commitment: string;
+    receipt: { ts: string; index: number; prevHash: string; hash: string };
+    resolve_after: string | null;
+    verify: { ledger: string; command: string; chain_intact_at_commit: boolean };
   };
-  /** Settles the thesis later: compare claim vs outcome inside the window. */
-  resolve_after: string | null;
-  verify: {
-    ledger: string;
-    command: string;
-    chain_intact_at_commit: boolean;
-  };
+  summary: { headline: string; points: string[] };
+  availability: Record<string, string>;
+  warnings: string[];
 }
 
-export function thesisCommit(input: ThesisCommitInput): ThesisCommitReceipt {
-  const symbol = input.symbol.trim().toUpperCase();
+export function thesisCommit(input: ThesisCommitInput): ThesisCommitResult {
+  const symbol = (input.symbol ?? "").trim().toUpperCase();
   if (!symbol || symbol.length > 14) throw new Error("thesis_commit: invalid symbol");
   if (!input.thesis?.trim()) throw new Error("thesis_commit: thesis is required");
   if (input.conviction !== undefined && (input.conviction < 0 || input.conviction > 100)) {
@@ -88,15 +90,34 @@ export function thesisCommit(input: ThesisCommitInput): ThesisCommitReceipt {
   );
 
   return {
+    schema_version: "1.0",
     tool: "thesis_commit",
-    commitment,
-    receipt: { ts: entry.ts, index: chain.entries, prevHash: entry.prevHash, hash: entry.hash },
-    resolve_after: resolveAfter,
-    verify: {
-      ledger: "agent/data/ryo-ledger.jsonl",
-      command: "npx tsx agent/ryo/run.ts --verify",
-      chain_intact_at_commit: chain.ok,
+    status: chain.ok ? "ok" : "partial",
+    data_mode: "local-ledger",
+    as_of: entry.ts,
+    request: input,
+    data: {
+      commitment,
+      receipt: { ts: entry.ts, index: chain.entries, prevHash: entry.prevHash, hash: entry.hash },
+      resolve_after: resolveAfter,
+      verify: {
+        ledger: "agent/data/ryo-ledger.jsonl",
+        command: "npx tsx agent/ryo/run.ts --verify",
+        chain_intact_at_commit: chain.ok,
+      },
     },
+    summary: {
+      headline: `Thesis on ${symbol} committed — sha256:${commitment.slice(0, 12)}… chained at #${chain.entries}`,
+      points: [
+        `commitment covers symbol+thesis+conviction+horizon+evidence refs`,
+        `chain-intact at commit: ${chain.ok}`,
+        resolveAfter ? `resolvable after ${resolveAfter}` : `no resolution window set`,
+      ],
+    },
+    availability: { ledger: chain.ok ? "ok" : "partial", anchor: "optional" },
+    warnings: chain.ok
+      ? []
+      : ["chain reported broken at commit time — receipt records it; do not cite this commitment as clean provenance"],
   };
 }
 
