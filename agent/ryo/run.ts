@@ -192,8 +192,12 @@ async function cycle(): Promise<void> {
       console.log(`  SKIP ${top.signal.symbol} — ${risk.reason}`);
     }
   } else if (top) {
-    record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score, `conviction below ${ENTRY_MIN_CONVICTION}`, { decisionTrace: decisionTrace(top) });
-    console.log(`  SKIP — best conviction ${top.conviction.score} < ${ENTRY_MIN_CONVICTION}`);
+    // Name the real reason: already-held is a different refusal than
+    // below-threshold — a judge reading the trail shouldn't see "82 < 55".
+    const held = stateNow.positions.some((p) => p.symbol === top.signal.symbol);
+    const reason = held ? "already holding — no re-entry" : `conviction below ${ENTRY_MIN_CONVICTION}`;
+    record(stateNow.cycle + 1, top.signal.symbol, "SKIP", top.conviction.score, reason, { decisionTrace: decisionTrace(top) });
+    console.log(`  SKIP ${top.signal.symbol} — ${reason}`);
   }
 
   // 5. Anchor the reasoning trail head on-chain — "tamper-evident" made
