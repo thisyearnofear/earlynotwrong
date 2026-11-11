@@ -78,13 +78,17 @@ here only cover surfaces that still run.
   `HARNESS_DOMAIN` switches domains; loop, LLM ladder, jury, self-analysis, and
   anchoring are domain-agnostic.
 - **RYO-CHAN domain (`agent/ryo/`, `agent/lib/adapters/ryo-*.ts`)** — third
-  harness domain: RYO research API → conviction scoring → paper fills into a
-  sha256 hash-chained reasoning ledger (`agent/data/ryo-ledger.jsonl`, gitignored).
+  harness domain: RYO's published six tools → deterministic scoring →
+  **LLM jury** (`agent/ryo/ryo-jury.ts`, shared ladder, ±15 + disagree-veto)
+  → paper fills into a sha256 hash-chained reasoning ledger
+  (`agent/data/ryo-ledger.jsonl`, gitignored). Client follows the published
+  `POST /tools/{t}/call` convention; internal app routes are labeled fallback.
   File-backed status: `ryo-status.ts` serves any process; `agent/ryo/serve.ts`
-  is the zero-dep demo server (`/ryo/status|ledger|verify`, `POST /ryo/thesis-commit`).
-  `thesis_commit` is the Track 3 platform tool (spec in `agent/ryo/tool-spec.json`).
-  `RyoArenaCard` renders the verdict feed on `/agent`; proxy whitelists
-  `ryo/status`+`ryo/verify` (`RYO_AGENT_PORT` overrides the target port).
+  is the zero-dep demo server (`/ryo/status|ledger|verify|feed|receipt|debate|commitment`).
+  `thesis_commit` + `thesis_resolve` are the Track 3 platform tools (spec in
+  `agent/ryo/tool-spec.json`); `jury-smoke.ts` demos the jury without a RYO key.
+  `RyoArenaCard` renders the verdict feed on `/agent`; `/ryo` is the standalone
+  Track 2 route; proxy whitelists `ryo/*` (`RYO_AGENT_PORT` overrides target port).
   `RYO_MCP_KEY` = bearer credential; `RYO_ANCHOR=0` disables head-hash anchoring.
 - **Alpaca options execution** — orders via the Alpaca CLI (hackathon
   "MCP or CLI" requirement) with automatic REST fallback; any non-hard-fail

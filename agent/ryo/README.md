@@ -167,8 +167,13 @@ Spec-shaped to mount on RYO's MCP surface as-is (`agent/ryo/tool-spec.json`):
 npx tsx agent/ryo/thesis-commit.ts --symbol HYPE \
   --thesis "RSI 34 + 14% 7d drawdown — oversold mean-reversion" \
   --conviction 76 --horizon 72
-curl -X POST localhost:31800/ryo/thesis-commit -d '{"symbol":"HYPE","thesis":"…"}'
+curl -X POST localhost:31800/tools/thesis_commit/call -d '{"symbol":"HYPE","thesis":"…"}'
 ```
+
+**`thesis_resolve`** completes the primitive: given a commitment, it records
+the outcome (validated / invalidated / mixed / expired) — one-shot, so a
+debate can't be re-scored after the fact. Two opposing `thesis_commit` calls
+on one symbol are a debate; `GET /ryo/debate/{symbol}` is where it settles.
 
 ## On-chain anchoring (judges' pick)
 
@@ -189,7 +194,8 @@ npx tsx agent/ryo/run.ts --cycles 12 --interval 300
 npx tsx agent/ryo/run.ts --verify            # audit the hash chain
 npx tsx agent/ryo/serve.ts                   # status server → :31800/ryo/status
 # optional: any key from the llm-providers ladder enables the LLM jury
-# (VERCEL_GATEWAY_* / OPENROUTER_* / OPENAI_* / ANTHROPIC_* / …)
+# (VERCEL_GATEWAY_* / OPENROUTER_* / OPENAI_* / ANTHROPIC_* / FEATHERLESS_* …)
+npx tsx agent/ryo/jury-smoke.ts              # watch the jury think — no RYO key needed
 ```
 
 State (paper cash $10,000 + positions) persists in `agent/data/ryo-state.json`.

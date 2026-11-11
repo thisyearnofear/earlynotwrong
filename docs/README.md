@@ -23,11 +23,16 @@ history, not operational documentation.
 - [Signal schema](schemas/signals-live-v1.2.md)
 - [Wallet score plan](WALLET_SCORE_PLAN.md)
 
-## Chain integrations
+## Domains and integrations
 
 - [Casper](CASPER_INTEGRATION.md) — Odra registry, MCP server, x402 paywall
 - [Mantle](MANTLE_INTEGRATION.md) — ERC-8004 ConvictionRegistry
 - [SoSoValue](SOSOVALUE_INTEGRATION.md) — market data + SoDEX + AI narrative
+- [RYO-CHAN domain](../agent/ryo/README.md) — practice agent: LLM jury on
+  RYO's six tools, hash-chained reasoning ledger, public feed/receipts,
+  thesis_commit + thesis_resolve debate tools
+- [Conviction Gym](../agent/conviction-gym/README.md) — RL environment from
+  the backtest physics (TS + Python ports)
 - [Observability](observability/README.md)
 
 ## Operations and history

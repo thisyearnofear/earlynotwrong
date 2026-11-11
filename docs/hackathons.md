@@ -1,5 +1,22 @@
 # Hackathon Archive
 
+This codebase was built across several 2026 hackathons and bounties — each
+contributed a specific layer of the architecture:
+
+| Layer | Hackathon / Bounty | Document |
+|-------|-------------------|----------|
+| Autonomous BSC trading agent, 6-factor conviction signal, bankroll discipline | BNB Hack: AI Trading Agent Edition | [AGENT_DESIGN.md](AGENT_DESIGN.md) |
+| ERC-8004 ConvictionRegistry on Mantle | Mantle Turing Test 2026 | [MANTLE_INTEGRATION.md](MANTLE_INTEGRATION.md) |
+| Odra registry + MCP server + x402 paywall on Casper | Casper Agentic Buildathon 2026 | [CASPER_INTEGRATION.md](CASPER_INTEGRATION.md) |
+| CROO Agent Protocol adapter, USDC settlement on Base | CROO Hackathon | [CROO_INTEGRATION.md](CROO_INTEGRATION.md) |
+| Aleo ZK selective disclosure + signed-voucher rebates | Aleo Privacy Buildathon 2026 | [PRIVACY_MODEL.md](PRIVACY_MODEL.md) |
+| SoSoValue market data + SoDEX execution + AI narrative | SoSoValue Buildathon 2026 (Wave 3) | [SOSOVALUE_INTEGRATION.md](SOSOVALUE_INTEGRATION.md) |
+| RYO practice agent — LLM jury, hash-chained reasoning, debate tools | RYO-CHAN Hackathon 2026 | [agent/ryo/README.md](../agent/ryo/README.md) |
+| Solana four-gate pre-trade safety skill | Superteam Brasil Solana AI Kit | [agent/lib/solana-safety.ts](../agent/lib/solana-safety.ts) + [solana-safe-trade-skill](https://github.com/thisyearnofear/solana-safe-trade-skill) |
+
+The sections below are per-competition research and planning notes; shipped
+submission copy lives in [`archive/`](archive/).
+
 ---
 
 ## 1. SigNoz Observability Hackathon (2026)
