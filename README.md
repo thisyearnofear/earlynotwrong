@@ -72,6 +72,7 @@ Full docs live in [`docs/`](./docs/README.md) — the index is the source of tru
 | [docs/AGENT_DESIGN.md](./docs/AGENT_DESIGN.md) | BSC agent: 6-factor signal, bankroll discipline, scam-token defense |
 | [docs/HARNESS_ARCHITECTURE_PLAN.md](./docs/HARNESS_ARCHITECTURE_PLAN.md) | Domain-agnostic harness + adapter registry |
 | [docs/CASPER_INTEGRATION.md](./docs/CASPER_INTEGRATION.md) | Odra registry, MCP server, x402 paywall |
+| [docs/CASPER_FORWARD.md](./docs/CASPER_FORWARD.md) | ConvictionRegistry v2 plan — claims, outcomes, bonds, epoch roots |
 | [docs/A2A_BUYER_GUIDE.md](./docs/A2A_BUYER_GUIDE.md) | **Buyers start here** — MCP + CROO rails, wallet-score audit |
 | [agent/ryo/README.md](./agent/ryo/README.md) | RYO-CHAN domain — LLM jury, reasoning ledger, receipts, debate tools |
 | [docs/LESSONS.md](./docs/LESSONS.md) | Post-mortems and the ops log · history in [docs/hackathons.md](./docs/hackathons.md) |

@@ -278,9 +278,38 @@ curl -sS -X POST http://144.202.117.160:31777/mcp \
 
 Returns the live anchored record (decoded from the Casper contract's CES event log, no gas).
 
+## ConvictionRegistry v2 (in progress)
+
+The contract documented above is v1 — it anchors self-reported conviction
+records. v2 (see `docs/CASPER_FORWARD.md` for the full plan) turns the
+registry into an outcome-verified reputation layer:
+
+- **`register_agent`** — third-party agents get discoverable identities.
+- **`anchor_claim` → `resolve_claim` → `dispute_claim` → `rule_dispute` →
+  `finalize_resolution`** — claims carry expiry horizons, proposed outcomes,
+  counter-bonded disputes, and arbiter adjudication. Optional CSPR bonds
+  ride in `attached_value` (payable via Odra's cargo-purse proxy pattern —
+  the agent submits a session-wasm deploy of the vendored
+  `casper/resources/proxy_caller_with_return.wasm`).
+- **`anchor_epoch_root`** — Merkle roots over the agent's local hash-chained
+  epoch ledger (`agent/lib/anchors/epoch-ledger.ts`), so N off-chain records
+  cost one anchor transaction.
+
+Agent-side, `agent/lib/anchors/casper-v2.ts` runs the lifecycle each cycle
+behind `CASPER_REGISTRY_V2_HASH`: registers once, anchors the cycle's top
+pick as a `PRICE_THESIS` claim with its sealed commit price, resolves due
+claims deterministically from the live price feed (±5% band →
+validated/invalidated/mixed), finalizes after the dispute window, and
+anchors closed epoch roots. v1 anchoring and the free CES read path are
+unchanged — the v1 package hash stays live for the historical feed.
+
 ## Caveats
 
 For a client to settle a paid call end-to-end (not just receive the 402 challenge), the client needs a wallet holding the testnet `Cep18x402` token to sign the transfer authorization. The server-side flow is fully live — the curl above demonstrates the 402 challenge; the `X-PAYMENT-RESPONSE` round trip requires a client holding `Cep18x402`.
+
+The v2 surface above is implemented and tested off-chain (24 OdraVM contract
+tests + 7 vitest ledger tests) but **not yet deployed** — it activates when
+`CASPER_REGISTRY_V2_HASH` is set after the v2 package is installed.
 
 ## Links
 

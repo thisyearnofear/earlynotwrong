@@ -22,6 +22,7 @@ import {
 } from "./onchain-portfolio.js";
 import { guardrails } from "./risk-guardrails.js";
 import { computeSubjectHash, computeThesisHash, anchorAll } from "./anchors/index.js";
+import { casperV2PostAnchor } from "./anchors/casper-v2.js";
 import { recordAgentEntry, recordAgentExit } from "./self-analysis.js";
 import type { SwapResult } from "./twak-executor.js";
 import { scoreMarketRegime, scoreTokenConviction, evaluatePosition, accruePosition, openPosition, STUCK_AFTER_FAILED_ATTEMPTS } from "./conviction-signal.js";
@@ -1708,6 +1709,19 @@ export async function anchorToMantle(): Promise<void> {
     state.anchorResults = [];
     state.anchoring = { hash: thesisHash, mode: "cached" };
     state.lastAnchoredHash = thesisHash;
+    // No new record — but the v2 claim lifecycle (resolution, finalization,
+    // epoch roots) still needs a heartbeat every cycle.
+    await casperV2PostAnchor(
+      { subjectHash, thesisHash, convictionScore: regimeScore, archetype: sentimentLabel, timestamp: Date.now() },
+      {
+        getPriceUsd: (symbol) =>
+          (state.marketData?.tokenPrices ?? []).find(
+            (q) => q.symbol.toUpperCase() === symbol.toUpperCase(),
+          )?.price ?? null,
+        endpoint: process.env.AGENT_MCP_ENDPOINT ?? "http://144.202.117.160:31777/mcp",
+      },
+      false,
+    );
     return;
   }
 
@@ -1751,6 +1765,39 @@ export async function anchorToMantle(): Promise<void> {
       mode: anySkipped ? "simulator" : "off-chain",
     };
   }
+
+  // ── ConvictionRegistry v2 lifecycle (gated on CASPER_REGISTRY_V2_HASH) ──
+  // Runs after the v1-compatible anchors above: registers the agent once,
+  // anchors the top pick as a resolvable PRICE_THESIS claim, resolves due
+  // claims from the live price feed, and anchors closed epoch roots. All
+  // failures are contained inside casperV2PostAnchor — it cannot break the
+  // trading loop.
+  const topSignal = [...(state.convictionSignals ?? [])].sort((a, b) => b.score - a.score)[0];
+  const topQuote = topSignal
+    ? (state.marketData?.tokenPrices ?? []).find(
+        (q) => q.symbol.toUpperCase() === topSignal.symbol.toUpperCase(),
+      )
+    : undefined;
+  const priceMap = new Map(
+    (state.marketData?.tokenPrices ?? []).map((q) => [q.symbol.toUpperCase(), q.price]),
+  );
+  await casperV2PostAnchor(
+    {
+      subjectHash,
+      thesisHash,
+      convictionScore: regimeScore,
+      archetype: sentimentLabel,
+      timestamp: Date.now(),
+    },
+    {
+      topPick:
+        topSignal && topQuote && topQuote.price > 0
+          ? { symbol: topSignal.symbol, priceUsd: topQuote.price, score: topSignal.score }
+          : undefined,
+      getPriceUsd: (symbol) => priceMap.get(symbol.toUpperCase()) ?? null,
+      endpoint: process.env.AGENT_MCP_ENDPOINT ?? "http://144.202.117.160:31777/mcp",
+    },
+  );
 }
 
 // =============================================================================

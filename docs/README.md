@@ -26,6 +26,8 @@ history, not operational documentation.
 ## Domains and integrations
 
 - [Casper](CASPER_INTEGRATION.md) — Odra registry, MCP server, x402 paywall
+- [Casper Forward plan](CASPER_FORWARD.md) — ConvictionRegistry v2: claims,
+  outcomes, bonds, epoch roots (pre-Mainnet workstream)
 - [Mantle](MANTLE_INTEGRATION.md) — ERC-8004 ConvictionRegistry
 - [SoSoValue](SOSOVALUE_INTEGRATION.md) — market data + SoDEX + AI narrative
 - [RYO-CHAN domain](../agent/ryo/README.md) — practice agent: LLM jury on

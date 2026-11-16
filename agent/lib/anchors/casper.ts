@@ -38,6 +38,7 @@ const {
   PrivateKey,
   PublicKey,
   RpcClient,
+  SessionBuilder,
   Transaction,
 } = casperSdk;
 type CLValue = CLValueT;
@@ -45,6 +46,8 @@ type PrivateKey = PrivateKeyT;
 type PublicKey = PublicKeyT;
 type RpcClient = RpcClientT;
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AGENT_CONFIG } from "../config.js";
 import { getCasperExplorerTxUrl } from "../config.js";
 import type { AnchorAdapter, AnchorResult, AnchoredRecord, Bytes32Hex, ConvictionRecord } from "./types.js";
@@ -92,6 +95,17 @@ function hexToBytesArg(hex: string): CLValue {
   return CLValue.newCLList(CLTypeUInt8, u8s);
 }
 
+/** Build a CLList<U8> from arbitrary bytes — same CLType as Odra's `Bytes`,
+ *  so it deserializes into `Bytes`/`Vec<u8>` args and into the proxy wasm's
+ *  `args` parameter (serialized RuntimeArgs). */
+function bytesToListArg(bytes: Uint8Array): CLValue {
+  const u8s: CLValue[] = new Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    u8s[i] = CLValue.newCLUint8(bytes[i]!);
+  }
+  return CLValue.newCLList(CLTypeUInt8, u8s);
+}
+
 /** Build the RPC client. Uses the public endpoint as primary (no auth, no
  *  quota); falls back to cspr.cloud (with CSPR_CLOUD_TOKEN) if the public
  *  node is unreachable. */
@@ -133,6 +147,19 @@ function getRegistryHash(): string {
   if (!raw || raw.trim() === "") {
     throw new Error("Casper registry hash not configured (deploy first, then set CASPER_REGISTRY_HASH)");
   }
+  return raw.trim().startsWith("0x") ? raw.trim().slice(2) : raw.trim();
+}
+
+/**
+ * Resolve the v2 ConvictionRegistry package hash, or null when not deployed.
+ * v2 is a SEPARATE contract package from v1 — the v1 package hash stays in
+ * CASPER_REGISTRY_HASH so the historical event feed keeps reading, while
+ * CASPER_REGISTRY_V2_HASH gates the claim/epoch entry points. Setting the
+ * env var (or config field) is the single switch that turns v2 on.
+ */
+export function getRegistryV2Hash(): string | null {
+  const raw = process.env.CASPER_REGISTRY_V2_HASH ?? AGENT_CONFIG.casper.testnet.registryV2Hash;
+  if (!raw || raw.trim() === "") return null;
   return raw.trim().startsWith("0x") ? raw.trim().slice(2) : raw.trim();
 }
 
@@ -713,4 +740,200 @@ function bytesToHex0x(bytes: Uint8Array): Bytes32Hex {
 
 function normalizeHex(hex: string): string {
   return hex.toLowerCase().replace(/^0x/, "");
+}
+
+// =============================================================================
+// ConvictionRegistry v2 — claim lifecycle + epoch roots
+// =============================================================================
+//
+// v2 is a separate contract package (CASPER_REGISTRY_V2_HASH). Every v2 write
+// goes through `callV2EntryPoint`, which picks the submission shape:
+//
+//   - attached = 0 motes → plain ContractCallBuilder (works when the contract's
+//     claim_fee is 0 — set via `set_config` post-deploy).
+//   - attached > 0 → session-wasm deploy of Odra's proxy_caller_with_return
+//     (vendored at casper/resources/). On VM-Casper-v1 there is no
+//     `transferred_value` field — payable entry points take a hidden
+//     `cargo_purse` URef holding the motes, and only session code can create
+//     the purse. The proxy creates it, funds it with `amount` from the
+//     caller's main purse, then call_versioned_contract's the entry point
+//     with `cargo_purse` injected.
+
+export const CLAIM_TYPES = {
+  GENERIC: 0,
+  PRICE_THESIS: 1,
+  ATTESTATION: 2,
+  RISK_ASSESSMENT: 3,
+} as const;
+export type ClaimType = (typeof CLAIM_TYPES)[keyof typeof CLAIM_TYPES];
+
+export const CLAIM_OUTCOMES = {
+  UNRESOLVED: 0,
+  VALIDATED: 1,
+  INVALIDATED: 2,
+  MIXED: 3,
+  EXPIRED: 4,
+} as const;
+export type ClaimOutcome = (typeof CLAIM_OUTCOMES)[keyof typeof CLAIM_OUTCOMES];
+
+export interface V2ClaimAnchorParams {
+  subjectHash: Bytes32Hex;
+  claimHash: Bytes32Hex;
+  claimType: ClaimType;
+  /** Free-form domain tag, e.g. "crypto-trading". Stored on-chain. */
+  domain: string;
+  /** 0–100 stated confidence. */
+  confidence: number;
+  /** ms since epoch; 0 = no resolution horizon. */
+  expiresAtMs: number;
+  /** Evidence digest binding the claim to its off-chain analysis. */
+  evidenceHash: Bytes32Hex;
+  timestampMs: number;
+}
+
+let proxyWasmCache: Uint8Array | null = null;
+
+/** Load Odra's proxy_caller_with_return.wasm — vendored from
+ *  odra-casper-rpc-client 2.8.1 (Apache-2.0). Required for payable calls. */
+function loadProxyWasm(): Uint8Array {
+  if (proxyWasmCache) return proxyWasmCache;
+  const dir = dirname(fileURLToPath(import.meta.url));
+  const path = join(dir, "..", "..", "..", "casper", "resources", "proxy_caller_with_return.wasm");
+  proxyWasmCache = new Uint8Array(readFileSync(path));
+  return proxyWasmCache;
+}
+
+/**
+ * Submit one entry-point call to the v2 registry package. Returns the deploy
+ * hash. Throws on submission failure — callers decide how to surface it.
+ *
+ * `attachedMotes` is the value that lands in the contract's `cargo_purse`:
+ * for `anchor_claim` that's fee + bond; for `dispute_claim` the counter-bond.
+ * Zero means a plain contract call (no proxy wasm needed).
+ */
+async function callV2EntryPoint(
+  entryPoint: string,
+  args: InstanceType<typeof Args>,
+  attachedMotes = 0n,
+): Promise<string> {
+  const contractHash = getRegistryV2Hash();
+  if (!contractHash) throw new Error("CASPER_REGISTRY_V2_HASH not configured");
+
+  const key = loadOperatorKey();
+  let transaction;
+  if (attachedMotes === 0n) {
+    transaction = new ContractCallBuilder()
+      .from(key.publicKey)
+      .byPackageHash(contractHash)
+      .entryPoint(entryPoint)
+      .runtimeArgs(args)
+      .chainName(AGENT_CONFIG.casper.testnet.chainName)
+      .payment(Number(AGENT_CONFIG.casper.testnet.paymentMotes))
+      .build();
+  } else {
+    // Proxy-wasm session deploy — the caller's main purse funds a fresh
+    // cargo purse holding `attachedMotes`, which the contract then takes
+    // via handle_attached_value(). package_hash is ContractPackageHash
+    // (CL ByteArray(32)); `args` is the bytesrepr-serialized RuntimeArgs
+    // of the real call, passed as List<U8>.
+    const pkgBytes = hexToUint8(contractHash);
+    const proxyArgs = Args.fromMap({
+      package_hash: CLValue.newCLByteArray(pkgBytes),
+      entry_point: CLValue.newCLString(entryPoint),
+      args: bytesToListArg(args.toBytes()),
+      attached_value: CLValue.newCLUInt512(attachedMotes),
+      amount: CLValue.newCLUInt512(attachedMotes),
+    });
+    transaction = new SessionBuilder()
+      .from(key.publicKey)
+      .wasm(loadProxyWasm())
+      .runtimeArgs(proxyArgs)
+      .chainName(AGENT_CONFIG.casper.testnet.chainName)
+      .payment(Number(AGENT_CONFIG.casper.testnet.paymentMotes))
+      .build();
+  }
+
+  transaction.sign(key);
+  const client = buildRpcClient();
+  const result = await client.putTransaction(transaction);
+  const deployHash = result.transactionHash?.transactionV1?.toHex?.()
+    ?? result.transactionHash?.deploy?.toHex?.()
+    ?? "";
+  if (!deployHash) throw new Error("RPC accepted the transaction but returned no hash");
+  return deployHash;
+}
+
+/** register_agent(subject_hash, name, endpoint, domain_tags) — registers or
+ *  (when called by the same owner) updates an agent profile. */
+export async function v2RegisterAgent(
+  subjectHash: Bytes32Hex,
+  name: string,
+  endpoint: string,
+  domainTags: string,
+): Promise<string> {
+  const args = Args.fromMap({
+    subject_hash: hexToBytesArg(subjectHash),
+    name: CLValue.newCLString(sanitizeAscii(name)),
+    endpoint: CLValue.newCLString(sanitizeAscii(endpoint)),
+    domain_tags: CLValue.newCLString(sanitizeAscii(domainTags)),
+  });
+  return callV2EntryPoint("register_agent", args);
+}
+
+/** anchor_claim(...) — `attachedMotes` = claim fee + bond. */
+export async function v2AnchorClaim(params: V2ClaimAnchorParams, attachedMotes = 0n): Promise<string> {
+  const args = Args.fromMap({
+    subject_hash: hexToBytesArg(params.subjectHash),
+    claim_hash: hexToBytesArg(params.claimHash),
+    claim_type: CLValue.newCLUint8(params.claimType),
+    domain: CLValue.newCLString(sanitizeAscii(params.domain)),
+    confidence: CLValue.newCLUint8(Math.min(100, Math.max(0, params.confidence))),
+    expires_at: CLValue.newCLUint64(BigInt(Math.floor(params.expiresAtMs))),
+    evidence_hash: hexToBytesArg(params.evidenceHash),
+    timestamp: CLValue.newCLUint64(BigInt(Math.floor(params.timestampMs))),
+  });
+  return callV2EntryPoint("anchor_claim", args, attachedMotes);
+}
+
+/** resolve_claim(claim_hash, outcome, resolution_hash) — proposes an outcome;
+ *  the dispute window opens from the chain's block time at execution. */
+export async function v2ResolveClaim(
+  claimHash: Bytes32Hex,
+  outcome: ClaimOutcome,
+  resolutionHash: Bytes32Hex,
+): Promise<string> {
+  const args = Args.fromMap({
+    claim_hash: hexToBytesArg(claimHash),
+    outcome: CLValue.newCLUint8(outcome),
+    resolution_hash: hexToBytesArg(resolutionHash),
+  });
+  return callV2EntryPoint("resolve_claim", args);
+}
+
+/** dispute_claim(claim_hash) — payable; counterBondMotes must cover
+ *  max(claim.bond, 1 CSPR). */
+export async function v2DisputeClaim(claimHash: Bytes32Hex, counterBondMotes: bigint): Promise<string> {
+  const args = Args.fromMap({ claim_hash: hexToBytesArg(claimHash) });
+  return callV2EntryPoint("dispute_claim", args, counterBondMotes);
+}
+
+/** finalize_resolution(claim_hash) — settles bonds after the dispute window. */
+export async function v2FinalizeResolution(claimHash: Bytes32Hex): Promise<string> {
+  const args = Args.fromMap({ claim_hash: hexToBytesArg(claimHash) });
+  return callV2EntryPoint("finalize_resolution", args);
+}
+
+/** anchor_epoch_root(epoch_id, merkle_root, record_count) — one tx commits to
+ *  an entire epoch of off-chain ledger records. */
+export async function v2AnchorEpochRoot(
+  epochId: number,
+  merkleRootHex: string,
+  recordCount: number,
+): Promise<string> {
+  const args = Args.fromMap({
+    epoch_id: CLValue.newCLUint64(BigInt(epochId)),
+    merkle_root: bytesToListArg(hexToUint8(merkleRootHex)),
+    record_count: CLValue.newCLUint64(BigInt(recordCount)),
+  });
+  return callV2EntryPoint("anchor_epoch_root", args);
 }

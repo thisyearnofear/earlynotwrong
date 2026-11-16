@@ -181,7 +181,7 @@ here only cover surfaces that still run.
 | `agent/lib/errors.ts` | Standardized error types (`AgentError`, `TradeError`, `GuardrailError`, etc.) |
 | `agent/lib/onchain-portfolio.ts` | On-chain portfolio reader — values BEP-20 positions TWAK can't see |
 | `agent/lib/market-narrative.ts` | AI market narrative generation from SoSoValue feeds + macro events |
-| `agent/lib/anchors/` | Cross-chain anchoring adapters — `MantleAnchorAdapter` + `CasperAnchorAdapter` |
+| `agent/lib/anchors/` | Cross-chain anchoring adapters — `MantleAnchorAdapter` + `CasperAnchorAdapter` (+ `casper-v2.ts` claim lifecycle, `epoch-ledger.ts` Merkle batching; see `docs/CASPER_FORWARD.md`) |
 | `agent/lib/self-analysis.ts` | Builds the agent's canonical trade ledger and scores its own behavior each cycle via `conviction-core` |
 | `agent/lib/backtest.ts` | Backtest harness + **edge report** — conviction vs naive baseline, factor attribution of winning exits |
 | `agent/lib/adapters/` | **Harness adapter layer** — the domain-pluggable boundary. Interfaces: `data-source.ts`, `conviction-factors.ts`, `executor.ts` (+ shared `types.ts`). Crypto wrappers: `sosovalue-adapter.ts`, `crypto-conviction.ts`, `twak-adapter.ts`. Options adapters: `alpaca-data.ts`, `options-conviction.ts`, `alpaca-executor.ts` (+ `alpaca-cli.ts`). `registry.ts` maps domain → adapter triple. See `docs/HARNESS_ARCHITECTURE_PLAN.md` |

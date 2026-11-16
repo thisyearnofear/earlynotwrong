@@ -5,6 +5,13 @@ conviction analyses to every cycle. The other is Casper Testnet
 (see [`CASPER_INTEGRATION.md`](./CASPER_INTEGRATION.md)). Same record, same
 hash, two chains — adding a third is one new file under `agent/lib/anchors/`.
 
+> **Divergence note (v2):** Casper's ConvictionRegistry is gaining a richer
+> claim lifecycle (outcomes, bonds, epoch roots — see
+> [`CASPER_FORWARD.md`](./CASPER_FORWARD.md)) that the ERC-8004 schema doesn't
+> model. The plan keeps Casper as the canonical registry and mirrors only
+> epoch roots to Mantle; the shared `ConvictionRecord` surface above stays
+> identical on both chains.
+
 ## What gets anchored
 
 Each 4-hour cycle the agent computes:

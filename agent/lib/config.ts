@@ -224,9 +224,13 @@ export const AGENT_CONFIG = {
       rpcUrl: "https://node.testnet.cspr.cloud/rpc",
       chainName: "casper-test",
       explorerUrl: "https://testnet.cspr.live",
-      // Populated post-deploy by `casper/scripts/deploy.ts`. Until then, the
+      // Populated post-deploy by `agent/scripts/casper-deploy.mjs`. Until then, the
       // adapter reports `isAvailable() = false` and the orchestrator skips it.
       registryHash: "",
+      // v2 ConvictionRegistry (claim lifecycle + epoch roots) is a SEPARATE
+      // contract package. Empty = v2 disabled; v1 anchoring keeps running
+      // against registryHash. Set CASPER_REGISTRY_V2_HASH post-v2-deploy.
+      registryV2Hash: "",
       // Payment cap for one anchor_conviction entry-point call, in motes
       // (1 CSPR = 1e9 motes). Unused gas is refunded; this is the maximum
       // the deploy is allowed to consume, not the actual cost. 50 CSPR is the

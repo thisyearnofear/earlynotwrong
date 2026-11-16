@@ -1,31 +1,55 @@
-# casper
+# casper — ConvictionRegistry (Odra)
 
-## Usage
-It's recommended to install 
-[cargo-odra](https://github.com/odradev/cargo-odra) first.
+The Casper half of the dual-chain anchoring layer (the other half is the
+Mantle ERC-8004 registry — see `docs/MANTLE_INTEGRATION.md`).
 
-### Build
+## Contract: `src/conviction_registry.rs`
+
+**v2** — an outcome-verified reputation registry. v1 anchored self-reported
+conviction records; v2 keeps that surface verbatim (entry points +
+`ConvictionAnchored` event) and adds the full claim lifecycle:
+
+| Entry point | Purpose |
+|---|---|
+| `register_agent` | Agent identity/discovery — name, endpoint, domain tags |
+| `anchor_claim` *(payable)* | Commit a claim; attached value splits into claim fee + bond |
+| `resolve_claim` | Propose an outcome; opens the dispute window |
+| `dispute_claim` *(payable)* | Counter-bonded challenge inside the window |
+| `rule_dispute` | Arbiter adjudication; winner takes both bonds |
+| `finalize_resolution` | Settles bonds after an undisputed window |
+| `anchor_epoch_root` | One Merkle root per epoch of off-chain records |
+| `anchor_conviction`, `get_subject_history`, `get_latest_conviction`, `get_by_thesis` | v1 surface, unchanged |
+
+Reads (`get_claim`, `get_subject_claims`, `get_agent`, `get_epoch_root`,
+`get_counts`, `get_claim_fee`, `get_dispute_window`, `get_arbiter`,
+`get_fee_pool`) are free via state queries / the CES event log.
+
+Full rationale, phased plan, and integration notes: `../docs/CASPER_FORWARD.md`.
+
+## Build & test
+
+The Rust toolchain is pinned via `rust-toolchain` (nightly).
 
 ```
-$ cargo odra build
-```
-To build a wasm file, you need to pass the -b parameter. 
-The result files will be placed in `${project-root}/wasm` directory.
-
-```
-$ cargo odra build -b casper
+cargo test                # OdraVM tests — no cargo-odra needed (24 tests)
+cargo odra build -b casper  # wasm build → casper/wasm/ConvictionRegistry.wasm
 ```
 
-### Test
-To run test on your local machine, you can basically execute the command:
+`cargo-odra` must be installed for the wasm build:
+`cargo install cargo-odra` (see https://github.com/odradev/cargo-odra).
 
-```
-$ cargo odra test
-```
+## Deploy
 
-To test actual wasm files against a backend, 
-you need to specify the backend passing -b argument to `cargo-odra`.
+`agent/scripts/casper-deploy.mjs` installs `casper/wasm/ConvictionRegistry.wasm`
+on Testnet (needs `CSPR_CLOUD_TOKEN`, `CASPER_OPERATOR_PEM`, funded account).
+Post-deploy, set `CASPER_REGISTRY_V2_HASH` in `agent/.env` and optionally
+`set_config(0, dispute_window_ms)` so unbonded `anchor_claim` calls need no
+attached value.
 
-```
-$ cargo odra test -b casper
-```
+## `resources/`
+
+- `proxy_caller_with_return.wasm` — Odra's session proxy (vendored from
+  odra-casper-rpc-client 2.8.1). Required for **payable** entry points: on
+  VM-Casper-v1, attached value rides in a `cargo_purse` URef that only
+  session code can create. The agent submits these as session-wasm deploys —
+  see `callV2EntryPoint` in `agent/lib/anchors/casper.ts`.
