@@ -163,6 +163,18 @@ export function getRegistryV2Hash(): string | null {
   return raw.trim().startsWith("0x") ? raw.trim().slice(2) : raw.trim();
 }
 
+/**
+ * How the adapter spends gas: "records" anchors every conviction record
+ * on-chain (current behavior); "epoch" skips per-record writes — records
+ * still land in the local epoch ledger and only anchor_epoch_root deploys.
+ * Testnet faucet is one-shot, so epoch mode is the sustainable default once
+ * v2 is live (and the intended Mainnet shape).
+ */
+export function getAnchorMode(): "records" | "epoch" {
+  const raw = process.env.CASPER_ANCHOR_MODE ?? AGENT_CONFIG.casper.testnet.anchorMode;
+  return raw === "epoch" ? "epoch" : "records";
+}
+
 // =============================================================================
 // Adapter
 // =============================================================================
@@ -274,6 +286,18 @@ export class CasperAnchorAdapter implements AnchorAdapter {
   }
 
   async anchor(record: ConvictionRecord): Promise<AnchorResult> {
+    // Epoch mode: no per-record on-chain writes. The record still lands in
+    // the local epoch ledger (casperV2PostAnchor) and is committed by the
+    // daily anchor_epoch_root deploy — one tx per epoch instead of one per
+    // record. Skipping here is honest (not a failure): the orchestrator
+    // reports "skipped" and the loop continues normally.
+    if (getAnchorMode() === "epoch") {
+      return {
+        adapter: this.name,
+        status: "skipped",
+        error: "CASPER_ANCHOR_MODE=epoch — per-record anchor off; epoch roots only",
+      };
+    }
     if (this.isCircuitOpen()) {
       return {
         adapter: this.name,

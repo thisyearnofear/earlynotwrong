@@ -28,6 +28,7 @@ import type { Bytes32Hex, ConvictionRecord } from "./types.js";
 import {
   CLAIM_OUTCOMES,
   CLAIM_TYPES,
+  getAnchorMode,
   getRegistryV2Hash,
   v2AnchorClaim,
   v2AnchorEpochRoot,
@@ -163,10 +164,11 @@ export async function casperV2PostAnchor(
     }
   }
 
-  // 2. Anchor the cycle's top pick as a PRICE_THESIS claim. The claim hash
-  //    binds subject + symbol + sealed price + horizon — the resolver's job
-  //    is just comparing price-at-expiry to the committed input.
-  if (recordAnchored && ctx.topPick && ctx.topPick.priceUsd > 0) {
+  // 2. Anchor the cycle's top pick as a PRICE_THESIS claim — skipped in
+  //    epoch mode (new claims would strand: they'd need resolve+finalize
+  //    deploys later). The claim hash binds subject + symbol + sealed
+  //    price + horizon; resolution just compares price-at-expiry.
+  if (recordAnchored && ctx.topPick && ctx.topPick.priceUsd > 0 && getAnchorMode() !== "epoch") {
     const expiresAtMs = record.timestamp + CLAIM_HORIZON_MS;
     const claimHash = `0x${sha256Hex(
       `${record.subjectHash}:${ctx.topPick.symbol}:${ctx.topPick.priceUsd}:${expiresAtMs}`,

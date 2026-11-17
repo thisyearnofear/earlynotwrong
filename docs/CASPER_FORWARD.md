@@ -338,6 +338,21 @@ zero gas.
    OdraVM tests, but wasm builds (`cargo odra build -b casper`) and deploys
    need `cargo install cargo-odra` on the deploy box (the VPS already has the
    toolchain per the June deploy).
+5. **Testnet faucet is one-shot.** cspr.live grants 5,000 CSPR *once per
+   account, ever* — the operator's July allocation is fully spent (balance
+   verified 0 on 2026-11-17). The sanctioned reload is a **new operator
+   account**: `agent/scripts/casper-new-operator.mjs` generates the PEM,
+   prints the public key + faucet URL. Casper Forward's infrastructure
+   support may also be able to provide a sustained testnet allocation —
+   worth asking, since faucet rotation resets `anchored_by` identity.
+6. **x402 revenue ≠ gas.** `payTo` receives `Cep18x402` (CEP-18), not native
+   CSPR. The token contract *does* expose `burn(purse, amount)` alongside
+   `mint` — purse-based wrap/unwrap semantics, so revenue→gas conversion is
+   likely possible — but it's **unverified**; needs a live test post-funding.
+7. **`CASPER_ANCHOR_MODE=epoch`** skips per-record on-chain writes (records
+   still land in the local ledger; only `anchor_epoch_root` deploys). This
+   is the intended Mainnet spend shape — and on testnet it's the difference
+   between sustainable and dead-in-4-months.
 
 ## 12. Open questions to resolve in Phase 0
 

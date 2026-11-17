@@ -46,6 +46,11 @@ Post-deploy, set `CASPER_REGISTRY_V2_HASH` in `agent/.env` and optionally
 `set_config(0, dispute_window_ms)` so unbonded `anchor_claim` calls need no
 attached value.
 
+**Funding:** the testnet faucet is one-shot per account — to reload a spent
+operator, run `agent/scripts/casper-new-operator.mjs` and faucet the new key.
+Set `CASPER_ANCHOR_MODE=epoch` to skip per-record anchors (~1 deploy/day vs.
+one per thesis change) — the sustainable mode on both networks.
+
 ## `resources/`
 
 - `proxy_caller_with_return.wasm` — Odra's session proxy (vendored from

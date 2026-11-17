@@ -147,9 +147,12 @@ here only cover surfaces that still run.
   unreachable at last deploy. `casper-mcp-client.ts` degrades gracefully — the
   jury proceeds without cross-chain context; no code change needed if they
   come back.
-- Casper operator CSPR balance was ~3,065 CSPR (funded 2026-07-23 from testnet
-  faucet). Anchoring is active via the public RPC; thesis-hash dedup means
-  anchors only fire on meaningful conviction shifts.
+- Casper operator CSPR balance is **0** (verified 2026-11-17) — the July
+  faucet allocation (~3,065 CSPR) is spent and anchoring is halted at the
+  30 CSPR gate. The testnet faucet is **one-shot per account**; to refund,
+  generate a fresh key with `agent/scripts/casper-new-operator.mjs`, faucet
+  it once, update `CASPER_OPERATOR_PEM`. `CASPER_ANCHOR_MODE=epoch` cuts
+  spend to ~1 deploy/day once the v2 contract is live.
 
 ---
 

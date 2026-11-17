@@ -231,6 +231,12 @@ export const AGENT_CONFIG = {
       // contract package. Empty = v2 disabled; v1 anchoring keeps running
       // against registryHash. Set CASPER_REGISTRY_V2_HASH post-v2-deploy.
       registryV2Hash: "",
+      // CASPER_ANCHOR_MODE: "records" (default) writes anchor_conviction per
+      // thesis change; "epoch" skips per-record on-chain writes entirely —
+      // records still land in the local epoch ledger and only
+      // anchor_epoch_root deploys (1 tx/day once v2 is live). The
+      // cost-sustainable mode; also how Mainnet should run.
+      anchorMode: "records" as "records" | "epoch",
       // Payment cap for one anchor_conviction entry-point call, in motes
       // (1 CSPR = 1e9 motes). Unused gas is refunded; this is the maximum
       // the deploy is allowed to consume, not the actual cost. 50 CSPR is the
